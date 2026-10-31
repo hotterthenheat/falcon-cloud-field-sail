@@ -414,6 +414,12 @@ export function foldContracts(rows: UwContract[], expiry: string, now = Date.now
     ones edited, so whatever is keyed on the old chain recomputes. Gamma stays the vendor's open-interest rows. */
 const loggedFlow = new Set<string>();
 
+/** The dealer's put count. The model holds dealers SHORT the puts (DEALER_SIDE.P = −1), so a count is contracts short:
+    a customer buy at the ask makes it larger, a sale at the bid smaller — the vendor's own put_gamma_ask prints with
+    put_gamma_oi's sign (more dealer-short gamma) and put_gamma_bid against it. core/volClock.ts dealerInventory counts
+    the calls' way (contracts long: an ask buy makes it smaller), so the put side reads it with ask and bid swapped. */
+export const dealerPuts = (oi: number, askVol: number, bidVol: number, multiVol: number, volume: number): number => dealerInventory(oi, bidVol, askVol, multiVol, volume);
+
 function add3(right: Right, dealerSigned: boolean, scale: (v: number) => number, oi: number, ask: number, bid: number): number {
   return keptVendorLeg(right, scale(oi), dealerSigned) + keptVendorLeg(right, scale(ask), dealerSigned) + keptVendorLeg(right, scale(bid), dealerSigned);
 }
@@ -435,7 +441,7 @@ function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: stri
     const thin = near && n.flowFirm === false;
     const heldGate = outside || thin || !v?.asks;
     const callCount = !leg || heldGate ? (leg?.callOI ?? n.callOI) : dealerInventory(leg.callOI, leg.callAsk, leg.callBid, leg.callMulti, leg.callVol);
-    const putCount = !leg || heldGate ? (leg?.putOI ?? n.putOI) : dealerInventory(leg.putOI, leg.putAsk, leg.putBid, leg.putMulti, leg.putVol);
+    const putCount = !leg || heldGate ? (leg?.putOI ?? n.putOI) : dealerPuts(leg.putOI, leg.putAsk, leg.putBid, leg.putMulti, leg.putVol);
     const gex = v?.asks && !heldGate ? { call: add3('C', true, ident, v.g[0], v.g[1], v.g[2]), put: add3('P', true, ident, v.g[3], v.g[4], v.g[5]) } : { call: n.callGex, put: n.putGex };
     const dex = v?.asks && !heldGate ? { call: add3('C', false, dexOf, v.d[0], v.d[1], v.d[2]), put: add3('P', false, dexOf, v.d[3], v.d[4], v.d[5]) } : { call: n.callDex, put: n.putDex };
     const vanna = v?.asks && !heldGate ? { call: add3('C', true, vanOf, v.v[0], v.v[1], v.v[2]), put: add3('P', true, vanOf, v.v[3], v.v[4], v.v[5]) } : { call: n.callVanna, put: n.putVanna };
@@ -553,11 +559,27 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
     /* Vega is repriced here, on this clock and this vol, not the vendor's calendar-time vega. */
     n.callBook = callN;
     n.putBook = putN;
-    /* Vega is repriced here. Delta, vanna and charm stay the vendor's open-interest rows (withLiveGamma). */
+    /* Vega is repriced here. Delta, vanna and charm stay the vendor's open-interest rows (withLiveGamma) where the
+       rows carried them; a row without them (both legs zero) is not a zero book — its contracts price them, one long
+       contract's $ figures: delta × 100 × S; vanna per quoted vol point (× 1% × 100 × S); charm per session */
     if (call && callN !== 0) n.callVex = keptLeg('C', call.vega * 100 * volPt, callN);
     else n.callVex = 0;
     if (put && putN !== 0) n.putVex = keptLeg('P', put.vega * 100 * volPt, putN);
     else n.putVex = 0;
+    const v = n.vendor;
+    const carried = (xs: readonly number[] | undefined) => !!xs && (xs[0] !== 0 || xs[3] !== 0);
+    if (!carried(v?.d)) {
+      n.callDex = call && callN !== 0 ? keptLeg('C', call.deltaCall * 100 * spot, callN) : 0;
+      n.putDex = put && putN !== 0 ? keptLeg('P', put.deltaPut * 100 * spot, putN) : 0;
+    }
+    if (!carried(v?.v)) {
+      n.callVanna = call && callN !== 0 ? keptLeg('C', call.vanna * spot * volPt, callN) : 0;
+      n.putVanna = put && putN !== 0 ? keptLeg('P', put.vanna * spot * volPt, putN) : 0;
+    }
+    if (!carried(v?.c)) {
+      n.callCharm = call && callN !== 0 ? keptLeg('C', (call.charmCall / 252) * 100 * spot, callN) : 0;
+      n.putCharm = put && putN !== 0 ? keptLeg('P', (put.charmPut / 252) * 100 * spot, putN) : 0;
+    }
     n.netVex = n.callVex + n.putVex;
     n.netDex = n.callDex + n.putDex;
     n.netVanna = n.callVanna + n.putVanna;
