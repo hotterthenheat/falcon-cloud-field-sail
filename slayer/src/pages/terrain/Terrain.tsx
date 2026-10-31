@@ -49,7 +49,7 @@ import { dealerOf } from '../../core/dealerSign';
 import { useMaxPain } from '../../components/gex/levelExtras';
 import { composeSnapshot, snapshotName } from '../../components/gex/snapshot';
 import { readSessionClock } from '../../data/moc';
-import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, profileRestWidth, type ProfileLane, type ProfilePalette } from '../../components/gex/ProfilePanel';
+import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, type ProfileLane, type ProfilePalette } from '../../components/gex/ProfilePanel';
 import DropdownSelect from '../../components/ui/DropdownSelect';
 import { netSinceOpenRatio } from '../../data/levelview';
 import { useLevelsFor } from '../../data/levelsFor';
@@ -238,12 +238,14 @@ const SCALES = new Set<string>(PRICE_SCALES.map(o => o.value));
 const OR_VALUES = new Set<number>(OPENING_RANGES);
 
 /** A Terrain pane opens with the field, the forward cone and the key levels. trails is on here only — a saved desk that turned it off stays off. */
-const TERRAIN_OVERLAYS = { ...DEFAULT_OVERLAYS, trails: true, cone: true, levels: true };
-const LOOK = 2;
-/** A desk stored before LOOK, moved once: every pane's and every setup's cone and key levels on */
+const TERRAIN_OVERLAYS = { ...DEFAULT_OVERLAYS, trails: true, cone: true, levels: true, flow: true };
+const LOOK = 3;
+/** A desk stored before LOOK, moved once: every pane's and every setup's cone and key levels on (look 2), and the flow
+    pane under the tape (look 3) — a desk already at 2 keeps its cone and levels as the reader left them */
 const lookUp = (cfg: TerrainCfg, stored: unknown): TerrainCfg => {
   if (stored === LOOK) return cfg;
-  const on = <T extends { overlays?: ChartOverlays }>(x: T): T => (x.overlays ? { ...x, overlays: { ...x.overlays, cone: true, levels: true } } : x);
+  const lift = stored === 2 ? { flow: true } : { cone: true, levels: true, flow: true };
+  const on = <T extends { overlays?: ChartOverlays }>(x: T): T => (x.overlays ? { ...x, overlays: { ...x.overlays, ...lift } } : x);
   return { ...cfg, look: LOOK, panes: cfg.panes.map(on), setups: Object.fromEntries(Object.entries(cfg.setups).map(([k, v]) => [k, on(v)])) as SetupMap };
 };
 
@@ -416,6 +418,8 @@ const ROW_DOOR_PX = 32;
 /* The strip's own padding, when it is not clearing a price gutter (`p-1.5`). Named because the usable width below is
    derived from it rather than from a second copy of the number. */
 const STRIP_PAD_PX = 6;
+/** The expand chip in a docked pane's top-right corner: the identity row stops this far short of it */
+const EXPAND_CHIP_PX = 38;
 
 /* What the identity row costs, and what it gives up when the column cannot pay. The row is `w-fit max-w-full` and
    every child is `shrink-0`, which caps the box at the column and lets the contents overflow it visibly. */
@@ -639,6 +643,11 @@ interface PaneProps {
   onRailCut: (cut: RailCut) => void;
 }
 
+/** The strike rail's rest width on this desk: a narrow column beside the tape, not two fifths of the pane (the rail took
+    ~40% of a pane's width at the panel's own rest widths). Dragged wider, it keeps the reader's width; the bar's
+    STRIKES switch and the panel's × fold it away. */
+const railRestWidth = (panes: number, expanded: boolean): number => Math.max(PROFILE_MIN_W, expanded || panes === 1 ? 320 : panes === 3 ? 180 : 210);
+
 const Pane = ({
   cfg, onCfg, revision, expanded, onToggleExpand, index, tall,
   onCrosshair, registerSync, replay, onToggleReplay, onExitReplay,
@@ -689,7 +698,7 @@ const Pane = ({
   const stripKeyRef = useRef<(w: number) => string>(() => '');
   stripKeyRef.current = (w: number) => {
     if (!(w > 0)) return '0';
-    const inner = w - PRICE_GUTTER_PX - (ownScale ? PRICE_GUTTER_PX : STRIP_PAD_PX);
+    const inner = w - PRICE_GUTTER_PX - (ownScale ? PRICE_GUTTER_PX : STRIP_PAD_PX) - (expanded ? 0 : EXPAND_CHIP_PX);
     const row = ID_ROW_FULL_PX + MTF_FULL_PX + 24 + ROW_DOOR_PX;
     const marks = [ID_ROW_FULL_PX, ID_ROW_NO_PCT_PX, ID_ROW_NO_BADGE_PX, READOUT_C_PX + READOUT_OHL_PX, READOUT_C_PX + READOUT_OHL_PX + READOUT_VOL_PX, row + TOOLBAR_FULL_PX, row + TOOLBAR_COMPACT_PX];
     for (let k = 1; k <= 8; k++) marks.push(READOUT_C_PX + READOUT_OHL_PX + READOUT_VOL_PX + k * READOUT_IND_PX);
@@ -715,7 +724,7 @@ const Pane = ({
 
   /* What the strip's rows can actually use — the column, less the gutter it clears on each side. Derived from the
      same expression the padding above applies, so the two cannot disagree about how much room was taken. */
-  const stripInner = stripW > 0 ? stripW - PRICE_GUTTER_PX - (ownScale ? PRICE_GUTTER_PX : STRIP_PAD_PX) : 0;
+  const stripInner = stripW > 0 ? stripW - PRICE_GUTTER_PX - (ownScale ? PRICE_GUTTER_PX : STRIP_PAD_PX) - (expanded ? 0 : EXPAND_CHIP_PX) : 0;
   const roomFor = (px: number) => stripInner === 0 || stripInner >= px;
   const showChangePct = roomFor(ID_ROW_FULL_PX);
   const showBadge = paneCount > 1 && roomFor(ID_ROW_NO_PCT_PX);
@@ -1219,8 +1228,9 @@ const Pane = ({
             </Deferred>
             {/* The field's key: the model, its switch, the colour scale and the cut's net GEX */}
             {overlays.trails && !replay && (
-              /* above the chart's TradingView mark (bottom-left, over the time axis) rather than beside it */
-              <div className="absolute left-12 bottom-[62px] z-20" data-terrain-field-key>
+              /* A chip in the top-right corner, under the expand door and in the price scale's top margin — it never
+                 sits on a bar (the card it replaced stood over the candles and the volume at the bottom-left) */
+              <div className="absolute z-20" style={{ top: expanded ? 52 : 34, right: PRICE_GUTTER_PX + 6 }} data-terrain-field-key>
                 <FieldKey
                   ticker={ticker}
                   cut={railCut === 'book' ? 'book' : shownBook?.date ?? null}
@@ -1278,7 +1288,8 @@ const Pane = ({
                  whenever there is a left one, with no width condition on it. */
               style={{
                 paddingLeft: ownScale ? PRICE_GUTTER_PX : undefined,
-                paddingRight: PRICE_GUTTER_PX,
+                /* …and the expand chip pinned in the top-right corner: the identity row ends before it, never under it */
+                paddingRight: PRICE_GUTTER_PX + (!expanded && !toolbarInline ? EXPAND_CHIP_PX : 0),
               }}
               /* gap-3.5 on a touch screen: the toolbar row's finger boxes (22px above its controls' centres) clear the symbol
                  chip's (22px below its centre) in the identity row (the last-targets pass, 2026-10-30) */
@@ -1303,7 +1314,7 @@ const Pane = ({
                   <HeadMove ticker={ticker} session={session} cashClose={cashClose} className="text-t10 font-semibold tnum" />
                 </div>
               ) : (
-              <div className={`chrome-hover relative z-30 pointer-events-auto max-w-full select-none flex items-center gap-2 rounded-md bg-canvas/25 backdrop-blur-[3px] px-2 py-1 opacity-55 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 ${toolbarInline ? 'w-full' : 'w-fit'}`}>
+              <div className={`chrome-hover relative z-30 pointer-events-auto max-w-full min-w-0 overflow-hidden select-none flex items-center gap-2 rounded-md bg-canvas/25 backdrop-blur-[3px] px-2 py-1 opacity-55 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 ${toolbarInline ? 'w-full' : 'w-fit'}`}>
                 {/* This strip is the one row visible at rest, so the number is legible without a pointer ever
                     touching the desk. */}
                 {showBadge && (
@@ -1350,7 +1361,7 @@ const Pane = ({
                     {rollNote}
                   </span>
                 ) : shownBook ? (
-                  <span className="shrink-0 font-mono text-t10 text-textMuted" title="The expiry and the book the nodes and Heaviest are drawn from">
+                  <span className="min-w-0 truncate font-mono text-t10 text-textMuted" title="The expiry and the book the nodes and Heaviest are drawn from">
                     {shownBook.label} · {shownBook.kind}
                   </span>
                 ) : null}
@@ -1465,8 +1476,8 @@ const Pane = ({
             <ProfilePanel
               /* The rest width follows the pane count: 520 alone or expanded, 340 on two or four, 240 three across —
                  the reader's own width once dragged */
-              width={cfg.ladderW ?? profileRestWidth(paneCount, expanded)}
-              restWidth={profileRestWidth(paneCount, expanded)}
+              width={cfg.ladderW ?? railRestWidth(paneCount, expanded)}
+              restWidth={railRestWidth(paneCount, expanded)}
               onWidth={w => onCfg({ ladderW: w })}
               /* The chart's floor beside the rail: the 2×2's 576px column, except on the three-up desk, where the
                  chart keeps at least half its pane. */
@@ -1973,7 +1984,7 @@ const Terrain = () => {
         style={
           expanded !== null
             ? {
-                right: (panes[expanded]?.ladder && !belowLg ? panes[expanded]?.ladderW ?? profileRestWidth(cfg.layout, true) : 0) + PRICE_GUTTER_PX + 8,
+                right: (panes[expanded]?.ladder && !belowLg ? panes[expanded]?.ladderW ?? railRestWidth(cfg.layout, true) : 0) + PRICE_GUTTER_PX + 8,
                 bottom: TIME_AXIS_PX + 12,
               }
             : undefined

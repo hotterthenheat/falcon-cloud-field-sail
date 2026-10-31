@@ -131,7 +131,7 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
               <span className="text-t11 font-bold tracking-wide">{t}</span>
               {!compact && price != null && (
                 <>
-                  <span className="text-t11 tnum text-textPrimary" title={print?.kept ? `Last ThetaData print, as of ${etClock(print.readAt)}` : 'ThetaData last print'}>
+                  <span className="text-t11 tnum text-textPrimary" title={print?.kept ? `Live print, as of ${etClock(print.readAt)}` : 'Live print'}>
                     {fmtPrice(price)}
                   </span>
                   {change != null && (

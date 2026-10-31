@@ -2,6 +2,7 @@ import { MismatchDirection, type Logical, type ISeriesPrimitive, type SeriesAtta
 import type { GexSnapshot } from '../../types/market';
 import { nySession } from '../../core/nyTime';
 import { dealerOf } from '../../core/dealerSign';
+import type { NodeLook } from '../../data/deskPrefs';
 
 /*
   The exposure field: one filled band per strike, from the midpoint of the strike below to the midpoint of the
@@ -52,6 +53,48 @@ for (let s = 0; s < STEPS; s++) {
   LUT.posSolid.push(`rgb(${p[0]},${p[1]},${p[2]})`);
   LUT.negSolid.push(`rgb(${n[0]},${n[1]},${n[2]})`);
 }
+/** The heat as context under the beads: a quarter of the light at most, the quiet cells all but gone */
+const faintAlphaAt = (t: number): number => 0.015 + 0.22 * Math.pow(Math.max(0, Math.min(1, t)), 1.35);
+const FAINT: { pos: string[]; neg: string[] } = { pos: [], neg: [] };
+for (let s = 0; s < STEPS; s++) {
+  const t = (s + 0.5) / STEPS;
+  const p = rampAt(POS_STOPS, t);
+  const n = rampAt(NEG_STOPS, t);
+  const al = faintAlphaAt(t).toFixed(3);
+  FAINT.pos.push(`rgba(${p[0]},${p[1]},${p[2]},${al})`);
+  FAINT.neg.push(`rgba(${n[0]},${n[1]},${n[2]},${al})`);
+}
+
+/* The beads' own ramps, the house heat's two ends lifted off the ground so a 1px dot still reads: dealers long gamma
+   climb glacier teal through ice to white, short gamma climb ember to amber */
+const BEAD_POS: readonly (readonly [number, number, number])[] = [
+  [34, 128, 150],
+  [68, 165, 197],
+  [140, 203, 226],
+  [214, 237, 248],
+  [255, 255, 255],
+];
+const BEAD_NEG: readonly (readonly [number, number, number])[] = [
+  [150, 42, 22],
+  [196, 72, 26],
+  [228, 120, 36],
+  [242, 160, 50],
+  [250, 200, 80],
+];
+const BEADS: { pos: [number, number, number][]; neg: [number, number, number][] } = { pos: [], neg: [] };
+for (let s = 0; s < STEPS; s++) {
+  const t = (s + 0.5) / STEPS;
+  BEADS.pos.push(rampAt(BEAD_POS, t));
+  BEADS.neg.push(rampAt(BEAD_NEG, t));
+}
+const rgba = (c: readonly [number, number, number], a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`;
+/** The beads' ramps as CSS gradients, low to high — the key's swatches */
+export const BEAD_RAMP_CSS = {
+  pos: `linear-gradient(90deg, ${BEAD_POS.map(c => `rgb(${c[0]},${c[1]},${c[2]})`).join(', ')})`,
+  neg: `linear-gradient(90deg, ${BEAD_NEG.map(c => `rgb(${c[0]},${c[1]},${c[2]})`).join(', ')})`,
+} as const;
+
+export type { NodeLook };
 
 /** The ramps as CSS gradients (the legend's scale) and their top inks: `put` is the long-gamma side (positive dealer
     gamma, absorbs), `call` the short-gamma side — names the cards and keys have always read */
@@ -161,7 +204,7 @@ class FieldRenderer {
 
   private drawField(target: DrawTarget): void {
     const src = this.source;
-    src.chips = [];
+    if (src.look === 'beads') return;
     const cols = src.cols;
     /* hard bail: never draw a field that can blow the page (too many columns, no strikes, or disabled) */
     if (!src.enabled || !src.chart || !src.series || cols.length === 0 || cols.length > 2000 || src.strikes.length === 0 || !(src.ref > 0)) return;
@@ -231,7 +274,7 @@ class FieldRenderer {
       const probeStrike = strikes[Math.min(R - 1, Math.max(rLo, (rLo + rHi) >> 1))] ?? 0;
       const probeA = series.priceToCoordinate(probeStrike) ?? -1;
       const probeB = series.priceToCoordinate(probeStrike + 1) ?? -1;
-      const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${src.focusInk}`;
+      const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${src.focusInk}|${src.look}`;
       const cached = key === this.cacheKey && !!this.bmp;
       /* A moved view maps the last raster: both axes are affine, so one drawImage puts every cell where this frame's
          scales want it, until the gesture rests (SETTLE_MS) or the view leaves the raster or the scale drifts too far */
@@ -349,7 +392,8 @@ class FieldRenderer {
           bctx.setTransform(1, 0, 0, 1, mxPx, myPx);
           for (const [k, path] of paths) {
             const step = k % 100;
-            const side = Math.floor(k / 1000) === 0 ? LUT.pos : LUT.neg;
+            const faint = src.look === 'both';
+            const side = Math.floor(k / 1000) === 0 ? (faint ? FAINT.pos : LUT.pos) : faint ? FAINT.neg : LUT.neg;
             bctx.globalAlpha = k % 1000 >= 100 ? 0.4 : 1;
             bctx.fillStyle = side[step];
             bctx.fill(path);
@@ -388,6 +432,522 @@ class FieldRenderer {
       }
       if (!scrolled && this.bmp) ctx.drawImage(this.bmp, -this.rMx, -this.rMy);
     });
+  }
+}
+
+/** A level the host names at the right edge with the nodes (the key levels' rungs): its price, its words long and short,
+    its ink, and how much it matters when the edge is crowded */
+export interface EdgeLevel {
+  price: number;
+  name: string;
+  short: string;
+  ink: string;
+  rank: number;
+}
+
+/** One tag at the right edge as laid out this frame, CSS px */
+interface EdgeTag {
+  price: number;
+  y: number;
+  ty: number;
+  text: string;
+  ink: string;
+  prio: number;
+  w: number;
+  zone: boolean;
+}
+
+/** A zone: one of the heaviest nodes now, outlined from the column it became one of them */
+interface Zone {
+  row: number;
+  start: number;
+  value: number;
+}
+
+const BEAD_R_MAX = 5;
+const BEAD_MIN_PITCH = 3.2;
+const TAG_H = 14;
+const TAG_FONT = 9.5;
+const TAG_MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+/** Below this plot width the edge tags print short ("760 S +26.5M") */
+const TAG_NARROW = 560;
+
+/** Dollars, signed, short: +$26.5M / −$3.1B; `bare` drops the $ */
+export function signedDollars(v: number, bare = false): string {
+  if (!Number.isFinite(v)) return '—';
+  const a = Math.abs(v);
+  const sign = v < 0 ? '−' : '+';
+  const d = bare ? '' : '$';
+  if (a >= 1e9) return `${sign}${d}${(a / 1e9).toFixed(1)}B`;
+  if (a >= 1e6) return `${sign}${d}${(a / 1e6).toFixed(1)}M`;
+  if (a >= 1e3) return `${sign}${d}${(a / 1e3).toFixed(0)}K`;
+  return `${sign}${d}${a.toFixed(0)}`;
+}
+const priceText = (p: number): string => (Math.abs(p - Math.round(p)) < 1e-9 ? p.toFixed(0) : p.toFixed(2));
+
+/** The row's newest reading inside the window, NaN for none */
+function lastIn(vals: Float64Array, R: number, r: number, first: number, last: number): number {
+  for (let c = last - 1; c >= first; c--) {
+    const v = vals[c * R + r];
+    if (v === v && v !== 0) return v;
+  }
+  return NaN;
+}
+
+let measureCanvas: HTMLCanvasElement | null = null;
+function measureCtx(): CanvasRenderingContext2D | null {
+  if (typeof document === 'undefined') return null;
+  measureCanvas ??= document.createElement('canvas');
+  return measureCanvas.getContext('2d');
+}
+
+/**
+ * The Slayer nodes, drawn under the candles: a row of beads for each heavy strike (a dot at every bar with a reading,
+ * its radius the square root of the cell's size), the heaviest node now in white with a soft glow, an outlined zone
+ * around the two or three heaviest from the bar they became that, and a short bar per strike at the plot's right edge
+ * for where the book stands now. The edge tags are laid out here and painted on the top layer (TagsRenderer).
+ */
+class NodesRenderer {
+  constructor(private source: GexTrailsPrimitive) {}
+  private selKey = '';
+  private sel: number[] = [];
+  private zoneRev = -1;
+  private zones: Zone[] = [];
+
+  /** The three heaviest nodes at the newest column, and the column each became one of them — once per hand-off */
+  private zonesFor(src: GexTrailsPrimitive): Zone[] {
+    if (this.zoneRev === src.rev) return this.zones;
+    this.zoneRev = src.rev;
+    const R = src.strikes.length;
+    const C = src.cols.length;
+    const vals = src.values;
+    const out: Zone[] = [];
+    this.zones = out;
+    if (!R || !C) return out;
+    const cN = C - 1;
+    const rows: number[] = [];
+    for (let r = 0; r < R; r++) {
+      const v = vals[cN * R + r];
+      if (Number.isFinite(v) && v !== 0) rows.push(r);
+    }
+    rows.sort((a, b) => Math.abs(vals[cN * R + b]) - Math.abs(vals[cN * R + a]));
+    const Z = 3;
+    for (const row of rows.slice(0, Z)) {
+      let start = cN;
+      for (let c = cN - 1; c >= 0; c--) {
+        const v = vals[c * R + row];
+        if (!Number.isFinite(v) || v === 0) break;
+        const a = Math.abs(v);
+        let above = 0;
+        for (let r = 0; r < R && above < Z; r++) {
+          const w = vals[c * R + r];
+          if (r !== row && Number.isFinite(w) && Math.abs(w) > a) above++;
+        }
+        if (above >= Z) break;
+        start = c;
+      }
+      out.push({ row, start, value: vals[cN * R + row] });
+    }
+    return out;
+  }
+
+  draw(target: DrawTarget): void {
+    const src = this.source;
+    src.chips = [];
+    src.tags = [];
+    src.beadRows = null;
+    if (!src.enabled || !src.tagsOn || !src.chart || !src.series) return;
+    const chart = src.chart;
+    const series = src.series;
+    const ts = chart.timeScale();
+    const paneW = chart.paneSize(0).width;
+    const paneH = chart.paneSize(0).height;
+    if (!(paneW > 0) || !(paneH > 0)) return;
+    const cols = src.cols;
+    const strikes = src.strikes;
+    const R = strikes.length;
+    const vals = src.values;
+    const ref = src.ref;
+    const haveField = cols.length > 0 && cols.length <= 2000 && R > 0 && ref > 0;
+    const narrow = paneW < TAG_NARROW;
+    const barSpacing = ts.options().barSpacing ?? 6;
+    const yOf = (p: number): number | null => {
+      const y = series.priceToCoordinate(p);
+      return y == null || !Number.isFinite(y) ? null : y;
+    };
+
+    /* the visible window, columns and rows, as the field reads it */
+    let first = 0;
+    let last = 0;
+    let rLo = 0;
+    let rHi = 0;
+    if (haveField) {
+      const vis = ts.getVisibleRange();
+      if (vis) {
+        first = src.colIndexAtOrAfter(Number(vis.from) - src.barSec * 2);
+        last = src.colIndexAtOrAfter(Number(vis.to) + src.barSec * 2 + 1e-6);
+      }
+      const pTop = series.coordinateToPrice(0);
+      const pBot = series.coordinateToPrice(paneH);
+      if (pTop != null && pBot != null && pTop !== pBot) {
+        const loP = Math.min(pTop, pBot);
+        const hiP = Math.max(pTop, pBot);
+        let i = 0;
+        while (i < R && strikes[i] < loP) i++;
+        let j = i;
+        while (j < R && strikes[j] <= hiP) j++;
+        rLo = i;
+        rHi = j;
+      }
+      /* an empty scale maps every strike to one y: wait for a real one */
+      if (rHi - rLo >= 2) {
+        const a = yOf(strikes[rLo]);
+        const b = yOf(strikes[rHi - 1]);
+        if (a == null || b == null || a === b) rHi = rLo;
+      }
+    }
+    const fieldLive = haveField && last > first && rHi > rLo;
+    const cN = cols.length - 1;
+    const nowAt = (r: number) => (cN >= 0 ? vals[cN * R + r] : NaN);
+    const rowGap = (r: number): number => {
+      const y = yOf(strikes[r]);
+      if (y == null) return 8;
+      const up = r + 1 < R ? yOf(strikes[r + 1]) : null;
+      const dn = r > 0 ? yOf(strikes[r - 1]) : null;
+      const g = Math.min(up != null ? Math.abs(up - y) : Infinity, dn != null ? Math.abs(dn - y) : Infinity);
+      return Number.isFinite(g) ? g : 8;
+    };
+    const ground = src.groundRgb();
+    const light = (0.299 * ground[0] + 0.587 * ground[1] + 0.114 * ground[2]) / 255 > 0.55;
+    const crown: readonly [number, number, number] = light ? [24, 24, 30] : [255, 255, 255];
+
+    /* the strikes that bead: the heaviest in the window by their summed size, and the named levels' strikes */
+    let selected: number[] = [];
+    let strongRow = -1;
+    if (fieldLive) {
+      const want = Math.max(6, Math.min(12, Math.round(paneH / 42)));
+      const key = `${src.rev}|${first}|${last}|${rLo}|${rHi}|${want}|${src.cwStrike}|${src.pwStrike}|${src.supremeStrike}|${src.flipPrice}`;
+      if (key !== this.selKey) {
+        const score = new Float64Array(R);
+        for (let c = first; c < last; c++) {
+          const base = c * R;
+          for (let r = rLo; r < rHi; r++) {
+            const v = vals[base + r];
+            if (v === v && v !== 0) score[r] += Math.abs(v);
+          }
+        }
+        const order: number[] = [];
+        for (let r = rLo; r < rHi; r++) if (score[r] > 0) order.push(r);
+        order.sort((a, b) => score[b] - score[a]);
+        const pick = new Set(order.slice(0, want));
+        for (const p of [src.cwStrike, src.pwStrike, src.supremeStrike]) {
+          if (p == null) continue;
+          const r = strikes.indexOf(p);
+          if (r >= rLo && r < rHi && score[r] > 0) pick.add(r);
+        }
+        if (src.flipPrice != null) {
+          const r = src.rowAt(src.flipPrice);
+          if (r >= rLo && r < rHi && score[r] > 0) pick.add(r);
+        }
+        this.sel = [...pick].sort((a, b) => a - b);
+        this.selKey = key;
+      }
+      selected = this.sel;
+      /* the heaviest node now: the selected row with the largest cell at the newest column */
+      let best = 0;
+      for (const r of selected) {
+        const a = Math.abs(nowAt(r));
+        if (a > best) {
+          best = a;
+          strongRow = r;
+        }
+      }
+    }
+    const zones = haveField ? this.zonesFor(src).slice(0, paneH < 240 ? 2 : 3) : [];
+
+    target.useBitmapCoordinateSpace(scope => {
+      const ctx = scope.context;
+      const hr = scope.horizontalPixelRatio;
+      const vr = scope.verticalPixelRatio;
+      const W = scope.mediaSize.width;
+      const H = scope.mediaSize.height;
+      ctx.save();
+
+      /* ZONES: a 1px outline and a faint fill around the heaviest nodes, from the bar each became one to the edge */
+      for (const z of zones) {
+        if (z.row < rLo || z.row >= rHi) continue;
+        const y = yOf(strikes[z.row]);
+        if (y == null) continue;
+        const xs = ts.timeToCoordinate(cols[z.start].time as Time);
+        const x0 = Math.max(0, (xs ?? 0) - barSpacing / 2);
+        if (x0 >= W) continue;
+        const half = Math.max(4, Math.min(10, rowGap(z.row) * 0.45));
+        const strong = z.row === strongRow;
+        const t = Math.min(1, Math.abs(z.value) / (ref || 1));
+        const ink = strong ? crown : (z.value > 0 ? BEADS.pos : BEADS.neg)[Math.min(STEPS - 1, Math.floor(t * STEPS))];
+        const L = Math.round(x0 * hr);
+        const Rr = Math.round(W * hr);
+        const T = Math.round((y - half) * vr);
+        const B = Math.round((y + half) * vr);
+        ctx.fillStyle = rgba(ink, strong ? 0.08 : 0.065);
+        ctx.fillRect(L, T, Rr - L, B - T);
+        const lw = Math.max(1, Math.round(hr));
+        ctx.fillStyle = rgba(ink, strong ? 0.6 : 0.45);
+        ctx.fillRect(L, T, Rr - L, lw);
+        ctx.fillRect(L, B - lw, Rr - L, lw);
+        ctx.fillRect(L, T, lw, B - T);
+      }
+
+      if (fieldLive && src.look !== 'heat' && selected.length) {
+        /* the bar pitch the beads stand on: every bar, or every k-th once bars crowd under a few pixels */
+        const k = Math.max(1, Math.ceil(BEAD_MIN_PITCH / Math.max(0.1, barSpacing)));
+        const pitch = barSpacing * k;
+        const rH = pitch / 2 - 0.5;
+        const xs = new Float64Array(last - first).fill(NaN);
+        let c0 = first - (first % k);
+        if (c0 < first) c0 += k;
+        for (let c = c0; c < last; c += k) {
+          const x = ts.timeToCoordinate(cols[c].time as Time);
+          if (x === null || x < -6 || x > W + 6) continue;
+          xs[c - first] = x;
+        }
+        const ys = selected.map(r => yOf(strikes[r]));
+        const beadRows = new Map<number, number>();
+        const paths = new Map<number, Path2D>();
+        const crownPath = new Path2D();
+        const crownFaint = new Path2D();
+        const guide: { y: number; x: number; ink: readonly [number, number, number]; strong: boolean }[] = [];
+        for (let i = 0; i < selected.length; i++) {
+          const r = selected[i];
+          const y = ys[i];
+          if (y == null || y < -6 || y > H + 6) continue;
+          /* no bead reaches its neighbour row's: half the gap to the nearest drawn row, less a hair */
+          let gap = Infinity;
+          for (let j = 0; j < selected.length; j++) {
+            const o = ys[j];
+            if (j !== i && o != null) gap = Math.min(gap, Math.abs(o - y));
+          }
+          const rCap = Math.max(0.6, Math.min(BEAD_R_MAX, rH, Number.isFinite(gap) ? gap / 2 - 0.5 : BEAD_R_MAX));
+          const rFloor = Math.min(1, rCap);
+          beadRows.set(r, rCap);
+          const strong = r === strongRow;
+          const yb = y * vr;
+          let firstX = NaN;
+          for (let c = c0; c < last; c += k) {
+            const x = xs[c - first];
+            if (x !== x) continue;
+            /* the group's largest cell, so a crowded zoom keeps the peaks */
+            let v = NaN;
+            for (let g = c; g < Math.min(last, c + k); g++) {
+              const w = vals[g * R + r];
+              if (w === w && w !== 0 && (v !== v || Math.abs(w) > Math.abs(v))) v = w;
+            }
+            if (v !== v) continue;
+            if (firstX !== firstX) firstX = x;
+            const t = Math.min(1, Math.abs(v) / ref);
+            const rad = Math.max(1, (rFloor + (rCap - rFloor) * Math.sqrt(t)) * hr);
+            const xb = x * hr;
+            if (strong) {
+              const p = t > 0.18 ? crownPath : crownFaint;
+              p.moveTo(xb + rad, yb);
+              p.arc(xb, yb, rad, 0, Math.PI * 2);
+              continue;
+            }
+            const step = Math.min(STEPS - 1, Math.floor(t * STEPS));
+            const key = (v > 0 ? 0 : STEPS) + step;
+            let p = paths.get(key);
+            if (!p) paths.set(key, (p = new Path2D()));
+            p.moveTo(xb + rad, yb);
+            p.arc(xb, yb, rad, 0, Math.PI * 2);
+          }
+          if (firstX === firstX) {
+            const side = lastIn(vals, R, r, first, last) > 0 ? BEADS.pos : BEADS.neg;
+            guide.push({ y: yb, x: Math.max(0, firstX * hr), ink: strong ? crown : side[STEPS >> 1], strong });
+          }
+        }
+        src.beadRows = beadRows;
+        /* the guide under each row, faint, from its first bead to the edge */
+        const lw = Math.max(1, Math.round(vr));
+        for (const g of guide) {
+          ctx.fillStyle = rgba(g.ink, g.strong ? 0.22 : 0.1);
+          ctx.fillRect(Math.round(g.x), Math.round(g.y - lw / 2), Math.round(W * hr - g.x), lw);
+        }
+        for (const [key, p] of paths) {
+          const step = key % STEPS;
+          const t = (step + 0.5) / STEPS;
+          const ink = key < STEPS ? BEADS.pos[step] : BEADS.neg[step];
+          ctx.fillStyle = rgba(ink, 0.42 + 0.58 * Math.pow(t, 0.6));
+          ctx.fill(p);
+        }
+        /* the heaviest node now: white beads with a soft glow */
+        ctx.fillStyle = rgba(crown, 0.5);
+        ctx.fill(crownFaint);
+        ctx.shadowColor = light ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.75)';
+        ctx.shadowBlur = 6 * hr;
+        ctx.fillStyle = rgba(crown, 0.96);
+        ctx.fill(crownPath);
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
+      }
+
+      /* PROFILE: where each strike's net stands now, a short bar in from the plot's right edge */
+      if (haveField && cN >= 0 && rHi > rLo) {
+        let top = 0;
+        for (let r = rLo; r < rHi; r++) {
+          const v = nowAt(r);
+          if (v === v) top = Math.max(top, Math.abs(v));
+        }
+        if (top > 0) {
+          const maxW = Math.max(22, Math.min(54, W * 0.06));
+          const right = Math.round((W - 1) * hr);
+          for (let r = rLo; r < rHi; r++) {
+            const v = nowAt(r);
+            if (v !== v || v === 0) continue;
+            const y = yOf(strikes[r]);
+            if (y == null) continue;
+            const th = Math.max(1, Math.min(6, rowGap(r) * 0.7));
+            const len = Math.max(1, (maxW * Math.abs(v)) / top);
+            const t = Math.min(1, Math.abs(v) / ref);
+            const strong = r === strongRow;
+            const ink = strong ? crown : (v > 0 ? BEADS.pos : BEADS.neg)[Math.min(STEPS - 1, Math.floor(t * STEPS))];
+            ctx.fillStyle = rgba(ink, strong ? 0.9 : 0.72);
+            const yT = Math.round((y - th / 2) * vr);
+            ctx.fillRect(Math.round(right - len * hr), yT, Math.round(len * hr), Math.max(1, Math.round(th * vr)));
+          }
+        }
+      }
+      ctx.restore();
+    });
+
+    /* TAGS, laid out in CSS px: the zones with their role and size, and the host's levels; one a price, pushed apart */
+    const levels = src.edgeLevels?.() ?? [];
+    const tags: EdgeTag[] = [];
+    const roleOf = (strike: number, strong: boolean): { name: string; short: string } => {
+      const lv = levels.find(l => Math.abs(l.price - strike) < 1e-6);
+      if (lv) return { name: lv.name, short: lv.short };
+      if (src.supremeStrike != null && Math.abs(src.supremeStrike - strike) < 1e-6) return { name: 'Supreme', short: 'S' };
+      if (src.cwStrike != null && Math.abs(src.cwStrike - strike) < 1e-6) return { name: 'Call wall', short: 'CW' };
+      if (src.pwStrike != null && Math.abs(src.pwStrike - strike) < 1e-6) return { name: 'Put wall', short: 'PW' };
+      return strong ? { name: 'Top node', short: 'Top' } : { name: 'Node', short: 'N' };
+    };
+    const used: number[] = [];
+    for (const z of zones) {
+      if (z.row < rLo || z.row >= rHi) continue;
+      const strike = strikes[z.row];
+      const y = yOf(strike);
+      if (y == null || y < 0 || y > paneH) continue;
+      const strong = z.row === strongRow || (strongRow < 0 && z === zones[0]);
+      const role = roleOf(strike, strong);
+      const t = Math.min(1, Math.abs(z.value) / (ref || 1));
+      const ink = rgba(strong ? crown : (z.value > 0 ? BEADS.pos : BEADS.neg)[Math.min(STEPS - 1, Math.floor(t * STEPS))], 1);
+      const text = narrow ? `${priceText(strike)} ${role.short} ${signedDollars(z.value, true)}` : `${priceText(strike)} · ${role.name} · ${signedDollars(z.value)}`;
+      tags.push({ price: strike, y, ty: y, text, ink, prio: 10, w: 0, zone: true });
+      used.push(strike);
+    }
+    for (const l of levels) {
+      if (used.some(p => Math.abs(p - l.price) < 1e-6)) continue;
+      const y = yOf(l.price);
+      if (y == null || y < 0 || y > paneH) continue;
+      tags.push({ price: l.price, y, ty: y, text: narrow ? `${l.short} ${priceText(l.price)}` : `${l.name} ${priceText(l.price)}`, ink: l.ink, prio: l.rank, w: 0, zone: false });
+    }
+    if (!tags.length) return;
+    const step = TAG_H + 2;
+    const ceiling = src.chromeInset + TAG_H / 2 + 2;
+    const floor = paneH - TAG_H / 2 - 2;
+    /* more tags than the height holds: the least of them go first (their rungs still draw) */
+    const room = Math.max(1, Math.floor((floor - ceiling) / step) + 1);
+    tags.sort((a, b) => b.prio - a.prio || a.y - b.y);
+    tags.length = Math.min(tags.length, room);
+    tags.sort((a, b) => a.y - b.y);
+    tags[0].ty = Math.max(tags[0].ty, ceiling);
+    for (let i = 1; i < tags.length; i++) tags[i].ty = Math.max(tags[i].y, tags[i - 1].ty + step);
+    if (tags[tags.length - 1].ty > floor) {
+      tags[tags.length - 1].ty = floor;
+      for (let i = tags.length - 2; i >= 0; i--) tags[i].ty = Math.min(tags[i].ty, tags[i + 1].ty - step);
+    }
+    const measure = measureCtx();
+    if (measure) measure.font = `${TAG_FONT}px ${TAG_MONO}`;
+    const right = paneW - 3;
+    for (const t of tags) {
+      t.w = Math.ceil((measure ? measure.measureText(t.text).width : t.text.length * 6) + 12);
+      src.chips.push({ strike: t.price, left: right - t.w, top: t.ty - TAG_H / 2, bottom: t.ty + TAG_H / 2 });
+    }
+    src.tags = tags;
+  }
+}
+
+/** The edge tags, on the top layer so a candle never covers a name */
+class TagsRenderer {
+  constructor(private source: GexTrailsPrimitive) {}
+  draw(target: DrawTarget): void {
+    const src = this.source;
+    const tags = src.tags;
+    if (!tags.length || !src.chart) return;
+    const g = src.groundRgb();
+    target.useBitmapCoordinateSpace(scope => {
+      const ctx = scope.context;
+      const hr = scope.horizontalPixelRatio;
+      const vr = scope.verticalPixelRatio;
+      const W = scope.mediaSize.width;
+      const right = (W - 3) * hr;
+      ctx.save();
+      ctx.font = `${Math.round(TAG_FONT * vr)}px ${TAG_MONO}`;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'right';
+      const h = TAG_H * vr;
+      for (const t of tags) {
+        const left = right - t.w * hr;
+        const ty = Math.round(t.ty * vr);
+        const y = Math.round(t.y * vr);
+        if (Math.abs(ty - y) > 1.5 * vr) {
+          ctx.strokeStyle = t.ink;
+          ctx.globalAlpha = 0.5;
+          ctx.lineWidth = Math.max(1, vr * 0.75);
+          ctx.beginPath();
+          ctx.moveTo(left, ty);
+          ctx.lineTo(left - 3 * hr, y);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = `rgba(${g[0]},${g[1]},${g[2]},0.84)`;
+        ctx.fillRect(Math.round(left), Math.round(ty - h / 2), Math.round(right - left), Math.round(h));
+        ctx.globalAlpha = t.zone ? 0.55 : 0.4;
+        ctx.strokeStyle = t.ink;
+        ctx.lineWidth = Math.max(1, Math.round(hr));
+        ctx.strokeRect(Math.round(left) + 0.5, Math.round(ty - h / 2) + 0.5, Math.round(right - left) - 1, Math.round(h) - 1);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = t.ink;
+        ctx.fillRect(Math.round(left), Math.round(ty - h / 2), Math.max(1, Math.round(2 * hr)), Math.round(h));
+        ctx.fillText(t.text, right - 5 * hr, ty + 0.5 * vr);
+      }
+      ctx.restore();
+    });
+  }
+}
+
+class NodesPaneView {
+  private _renderer: NodesRenderer;
+  constructor(source: GexTrailsPrimitive) {
+    this._renderer = new NodesRenderer(source);
+  }
+  zOrder(): 'bottom' {
+    return 'bottom';
+  }
+  renderer(): NodesRenderer {
+    return this._renderer;
+  }
+}
+
+class TagsPaneView {
+  private _renderer: TagsRenderer;
+  constructor(source: GexTrailsPrimitive) {
+    this._renderer = new TagsRenderer(source);
+  }
+  zOrder(): 'top' {
+    return 'top';
+  }
+  renderer(): TagsRenderer {
+    return this._renderer;
   }
 }
 
@@ -433,7 +993,17 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
   flipPrice: number | null = null;
   /** Strike chips at the right edge this frame — none: the key levels' ladder names the levels */
   chips: { strike: number; left: number; top: number; bottom: number }[] = [];
-  private _paneViews: FieldPaneView[];
+  /** The edge tags as laid out this frame (NodesRenderer), painted on the top layer */
+  tags: EdgeTag[] = [];
+  /** The rows drawn as beads this frame, with their largest radius (CSS px) — the hover rings a bead, not a band */
+  beadRows: Map<number, number> | null = null;
+  /** Beads, heat, or both */
+  look: NodeLook = 'both';
+  /** The zones, the profile and the edge tags draw (the host names its levels here instead of on its own ladder) */
+  tagsOn = true;
+  /** The host's levels, named at the edge with the zones */
+  edgeLevels: (() => EdgeLevel[]) | null = null;
+  private _paneViews: (FieldPaneView | NodesPaneView | TagsPaneView)[];
   hover: BeadHit | null = null;
   ringInk: readonly [number, number, number] = [255, 255, 255];
   /** Told after every data hand-off, with the scale the cells stand against — the host's legend */
@@ -445,7 +1015,7 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
   afterDraw: (() => void) | null = null;
 
   constructor() {
-    this._paneViews = [new FieldPaneView(this)];
+    this._paneViews = [new FieldPaneView(this), new NodesPaneView(this), new TagsPaneView(this)];
   }
 
   valueOf(l: GexSnapshot['levels'][number]): number {
@@ -516,16 +1086,28 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
   }
 
   /** The hovered cell for the host's overlay canvas: its rectangle at full light, ringed in the page's ink */
-  hoverShape(): { x: number; y: number; rx: number; ry: number; fill: string; ring: string; rect: true } | null {
+  hoverShape(): { x: number; y: number; rx: number; ry: number; fill: string; ring: string; rect: boolean } | null {
     const hover = this.hover;
     if (!hover || !this.enabled || !this.chart || !this.series) return null;
-    const geo = this.cellGeom(hover.ci, this.strikes.indexOf(hover.strike));
+    const row = this.strikes.indexOf(hover.strike);
+    const geo = this.cellGeom(hover.ci, row);
     if (!geo) return null;
-    const v = this.cell(hover.ci, this.strikes.indexOf(hover.strike));
+    const v = this.cell(hover.ci, row);
     if (Number.isNaN(v)) return null;
-    const step = Math.min(STEPS - 1, Math.floor(Math.min(1, Math.abs(v) / (this.ref || 1)) * STEPS));
+    const t = Math.min(1, Math.abs(v) / (this.ref || 1));
+    const step = Math.min(STEPS - 1, Math.floor(t * STEPS));
     const r = this.ringInk;
-    return { ...geo, fill: v > 0 ? LUT.posSolid[step] : LUT.negSolid[step], ring: `rgba(${r[0]},${r[1]},${r[2]},0.95)`, rect: true };
+    const ring = `rgba(${r[0]},${r[1]},${r[2]},0.95)`;
+    /* a bead row rings its bead at the strike, the field a whole cell */
+    const bead = this.look !== 'heat' ? this.beadRows?.get(row) : undefined;
+    if (bead != null) {
+      const y = this.series.priceToCoordinate(hover.strike);
+      if (y == null) return null;
+      const rad = Math.min(bead, 1) + (bead - Math.min(bead, 1)) * Math.sqrt(t) + 1.5;
+      const ink = v > 0 ? BEADS.pos[step] : BEADS.neg[step];
+      return { x: geo.x, y, rx: rad, ry: rad, fill: rgba(ink, 1), ring, rect: false };
+    }
+    return { ...geo, fill: v > 0 ? LUT.posSolid[step] : LUT.negSolid[step], ring, rect: true };
   }
 
   /** A cell's centre and half-sizes on the pane, CSS px */
@@ -576,6 +1158,12 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     const price = this.series.coordinateToPrice(y);
     if (price === null) return null;
     const row = this.rowAt(price);
+    /* with no field drawn, only a beaded row answers, and only near its line */
+    if (this.look === 'beads') {
+      const rad = this.beadRows?.get(row);
+      const yRow = row >= 0 ? this.series.priceToCoordinate(this.strikes[row]) : null;
+      if (rad == null || yRow == null || Math.abs(yRow - y) > Math.max(4, rad + 2)) return null;
+    }
     const v = this.cell(ci, row);
     if (Number.isNaN(v) || v === 0) return null;
     const geo = this.cellGeom(ci, row);
@@ -632,13 +1220,17 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
   }
 
   setSupreme(strike: number | null): void {
+    if (this.supremeStrike === strike) return;
     this.supremeStrike = strike;
+    this.requestUpdate?.();
   }
 
   setWalls(cw: number | null, pw: number | null, flip: number | null): void {
+    if (this.cwStrike === cw && this.pwStrike === pw && this.flipPrice === flip) return;
     this.cwStrike = cw;
     this.pwStrike = pw;
     this.flipPrice = flip;
+    this.requestUpdate?.();
   }
 
   setFocus(strike: number | null, ink: FocusInk = 'focus'): void {
@@ -662,7 +1254,21 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
 
   updateAllViews(): void {}
 
-  paneViews(): FieldPaneView[] {
+  setLook(look: NodeLook): void {
+    if (this.look === look) return;
+    this.look = look;
+    /* the raster keys on the hand-off: a new look is a new raster */
+    this.rev++;
+    this.requestUpdate?.();
+  }
+
+  setTagsOn(on: boolean): void {
+    if (this.tagsOn === on) return;
+    this.tagsOn = on;
+    this.requestUpdate?.();
+  }
+
+  paneViews(): (FieldPaneView | NodesPaneView | TagsPaneView)[] {
     return this._paneViews;
   }
 
