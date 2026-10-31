@@ -99,6 +99,18 @@ export function nyWallTime(year: number, month: number, day: number, hour = 0, m
   return t;
 }
 
+/** The trading day an instant belongs to, yyyymmdd as a number: its New York date, and from 20:00 the NEXT date — the
+    overnight tape leads into the session it opens, so 20:00–04:00, the premarket, the cash session and the after-hours are one
+    day. One key for the chart's VWAP and session cuts (data/indicators.ts) and for Pine's ta.vwap (core/pine). */
+export function nyTradingDay(at?: At): number {
+  const p = nyParts(at);
+  if (p.hour >= 20) {
+    const d = new Date(Date.UTC(p.year, p.month - 1, p.day + 1));
+    return d.getUTCFullYear() * 10_000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
+  }
+  return p.year * 10_000 + p.month * 100 + p.day;
+}
+
 /** A Theta stamp with no zone is New York wall time, on every machine. */
 export function nyWallStamp(stamp: unknown): number {
   if (typeof stamp === 'number' && Number.isFinite(stamp)) return stamp > 1e12 ? stamp : stamp * 1000;

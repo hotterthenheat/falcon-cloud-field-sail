@@ -6,6 +6,8 @@
 //   npx tsx scripts/pine-proof.ts
 import { compile, run, runSource, explain } from '../src/core/pine';
 import type { Bar } from '../src/core/pine';
+import { emaSeries as appEma, macdSeries as appMacd, atrBarSeries as appAtr, vwapSeries as appVwap } from '../src/data/indicators';
+import { nyWallTime } from '../src/core/nyTime';
 
 /* ---- synthetic bars: a seeded random walk ---------------------------------------- */
 let seed = 20260910;
@@ -325,6 +327,42 @@ plot(ta.cum(volume), "cum")`, bars);
     ms = Math.min(ms, performance.now() - t0);
   }
   check(`Ichimoku over 5,000 bars inside 200 ms (${ms.toFixed(0)} ms, run says ${r.stats.ms.toFixed(0)})`, ms < 200);
+}
+
+/* ---- the chart's own lines and Pine's are one convention ------------------------------------------------ */
+{
+  const r = runSource(`//@version=6
+indicator("Same")
+plot(ta.ema(close, 9), "ema")
+[m, s, h] = ta.macd(close, 12, 26, 9)
+plot(m, "macd")
+plot(s, "signal")
+plot(ta.atr(14), "atr")`, bars);
+  const by = (t: string) => r.plots.find(p => p.title === t)!.values;
+  const asNaN = (xs: (number | null)[]) => xs.map(v => (v == null ? NaN : v));
+  const cs = bars.map(b => ({ ...b }));
+  check("the toolbar's EMA9 is Pine's ta.ema(close, 9), the left edge included", sameSeries(by('ema'), asNaN(appEma(cs, 9)), 0, 1e-9) === '', sameSeries(by('ema'), asNaN(appEma(cs, 9)), 0, 1e-9));
+  const am = appMacd(cs, 12, 26, 9);
+  check("the toolbar's MACD is Pine's ta.macd, line and signal", sameSeries(by('macd'), asNaN(am.macd), 0, 1e-9) === '' && sameSeries(by('signal'), asNaN(am.signal), 0, 1e-9) === '', sameSeries(by('signal'), asNaN(am.signal), 0, 1e-9));
+  check("the ATR sub-pane is Pine's ta.atr(14)", sameSeries(by('atr'), asNaN(appAtr(cs, 14)), 0, 1e-9) === '', sameSeries(by('atr'), asNaN(appAtr(cs, 14)), 0, 1e-9));
+}
+
+/* ---- New York's clock, daylight time included ------------------------------------------------------------- */
+{
+  /* 2026-07-15, EDT: the after-hours at 19:00-19:59 and the overnight from 20:00 (00:00 UTC). A fixed UTC-5 kept both on one day,
+     so Pine's VWAP ran on through 20:00 while the chart's restarted there. */
+  const t0 = nyWallTime(2026, 7, 15, 19, 0) / 1000;
+  const eve: Bar[] = [];
+  for (let i = 0; i < 120; i++) eve.push({ time: t0 + i * 60, open: 500 + i, high: 500 + i, low: 500 + i, close: 500 + i, volume: 100 });
+  const r = runSource(`//@version=6
+indicator("Clock")
+plot(ta.vwap(hlc3), "vwap")
+plot(hour, "hour")
+plot(dayofmonth, "day")`, eve);
+  const by = (t: string) => r.plots.find(p => p.title === t)!.values;
+  const want = appVwap(eve.map(b => ({ ...b })), 1);
+  check("Pine's ta.vwap restarts at 20:00 New York in July, as the chart's does", sameSeries(by('vwap'), want, 0, 1e-9) === '' && by('vwap')[60] === 560, `${by('vwap')[60]}`);
+  check("hour and dayofmonth are New York's, not the reader's zone (19 at 23:00 UTC; 15th)", by('hour')[0] === 19 && by('hour')[60] === 20 && by('day')[60] === 15, `${by('hour')[0]} ${by('hour')[60]} ${by('day')[60]}`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
