@@ -816,7 +816,7 @@ const StockName = () => {
               {news.nextEarnings ? (
                 <span className="text-textSecondary truncate min-w-0">
                   reports <span className="text-textPrimary">{news.nextEarnings.label}</span> · {untilWords(news.nextEarnings.daysOut)} {news.nextEarnings.impliedMovePct > 0 ? <> · the options price <span className="text-textPrimary">±{news.nextEarnings.impliedMovePct.toFixed(1)}%</span></> : <> · not priced yet</>}
-                  {!news.nextEarnings.confirmed && <span className="text-warn" title="The company has not announced this date yet — it is Unusual Whales' estimate and can move"> · date estimated</span>}
+                  {!news.nextEarnings.confirmed && <span className="text-warn" title="The company has not announced this date yet — it is our data provider's estimate and can move"> · date estimated</span>}
                   {news.nextEarnings.timeKnown === false && <span className="text-textMuted"> · time not set</span>}
                   {news.reaction && (
                     <span className="text-textMuted">
@@ -1001,12 +1001,12 @@ const StockName = () => {
             {file.tapes === 'loading' && (
               <p className="mt-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted" data-stock-alerts="reading">reading the flow alerts of {sessionWord}…</p>
             )}
-            {file.tapes === 'live' && money.askSharePct != null && money.sweepSharePct != null && (
+            {file.tapes === 'live' && money.askSharePct != null && Number.isFinite(money.askSharePct) && money.sweepSharePct != null && Number.isFinite(money.sweepSharePct) && (
               <p className="mt-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted" data-stock-alerts>
                 {money.flowWindow.complete
                   ? `${money.flowWindow.alerts.toLocaleString('en-US')} flow alerts on ${sessionWord}`
                   : `the latest ${money.flowWindow.alerts.toLocaleString('en-US')} flow alerts on ${sessionWord}, ${money.flowWindow.from}–${money.flowWindow.to} ET`}{' '}
-                · {money.askSharePct.toFixed(1)}% of their premium filled on the ask · {money.sweepSharePct.toFixed(0)}% swept
+                · {money.askSharePct.toFixed(1)}% of the sided premium on the ask · {money.sweepSharePct.toFixed(0)}% swept
               </p>
             )}
           </div>

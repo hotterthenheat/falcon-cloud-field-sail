@@ -180,7 +180,7 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
             ) : mine === undefined ? (
               '…'
             ) : (
-              <span title={`${f.etf}'s holdings file does not list this name in its top lines — Unusual Whales' exposure figure, which can lag`}>{f.weight} <span className="text-textMuted">est.</span></span>
+              <span title={`${f.etf}'s holdings file does not list this name in its top lines — our data provider's exposure figure, which can lag`}>{f.weight} <span className="text-textMuted">est.</span></span>
             );
             return <Row key={f.name} testId={f.name} onClick={() => navigate(`/dossier/etfs/${f.etf || f.name}`)} cells={[<span key="n">{f.name}{f.etf ? <span className="text-textMuted"> · {f.etf}</span> : null}</span>, f.units, cell]} />;
           })}
