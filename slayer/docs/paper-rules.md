@@ -495,3 +495,11 @@ Every rule below has a known-number check in `scripts/paper-proof.ts` (paper) an
   crossed at 10:11 while the reader was away fails the account at 10:11, closed at that minute's bids. The positions
   held are fetched for those minutes as well. Only minutes on the account's own trading day are judged (the day's limit
   is measured from its open); the flat-by times are left to the live tick.
+- **Theta a day is per trading session** (`review/quotes.ts thetaPerSession`, the paper desk's and the backtest's one
+  definition): θ = V(S, K, t − 1/252, σ) − V(S, K, t, σ), t in trading years (session minutes ÷ 390 × 252), σ solved on
+  that clock from the mid, the name and the vol held; inside the last session, intrinsic − V. ATM 100, 20%, five
+  sessions left: about −0.12 a share. A page that quotes theta per calendar day (∂V/∂t ÷ 365, as the Weigher's) reads
+  about a third less a week out — 7 calendar days are 5 sessions — so the two are not the same unit, and say so.
+- **The paper chain's ATM IV and priced move**: the IV at the name is the average of the call's and the put's at the
+  two listed strikes either side of it, straight between them by strike (`feed.ts atmIvAt`, the Weigher's rule); the
+  move is `core/volClock sigmaToExpiry` on that vol moved onto the calendar year with the variance kept.
