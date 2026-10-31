@@ -32,7 +32,9 @@ export function buildVannaCharm(
   const { ticker, spot, chain } = snapshot;
 
   const desc = [...chain].sort((a, b) => b.strike - a.strike);
-  const spotIdx = Math.max(0, desc.findIndex(n => n.strike <= spot));
+  /* spot under every strike: the nearest are the lowest, at the bottom of the list */
+  const below = desc.findIndex(n => n.strike <= spot);
+  const spotIdx = below >= 0 ? below : Math.max(0, desc.length - 1);
   const start = Math.max(0, spotIdx - half);
   const window = desc.slice(start, start + half * 2 + 1);
 
