@@ -30,6 +30,7 @@ import { peekEntry } from './store';
 import { expiryOpen } from '../../core/tradingYear';
 import type { GexSnapshot } from '../../types/market';
 import { ALL, JOIN_MS, closeOf, dayStartOf, placeSeg, readAnswer, rowMeasures, spanOf, type KeptSeries } from './exposureSegs';
+import { nodeConcept } from '../../components/gex/nodeConcept';
 
 export { JOIN_MS, rowMeasures };
 
@@ -645,6 +646,9 @@ export function priorSessionWords(ticker: string, cut: FieldCut): string | null 
   const t = rootOf(ticker);
   const prev = priorSessions(1)[0];
   if (!t || !prev || !cut) return null;
+  const src = daySource.get(`${t}|${prev}`);
+  if (src === 'reconstructed') return "Yesterday is rebuilt bar by bar from that day's open interest and quotes.";
+  if (src === 'recorded') return 'Yesterday is the recorded day.';
   const want = seriesOf(cut);
   const tag = `rth|${prev}`;
   const log = logs.get(t);
@@ -675,8 +679,88 @@ function asSessionBook(rows: unknown, day: string): unknown {
   });
 }
 
-/** Read the cut's book as of each of the last `count` sessions' closes, once each (a past date never changes): one
-    expiry's rows off spot-exposures/expiry-strike, or the whole book off spot-exposures/strike. One call at a time. */
+/* ---- a past day, recorded or rebuilt (GET /api/exposure/hist, data/exposureHistServer.ts) ------------------------ */
+
+/** Where a past day's cells came from, per name and day: the recorder, a rebuild from the day's open interest and
+    quotes, or the vendor's close carried through the cash session */
+export type FieldSource = 'recorded' | 'reconstructed' | 'close';
+const daySource = new Map<string, FieldSource>();
+
+/** Take a served day in place of what the log holds for it: the day's segments on that series are dropped first (a
+    close carried through the session, or a stale copy, would otherwise refuse every overlapping reading) */
+function replaceDay(t: string, want: string, day: string, series: readonly KeptSeries[]): boolean {
+  const log = logOf(t);
+  const [y, m, d] = day.split('-').map(Number);
+  const from = nyWallTime(y, m, d, 0, 0);
+  const to = nyWallTime(y, m, d + 1, 0, 0);
+  for (const s of log.series.values()) {
+    if (s.expiry !== want || !s.segs.length) continue;
+    const keep: number[] = [];
+    for (let i = 0; i < s.segs.length; i += 4) if (s.segs[i] < from || s.segs[i] >= to) keep.push(s.segs[i], s.segs[i + 1], s.segs[i + 2], s.segs[i + 3]);
+    s.segs = keep;
+  }
+  return placeKept(t, series);
+}
+
+interface HistDay {
+  format: string;
+  source: 'recorded' | 'reconstructed';
+  series: KeptSeries[];
+  term?: { expiry: string; iv: number }[];
+}
+
+/** The newest rebuilt day's at-the-money vols by expiry, per name: the expected-move cone's term when the terminal has
+    no live quote (data/coneFeed.ts) */
+const histTerms = new Map<string, { day: string; rows: { expiry: string; iv: number }[] }>();
+const termListeners = new Set<(ticker: string) => void>();
+export function rebuiltTerm(ticker: string): { day: string; rows: { expiry: string; iv: number }[] } | null {
+  return histTerms.get(rootOf(ticker)) ?? null;
+}
+export function onRebuiltTerm(fn: (ticker: string) => void): () => void {
+  termListeners.add(fn);
+  return () => termListeners.delete(fn);
+}
+
+/** The server's day for a cut: recorded where the recorder holds it, else rebuilt. False when the server has none. */
+async function pullHist(t: string, cut: FieldCut, day: string): Promise<boolean> {
+  if (typeof fetch !== 'function') return false;
+  const auth = await feedHeaders();
+  if (!auth.ok) return false;
+  try {
+    const res = await fetch(`/api/exposure/hist?ticker=${encodeURIComponent(t)}&day=${day}&cut=${encodeURIComponent(cut)}`, { headers: auth.headers });
+    if (!res.ok) return false;
+    const body = (await res.json().catch(() => null)) as HistDay | null;
+    if (!body || body.format !== 'exposure-hist/1' || !Array.isArray(body.series) || !body.series.length) return false;
+    replaceDay(t, seriesOf(cut), day, body.series);
+    daySource.set(`${t}|${day}`, body.source);
+    const term = Array.isArray(body.term) ? body.term.filter(r => r && /^\d{4}-\d{2}-\d{2}$/.test(r.expiry) && r.iv > 0) : [];
+    if (term.length && day > (histTerms.get(t)?.day ?? '')) {
+      histTerms.set(t, { day, rows: term });
+      termListeners.forEach(fn => fn(t));
+    }
+    const log = logOf(t);
+    log.rev += 1;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Where the field's cell at this moment came from, in words for the cell's card: null for a live day */
+export function fieldSourceWords(ticker: string, ms: number): string | null {
+  /* dev-only with the heat look until the owner approves it: production's card is unchanged */
+  if (nodeConcept() !== 'heat') return null;
+  const src = daySource.get(`${rootOf(ticker)}|${nyIsoDate(ms)}`);
+  if (src === 'reconstructed') return "Reconstructed from the day's open interest and quotes";
+  if (src === 'recorded') return 'Recorded live';
+  if (src === 'close') return "The session's closing book, carried";
+  return nyIsoDate(ms) === nyIsoDate(Date.now()) ? 'Recorded live' : null;
+}
+
+/** Read the cut's book for each of the last `count` sessions, once each (a past date never changes): the server's day
+    first — recorded, or rebuilt bar by bar from that day's open interest and quotes — and where it has none, the vendor's
+    book as of that close (one expiry's rows off spot-exposures/expiry-strike, or the whole book off spot-exposures/strike),
+    carried through the cash session. One call at a time. */
 export function ensureFieldCloses(ticker: string, cut: FieldCut, count = 8): void {
   const t = rootOf(ticker);
   const days = priorSessions(count).filter(d => cut === 'book' || d <= cut);
@@ -686,6 +770,13 @@ export function ensureFieldCloses(ticker: string, cut: FieldCut, count = 8): voi
   void (async () => {
     for (const d of todo) {
       let answered = false;
+      /* the server's past day (recorded or rebuilt) feeds the dev-only heat look until the owner approves it; production
+         keeps the vendor's close */
+      if (nodeConcept() === 'heat' && (await pullHist(t, cut, d))) {
+        closesSettled.add(`${t}|${cut}|${d}`);
+        emit();
+        continue;
+      }
       try {
         if (cut === 'book') {
           for (let page = 0; page < 4; page++) {
@@ -705,7 +796,10 @@ export function ensureFieldCloses(ticker: string, cut: FieldCut, count = 8): voi
       } catch {
         answered = false;
       }
-      if (answered) closesSettled.add(`${t}|${cut}|${d}`);
+      if (answered) {
+        closesSettled.add(`${t}|${cut}|${d}`);
+        if (!daySource.has(`${t}|${d}`)) daySource.set(`${t}|${d}`, 'close');
+      }
       else closesAsked.delete(`${t}|${cut}|${d}`);
     }
     emit();

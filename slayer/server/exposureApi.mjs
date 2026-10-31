@@ -8,11 +8,15 @@
   EXPOSURE_KEEP_DAYS keeps that many days (10), EXPOSURE_FRONT=0 records the whole book only, EXPOSURE_EXT_EVERY sets
   the minutes between reads outside the regular session (2; 0 reads 09:30–16:15 only).
   On Vercel there is no long-lived process: the recorder does not run there (docs/exposure-recorder.md).
+
+  /api/exposure/hist serves a finished day the recorder does not hold, rebuilt from the terminal's open interest, quotes
+  and bars (src/data/exposureHistServer.ts); EXPOSURE_HIST_DIR moves its kept inputs (default .cache/exposure-hist).
 */
 
 import path from 'node:path';
 import { gate, sendDenied } from './auth.mjs';
 import { uwDirect } from './uwProxy.mjs';
+import { thetaDirect, thetaUncached } from './thetaProxy.mjs';
 
 const send = (res, status, body) => {
   res.statusCode = status;
@@ -33,6 +37,7 @@ const int = (v, d) => {
 export function exposureMount(load, root = process.cwd()) {
   let rec = null;
   let mod = null;
+  let hist = null;
   let stopped = false;
   const hosted = !!process.env.VERCEL;
   let ready = null;
@@ -56,6 +61,14 @@ export function exposureMount(load, root = process.cwd()) {
           extEvery: int(process.env.EXPOSURE_EXT_EVERY, 2),
           log: (line) => console.log(line),
         });
+        hist = mod.createExposureHist({
+          dir: process.env.EXPOSURE_HIST_DIR || path.join(root, '.cache', 'exposure-hist'),
+          theta: thetaDirect,
+          /* a day's option trades: large, read once and kept by the module, not in the hub */
+          thetaRaw: thetaUncached,
+          recorded: (t, day) => rec.day(t, day, 0),
+          log: (line) => console.log(line),
+        });
       } catch (e) {
         console.warn(`[exposure] the recorder did not start: ${e && e.message ? e.message : e}`);
       }
@@ -73,6 +86,10 @@ export function exposureMount(load, root = process.cwd()) {
       await start();
       if (!rec || !mod) {
         send(res, 503, { error: 'The exposure recorder is not running on this server.', code: hosted ? 'recorder_hosted' : 'recorder_down' });
+        return;
+      }
+      if (hist && /^(\/api\/exposure)?\/hist(\?|$)/.test(req.url || '')) {
+        await mod.histRoute(hist, req, res);
         return;
       }
       mod.exposureRoute(rec, req, res);

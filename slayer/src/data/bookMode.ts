@@ -16,6 +16,14 @@ import type { MarketSnapshot, StrikeNode } from '../types/market';
 
 export type BookMode = 'oi' | 'flow';
 
+/** The two books' names wherever a reader sees them — the chart's key, the rail's toggle, the cards and the guides. They
+    say what each book shows, never how it is made: Live is the book as the session trades, Settled the book as of the
+    last close. One constant for every label. */
+export const BOOK_MODE_WORDS: Record<BookMode, { label: string; line: string }> = {
+  flow: { label: 'Live', line: 'The book as the session trades' },
+  oi: { label: 'Settled', line: 'The book as of the last close' },
+};
+
 const KEY = 'slayer_book_mode_v1';
 const listeners = new Set<() => void>();
 const read = (): BookMode => {

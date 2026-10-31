@@ -2,6 +2,7 @@
    side (data/book/exposureLog.ts). Kept in this browser. */
 import { useSyncExternalStore } from 'react';
 import type { FieldMode } from './book/exposureLog';
+import { BOOK_MODE_WORDS } from './bookMode';
 
 const KEY = 'slayer_field_mode_v1';
 const listeners = new Set<() => void>();
@@ -42,11 +43,11 @@ export function useFieldMode(): FieldMode {
 /** The models' names, as the legend and the toggle print them */
 export const FIELD_MODE_WORDS: Record<FieldMode, { name: string; line: string }> = {
   oi: {
-    name: 'Open interest',
-    line: 'Open-interest gamma only, the same cells as dealer flow. The level stays on the strike until a newer reading replaces it',
+    name: BOOK_MODE_WORDS.oi.label,
+    line: `${BOOK_MODE_WORDS.oi.line}, dollars per 1%. A level stays on its strike until a newer reading replaces it`,
   },
   flow: {
-    name: 'Dealer flow',
-    line: 'Open interest plus the ask and the bid, dollars per 1%. The level stays on the strike until a newer reading replaces it. Not the change from bar to bar',
+    name: BOOK_MODE_WORDS.flow.label,
+    line: `${BOOK_MODE_WORDS.flow.line}, dollars per 1%. A level stays on its strike until a newer reading replaces it — a level, not the change from bar to bar`,
   },
 };

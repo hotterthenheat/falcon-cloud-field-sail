@@ -3,7 +3,9 @@ import type { GexSnapshot } from '../../types/market';
 import { nySession } from '../../core/nyTime';
 import { dealerOf } from '../../core/dealerSign';
 import type { NodeLook } from '../../data/deskPrefs';
-import { selectNodeStrikes } from './nodeStrikes';
+import { selectNodeStrikes, type KeptLevel } from './nodeStrikes';
+import type { NodeConcept } from './nodeConcept';
+import { heatInks, heatPalette, layoutHeatLabels, onHeatPalette, paintHeatLabels, type HeatLabel } from './nodeHeat';
 
 /*
   The exposure field: one filled band per strike, from the midpoint of the strike below to the midpoint of the
@@ -112,6 +114,9 @@ const RASTER_MX = 0.35;
 const RASTER_MY = 0.25;
 const SETTLE_MS = 120;
 
+/** The heat's seam between two strikes' bands, device px, by the row's height */
+const heatInset = (h: number): number => (h >= 10 ? Math.round(h * 0.14) : h >= 5 ? 1 : 0);
+
 /** The cell under the pointer, as the card reads it */
 export interface BeadHit {
   strike: number;
@@ -205,7 +210,8 @@ class FieldRenderer {
 
   private drawField(target: DrawTarget): void {
     const src = this.source;
-    if (src.look === 'beads') return;
+    const heat = src.concept === 'heat';
+    if (src.look === 'beads' && !heat) return;
     const cols = src.cols;
     /* hard bail: never draw a field that can blow the page (too many columns, no strikes, or disabled) */
     if (!src.enabled || !src.chart || !src.series || cols.length === 0 || cols.length > 2000 || src.strikes.length === 0 || !(src.ref > 0)) return;
@@ -275,10 +281,12 @@ class FieldRenderer {
       const halfW = barSpacing * 0.5;
 
       const x0 = ts.timeToCoordinate(cols[first].time as Time);
+      const g0 = src.groundRgb();
+      const light = (0.299 * g0[0] + 0.587 * g0[1] + 0.114 * g0[2]) / 255 > 0.55;
       const probeStrike = strikes[Math.min(R - 1, Math.max(rLo, (rLo + rHi) >> 1))] ?? 0;
       const probeA = series.priceToCoordinate(probeStrike) ?? -1;
       const probeB = series.priceToCoordinate(probeStrike + 1) ?? -1;
-      const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${src.focusInk}|${src.look}|${src.keptKey}`;
+      const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${src.focusInk}|${src.look}|${src.keptKey}|${src.concept}|${light}|${heat ? heatPalette() : ''}`;
       const cached = key === this.cacheKey && !!this.bmp;
       /* A moved view maps the last raster: both axes are affine, so one drawImage puts every cell where this frame's
          scales want it, until the gesture rests (SETTLE_MS) or the view leaves the raster or the scale drifts too far */
@@ -352,7 +360,15 @@ class FieldRenderer {
           let yBot = Math.round(Math.max(ya, yb));
           if (yBot < -myPx || yTop > hBmp + myPx) continue;
           if (yBot - yTop < 1) yBot = yTop + 1;
-          if (keep && !keep.has(r)) continue;
+          /* today's look draws only the kept strikes; the heat draws every strike, the rest as a whisper of context */
+          const quiet = heat && !!keep && !keep.has(r);
+          if (!heat && keep && !keep.has(r)) continue;
+          /* the heat's bands stand apart: a seam of ground between two strikes, so the field reads as strata, not a wall */
+          if (heat) {
+            const inset = heatInset(yBot - yTop);
+            yTop += inset;
+            yBot -= inset;
+          }
           const dim = focus != null && strikes[r] !== focus;
           let runKey = -1;
           let runL = 0;
@@ -370,7 +386,7 @@ class FieldRenderer {
             }
             const tt = Math.min(1, Math.abs(v) / ref);
             const step = Math.min(STEPS - 1, Math.floor(tt * STEPS));
-            const k = (v > 0 ? 0 : 1) * 1000 + step + (dim ? 100 : 0);
+            const k = (v > 0 ? 0 : 1) * 1000 + step + (dim ? 100 : 0) + (quiet ? 200 : 0);
             const Rr = xr[c - cFrom];
             if (k === runKey && Math.abs(L - runR) <= 1) {
               runR = Rr;
@@ -395,15 +411,94 @@ class FieldRenderer {
           bctx.setTransform(1, 0, 0, 1, 0, 0);
           bctx.clearRect(0, 0, bw, bh);
           bctx.setTransform(1, 0, 0, 1, mxPx, myPx);
+          const hInk = heat ? heatInks(light) : null;
           for (const [k, path] of paths) {
             const step = k % 100;
+            const flags = Math.floor((k % 1000) / 100);
+            const s0 = Math.floor(k / 1000);
+            if (hInk) {
+              bctx.globalAlpha = flags & 1 ? 0.4 : 1;
+              bctx.fillStyle = (flags & 2 ? hInk.quiet : hInk.lit)[s0][step];
+              bctx.fill(path);
+              continue;
+            }
             const faint = src.look === 'both';
-            const side = Math.floor(k / 1000) === 0 ? (faint ? FAINT.pos : LUT.pos) : faint ? FAINT.neg : LUT.neg;
-            bctx.globalAlpha = k % 1000 >= 100 ? 0.4 : 1;
+            const side = s0 === 0 ? (faint ? FAINT.pos : LUT.pos) : faint ? FAINT.neg : LUT.neg;
+            bctx.globalAlpha = flags & 1 ? 0.4 : 1;
             bctx.fillStyle = side[step];
             bctx.fill(path);
           }
           bctx.globalAlpha = 1;
+          /* THE KING: in each moment, the heaviest cell in view glows — the foil along its edges, a soft bloom under it,
+             its own ink lifted. Runs of the same king merge, so a node that holds the crown reads as one lit bar. */
+          if (hInk) {
+            const lw = Math.max(1, Math.round(vr));
+            const crown = hInk.crown;
+            const bloom = hInk.bloom;
+            let runRow = -1;
+            let runL = 0;
+            let runR = 0;
+            let runSide = 0;
+            const flushKing = () => {
+              if (runRow < 0) return;
+              const ya = edgeY[runRow];
+              const yb = edgeY[runRow + 1];
+              if (Number.isFinite(ya) && Number.isFinite(yb)) {
+                const y0 = Math.round(Math.min(ya, yb));
+                const y1 = Math.round(Math.max(ya, yb));
+                const inset = heatInset(y1 - y0);
+                const yT = y0 + inset;
+                const yB = Math.max(yT + lw, y1 - inset);
+                /* the bloom alone: the shape is drawn far off the raster and only its shadow lands here */
+                bctx.save();
+                const far = 20000;
+                bctx.shadowColor = `rgba(${bloom[0]},${bloom[1]},${bloom[2]},${light ? 0.3 : 0.42})`;
+                bctx.shadowBlur = 12 * hr;
+                bctx.shadowOffsetX = far;
+                bctx.fillStyle = '#000';
+                bctx.fillRect(runL - far, yT, runR - runL, yB - yT);
+                bctx.restore();
+                /* its own ink, lifted toward the ramp's top */
+                bctx.fillStyle = hInk.solid[runSide][STEPS - 1].replace('rgb(', 'rgba(').replace(')', `,${light ? 0.28 : 0.24})`);
+                bctx.fillRect(runL, yT, runR - runL, yB - yT);
+                bctx.fillStyle = `rgba(${crown[0]},${crown[1]},${crown[2]},${light ? 0.7 : 0.62})`;
+                bctx.fillRect(runL, yT, runR - runL, lw);
+                bctx.fillRect(runL, yB - lw, runR - runL, lw);
+              }
+              runRow = -1;
+            };
+            for (let c = cFrom; c < cTo; c++) {
+              const L = xl[c - cFrom];
+              if (Number.isNaN(L)) {
+                flushKing();
+                continue;
+              }
+              let best = -1;
+              let bestA = 0;
+              const base = c * R;
+              for (let r = rLo; r < rHi; r++) {
+                const v = vals[base + r];
+                if (v === v && Math.abs(v) > bestA) {
+                  bestA = Math.abs(v);
+                  best = r;
+                }
+              }
+              if (best < 0) {
+                flushKing();
+                continue;
+              }
+              if (best === runRow && Math.abs(L - runR) <= 1) {
+                runR = xr[c - cFrom];
+                continue;
+              }
+              flushKing();
+              runRow = best;
+              runL = L;
+              runR = xr[c - cFrom];
+              runSide = vals[base + best] > 0 ? 0 : 1;
+            }
+            flushKing();
+          }
           /* the focused strike's row, outlined across the field */
           if (focus != null) {
             const r = strikes.indexOf(focus);
@@ -667,6 +762,24 @@ class NodesRenderer {
         }
       }
     }
+    if (src.concept === 'heat') {
+      src.heatLabels = [];
+      if (!fieldLive) return;
+      const levels = src.keptLevels;
+      let top: number | null = null;
+      let topA = 0;
+      for (const l of levels) {
+        if (l.value === l.value && Math.abs(l.value) > topA) {
+          topA = Math.abs(l.value);
+          top = l.price;
+        }
+      }
+      const lastBar = series.dataByIndex(Number.MAX_SAFE_INTEGER, MismatchDirection.NearestLeft) as { close?: number } | null;
+      const priceY = lastBar?.close != null ? yOf(lastBar.close) : null;
+      src.heatLabels = layoutHeatLabels(levels, yOf, paneW, paneH, src.chromeInset, priceY, top, light);
+      src.chips = src.heatLabels.map(l => ({ strike: l.price, left: l.x, top: l.ty - 9, bottom: l.ty + 9 }));
+      return;
+    }
     const zones = haveField ? this.zonesFor(src).slice(0, paneH < 240 ? 2 : 3) : [];
 
     target.useBitmapCoordinateSpace(scope => {
@@ -885,6 +998,14 @@ class TagsRenderer {
   constructor(private source: GexTrailsPrimitive) {}
   draw(target: DrawTarget): void {
     const src = this.source;
+    if (src.concept === 'heat') {
+      const labels = src.heatLabels;
+      if (!labels.length || !src.chart) return;
+      const g = src.groundRgb();
+      const light = (0.299 * g[0] + 0.587 * g[1] + 0.114 * g[2]) / 255 > 0.55;
+      target.useBitmapCoordinateSpace(scope => paintHeatLabels(scope, labels, g, light));
+      return;
+    }
     const tags = src.tags;
     if (!tags.length || !src.chart) return;
     const g = src.groundRgb();
@@ -1020,10 +1141,50 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
 
   constructor() {
     this._paneViews = [new FieldPaneView(this), new NodesPaneView(this), new TagsPaneView(this)];
+    /* dev only: each layer's draw cost onto window.__nodesMeter when a probe set one ([start, ms] pairs) */
+    if (import.meta.env?.DEV && typeof window !== 'undefined')
+      for (const v of this._paneViews) {
+        const r = v.renderer() as { draw(target: DrawTarget): void };
+        const draw = r.draw.bind(r);
+        r.draw = (target: DrawTarget) => {
+          const m = (window as unknown as { __nodesMeter?: [number, number][] }).__nodesMeter;
+          if (!m) return draw(target);
+          const t0 = performance.now();
+          draw(target);
+          m.push([t0, performance.now() - t0]);
+        };
+      }
   }
 
   valueOf(l: GexSnapshot['levels'][number]): number {
     return levelValue(l, this.greek);
+  }
+
+  /** The look (nodeConcept.ts, dev only): `current`, or `heat` (nodeHeat.ts) */
+  concept: NodeConcept = 'current';
+  /** The heat's labels at the price axis, laid out by the nodes pass and painted on the top layer */
+  heatLabels: HeatLabel[] = [];
+  /** The levels keptRows last kept, with their roles and sizes */
+  keptLevels: KeptLevel[] = [];
+
+  private paletteOff: (() => void) | null = null;
+
+  setConcept(concept: NodeConcept): void {
+    if (this.concept === concept) return;
+    this.concept = concept;
+    /* the heat wears the page's palette (Terrain's COLOURS menu): a new palette is a new raster */
+    this.paletteOff?.();
+    this.paletteOff =
+      concept === 'heat'
+        ? onHeatPalette(() => {
+            this.rev++;
+            this.requestUpdate?.();
+          })
+        : null;
+    this.heatLabels = [];
+    this.chips = [];
+    this.rev++;
+    this.requestUpdate?.();
   }
 
   /** The cache key of keptRows' last answer (the field's raster and the bead selection key on it) */
@@ -1042,6 +1203,7 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     const R = this.strikes.length;
     const C = this.cols.length;
     const out = new Set<number>();
+    this.keptLevels = [];
     if (R && C) {
       const base = (C - 1) * R;
       let bookTop = 0;
@@ -1052,6 +1214,7 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
       const rows = [];
       for (let r = Math.max(0, rLo); r < Math.min(R, rHi); r++) rows.push({ strike: this.strikes[r], value: this.values[base + r] });
       const kept = selectNodeStrikes(rows, { callWall: this.cwStrike, putWall: this.pwStrike, flip: this.flipPrice, pin: this.supremeStrike }, { lo: loP, hi: hiP, floor: bookTop / 2 });
+      this.keptLevels = kept;
       for (const l of kept) {
         /* a strike's own row; the flip, a price between strikes, beads the strike that holds it */
         const r = l.value === l.value ? this.strikes.indexOf(l.price) : this.rowAt(l.price);
@@ -1140,13 +1303,19 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     const r = this.ringInk;
     const ring = `rgba(${r[0]},${r[1]},${r[2]},0.95)`;
     /* a bead row rings its bead at the strike, the field a whole cell */
-    const bead = this.look !== 'heat' ? this.beadRows?.get(row) : undefined;
+    const heat = this.concept === 'heat';
+    const bead = this.look !== 'heat' && !heat ? this.beadRows?.get(row) : undefined;
     if (bead != null) {
       const y = this.series.priceToCoordinate(hover.strike);
       if (y == null) return null;
       const rad = Math.min(bead, 1) + (bead - Math.min(bead, 1)) * Math.sqrt(t) + 1.5;
       const ink = v > 0 ? BEADS.pos[step] : BEADS.neg[step];
       return { x: geo.x, y, rx: rad, ry: rad, fill: rgba(ink, 1), ring, rect: false };
+    }
+    if (heat) {
+      const g = this.groundRgb();
+      const hi = heatInks((0.299 * g[0] + 0.587 * g[1] + 0.114 * g[2]) / 255 > 0.55);
+      return { ...geo, fill: hi.solid[v > 0 ? 0 : 1][step], ring, rect: true };
     }
     return { ...geo, fill: v > 0 ? LUT.posSolid[step] : LUT.negSolid[step], ring, rect: true };
   }
@@ -1200,7 +1369,7 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     if (price === null) return null;
     const row = this.rowAt(price);
     /* with no field drawn, only a beaded row answers, and only near its line */
-    if (this.look === 'beads') {
+    if (this.look === 'beads' && this.concept !== 'heat') {
       const rad = this.beadRows?.get(row);
       const yRow = row >= 0 ? this.series.priceToCoordinate(this.strikes[row]) : null;
       if (rad == null || yRow == null || Math.abs(yRow - y) > Math.max(4, rad + 2)) return null;

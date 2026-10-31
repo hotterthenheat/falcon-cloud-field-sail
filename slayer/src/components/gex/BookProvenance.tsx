@@ -25,10 +25,10 @@ export function sourceWords(ticker?: string): { short: string; long: string; liv
   if (isLive(ticker))
     return {
       short: 'Market-data book',
-      long: "The live open-interest book from our market-data feed: each strike's gamma, vanna and charm are its spot-exposures rows (open interest × the greek, repriced every minute — gamma as dollars per 1% move, vanna as dollars of delta per vol point, charm as dollars of delta per session). Delta is the greek-exposure rows. Open interest, vega and each contract's own implied vol are the option-contracts rows. The whole book is the sum of its expiries' own rows, not a separate whole-book total, which is a second snapshot and can differ (MU +$212M against +$155M summed)",
+      long: "The live book from our market-data feed, refreshed every minute: gamma as dollars per 1% move, vanna as dollars of delta per vol point, charm as dollars of delta per session. The whole book is the sum of its expiries, not a separate whole-book total, which is a second snapshot and can differ (MU +$212M against +$155M summed)",
       live: true,
     };
-  return { short: 'House book', long: "the terminal's own chain, open interest and tape, built in the terminal", live: false };
+  return { short: 'House book', long: "the terminal's own chain and tape", live: false };
 }
 
 /** When and at what price the rows on screen were priced (the feed's own minute), and when their open interest was counted. */
@@ -103,7 +103,7 @@ export const DataCard = ({ ticker, surface, greeks, expiries, rings, view }: Car
       <div>
         <p className="text-t12 font-semibold text-textPrimary">What a figure is</p>
         <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
-          Every cell is dollars of stock dealers must trade to stay hedged, for one unit of the thing named — summed over the contracts open at that strike and date: the greek per contract × open interest × 100 shares × the spot price, scaled to the unit.
+          Every cell is dollars of stock dealers must trade to stay hedged, for one unit of the thing named, summed over the contracts at that strike and date.
         </p>
         <ul className="mt-1.5 flex flex-col gap-1">
           <Formula greek="GEX" words="gamma × OI × 100 × spot² × 1%" unit={GREEK_UNIT.gex} />

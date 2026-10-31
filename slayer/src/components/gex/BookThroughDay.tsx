@@ -2,6 +2,7 @@
    spot quiet on its own scale; on the feed the minute net is the vendor's minute gamma. Drawn by lightweight-charts (dayChart.ts). */
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { BOOK_MODE_WORDS } from '../../data/bookMode';
 import { BaselineSeries, createChart, LineSeries, LineStyle, type IChartApi, type ISeriesApi, type LineData, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { sessionBars } from '../../data/levelview';
 import { bookMinuteKind, useBookMinutes } from '../../data/book/minutes';
@@ -425,12 +426,12 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
   const scoped = !!snapshot.liveBook;
   const kindWord = scoped
     ? `Net GEX through ${barDay && barDay !== nyIsoDate() ? longDay(barDay) : 'the day'} · ${bookLabel ?? 'these contracts'} at each minute's price`
-    : kind === 'oi' ? `Dealer gamma through the day · all expiries, the session's own included${lineDayWords}` : `Dealer hedging · the session's trades${lineDayWords}`;
+    : kind === 'oi' ? `Dealer gamma through the day · all expiries, the session's own included${lineDayWords}` : `Dealer hedging · ${BOOK_MODE_WORDS.flow.label}${lineDayWords}`;
   const kindTitle = scoped
-    ? `The net GEX of the contracts the Levels card reads (${bookLabel ?? 'its scope'}) — their open interest as it stands now, re-priced at each minute's price${barDay && barDay !== nyIsoDate() ? ` through ${longDay(barDay)}'s session` : ''}. The feed's own minute series does the same for the whole book; this is the same measure on the headline's contracts, so the line ends at the Net GEX beside it, in its sign: green above zero (dealers long gamma, their hedging absorbs), red below (it amplifies)`
+    ? `The net GEX of the contracts the Levels card reads (${bookLabel ?? 'its scope'}) — the settled book at each minute's price${barDay && barDay !== nyIsoDate() ? ` through ${longDay(barDay)}'s session` : ''}. The feed's own minute series does the same for the whole book; this is the same measure on the headline's contracts, so the line ends at the Net GEX beside it, in its sign: green above zero (dealers long gamma, their hedging absorbs), red below (it amplifies)`
     : kind === 'oi'
-      ? "The feed's open-interest dealer gamma per 1% move on every expiry, re-priced at each minute's price (spot-exposures) — the same measure as the levels' net GEX. Through the session it counts the contracts expiring that day; after the close those settle, and the figure under Details takes them off, so it equals the All-expiries net"
-      : "Dealer gamma per 1% move from the session's trades (volume-based, minute by minute) — a different measure from the open-interest book the levels are read from";
+      ? "The settled book's dealer gamma per 1% move on every expiry, at each minute's price — the same measure as the levels' net GEX. Through the session it counts the contracts expiring that day; after the close those settle, and the figure under Details takes them off, so it equals the All-expiries net"
+      : "The live book's dealer gamma per 1% move, minute by minute — a different reading from the settled book the levels are read from";
   const [showDetails, setShowDetails] = useState(false);
   const bookWords = bookLabel ?? expirySpan(dates);
 

@@ -167,6 +167,20 @@ const hub = createHub({
 /** The hub's counts, for the load check (scripts/load-proof.mjs). */
 export const thetaHubStats = () => hub.stats();
 
+/** One large history answer for a reader inside this process that keeps its own copy (src/data/exposureHistServer.ts:
+    a day's option trades, tens of megabytes a chunk): the same terminal slots as every viewer's call, never the hub's
+    shared cache, which such bodies would crowd out. */
+export async function thetaUncached(reqPath) {
+  if (process.env.VERCEL && !RELAY && !process.env.THETA_REST_BASE) return { status: 503, body: NO_TERMINAL, type: 'application/json' };
+  if (!thetaAllowed(reqPath)) return { status: 404, body: JSON.stringify({ error: 'not found' }), type: 'application/json' };
+  try {
+    const got = withLogin(await load(reqPath));
+    return { status: got.status, body: got.body.toString('utf8'), type: got.type };
+  } catch (e) {
+    return failed(e);
+  }
+}
+
 /** One answer for a reader inside this process (the Compass engine): the same hub and the same eight slots as every
     viewer's call, with no HTTP hop. An outage answers 503 with its code, as the proxy does. */
 export async function thetaDirect(reqPath) {

@@ -11,7 +11,8 @@ import { snapshotFor } from '../../data/book/feed';
 import { bookStatus, peekEntry, useBookRev } from '../../data/book/store';
 import type { StrikeNode } from '../../types/market';
 import { ReadMiss } from '../../components/ui/BookDown';
-import { bookInMode, chainInMode, useBookMode, type BookMode } from '../../data/bookMode';
+import { BOOK_MODE_WORDS, bookInMode, chainInMode, useBookMode, type BookMode } from '../../data/bookMode';
+import { setHeatPalette } from '../../components/gex/nodeHeat';
 import { levelNetPath } from '../../data/flipLevel';
 import { rootTradesSession } from '../../data/compassSession';
 import { useSessionQuote } from '../../data/sessionQuote';
@@ -1517,7 +1518,7 @@ const Pane = ({
                   </span>
                 ) : shownBook ? (
                   <span className="min-w-0 truncate font-mono text-t10 text-textMuted" title="The expiry and the book the nodes and Heaviest are drawn from">
-                    {shownBook.label} · {shownBook.kind}
+                    {shownBook.label} · {BOOK_MODE_WORDS[shownBook.kind === 'Flow' ? 'flow' : 'oi'].label}
                   </span>
                 ) : null}
                 {/* First thing the row gives up when the column is narrow (ID_ROW_FULL_PX) — the price it is a delta
@@ -1767,6 +1768,8 @@ const Terrain = () => {
     setNamedLayouts(next);
     persistNamedLayouts(next);
   };
+  /* the chart's dev-only heat look wears the rails' palette (nodeHeat.ts), and switches with this menu */
+  useEffect(() => setHeatPalette(cfg.palette), [cfg.palette]);
   useEffect(() => {
     try {
       localStorage.setItem(TERRAIN_KEY, JSON.stringify(cfg));

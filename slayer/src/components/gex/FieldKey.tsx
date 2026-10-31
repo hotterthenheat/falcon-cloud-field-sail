@@ -1,11 +1,14 @@
 /* The exposure nodes' key: one compact chip in the chart's top-right corner, under the expand door and in the price
-   scale's top margin, so it never sits on a bar. It holds the model switch (dealer flow / open interest), the colour
+   scale's top margin, so it never sits on a bar. It holds the book switch (Live / Settled), the colour
    scale with the dollars a full-light node stands for, and the cut's net GEX; the rest — what the model is, when the
    day's record starts, yesterday — is the chip's hover. */
-import { memo } from 'react';
+import { memo, useSyncExternalStore } from 'react';
 import { BEAD_RAMP_CSS, FIELD_RAMP_CSS } from './gexNodesPrimitive';
+import { heatPalette, heatRampCss, onHeatPalette } from './nodeHeat';
+import { nodeConcept } from './nodeConcept';
 import { fmtUsd } from '../../data/gex';
 import { FIELD_MODE_WORDS, setFieldMode, useFieldMode } from '../../data/fieldMode';
+import { BOOK_MODE_WORDS } from '../../data/bookMode';
 import { useDeskPrefs } from '../../data/deskPrefs';
 import { exposureTodayFrom, ledgerFlowNet, priorSessionWords, useExposureLogRev, useFieldPoll, useServerExposure, type FieldMode, type ServerExposure } from '../../data/book/exposureLog';
 import { useBookRev } from '../../data/book/store';
@@ -26,8 +29,8 @@ function sinceWords(first: number | null, server: ServerExposure, now = Date.now
 }
 
 const MODES: readonly { value: FieldMode; label: string }[] = [
-  { value: 'flow', label: 'Flow' },
-  { value: 'oi', label: 'OI' },
+  { value: 'flow', label: BOOK_MODE_WORDS.flow.label },
+  { value: 'oi', label: BOOK_MODE_WORDS.oi.label },
 ];
 
 interface FieldKeyProps {
@@ -58,11 +61,13 @@ function FieldKey({ ticker, cut, cutWords, scale, oiNet, compact = false }: Fiel
   const netWords = netValue == null ? '—' : `${netValue >= 0 ? '+' : ''}${fmtUsd(netValue)}`;
   const netInk = netValue == null ? '' : netValue >= 0 ? 'text-goldline' : 'text-steelline';
   const yesterday = cut ? priorSessionWords(ticker, cut) : null;
-  const ramp = nodeLook === 'heat' ? FIELD_RAMP_CSS : BEAD_RAMP_CSS;
+  /* the dev-only heat (nodeConcept.ts) wears its own ramp */
+  const pal = useSyncExternalStore(onHeatPalette, heatPalette, heatPalette);
+  const ramp = nodeConcept() === 'heat' ? heatRampCss(pal) : nodeLook === 'heat' ? FIELD_RAMP_CSS : BEAD_RAMP_CSS;
   const title = [
     `${words.name}: ${words.line}.`,
     scale > 0 ? `Full light: ${fmtUsd(scale)} per 1% move — short gamma (pushes a move along) left, long gamma (holds it back) right.` : 'No reading in this session yet.',
-    `Net GEX ${netWords} · ${mode === 'flow' ? "today's flow" : 'open interest'} · ${cutWords} · ${since}.`,
+    `Net GEX ${netWords} · ${BOOK_MODE_WORDS[mode].label} · ${cutWords} · ${since}.`,
     yesterday ?? '',
   ]
     .filter(Boolean)
@@ -75,7 +80,7 @@ function FieldKey({ ticker, cut, cutWords, scale, oiNet, compact = false }: Fiel
       data-chart-chrome
       title={title}
     >
-      <span role="group" aria-label="Which model the exposure nodes show" className="inline-flex items-center rounded-[3px] border border-ink/[0.08] p-px">
+      <span role="group" aria-label="Which book the exposure nodes show" className="inline-flex items-center rounded-[3px] border border-ink/[0.08] p-px">
         {MODES.map(m => (
           <button
             key={m.value}

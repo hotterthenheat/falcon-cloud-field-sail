@@ -31,7 +31,7 @@ import { peekDaySigma, peekIv } from '../../data/book/move';
 import { bookStatus, peekEntry, useBookRev } from '../../data/book/store';
 import { snapshotFor } from '../../data/book/feed';
 import { useBookMinutes } from '../../data/book/minutes';
-import { alignLatestColumn, ensureFieldCloses, ensureFieldCut, exposureGrid, gridColumns, heldStrikes, useExposureLogRev } from '../../data/book/exposureLog';
+import { alignLatestColumn, ensureFieldCloses, ensureFieldCut, exposureGrid, fieldSourceWords, gridColumns, heldStrikes, useExposureLogRev } from '../../data/book/exposureLog';
 import { useFieldMode } from '../../data/fieldMode';
 import { useSessionQuote } from '../../data/sessionQuote';
 import { asOfText } from '../ui/states';
@@ -54,6 +54,8 @@ import {
   type Timeframe,
 } from '../../data/timeframe';
 import { BEAD_INK_CSS, GexTrailsPrimitive, signedDollars, type BeadHit, type EdgeLevel } from './gexNodesPrimitive';
+import { nodeConcept } from './nodeConcept';
+import { BOOK_MODE_WORDS } from '../../data/bookMode';
 import { ExpectedMovePrimitive, type ConeHit } from './expectedMovePrimitive';
 import { coneMissed, coneTerm, ensureCone, useConeRev } from '../../data/coneFeed';
 import { coneFrame, coneMarks, forwardCone, runwaySlots, todayOpenOf, tradingMinutesPerBar } from '../../data/terrainCone';
@@ -941,7 +943,9 @@ const StrikeChart = ({
         /* A day bar is the cash session. The desk clock being after hours must not blank the field. */
         const p = nyParts(b.time * 1000);
         if (!contractsLive(name, cut, nyWallTime(p.year, p.month, p.day, 9, 30))) continue;
-      } else if (!contractsLive(name, cut, b.time * 1000)) continue;
+      } else if (!contractsLive(name, cut, b.time * 1000) && trailsRef.current?.concept !== 'heat') continue;
+      /* the dev-only heat (nodeConcept.ts) keeps every bar with a price: a reading in the pre-market or after hours (the
+         recorder's, or a rebuilt day's) is a cell, and a session with none stays empty in the grid */
       times.push(b.time);
     }
     if (!times.length) return [];
@@ -1902,6 +1906,7 @@ const StrikeChart = ({
     chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
 
     const trails = new GexTrailsPrimitive();
+    trails.setConcept(nodeConcept()); // dev-only switch: ?nodes=current|heat
     trails.chromeInset = chromeInsetRef.current;
     trails.hoverOverlay = true;
     trails.afterDraw = () => drawHoverRef.current();
@@ -3281,6 +3286,10 @@ const StrikeChart = ({
     const clock = coneFrame(mins, now);
     const step = Math.max(1, Math.round(clock.next / 80));
     const fc = term && spot > 0 ? forwardCone(term.rows, spot, now, todayOpenOf(bars), step, clock) : null;
+    /* the cone stands on the last bar the chart DRAWS: a chart opens on its recent window (sliceFor), so the tape's
+       full length put the anchor hundreds of bars past the edge and the cone off screen */
+    const shown = barCountRef.current;
+    const drawn = shown > 0 && shown < bars.length ? bars.slice(-shown) : bars;
     prim.setData(
       fc
         ? {
@@ -3288,9 +3297,9 @@ const StrikeChart = ({
             marks: coneMarks(fc, clock.label),
             /* the key levels name the cone's ends at the edge; without them the cone names its own */
             markWords: !overlays.levels,
-            barTimes: bars.map(b => b.time),
+            barTimes: drawn.map(b => b.time),
             barMinutes: perBar,
-            anchor: bars.length - 1,
+            anchor: drawn.length - 1,
             oddsName: clock.label,
             iv: fc.ivNext,
             source: term?.source === 'theta' ? 'at-the-money implied vol' : 'term structure',
@@ -3300,7 +3309,7 @@ const StrikeChart = ({
     /* the cone's numbers at the edge: today's expected move, and ±1σ to the tip of this frame */
     ladderRef.current?.setExtras('cone', coneRungs(fc, clock.label));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, timeframe, revision, overlays.cone, overlays.levels, replay, mainNonce, altSpec, session, tapeRev, volsRev, printRev]);
+  }, [ticker, timeframe, revision, overlays.cone, overlays.levels, replay, mainNonce, altSpec, session, tapeRev, volsRev, printRev, fullNonce]);
 
   /* The event markers. The calendar half (this name's report, the macro dates) is cached per ticker and day; the
      prints half is live. */
@@ -5234,7 +5243,7 @@ const StrikeChart = ({
             const kept = !!pinnedBead;
             const tr = trailsRef.current;
             /* the cell is the book's level at this strike, carried across the session — not the change across the bar */
-            const greekWord = fieldMode === 'flow' ? 'Dealer flow' : trailsGreek === 'gex' ? 'Gamma' : trailsGreek === 'dex' ? 'Delta' : 'Vega $';
+            const greekWord = `${trailsGreek === 'gex' ? 'Gamma' : trailsGreek === 'dex' ? 'Delta' : 'Vega $'} · ${BOOK_MODE_WORDS[fieldMode].label}`;
             /* The side as the figure's sub, what it does as a line of its own — on the value's line the words ran
                past the card's edge and dragged every figure with them */
             const side = b.value >= 0 ? 'positive' : 'negative';
@@ -5258,6 +5267,8 @@ const StrikeChart = ({
                 {markWord && <CardRow k="Node" v={markWord} />}
                 {tagWord && <CardRow k="Price" v={tagWord} />}
                 <span className="col-span-2 text-textMuted">{b.value >= 0 ? 'Holds a move back' : 'Pushes a move on'}</span>
+                {/* recorded live, or rebuilt from that day's open interest and quotes (data/book/exposureHist.ts) */}
+                {fieldSourceWords(ticker, b.time * 1000) && <span className="col-span-2 text-textMuted leading-snug">{fieldSourceWords(ticker, b.time * 1000)}</span>}
               </>
             );
             const foot = <span className="text-textMuted">{kept ? letGoWords() : 'click to keep'}</span>;
