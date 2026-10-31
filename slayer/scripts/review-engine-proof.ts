@@ -452,5 +452,15 @@ ok('contracts are shared out with the nearer level taking the odd one', splitQty
 const sum = statsOf([...trades, bt]);
 ok('the report adds up', sum.n === 2 && near(sum.net, trades[0].pnl + bt.pnl, 0.001), `net ${sum.net.toFixed(2)} · drawdown ${sum.maxDrawdown.toFixed(2)}`);
 
+/* ================= the Practice math audit: known numbers ================= */
+{
+  /* 1. running average cost: buy 2 @ 1.00, sell 1 @ 2.00, buy 1 @ 3.00 (no fees) — avg 2.00, banked 100 */
+  const base = newSession({ id: 'avg', name: 'avg', ticker: 'SPY', startCash: 10000, startDay: D1, now: 0 });
+  const fill = (id: string, minute: number, side: 'buy' | 'sell', qty: number, price: number) => ({ id, orderId: null, at: { day: D1, minute }, contract: call500, side, qty, price, fee: 0, how: 'market' as const, spot: 500, delta: 0.5, iv: 0.2, theta: 0 });
+  const sx: Session = { ...base, fills: [fill('f1', 10, 'buy', 2, 1), fill('f2', 11, 'sell', 1, 2), fill('f3', 12, 'buy', 1, 3)] };
+  const p = bookOf(sx).positions[0];
+  ok('running average cost: buy 2 @ 1, sell 1 @ 2, buy 1 @ 3 — avg 2.00, the sale banked 100, what is held cost 400', p?.avg === 2 && p.banked === 100 && p.cost === 400, `avg ${p?.avg} · banked ${p?.banked} · cost ${p?.cost}`);
+}
+
 console.log(misses ? `\n${misses} MISSED` : '\nall rules hold');
 process.exit(misses ? 1 : 0);

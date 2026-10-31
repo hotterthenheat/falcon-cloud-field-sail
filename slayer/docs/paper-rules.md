@@ -418,3 +418,15 @@ Options Funding trades only the **275 names of its whitelist** (`whitelists.ts`:
 read 2026-10-29; a name compares without dots, so BRK.B is the list's BRKB). Strix names a 275-symbol list of its own
 that was not read here, so Strix plans do not check names and say so. A plan saved before these fields is read with the
 firm's current permissions when it loads (`store.ts migrate`).
+
+## Practice math (2026-10-31 audit — current)
+
+Every rule below has a known-number check in `scripts/paper-proof.ts` (paper) and `scripts/review-engine-proof.ts`
+(backtest) under "the Practice math audit".
+
+- **Average cost is a running average.** Each way in adds its premium (and its fee) to what is held; each way out takes
+  its share — the average × the contracts sold — back out, and what it made against that average is banked. A buy after
+  a partial sale averages with what is left, not with what was sold. Buy 2 @ 1.00, sell 1 @ 2.00, buy 1 @ 3.00, marked
+  at 3.00: average **2.00**, banked **$100**, open **$200** (equity +$300 either way; the old lifetime average said 1.67,
+  $33.33 and $266.67, and the balance a firm's target and drawdown read was $66.67 short). A closed trade's `avgIn` is
+  still the average of every way in (what the trade paid), and its P&L is its cash, unchanged.

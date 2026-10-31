@@ -162,7 +162,7 @@ export interface Position {
   key: string;
   contract: ContractId;
   qty: number;
-  /** Average price paid, dollars a share */
+  /** Running average cost a share of what is still held (each sale takes avg × qty out of the basis) */
   avg: number;
   /** Fees paid on the buys still held */
   fees: number;
@@ -271,6 +271,11 @@ export function bookOf(s: Session): Book {
     lastHow: FillHow;
     lastOrder: string | null;
     legs: TradeLeg[];
+    /* the running average cost of what is still held (a share, and the entry fees it carries): each sale takes avg × qty
+       out, so a buy after a partial sale averages with what is left, not with what was sold */
+    basis: number;
+    feeBasis: number;
+    banked: number;
   }
   const open = new Map<string, Open>();
   const trades: Trade[] = [];
@@ -279,16 +284,25 @@ export function bookOf(s: Session): Book {
     const key = contractKey(f.contract);
     let o = open.get(key);
     if (f.side === 'buy') {
-      if (!o) open.set(key, (o = { first: f, qty: 0, bought: 0, paid: 0, feesIn: 0, got: 0, feesOut: 0, sold: 0, lastHow: f.how, lastOrder: f.orderId, legs: [] }));
+      if (!o) open.set(key, (o = { first: f, qty: 0, bought: 0, paid: 0, feesIn: 0, got: 0, feesOut: 0, sold: 0, lastHow: f.how, lastOrder: f.orderId, legs: [], basis: 0, feeBasis: 0, banked: 0 }));
       o.legs.push({ at: f.at, side: 'buy', qty: f.qty, price: f.price, fee: f.fee });
       o.qty += f.qty;
       o.bought += f.qty;
       o.paid += f.price * f.qty;
       o.feesIn += f.fee;
+      o.basis += f.price * f.qty;
+      o.feeBasis += f.fee;
       continue;
     }
     if (!o) continue;
     const q = Math.min(f.qty, o.qty);
+    if (o.qty > 0) {
+      const avg = o.basis / o.qty;
+      const feeShare = (o.feeBasis * q) / o.qty;
+      o.banked += (f.price - avg) * q * MULT - f.fee - feeShare;
+      o.basis -= avg * q;
+      o.feeBasis -= feeShare;
+    }
     o.qty -= q;
     o.sold += q;
     o.got += f.price * q;
@@ -330,14 +344,14 @@ export function bookOf(s: Session): Book {
     key,
     contract: o.first.contract,
     qty: o.qty,
-    avg: cents(o.paid / o.bought),
-    fees: cents((o.feesIn * o.qty) / o.bought),
-    cost: cents(((o.paid * MULT + o.feesIn) * o.qty) / o.bought),
+    avg: cents(o.basis / o.qty),
+    fees: cents(o.feeBasis),
+    cost: cents(o.basis * MULT + o.feeBasis),
     opened: o.first.at,
     spotIn: o.first.spot,
     tradeId: o.first.id,
     tag: o.first.tag,
-    banked: cents(o.got * MULT - o.feesOut - (o.paid * MULT + o.feesIn) * (o.sold / o.bought)),
+    banked: cents(o.banked),
   }));
   return { positions, trades };
 }
