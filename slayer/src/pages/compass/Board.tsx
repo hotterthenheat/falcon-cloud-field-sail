@@ -13,7 +13,7 @@ import { bestByName, currentPicks, lastScanAt, scanBusy, scanReport, seatsNow } 
 import { backlogLine, compassFeed } from '../../data/compassFeed';
 import { daySummary } from '../../data/compassOutcome';
 import { asOfText } from '../../components/ui/states';
-import { BOOK_NAME, MODELS_VALIDATED, MODEL_2_NAME, P1_MIN, SEAT_CAP, inModelWindow } from '../../data/compassParams';
+import { BOOK_NAME, MODELS_VALIDATED, MODEL_1_NAME, MODEL_2_NAME, P1_MIN, SEAT_CAP, inModelWindow } from '../../data/compassParams';
 import { nyClock, nyDay, nyIsoDate, nyMinutes, nyWallTime } from '../../core/nyTime';
 import { setCompassView, useCompassView, type BoardLayout } from '../../data/compassView';
 import { useScanClock } from '../../data/compassDoor';
@@ -261,7 +261,7 @@ const Board = () => {
       : '';
   const tNow = nyMinutes() - (9 * 60 + 30);
   const inWindow = inModelWindow(tNow);
-  const windowLine = inWindow ? '' : ' Calls are made 09:45–15:00 ET; outside those minutes the scan scores the book but calls nothing.';
+  const windowLine = inWindow ? '' : ` Calls run 09:45–15:00 ET. Outside those minutes the scan still reads the book, but the ${MODEL_1_NAME} needs the regular session’s own minutes, so nothing calls.`;
   /* the runner tree's range input needs an hour of minutes: before 10:30 a call cannot ride */
   const runnerLine = !scanOff && tNow >= 15 && tNow < 60 ? ` ${MODEL_2_NAME} is off before 10:30 ET (it needs an hour of minutes), so a call before then takes the 1.50× profit and does not ride.` : '';
   const sessionDay = !scanOff && clock.phase !== 'halt' && !odteAsleep();

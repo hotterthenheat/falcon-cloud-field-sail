@@ -11,7 +11,7 @@
 import { compassHost, type ThetaAnswer } from './compassHost';
 import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { setupIdOf } from './compass';
-import { GEX_CORE, WEEKLY_STRIKES, inLottery, sessionScanOpen, weekdayDte } from './compassParams';
+import { BOOK_NAME, GEX_CORE, WEEKLY_STRIKES, inLottery, sessionScanOpen, weekdayDte } from './compassParams';
 import { deskPhase, odteAsleep, optionScanOpen, sessionDayOpen, sessionIso, sessionYmd } from './compassSession';
 import { COMPASS_TICKERS } from './compassUniverse';
 import {
@@ -495,7 +495,7 @@ function pickLine(): string {
   const a = rows.filter(s => s.band === 'top').length;
   const b = rows.filter(s => s.band === 'wing').length;
   const c = rows.filter(s => s.band === 'lottery').length;
-  return `Book A ${a}. Book B ${b}. Book C ${c}.`;
+  return `${BOOK_NAME.A} ${a}. ${BOOK_NAME.B} ${b}. ${BOOK_NAME.C} ${c}.`;
 }
 
 function noteSpots(snaps: { symbol: string; spot: number }[]): void {
