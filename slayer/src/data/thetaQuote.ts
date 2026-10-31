@@ -7,6 +7,7 @@
 
 import { useEffect, useSyncExternalStore } from 'react';
 import { thetaAllowedHere, thetaCall } from './theta';
+import { BoundedMap } from './boundedMap';
 
 /* what the page in view may ask the terminal (data/theta.ts): a price, an option's quote, the daily closes */
 const pricesHere = () => thetaAllowedHere('/stock/snapshot/trade');
@@ -88,7 +89,8 @@ function keep(key: string, v: ThetaPrice | ThetaMark): void {
   }, 2000);
 }
 
-const live = new Map<string, ThetaPrice | ThetaMark>();
+/* the caches below are bounded (data/boundedMap.ts): a tab left open all day prices every contract a chain showed */
+const live = new BoundedMap<string, ThetaPrice | ThetaMark>(600);
 let status: ThetaStatus = 'unknown';
 let rev = 0;
 const listeners = new Set<() => void>();
@@ -175,7 +177,7 @@ function ttl(): number {
 const hidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
 const inflight = new Map<string, Promise<void>>();
-const closesFor = new Map<string, { day: string; closes: { date: string; close: number }[] }>();
+const closesFor = new BoundedMap<string, { day: string; closes: { date: string; close: number }[] }>(200);
 
 async function readCloseRows(sym: string): Promise<{ date: string; close: number }[] | null> {
   const day = nyIsoDate();
@@ -195,7 +197,7 @@ async function readCloseRows(sym: string): Promise<{ date: string; close: number
 
 /* A read that failed for a reason other than a down terminal (that is the breaker's, data/theta.ts) waits before the next:
    15 s, doubling to a minute, cleared by an answer. */
-const failed = new Map<string, { until: number; gap: number }>();
+const failed = new BoundedMap<string, { until: number; gap: number }>(500);
 const failWait = (key: string): boolean => (failed.get(key)?.until ?? 0) > Date.now();
 const noteFail = (key: string) => {
   const gap = Math.min(60_000, (failed.get(key)?.gap ?? 7_500) * 2);
@@ -290,25 +292,30 @@ export function ensureThetaMark(ticker: string, expiry: string, strike: number, 
   void readMark(ticker, expiry, strike, right);
 }
 
-/** The price: this session's reading while the terminal answers, else the one kept from before (live false) */
+/* A reading counts as live only while it is fresh: three of its refresh intervals (10 s at least). Polling stops while
+   the tab is hidden and a read can fail without the terminal being down, so a reading minutes old is shown with its
+   instant (live false), never as the current price. */
+const liveForMs = (refreshMs: number) => Math.max(10_000, 3 * refreshMs);
+
+/** The price: this session's fresh reading while the terminal answers, else the last one with its instant (live false) */
 export function peekThetaPrice(ticker: string): Held<ThetaPrice> | null {
   const key = `S:${symbolOf(ticker)}`;
-  const l = live.get(key) as ThetaPrice | undefined;
-  if (l && status !== 'down') return { value: l, live: true };
+  const l = live.peek(key) as ThetaPrice | undefined;
+  if (l && status !== 'down' && Date.now() - l.read < liveForMs(ttl())) return { value: l, live: true };
   const k = (l ?? kept[key]) as ThetaPrice | undefined;
   return k && k.price > 0 ? { value: k, live: false } : null;
 }
 
 export function peekThetaMark(ticker: string, expiry: string, strike: number, right: OptionRight): Held<ThetaMark> | null {
   const key = markKey(ticker, expiry, strike, right);
-  const l = live.get(key) as ThetaMark | undefined;
-  if (l && status !== 'down' && l.at != null) return { value: l, live: true };
+  const l = live.peek(key) as ThetaMark | undefined;
+  if (l && status !== 'down' && l.at != null && Date.now() - l.read < liveForMs(Math.max(5_000, ttl()))) return { value: l, live: true };
   const k = (l ?? kept[key]) as ThetaMark | undefined;
   return k && k.mark > 0 ? { value: k, live: false } : null;
 }
 
 /* one day's regular close, for settling a contract at its expiry */
-const closeOn = new Map<string, number | null>();
+const closeOn = new BoundedMap<string, number | null>(600);
 const closeAsked = new Set<string>();
 
 /** Ask for a name's regular close on one New York date (a past date; kept once read) */
@@ -342,7 +349,7 @@ export function peekThetaCloseOn(ticker: string, iso: string): number | null {
 
 /* today's one-minute bars of a name, for the alerts that read an indicator or run a script: 09:30 through the 16:00
    close bar, whole (an end of 16:00:00 kept only the prints stamped 16:00:00.000 in that bar) */
-const barsOf = new Map<string, { read: number; bars: Candle[] }>();
+const barsOf = new BoundedMap<string, { read: number; bars: Candle[] }>(60);
 const barsAsked = new Set<string>();
 const barsHere = () => thetaAllowedHere('/stock/history/ohlc');
 

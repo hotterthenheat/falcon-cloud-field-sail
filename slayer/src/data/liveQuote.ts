@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { peekSpot, subscribeBook, tapeQuote } from './uwBook';
 import { whalesQuote, whalesScreener, whalesState } from './whales';
+import { BoundedMap } from './boundedMap';
 import { dayChangeOf, loadRegularCloses, peekRegularCloses, type MarketPhase } from './dayChange';
 import { nyClock, nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
 import { isTradingDay, today as nyTodayDate } from '../core/calendar';
@@ -55,7 +56,8 @@ interface Raw {
   tapeAt: number;
   at: number;
 }
-const raw = new Map<string, Raw>();
+/* bounded (data/boundedMap.ts): every name a long-open tab ever showed would otherwise stay here */
+const raw = new BoundedMap<string, Raw>(500);
 const inflight = new Set<string>();
 const listeners = new Set<() => void>();
 
@@ -65,7 +67,7 @@ const emit = () => {
   listeners.forEach(fn => fn());
 };
 
-const memo = new Map<string, LiveQuote>();
+const memo = new BoundedMap<string, LiveQuote>(500);
 
 function quoteOf(t: string): LiveQuote | null {
   const r = raw.get(t);
@@ -375,7 +377,7 @@ interface SetResult {
   screened: number;
   moves: Map<string, SetMove>;
 }
-const setResults = new Map<string, SetResult>();
+const setResults = new BoundedMap<string, SetResult>(40);
 const setRunning = new Set<string>();
 let setRev = 0;
 const setListeners = new Set<() => void>();

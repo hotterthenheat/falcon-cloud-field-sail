@@ -9,6 +9,7 @@ import { uwCall } from './whales';
 import { nyIsoDaysBack } from './nyDate';
 import { SIM_DESK } from './deskMode';
 import { createStore, keptRead } from './feedStore';
+import { BoundedMap } from './boundedMap';
 
 export type VendorState = 'loading' | 'live' | 'empty' | 'error';
 
@@ -43,6 +44,22 @@ interface Job {
 const store = createStore(0);
 const books = new Map<string, VendorBook>();
 const started = new Set<string>();
+/* Books are kept for the MAX_BOOKS names or pages most recently opened. A book a reader has on screen is never let go;
+   one that is let go is read again from the start if its page is opened again. */
+const MAX_BOOKS = 40;
+const readersOf = new Map<string, number>();
+function setBook(key: string, book: VendorBook): void {
+  if (!books.has(key)) {
+    for (const k of books.keys()) {
+      if (books.size < MAX_BOOKS) break;
+      if (readersOf.get(k)) continue;
+      books.delete(k);
+      started.delete(k);
+      for (const c of rowCache.keys()) if (c.startsWith(`${k}|`)) rowCache.delete(c);
+    }
+  }
+  books.set(key, book);
+}
 const EMPTY_BOOK: VendorBook = { key: '', rows: [] };
 
 const emit = () => store.set(n => n + 1);
@@ -402,7 +419,7 @@ function politician(data: unknown, id: string): { id: string; name: string } | n
 }
 
 function seed(key: string, jobs: Job[]) {
-  books.set(key, {
+  setBook(key, {
     key,
     rows: jobs.map(j => ({ id: j.id, label: j.label, path: j.path, state: 'loading' as const, brief: '', n: 0, data: null })),
   });
@@ -642,7 +659,7 @@ function start(desk: 'pinpoint' | 'dossier', ticker: string, pathname: string) {
   started.add(key);
   const jobs = jobsFor(desk, ticker, pathname);
   if (jobs.length === 0) {
-    books.set(key, { key, rows: [{ id: 'none', label: 'Feed', path: '', state: 'empty', brief: 'No name on the desk', n: 0, data: null }] });
+    setBook(key, { key, rows: [{ id: 'none', label: 'Feed', path: '', state: 'empty', brief: 'No name on the desk', n: 0, data: null }] });
     return;
   }
   seed(key, jobs);
@@ -665,18 +682,28 @@ export function useVendor(desk: 'pinpoint' | 'dossier', ticker: string, pathname
   ref.current = { desk, ticker, pathname };
   const subscribe = useCallback((fn: () => void) => {
     const off = store.subscribe(fn);
+    /* a book on screen is never let go (setBook), and one opened again moves to the back of the line */
+    readersOf.set(key, (readersOf.get(key) ?? 0) + 1);
+    const held = books.get(key);
+    if (held) {
+      books.delete(key);
+      books.set(key, held);
+    }
     start(ref.current.desk, ref.current.ticker, ref.current.pathname);
     const t = routeTicker(ref.current.pathname.split('?')[0], ref.current.ticker);
     const release = ref.current.desk === 'pinpoint' && t ? holdPinRefresh(key, t) : null;
     return () => {
       off();
       release?.();
+      const n = (readersOf.get(key) ?? 1) - 1;
+      if (n > 0) readersOf.set(key, n);
+      else readersOf.delete(key);
     };
   }, [key]);
   return useSyncExternalStore(subscribe, () => books.get(key) ?? EMPTY_BOOK, () => books.get(key) ?? EMPTY_BOOK);
 }
 
-const rowCache = new Map<string, VendorRow | null>();
+const rowCache = new BoundedMap<string, VendorRow | null>(800);
 
 function rowOf(key: string, id: string): VendorRow | null {
   const row = books.get(key)?.rows.find(r => r.id === id) ?? null;
