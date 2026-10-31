@@ -1,19 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ChevronUp, Code2, Link2, Maximize2, Minimize2, Rows3, SlidersHorizontal, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { DOCK_ROOM, openEditor } from '../../data/editorDock';
 import { useDeskSession, sessionMeta, type DeskSession } from '../../data/deskSession';
-import { chainForDate, expiryLabel, peekSpot, snapshotFor, useBookRev } from '../../data/uwBook';
+import { chainForDate, ensureBook, expiryLabel, peekSpot, snapshotFor, useBookRev } from '../../data/uwBook';
 import { levelNetPath } from '../../data/flipLevel';
 import { rootTradesSession } from '../../data/compassSession';
 import { useSessionQuote } from '../../data/sessionQuote';
+import { asOfText } from '../../components/ui/states';
 import { barInTape, peekPrint, peekTape, usePrintRev, useTapeRev, useThetaTape, wantPrint } from '../../data/thetaTape';
 import { thetaChartBars } from '../../data/thetaCandles';
 import { fmtUsd } from '../../data/gex';
 import { CALENDAR_DTES } from '../../data/exposureSurface';
 import { expiryFor, futuresPhaseAt, FUTURES_PHASE_WORDS } from '../../core/calendar';
-import { nyClock } from '../../core/nyTime';
+import { nyClock, nyIsoDate } from '../../core/nyTime';
+import { peekThetaPrice, thetaMove, useThetaPrice } from '../../data/thetaQuote';
+import { closeMoveTitle, sessionWhen, signedPct } from '../../data/dayChange';
 
 import DistanceUnitPicker from '../../components/ui/DistanceUnitPicker';
 import SessionBook from '../../components/ui/SessionBook';
@@ -45,11 +48,12 @@ import { useFadeClose } from '../../components/ui/useFadeClose';
 import CompareControl from '../../components/gex/CompareControl';
 import TickerTabStrip, { TAB_MAX } from '../../components/gex/TickerTabStrip';
 import FieldKey from '../../components/gex/FieldKey';
+import GapChip from '../../components/gex/GapChip';
 import { dealerOf } from '../../core/dealerSign';
 import { useMaxPain } from '../../components/gex/levelExtras';
 import { composeSnapshot, snapshotName } from '../../components/gex/snapshot';
 import { readSessionClock } from '../../data/moc';
-import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, profileRestWidth, type ProfileLane, type ProfilePalette } from '../../components/gex/ProfilePanel';
+import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, type ProfileLane, type ProfilePalette } from '../../components/gex/ProfilePanel';
 import DropdownSelect from '../../components/ui/DropdownSelect';
 import { netSinceOpenRatio } from '../../data/levelview';
 import { useLevelsFor } from '../../data/levelsFor';
@@ -238,12 +242,14 @@ const SCALES = new Set<string>(PRICE_SCALES.map(o => o.value));
 const OR_VALUES = new Set<number>(OPENING_RANGES);
 
 /** A Terrain pane opens with the field, the forward cone and the key levels. trails is on here only — a saved desk that turned it off stays off. */
-const TERRAIN_OVERLAYS = { ...DEFAULT_OVERLAYS, trails: true, cone: true, levels: true };
-const LOOK = 2;
-/** A desk stored before LOOK, moved once: every pane's and every setup's cone and key levels on */
+const TERRAIN_OVERLAYS = { ...DEFAULT_OVERLAYS, trails: true, cone: true, levels: true, flow: true };
+const LOOK = 3;
+/** A desk stored before LOOK, moved once: every pane's and every setup's cone and key levels on (look 2), and the flow
+    pane under the tape (look 3) — a desk already at 2 keeps its cone and levels as the reader left them */
 const lookUp = (cfg: TerrainCfg, stored: unknown): TerrainCfg => {
   if (stored === LOOK) return cfg;
-  const on = <T extends { overlays?: ChartOverlays }>(x: T): T => (x.overlays ? { ...x, overlays: { ...x.overlays, cone: true, levels: true } } : x);
+  const lift = stored === 2 ? { flow: true } : { cone: true, levels: true, flow: true };
+  const on = <T extends { overlays?: ChartOverlays }>(x: T): T => (x.overlays ? { ...x, overlays: { ...x.overlays, ...lift } } : x);
   return { ...cfg, look: LOOK, panes: cfg.panes.map(on), setups: Object.fromEntries(Object.entries(cfg.setups).map(([k, v]) => [k, on(v)])) as SetupMap };
 };
 
@@ -400,6 +406,8 @@ const ROWS: Record<TerrainLayout, string> = {
 /* Height of the time axis lightweight-charts draws under the plot, in px. Measured, not chosen: with `timeVisible:
    true` and this font the axis canvas runs 858→884 in a 1000px viewport. */
 const TIME_AXIS_PX = 26;
+/** The floating desk bar's margin from the screen's foot, and from the expanded chart's time axis above it */
+const DESK_BAR_GAP_PX = 8;
 
 /* Clearance for the price gutter lightweight-charts draws down the right of the plot, in px. Floating chrome has to
    stop short of that gutter or it lands on the price ticks. */
@@ -416,6 +424,8 @@ const ROW_DOOR_PX = 32;
 /* The strip's own padding, when it is not clearing a price gutter (`p-1.5`). Named because the usable width below is
    derived from it rather than from a second copy of the number. */
 const STRIP_PAD_PX = 6;
+/** The expand chip in a docked pane's top-right corner: the identity row stops this far short of it */
+const EXPAND_CHIP_PX = 38;
 
 /* What the identity row costs, and what it gives up when the column cannot pay. The row is `w-fit max-w-full` and
    every child is `shrink-0`, which caps the box at the column and lets the contents overflow it visibly. */
@@ -487,7 +497,11 @@ const SESSION_EMPTY: Record<DeskSession, string> = {
   rth: 'No regular prints',
   post: 'No after-hours prints',
 };
-function headRead(ticker: string, session: DeskSession, cashClose: number | null): { px: number | null; at: number; move: number | null; note: string | null } {
+type HeadMv = ReturnType<typeof thetaMove>;
+/** The pane head's price and move. The regular session's head speaks the app's one convention (data/dayChange.ts
+    moveOffCloses): once that session is over its price is the official regular close (not the last minute bar's close),
+    its move the day's change; an extended session's move is from that same close. */
+function headRead(ticker: string, session: DeskSession, cashClose: number | null, mv: HeadMv = null): { px: number | null; at: number; move: number | null; note: string | null; closed: boolean } {
   const bars = thetaChartBars(ticker, 1, session);
   let last: { close: number; time: number } | null = null;
   for (let i = bars.length - 1; i >= 0; i--) {
@@ -501,18 +515,24 @@ function headRead(ticker: string, session: DeskSession, cashClose: number | null
     const tape = peekTape(ticker, '1m', session);
     const waiting = tape.bars.length === 0 && (tape.state === 'loading' || tape.takenAt === 0);
     const note = waiting ? null : SESSION_EMPTY[session];
-    return { px: null, at: 0, move: null, note };
+    return { px: null, at: 0, move: null, note, closed: false };
   }
+  const lastDay = nyIsoDate(last.time * 1000);
+  /* the regular close of the session this tape's last bar is in, when the closes have it */
+  const regClose = mv && mv.regClose != null && mv.regDate === lastDay ? mv.regClose : null;
+  if (session === 'rth' && regClose != null) return { px: regClose, at: last.time, move: mv?.pct ?? null, note: null, closed: true };
   const px = last.close;
   const print = peekPrint(ticker);
-  const base = session === 'post' || session === 'overnight' ? cashClose : print && print.prev > 0 ? print.prev : null;
-  return { px, at: last.time, move: px != null && base != null && base > 0 ? ((px - base) / base) * 100 : null, note: null };
+  const extBase = mv && mv.regClose != null && mv.regDate != null && mv.regDate <= lastDay ? mv.regClose : cashClose;
+  const base = session === 'post' || session === 'overnight' ? extBase : mv && mv.base != null && session === 'rth' ? mv.base : print && print.prev > 0 ? print.prev : null;
+  return { px, at: last.time, move: px != null && base != null && base > 0 ? ((px - base) / base) * 100 : null, note: null, closed: false };
 }
 /* Leaves, so a print (every second in the session) re-renders the number and not the pane */
 const HeadPrice = ({ ticker, session, className }: { ticker: string; session: DeskSession; className?: string }) => {
   usePrintRev();
   useTapeRev();
-  const { px, at, note } = headRead(ticker, session, null);
+  const mv = thetaMove(useThetaPrice(ticker).held?.value);
+  const { px, at, note, closed } = headRead(ticker, session, null, mv);
   const quote = useSessionQuote(ticker, session, session !== 'rth' && px == null && !note);
   if (px == null && note) {
     return (
@@ -521,25 +541,36 @@ const HeadPrice = ({ ticker, session, className }: { ticker: string; session: De
       </span>
     );
   }
-  if (px == null && quote) return <span className="font-mono text-t11 font-semibold tnum text-textPrimary" title="No prints on this name. Bid and ask.">{quote.bid.toFixed(2)} × {quote.ask.toFixed(2)}</span>;
+  if (px == null && quote)
+    return (
+      <span className={`font-mono text-t11 font-semibold tnum ${quote.current ? 'text-textPrimary' : 'text-textSecondary'}`} title={quote.current ? 'No prints on this name. Bid and ask.' : `No prints in this session on this feed. The last bid and ask, ${asOfText(quote.at)}.`} data-session-quote={quote.current ? 'live' : 'as-of'}>
+        {quote.bid.toFixed(2)} × {quote.ask.toFixed(2)}
+        {!quote.current && quote.at > 0 && <span className="ml-1 font-normal text-t9 text-warn uppercase tracking-widest">{asOfText(quote.at)}</span>}
+      </span>
+    );
   if (px == null) return <span className="font-mono text-t11 text-textMuted">—</span>;
   const stale = at > 0 && Date.now() / 1000 - at > 120;
   return (
-    <span className="inline-flex items-baseline gap-1">
+    <span className="inline-flex items-baseline gap-1" data-head-price={closed ? 'close' : session}>
       <SpotPrice value={px} className={className} />
-      {stale && <span className="font-mono text-t10 text-textMuted" title="The last print on the tape. Nothing newer has printed.">{nyClock(at * 1000)}</span>}
+      {closed ? (
+        <span className="font-mono text-t10 text-textMuted" title={`The official regular close of ${sessionWhen(mv?.regDate) ?? 'today'}. The rail's price is the last trade, any session.`}>{sessionWhen(mv?.regDate) ? `${sessionWhen(mv?.regDate)!.slice(0, 3)} close` : 'close'}</span>
+      ) : (
+        stale && <span className="font-mono text-t10 text-textMuted" title="The last print on the tape. Nothing newer has printed.">{nyClock(at * 1000)}</span>
+      )}
     </span>
   );
 };
 const HeadMove = ({ ticker, session, cashClose, className = '' }: { ticker: string; session: DeskSession; cashClose: number | null; className?: string }) => {
   usePrintRev();
   useTapeRev();
-  const { move } = headRead(ticker, session, cashClose);
+  const mv = thetaMove(useThetaPrice(ticker).held?.value);
+  const { move, closed } = headRead(ticker, session, cashClose, mv);
   if (move == null) return null;
   return (
-    <span className={`${className} ${move >= 0 ? 'text-bull' : 'text-bear'}`} title={session === 'rth' ? undefined : 'From the regular close'}>
-      {move >= 0 ? '+' : ''}
-      {move.toFixed(2)}%
+    <span className={`${className} ${move >= 0 ? 'text-bull' : 'text-bear'}`} title={closed && mv ? closeMoveTitle(mv) : session === 'rth' ? 'Against the regular close before it' : `${session === 'pre' ? 'Pre-market' : 'After hours'}, from the regular close`} data-head-move>
+      {session === 'post' || session === 'overnight' ? 'AH ' : session === 'pre' ? 'PM ' : ''}
+      {signedPct(move)}
     </span>
   );
 };
@@ -637,6 +668,45 @@ interface PaneProps {
   /** Which contracts this pane's rail reads — the desk's one choice, changed from any rail's head */
   railCut: RailCut;
   onRailCut: (cut: RailCut) => void;
+  /** Expanded: the floating desk bar's height. The pane keeps that much (and a margin) clear at its foot, so the bar
+      sits under the time axis instead of across the flow pane. 0 when no bar floats over this pane. */
+  footRoom?: number;
+}
+
+/** The strike rail's rest width on this desk: a narrow column beside the tape, not two fifths of the pane (the rail took
+    ~40% of a pane's width at the panel's own rest widths). Dragged wider, it keeps the reader's width; the bar's
+    STRIKES switch and the panel's × fold it away. */
+const railRestWidth = (panes: number, expanded: boolean): number => Math.max(PROFILE_MIN_W, expanded || panes === 1 ? 320 : panes === 3 ? 180 : 210);
+
+/** One pane's fault stays in its cell: the other panes keep drawing, and this one offers to draw again (a new name or
+    interval clears it too) — a throw in one chart used to take the whole desk down */
+class PaneBoundary extends Component<{ children: ReactNode; name: string; resetKey: string; cell: string }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[terrain pane]', this.props.name, error, info.componentStack);
+  }
+  componentDidUpdate(prev: { resetKey: string }) {
+    if (this.state.error && prev.resetKey !== this.props.resetKey) this.setState({ error: null });
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className={`relative min-h-0 min-w-0 flex flex-col items-center justify-center gap-2 rounded-md border border-bear/25 bg-bear/[0.03] p-4 text-center ${this.props.cell}`} data-pane-fault>
+        <span className="font-mono text-t10 font-semibold uppercase tracking-widest text-bear">{this.props.name} could not draw</span>
+        <span className="max-w-[360px] font-mono text-t10 text-textMuted break-words">{this.state.error.message}</span>
+        <button
+          type="button"
+          onClick={() => this.setState({ error: null })}
+          className="mt-1 rounded border border-borderMuted px-2 py-1 font-mono text-t10 text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05]"
+        >
+          Draw it again
+        </button>
+      </div>
+    );
+  }
 }
 
 const Pane = ({
@@ -644,7 +714,7 @@ const Pane = ({
   onCrosshair, registerSync, replay, onToggleReplay, onExitReplay,
   drawing, onToggleDrawing, onExitDraw,
   isActive, onActivate, paneCount, closing = false, menuOpen, onMenu,
-  boxRef, cell = '', palette, railCut, onRailCut, arriveFocus = null,
+  boxRef, cell = '', palette, railCut, onRailCut, arriveFocus = null, footRoom = 0,
 }: PaneProps) => {
   /* the field's scale, for the key in the chart's corner (0 while the field is off) */
   const [fieldScale, setFieldScale] = useState(0);
@@ -655,6 +725,14 @@ const Pane = ({
   const chartEnterDraw = useStable(onToggleDrawing);
   const chartExitReplay = useStable(onExitReplay);
   const { ticker, timeframe, overlays, indicators, chartStyle, clock, compares, priceScale, sessionOr, ladder } = cfg;
+  /* The pane holds its own name's book, docked or expanded: the takeover hides the tab strip that was asking for it,
+     and an expanded pane's rail and nodes went stale with nothing refreshing them. ensureBook is a no-op while the
+     book is fresh. */
+  useEffect(() => {
+    ensureBook(ticker, 'board');
+    const id = window.setInterval(() => ensureBook(ticker, 'board'), 30_000);
+    return () => window.clearInterval(id);
+  }, [ticker, expanded]);
   /* Its own theme, else the page's default — Glacier on the dark terminal, Stone on paper — re-read on a flip */
   const pageDefault = usePageDefaultCandleKey();
   const theme = cfg.theme ?? pageDefault;
@@ -689,7 +767,7 @@ const Pane = ({
   const stripKeyRef = useRef<(w: number) => string>(() => '');
   stripKeyRef.current = (w: number) => {
     if (!(w > 0)) return '0';
-    const inner = w - PRICE_GUTTER_PX - (ownScale ? PRICE_GUTTER_PX : STRIP_PAD_PX);
+    const inner = w - PRICE_GUTTER_PX - (ownScale ? PRICE_GUTTER_PX : STRIP_PAD_PX) - (expanded ? 0 : EXPAND_CHIP_PX);
     const row = ID_ROW_FULL_PX + MTF_FULL_PX + 24 + ROW_DOOR_PX;
     const marks = [ID_ROW_FULL_PX, ID_ROW_NO_PCT_PX, ID_ROW_NO_BADGE_PX, READOUT_C_PX + READOUT_OHL_PX, READOUT_C_PX + READOUT_OHL_PX + READOUT_VOL_PX, row + TOOLBAR_FULL_PX, row + TOOLBAR_COMPACT_PX];
     for (let k = 1; k <= 8; k++) marks.push(READOUT_C_PX + READOUT_OHL_PX + READOUT_VOL_PX + k * READOUT_IND_PX);
@@ -715,7 +793,7 @@ const Pane = ({
 
   /* What the strip's rows can actually use — the column, less the gutter it clears on each side. Derived from the
      same expression the padding above applies, so the two cannot disagree about how much room was taken. */
-  const stripInner = stripW > 0 ? stripW - PRICE_GUTTER_PX - (ownScale ? PRICE_GUTTER_PX : STRIP_PAD_PX) : 0;
+  const stripInner = stripW > 0 ? stripW - PRICE_GUTTER_PX - (ownScale ? PRICE_GUTTER_PX : STRIP_PAD_PX) - (expanded ? 0 : EXPAND_CHIP_PX) : 0;
   const roomFor = (px: number) => stripInner === 0 || stripInner >= px;
   const showChangePct = roomFor(ID_ROW_FULL_PX);
   const showBadge = paneCount > 1 && roomFor(ID_ROW_NO_PCT_PX);
@@ -823,6 +901,8 @@ const Pane = ({
   useFocusTrap(expanded, overlayRef);
 
   const [focus, setFocus] = useState<number | null>(arriveFocus);
+  /* The chart's "not in yet" notes, shown as a chip in this pane's corner row — never over the candles */
+  const [gapLines, setGapLines] = useState<string[]>([]);
   const chartKeepStrike = useCallback((price: number) => setFocus(cur => (cur != null && Math.abs(cur - price) < 1e-9 ? null : price)), []);
   /* A strike belongs to its name: let go of when the pane changes name (never on the mount — an arrival's would go
      with it) */
@@ -1043,7 +1123,7 @@ const Pane = ({
       chart,
       panel,
       (() => {
-        const { px, move } = headRead(ticker, session, cashClose);
+        const { px, move } = headRead(ticker, session, cashClose, thetaMove(peekThetaPrice(ticker)?.value));
         return { ticker, timeframe, price: px != null ? px.toFixed(2) : '—', change: move == null ? '—' : `${move >= 0 ? '+' : '−'}${Math.abs(move).toFixed(2)}%`, up: (move ?? 0) >= 0, when };
       })(),
       panelEl ?? chartEl ?? box,
@@ -1164,7 +1244,11 @@ const Pane = ({
         {/* Chart and rail on one line, and that line is the whole pane — `absolute inset-0`, not a flex row under a
             header. */}
         <div className="absolute inset-0 flex">
-          <div className="group relative flex-1 min-w-0">
+          <div
+            className="group relative flex-1 min-w-0"
+            /* Expanded, the desk bar floats at the foot: the chart ends above it, its time axis and flow pane whole */
+            style={expanded && footRoom > 0 ? { paddingBottom: footRoom + DESK_BAR_GAP_PX * 2 } : undefined}
+          >
             {/* One pane per frame: each chart mounts a frame after the last behind its skeleton, so a four-pane desk
                 opens on its next frame instead of building four charts in the click. */}
             <Deferred index={index} fallback={<ChartSkeleton className="h-full" />} className="h-full animate-fade-in">
@@ -1201,7 +1285,7 @@ const Pane = ({
               railTopOk={expanded}
               /* IN fullscreen the desk bar floats over the pane's foot (the bar below: `fixed`, 12px above the time
                  axis), where the replay card also lives — the bar lay across the card's controls. */
-              footInset={expanded ? 44 : 0}
+              footInset={expanded && !(footRoom > 0) ? 44 : 0}
               replay={replay}
               onExitReplay={chartExitReplay}
               focusPrice={focus}
@@ -1215,20 +1299,36 @@ const Pane = ({
               exportRef={exportPngRef}
               pageScroll={belowLg}
               frameless
+              onGapNotes={setGapLines}
             />
             </Deferred>
-            {/* The field's key: the model, its switch, the colour scale and the cut's net GEX */}
-            {overlays.trails && !replay && (
-              /* above the chart's TradingView mark (bottom-left, over the time axis) rather than beside it */
-              <div className="absolute left-12 bottom-[62px] z-20" data-terrain-field-key>
-                <FieldKey
-                  ticker={ticker}
-                  cut={railCut === 'book' ? 'book' : shownBook?.date ?? null}
-                  cutWords={railCut === 'book' ? (rootTradesSession(ticker, session) ? 'the whole book' : 'options shut') : shownBook?.label ?? '—'}
-                  scale={fieldScale}
-                  oiNet={fieldOiNet}
-                  compact={isPhone || (paneCount > 1 && !expanded)}
-                />
+            {/* The pane's corner chip row: the field's key (the model, its switch, the colour scale and the cut's net
+                GEX) and, beside it, what is not in yet */}
+            {!replay && (overlays.trails || gapLines.length > 0) && (
+              /* Chips in the top-right corner, under the expand door and in the price scale's top margin — they never
+                 sit on a bar (the card it replaced stood over the candles and the volume at the bottom-left) */
+              <div
+                className="absolute z-20 flex w-max max-w-[calc(100%-120px)] items-center justify-end gap-1.5"
+                style={{ top: expanded ? 52 : isPhone ? stripH + 4 : 34, right: PRICE_GUTTER_PX + 6 }}
+                data-terrain-corner-chips
+              >
+                {gapLines.length > 0 && (
+                  <span className="flex min-w-0 max-w-[260px]" data-terrain-gaps>
+                    <GapChip lines={gapLines} />
+                  </span>
+                )}
+                {overlays.trails && (
+                  <div className="shrink-0" data-terrain-field-key>
+                    <FieldKey
+                      ticker={ticker}
+                      cut={railCut === 'book' ? 'book' : shownBook?.date ?? null}
+                      cutWords={railCut === 'book' ? (rootTradesSession(ticker, session) ? 'the whole book' : 'options shut') : shownBook?.label ?? '—'}
+                      scale={fieldScale}
+                      oiNet={fieldOiNet}
+                      compact={isPhone || (paneCount > 1 && !expanded)}
+                    />
+                  </div>
+                )}
               </div>
             )}
 
@@ -1278,7 +1378,8 @@ const Pane = ({
                  whenever there is a left one, with no width condition on it. */
               style={{
                 paddingLeft: ownScale ? PRICE_GUTTER_PX : undefined,
-                paddingRight: PRICE_GUTTER_PX,
+                /* …and the expand chip pinned in the top-right corner: the identity row ends before it, never under it */
+                paddingRight: PRICE_GUTTER_PX + (!expanded && !toolbarInline ? EXPAND_CHIP_PX : 0),
               }}
               /* gap-3.5 on a touch screen: the toolbar row's finger boxes (22px above its controls' centres) clear the symbol
                  chip's (22px below its centre) in the identity row (the last-targets pass, 2026-10-30) */
@@ -1303,7 +1404,7 @@ const Pane = ({
                   <HeadMove ticker={ticker} session={session} cashClose={cashClose} className="text-t10 font-semibold tnum" />
                 </div>
               ) : (
-              <div className={`chrome-hover relative z-30 pointer-events-auto max-w-full select-none flex items-center gap-2 rounded-md bg-canvas/25 backdrop-blur-[3px] px-2 py-1 opacity-55 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 ${toolbarInline ? 'w-full' : 'w-fit'}`}>
+              <div className={`chrome-hover relative z-30 pointer-events-auto max-w-full min-w-0 overflow-hidden select-none flex items-center gap-2 rounded-md bg-canvas/25 backdrop-blur-[3px] px-2 py-1 opacity-55 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 ${toolbarInline ? 'w-full' : 'w-fit'}`}>
                 {/* This strip is the one row visible at rest, so the number is legible without a pointer ever
                     touching the desk. */}
                 {showBadge && (
@@ -1350,7 +1451,7 @@ const Pane = ({
                     {rollNote}
                   </span>
                 ) : shownBook ? (
-                  <span className="shrink-0 font-mono text-t10 text-textMuted" title="The expiry and the book the nodes and Heaviest are drawn from">
+                  <span className="min-w-0 truncate font-mono text-t10 text-textMuted" title="The expiry and the book the nodes and Heaviest are drawn from">
                     {shownBook.label} · {shownBook.kind}
                   </span>
                 ) : null}
@@ -1465,8 +1566,8 @@ const Pane = ({
             <ProfilePanel
               /* The rest width follows the pane count: 520 alone or expanded, 340 on two or four, 240 three across —
                  the reader's own width once dragged */
-              width={cfg.ladderW ?? profileRestWidth(paneCount, expanded)}
-              restWidth={profileRestWidth(paneCount, expanded)}
+              width={cfg.ladderW ?? railRestWidth(paneCount, expanded)}
+              restWidth={railRestWidth(paneCount, expanded)}
               onWidth={w => onCfg({ ladderW: w })}
               /* The chart's floor beside the rail: the 2×2's 576px column, except on the three-up desk, where the
                  chart keeps at least half its pane. */
@@ -1647,6 +1748,23 @@ const Terrain = () => {
   setPaneRef.current = setPane;
 
   const [expanded, setExpanded] = useState<number | null>(null);
+  /* The floating desk bar's height while a pane is expanded — the pane reserves it at its foot */
+  const [deskBarH, setDeskBarH] = useState(0);
+  const barFloats = expanded !== null;
+  const deskBarObs = useRef<ResizeObserver | null>(null);
+  const deskBarRef = useCallback((el: HTMLDivElement | null) => {
+    deskBarObs.current?.disconnect();
+    deskBarObs.current = null;
+    if (!el || !barFloats) {
+      setDeskBarH(0);
+      return;
+    }
+    const read = () => setDeskBarH(Math.ceil(el.getBoundingClientRect().height));
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    deskBarObs.current = ro;
+  }, [barFloats]);
   const expandedRef = useRef<number | null>(null);
   expandedRef.current = expanded;
   /* The takeover leaves on a fade instead of vanishing — the same hook the Pulse fullscreen uses, so the two desks
@@ -1973,8 +2091,11 @@ const Terrain = () => {
         style={
           expanded !== null
             ? {
-                right: (panes[expanded]?.ladder && !belowLg ? panes[expanded]?.ladderW ?? profileRestWidth(cfg.layout, true) : 0) + PRICE_GUTTER_PX + 8,
-                bottom: TIME_AXIS_PX + 12,
+                right: (panes[expanded]?.ladder && !belowLg ? panes[expanded]?.ladderW ?? railRestWidth(cfg.layout, true) : 0) + PRICE_GUTTER_PX + 8,
+                bottom: deskBarH > 0 ? DESK_BAR_GAP_PX : TIME_AXIS_PX + 12,
+                /* held inside the screen: a bar wider than the room wraps onto a second line (the pane reserves its
+                   height) instead of running off the left edge with the layout buttons on it */
+                left: DESK_BAR_GAP_PX,
               }
             : undefined
         }
@@ -1985,10 +2106,11 @@ const Terrain = () => {
         /* The desk bar, docked: A row under the grid. */
         className={
           expanded !== null
-            ? 'chrome-hover pointer-events-none flex items-center gap-2 opacity-40 transition-opacity duration-200 hover:opacity-100 focus-within:opacity-100 fixed z-[90]'
+            ? 'chrome-hover pointer-events-none flex flex-wrap items-center justify-end gap-2 opacity-40 transition-opacity duration-200 hover:opacity-100 focus-within:opacity-100 fixed z-[90]'
             : 'order-last shrink-0 mt-1 flex items-center justify-end gap-2'
         }
         data-terrain-desk-bar={expanded !== null ? 'floating' : 'docked'}
+        ref={deskBarRef}
         /* Floating over the expanded pane, it is chrome over that tape and wears its ground like the strip does
            (index.css) — dark words on Stone */
         data-chart-chrome={expanded !== null ? '' : undefined}
@@ -2197,8 +2319,8 @@ const Terrain = () => {
         {panes.map((pane, i) =>
           /* A real branch, not `hidden`. */
           isPhone && i !== active ? null : (
+          <PaneBoundary key={i} name={pane.ticker} resetKey={`${pane.ticker}|${pane.timeframe}`} cell={cfg.layout === 3 && i === 2 ? 'xl:col-span-2 2xl:col-span-1' : ''}>
           <Pane
-            key={i}
             arriveFocus={i === 0 ? arrive?.focus ?? null : null}
             cfg={pane}
             onCfg={patch => setPane(i, patch)}
@@ -2230,7 +2352,9 @@ const Terrain = () => {
             /* The odd pane out takes the whole row. Three panes in two columns leaves the second row half empty — at
                1440, the most ordinary laptop width there is, that is a quarter of the desk showing nothing. */
             cell={cfg.layout === 3 && i === 2 ? 'xl:col-span-2 2xl:col-span-1' : ''}
+            footRoom={expanded === i && !isPhone ? deskBarH : 0}
           />
+          </PaneBoundary>
           )
         )}
       </div>

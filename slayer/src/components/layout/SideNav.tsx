@@ -34,7 +34,9 @@ import SlayerMark from '../../brand/SlayerMark';
 import PageGlyph from '../ui/PageGlyph';
 import Wordmark from '../../brand/Wordmark';
 import Signature, { SignatureDot } from '../../brand/Signature';
-import { readMarketState } from '../../data/marketState';
+import { nextOpenWords, readMarketState } from '../../data/marketState';
+import { useMarketSession } from '../../core/session';
+import { useMediaQuery } from '../ui/useMediaQuery';
 
 const SILVER = 'rgb(var(--silver))';
 const COLLAPSED_KEY = 'slayer_sidenav_collapsed';
@@ -75,7 +77,7 @@ const NavClock = () => {
     const id = window.setInterval(() => setTime(nyClock(undefined, { seconds: true, zone: true })), 1000);
     return () => window.clearInterval(id);
   }, []);
-  return <span className="ml-auto text-textMuted select-none">{time}</span>;
+  return <span className="ml-auto whitespace-nowrap text-textMuted select-none">{time}</span>;
 };
 
 const SideNav = ({ onOpenPalette }: SideNavProps) => {
@@ -89,7 +91,15 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const placeholder = profile.name === SAMPLE_PROFILE.name && profile.handle === SAMPLE_PROFILE.handle && profile.email === SAMPLE_PROFILE.email;
   const guest = signedOut || placeholder;
   const { pathname } = useLocation();
-  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const [storedCollapsed, setCollapsed] = useState(readCollapsed);
+  /* 768–1023 px (a tablet, a narrow window): the open panel would take a quarter of the page, so the rail folds to icons
+     there whatever was saved; opening it there lasts until the window leaves that band and is never written */
+  const narrow = useMediaQuery('(min-width: 768px) and (max-width: 1023.98px)');
+  const [narrowOpen, setNarrowOpen] = useState(false);
+  useEffect(() => {
+    if (!narrow) setNarrowOpen(false);
+  }, [narrow]);
+  const collapsed = narrow ? !narrowOpen : storedCollapsed;
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const [clock, setClock] = useState(() => readSessionClock());
@@ -110,7 +120,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   useEffect(() => {
     const id = window.setInterval(() => {
       const next = readSessionClock();
-      const key = `${next.phase}|${next.label}|${readMarketState().word}|${marketPhase()}`;
+      const key = `${next.phase}|${next.label}|${readMarketState().badge}|${marketPhase()}`;
       if (key === shownAs.current) return;
       shownAs.current = key;
       setClock(next);
@@ -124,6 +134,11 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
     const next = collapsed ? SIDENAV_W : SIDENAV_RAIL_W;
     const to = main ? { mainWidth: main.getBoundingClientRect().width + (width - next) } : null;
     beginGlide(700, 'frame', to);
+    setTip(null);
+    if (narrow) {
+      setNarrowOpen(o => !o);
+      return;
+    }
     setCollapsed(c => {
       if (!EMBEDDED) {
         try {
@@ -200,7 +215,9 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const hideTip = () => setTip(null);
 
   const name = lookup(activeTicker)?.name ?? null;
-  const open = clock.phase === 'OPEN' || clock.phase === 'AUCTION';
+  /* the one session the site follows (core/session.ts): the rail re-renders when it turns */
+  const session = useMarketSession();
+  const open = session.phase !== 'closed';
   /* the price itself renders in NavPrice (its own subscription); the folded rail's hover reads it when shown */
   const priceNow = () => {
     const p = peekThetaPrice(quoteSymbolOf(activeTicker))?.value.price;
@@ -208,7 +225,12 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   };
 
   /* the signature's word, read on the clock's own tick so the dot and the session line never disagree */
-  const marketWord = readMarketState().word;
+  const marketState = readMarketState();
+  const marketWord = marketState.word;
+  /* shut, the session line says when the next session opens (New York time, as the clock beside it) */
+  const nextOpen = nextOpenWords();
+  /* the time stays on one line when the badge wraps ("Sun 8:00 PM ET") */
+  const sessionWords = marketState.badge.replace(/ (\d{1,2}:\d{2}) (AM|PM) ET$/, '\u00a0$1\u00a0$2\u00a0ET');
 
   /* The mark and wordmark, the door home: the S| with its foil and cursor and ">slayer_terminal" beside it; folded, the S| alone
      with its cursor held lit. The S brightens as the pointer nears. */
@@ -564,8 +586,8 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
         {/* The signature: "slayer:~ $ ● live", the market's own word, over the session line and the clock; folded, the dot alone. */}
         <div
           className={`shrink-0 border-t border-ink/[0.07] bg-ink/[0.02] ${collapsed ? 'pl-[22px] pr-0 py-3.5' : 'px-3.5 py-2.5'}`}
-          title={collapsed ? `slayer:~ $ ${marketWord} · ${clock.label}` : undefined}
-          onMouseEnter={e => showTip(e, `slayer:~ $ ${marketWord} · ${clock.label} · ${nyClock(undefined, { seconds: true, zone: true })}`)}
+          title={collapsed ? `slayer:~ $ ${marketWord} · ${sessionWords}` : undefined}
+          onMouseEnter={e => showTip(e, `slayer:~ $ ${marketWord} · ${sessionWords} · ${nyClock(undefined, { seconds: true, zone: true })}`)}
           onMouseLeave={hideTip}
           data-sidenav-signature
         >
@@ -574,10 +596,10 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
           ) : (
             <>
               <Signature state={marketWord} rule={false} className="text-t105" />
-              <span className="mt-1.5 flex items-center gap-2 font-mono text-t10 tnum">
-                <span className="min-w-0 truncate text-textSecondary" title={clock.label} data-session-line>
+              <span className="mt-1.5 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 font-mono text-t10 tnum">
+                <span className="min-w-0 text-textSecondary leading-snug" title={!open && nextOpen ? `${marketState.line} ${nextOpen.long}` : `${sessionWords} · ${clock.label}. ${marketState.line}`} data-session-line data-session-phase={session.phase}>
                   {/* 16:00–16:15 on Trace: stock options are shut, index and ETF options still trade. */}
-                  {pathname.startsWith('/trace') && marketPhase() === 'late' ? 'stocks closed · index & ETF options trade to 3:15 PM CT' : open ? clock.label : clock.label.toLowerCase()}
+                  {pathname.startsWith('/trace') && marketPhase() === 'late' ? 'After hours · index & ETF options to 16:15 ET' : sessionWords}
                 </span>
                 <NavClock />
               </span>

@@ -75,7 +75,7 @@ export const SETUP_KEYS = ['timeframe', 'overlays', 'indicators', 'chartStyle', 
   build, instead of silently never persisting it.
 */
 const OVERLAY_KEYS = Object.keys({
-  trails: 0, levels: 0, darkpool: 0, volume: 0, flow: 0, netDrift: 0, volDrift: 0, dexStrike: 0, session: 0, cone: 0, events: 0, alerts: 0,
+  trails: 0, levels: 0, darkpool: 0, volume: 0, flow: 0, netDrift: 0, volDrift: 0, dexStrike: 0, session: 0, cone: 0, events: 0, alerts: 0, nodeAlert: 0,
 } satisfies Record<keyof ChartOverlays, number>) as (keyof ChartOverlays)[];
 
 const INDICATOR_KEYS = Object.keys({

@@ -202,7 +202,7 @@ const Tile = ({ def, ctx, state, onState, width, index, locked, scope, onOpen, o
       <div ref={bodyRef} className="flex-1 min-h-0 overflow-hidden" data-tile-body data-room={size?.room}>
         {!bodyCtx ? (
           /* the name's book is on its way (the tile's own shape holds the box), or it failed and says so */
-          bookFailed ? <TileNoBook ticker={scope?.ticker ?? 'this name'} why="Unusual Whales did not answer for this name's dealer book. The desk asks again on its next sweep." /> : def.skeleton()
+          bookFailed ? <TileNoBook ticker={scope?.ticker ?? 'this name'} why="The market-data feed did not answer for this name's dealer book. The desk asks again on its next sweep." /> : def.skeleton()
         ) : (
           size && (
             <Deferred index={index} fallback={def.skeleton()} className="h-full animate-fade-in">

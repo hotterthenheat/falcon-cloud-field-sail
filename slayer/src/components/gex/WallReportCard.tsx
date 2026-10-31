@@ -7,7 +7,7 @@ import FoldDoor from './FoldDoor';
 import { useBoxFold } from '../../data/boxFold';
 import { sessionBars } from '../../data/levelview';
 import { flipSidesWords } from '../../data/flipLevel';
-import { flipCrossings } from '../../data/flipGauge';
+import { flipCrossings, flipCrossingsAsOf } from '../../data/flipGauge';
 import { deskBars, peekIv, ensureOiChange, peekOiChange, useBookRev, useResolvedSession } from '../../data/uwBook';
 import { oiWhen, valueOiChange } from '../../data/building';
 import { aheadWord, longDay, recordDay } from '../../data/bookWindow';
@@ -33,11 +33,10 @@ const hhmm = (unix: number) => nyClock(unix * 1000);
 /** Each level in one plain line — the row's hover */
 const LEVEL_TIPS: Record<string, string> = {
   'call wall': 'the strike with the most call gamma, either side of price; while dealers are long gamma there it tends to slow a rise, and once price is through it, it can act as support.',
-  'put wall': 'the strike with the most put gamma, either side of price; below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet.',
-  'gamma flip': 'where dealer hedging switches sides. Above it hedging absorbs moves, below it amplifies them.',
-  flip: 'where dealer hedging switches sides. Above it hedging absorbs moves, below it amplifies them.',
-  'gamma pin': 'the strike with the most open contracts near price; price often drifts toward it, mostly through lunch.',
-  pin: 'the strike with the most open contracts near price; price often drifts toward it, mostly through lunch.',
+  'put wall': 'the strike with the most put gamma, either side of price; below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling.',
+  'gamma flip': 'where dealer hedging switches sides. Above it moves tend to be damped (long gamma), below it they tend to extend (short gamma).',
+  flip: 'where dealer hedging switches sides. Above it moves tend to be damped (long gamma), below it they tend to extend (short gamma).',
+  'largest oi': 'the strike with the most open contracts near price, where the chain is heaviest. Not a level price is drawn to: tested on SPY and QQQ, the close did not settle toward it.',
   supreme: 'the single strike with the most dealer hedging on it.',
 };
 
@@ -129,6 +128,8 @@ const SessionStrip = ({ row, bars }: { row: Row; bars: readonly Candle[] }) => {
 
 /* The table's columns, shared by the head and every row. On a phone: the level, three counts and the last touch. */
 const GRID = 'grid gap-x-4 px-5 grid-cols-[minmax(0,1fr)_36px_36px_40px_48px] lg:grid-cols-[minmax(150px,1.1fr)_64px_minmax(180px,2fr)_40px_40px_44px_48px_minmax(120px,1fr)_92px]';
+/* the same with no "Before" column — no earlier session on hand to grade against */
+const GRID_NO_BASE = 'grid gap-x-4 px-5 grid-cols-[minmax(0,1fr)_36px_36px_40px_48px] lg:grid-cols-[minmax(150px,1.1fr)_64px_minmax(180px,2fr)_40px_40px_44px_48px_minmax(120px,1fr)]';
 
 // ---- the section ----------------------------------------------------------------
 
@@ -147,7 +148,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
     if (session !== 'rth') return deskBars(snapshot.ticker, session) ?? [];
     return sessionBars(snapshot.ticker) ?? [];
   }, [snapshot, barsProp, session, tapeRev]);
-  const grid = tight ? 'grid gap-x-3 px-3 grid-cols-[minmax(0,1fr)_32px_32px_36px_44px]' : GRID;
+  const tightGrid = 'grid gap-x-3 px-3 grid-cols-[minmax(0,1fr)_32px_32px_36px_44px]';
   const desk = tight ? 'hidden' : 'max-lg:hidden';
   const phone = tight ? '' : 'lg:hidden';
   /* The book handed in is already the Map's window (bookForDates), read as a dated book ('0DTE') like the band does. */
@@ -226,8 +227,9 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
         }
       }
       if (key === 'flip' && bars.length >= 2) {
-        /* The flip is a price, not a strike: its row counts crossings (one-minute closes changing side, flipGauge flipCrossings). */
-        const n = flipCrossings(bars, price);
+        /* The flip is a price, not a strike: its row counts crossings of the flip as it stood at each bar (flipGauge
+           flipCrossingsAsOf, no look-ahead — the Board's own count), against the printed flip only when the book cannot be re-priced. */
+        const n = flipCrossingsAsOf(snapshot, snapshot.chain, bars) ?? flipCrossings(bars, price);
         trendFig = `crossed ${n}×`;
         trendWord = 'not a strike';
         trend = `price crossed the flip ${n}× (closes changing side) — the count the Board prints; the tests are the bars that reached it`;
@@ -245,8 +247,8 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
       /* no crossing within ±10% is no flip, and no row — the card's foot says so */
       ...(levels.flipFound === false ? [] : [mk('flip', 'Gamma flip', FLIP, levels.flip, sideOf(levels.flip))]),
       mk('put', 'Put wall', PUT_WALL, levels.putWall, sideOf(levels.putWall)),
-      /* a pin only where dealers are long gamma and price is near it (data/exposure.ts) */
-      ...(levels.pinFound === false ? [] : [mk('pin', 'Gamma pin', 'rgb(var(--text-primary))', levels.pin, sideOf(levels.pin))]),
+      /* the largest-OI strike only where dealers are long gamma and price is near it (data/exposure.ts) */
+      ...(levels.pinFound === false ? [] : [mk('pin', 'Largest OI', 'rgb(var(--text-primary))', levels.pin, sideOf(levels.pin))]),
       mk('supreme', 'Supreme', SUPREME, levels.supreme, sideOf(levels.supreme)),
     ];
     // Highest price first — the section reads like the ladder above it
@@ -263,7 +265,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
       } else merged.push(r);
     }
     /* Names on a shared strike in the one order (core/walls.ts levelRoles), then the flip and the pin. */
-    const ORDER = ['Supreme', 'Call wall', 'Put wall', 'Gamma flip', 'Gamma pin'];
+    const ORDER = ['Supreme', 'Call wall', 'Put wall', 'Gamma flip', 'Largest OI'];
     for (const r of merged) {
       r.labels.sort((a, b) => ORDER.indexOf(a.label) - ORDER.indexOf(b.label));
       r.label = r.labels.map(l => l.label).join(' · ');
@@ -279,6 +281,9 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
   }, [snapshot, levelsScope]);
   /* Base rates (data/levelRecord.ts): earlier sessions on hand, each level as it stood at that open, graded by the same rule. */
   const rates = useMemo(() => baseRates(sessionRecords(snapshot.ticker, peekIv(snapshot.ticker))), [snapshot.ticker]);
+  /* no earlier session on hand: the "Before" column would be a column of dashes, so it is not drawn */
+  const hasBase = rates.sessions > 0;
+  const grid = tight ? tightGrid : hasBase ? GRID : GRID_NO_BASE;
 
   const first = bars[0]?.time;
   const last = bars[bars.length - 1]?.time;
@@ -334,14 +339,14 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
             <span role="columnheader" className={desk}>
               Session <span className="normal-case tracking-normal tnum">{first != null ? `${hhmm(first)} → ${last != null ? hhmm(last) : 'now'}` : ''}</span>
             </span>
-            <span role="columnheader" className="text-right" title={`How many one-minute bars reached the level ${rec.isToday ? 'today' : `on ${longDay(rec.date)}`}`}>Tests</span>
-            <span role="columnheader" className="text-right" title="Tests where the bar closed back on the near side — the level held">Held</span>
-            <span role="columnheader" className="text-right" title="Tests where the bar closed through the level">Broke</span>
+            <span role="columnheader" className="text-right" title={`How many times price came to the level ${rec.isToday ? 'today' : `on ${longDay(rec.date)}`} — a run of one-minute bars reaching it is one test, ending when price leaves it or a bar closes through it`}>Tests</span>
+            <span role="columnheader" className="text-right" title="Tests that ended with price back on the near side — the level held">Held</span>
+            <span role="columnheader" className="text-right" title="Tests that ended with a one-minute bar closing through the level">Broke</span>
             <span role="columnheader" className="text-right" title="The time price last reached the level">Last</span>
             <span role="columnheader" className={desk} title={`How the hedging at the level changed in the overnight open-interest count${oiWords ? ` — ${oiWords.long}` : ''}, on these contracts, each valued at its own gamma. The flip is a price, not a strike, so it has none${oiWords?.pending ? ` · ${oiWords.pending}` : ''}`}>{oiWords?.day ? `Built ${oiWords.day}` : oiNow ? 'Built overnight' : 'Built …'}</span>
-            <span role="columnheader" className={`${desk} text-right whitespace-nowrap`} title={rates.sessions > 0 ? `How often the level's first test held, over the ${rates.sessions} sessions before ${dayW} — each read off its own open, never a later book` : `No sessions before ${dayW} on hand`}>
+            {hasBase && <span role="columnheader" className={`${desk} text-right whitespace-nowrap`} title={rates.sessions > 0 ? `How often the level's first test held, over the ${rates.sessions} sessions before ${dayW} — each read off its own open, never a later book` : `No sessions before ${dayW} on hand`}>
               Before {rec.isToday ? 'today' : rec.date.slice(5).replace('-', '/')}
-            </span>
+            </span>}
           </div>
           {rows.map(r => {
             const isFocus = focus != null && Math.abs(focus - r.price) < 1e-9;
@@ -383,9 +388,11 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
                     {r.trendFig && <span className="tnum font-semibold text-textPrimary mr-1.5">{r.trendFig}</span>}
                     <span className="text-textSecondary">{r.trendWord}</span>
                   </span>
-                  <span role="cell" className={`${desk} text-right text-t12 tnum ${rate ? 'text-textPrimary' : 'text-textMuted'}`} data-base-rate={r.rate ?? undefined}>
-                    {rate ? `${rate.heldFirst} of ${rate.tested}` : '—'}
-                  </span>
+                  {hasBase && (
+                    <span role="cell" className={`${desk} text-right text-t12 tnum ${rate ? 'text-textPrimary' : 'text-textMuted'}`} data-base-rate={r.rate ?? undefined}>
+                      {rate ? `${rate.heldFirst} of ${rate.tested}` : '—'}
+                    </span>
+                  )}
                 </button>
               </div>
             );

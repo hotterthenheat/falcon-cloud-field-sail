@@ -9,14 +9,17 @@ import type { ExposureSurface, Greek } from '../../data/exposureSurface';
 import { todayColumn } from '../../data/exposureSurface';
 import { heatCellStyle, type HeatMode } from './heatmap';
 import { fmtStrike } from '../../core/format';
+import { CALL_WALL as PALETTE_CALL_WALL, PUT_WALL as PALETTE_PUT_WALL } from './palette';
 
 const INK = 'rgb(var(--text-primary))';
 const INK_2 = 'rgb(var(--text-secondary))';
 const INK_3 = 'rgb(var(--text-muted))';
 const SILVER = 'rgb(var(--silver))';
 const SUPREME = 'rgb(var(--supreme))';
-const PUT_WALL = 'rgb(var(--bear))';
-const CALL_WALL = 'rgb(var(--bull))';
+/* the walls in the chart's own inks (palette.ts) — the words say gold and blue; bull/bear green and red are the
+   gamma's sign, not the walls */
+const PUT_WALL = PALETTE_PUT_WALL;
+const CALL_WALL = PALETTE_CALL_WALL;
 const GRID = 'rgb(var(--ink) / 0.07)'; /* the ink token: on paper the white hairline was none */
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const SANS = '"Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
@@ -311,7 +314,7 @@ const MatrixWords = ({ surface, greek, mode }: { surface: ExposureSurface; greek
       <div>
         <p className="text-t12 font-semibold text-textPrimary">The matrix · one strike per row, a column per greek</p>
         <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
-          Each row is a strike, with the dates on the Expiries card added together. The figure is how much dealer hedging sits there, and the bar beside it is that figure drawn: the longer, the more. {w.absorb} pushes back against a move through the strike, {w.amplify} pushes it along. A strike's ink names its level, read off this name's levels — the same levels the Board, the Agenda and Compare show: magenta the supreme (the strike with the most hedging), blue the call wall, gold the put wall; a dotted underline marks the gamma pin, a silver one a strike you own. Spot is a row of its own, where price stands.
+          Each row is a strike, with the dates on the Expiries card added together. The figure is how much dealer hedging sits there, and the bar beside it is that figure drawn: the longer, the more. {w.absorb} pushes back against a move through the strike, {w.amplify} pushes it along. A strike's ink names its level, read off this name's levels — the same levels the Board, the Agenda and Compare show: magenta the supreme (the strike with the most hedging), blue the call wall, gold the put wall; a dotted underline marks the strike with the most open interest, a silver one a strike you own. Spot is a row of its own, where price stands.
         </p>
         <FigureBox>
           <MatrixFigure />
@@ -391,7 +394,7 @@ const CalendarWords = ({ surface, greek, mode }: { surface: ExposureSurface; gre
       <div>
         <p className="text-t12 font-semibold text-textPrimary">The grid · one strike per row, one date per column</p>
         <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
-          Each row is a strike, a price level. Each column is an expiry date, today first and later dates to the right. Each cell is a capsule: the figure inside is how much dealer hedging sits at that strike for that date. Brighter means more. {w.absorb} pushes back against a move there, {w.amplify} pushes it along. The strike printed in magenta is the supreme: the strike with the most hedging on the Levels card's contracts, the same one the Board and Compare show. The cell with the star is the heaviest single cell on this calendar. A strike's ink names its level: blue the call wall, gold the put wall, magenta the supreme; a dotted underline marks the gamma pin, a silver one a strike you own. Hover a strike for the words.
+          Each row is a strike, a price level. Each column is an expiry date, today first and later dates to the right. Each cell is a capsule: the figure inside is how much dealer hedging sits at that strike for that date. Brighter means more. {w.absorb} pushes back against a move there, {w.amplify} pushes it along. The strike printed in magenta is the supreme: the strike with the most hedging on the Levels card's contracts, the same one the Board and Compare show. The cell with the star is the heaviest single cell on this calendar. A strike's ink names its level: blue the call wall, gold the put wall, magenta the supreme; a dotted underline marks the strike with the most open interest, a silver one a strike you own. Hover a strike for the words.
         </p>
         <FigureBox>
           <GridFigure />

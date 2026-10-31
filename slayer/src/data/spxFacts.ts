@@ -510,7 +510,7 @@ export function buildRead(raw: RawBook): SpxRead {
   const net = [...whole.byStrike.values()].reduce((a, v) => a + v.call + v.put, 0);
   const atr = dailyAtr(daily);
   const flip = bookRail.levels.flip > 0 ? bookRail.levels.flip : null;
-  const side = net < 0 ? 'Long gamma' : net > 0 ? 'Short gamma' : 'Flat gamma';
+  const side = net < 0 ? 'Long gamma (moves tend to be damped)' : net > 0 ? 'Short gamma (moves tend to extend)' : 'Flat gamma';
   let regime = side;
   if (flip == null) regime += ' · no flip within 10%';
   else if (atr && atr > 0) {

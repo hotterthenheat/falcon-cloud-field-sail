@@ -583,7 +583,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
             >
               <Crosshair className="w-3.5 h-3.5" /> Chart
             </button>
-            <button type="button" onClick={() => jump(() => navigate('/weigher', { state: { ticker: print.ticker } }))} className={linkBtn} data-cross-weigh>
+            <button type="button" onClick={() => jump(() => navigate('/weigher', { state: { weigh: { ticker: print.ticker } } }))} className={linkBtn} data-cross-weigh>
               <Scale className="w-3.5 h-3.5" /> Weigh it
             </button>
             <button

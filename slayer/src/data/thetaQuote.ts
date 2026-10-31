@@ -7,13 +7,17 @@
 
 import { useEffect, useSyncExternalStore } from 'react';
 import { thetaAllowedHere, thetaCall } from './theta';
+import { BoundedMap } from './boundedMap';
+import { moveOffCloses } from './dayChange';
+import { whalesState } from './whales';
 
 /* what the page in view may ask the terminal (data/theta.ts): a price, an option's quote, the daily closes */
 const pricesHere = () => thetaAllowedHere('/stock/snapshot/trade');
 const marksHere = () => thetaAllowedHere('/option/snapshot/quote');
 const closesHere = () => thetaAllowedHere('/stock/history/eod');
 import { nyIsoDate, nyMinutes, nyWallStamp } from '../core/nyTime';
-import { isTradingDay, today as nyToday } from '../core/calendar';
+import { isTradingDay, sessionCloseMinOn, today as nyToday } from '../core/calendar';
+import { phaseAt, type ExtWord } from '../core/session';
 import type { OptionRight } from '../types/compass';
 import type { Candle } from '../types/market';
 
@@ -29,6 +33,8 @@ export interface ThetaPrice {
   prevClose: number | null;
   /** Today's regular close, once the daily row for today is written */
   todayClose: number | null;
+  /** The last few regular closes by New York date (data/dayChange.ts moveOffCloses reads the day's change off them) */
+  closes?: { date: string; close: number }[];
   /** The print's own instant (epoch ms) */
   at: number;
   /** When this reading was taken */
@@ -88,7 +94,8 @@ function keep(key: string, v: ThetaPrice | ThetaMark): void {
   }, 2000);
 }
 
-const live = new Map<string, ThetaPrice | ThetaMark>();
+/* the caches below are bounded (data/boundedMap.ts): a tab left open all day prices every contract a chain showed */
+const live = new BoundedMap<string, ThetaPrice | ThetaMark>(600);
 let status: ThetaStatus = 'unknown';
 let rev = 0;
 const listeners = new Set<() => void>();
@@ -164,18 +171,18 @@ const symbolOf = (ticker: string) => {
   return UNDERLYING[t] ?? t;
 };
 
-/** How long a reading stays fresh: 3 s in the regular session, 15 s in extended hours, a minute when nothing trades */
+/** How long a reading stays fresh, by the session (core/session.ts): 3 s in the regular session, 15 s in the pre-market,
+    after hours and overnight (Sunday 20:00 on), a minute when nothing trades */
 function ttl(): number {
-  if (!isTradingDay(nyToday())) return 60_000;
-  const m = nyMinutes();
-  if (m >= 570 && m < 960) return 3_000;
-  if (m >= 240 && m < 1200) return 15_000;
-  return 60_000;
+  const ph = phaseAt(Date.now());
+  if (ph === 'regular') return 3_000;
+  if (ph === 'closed') return 60_000;
+  return 15_000;
 }
 const hidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
 const inflight = new Map<string, Promise<void>>();
-const closesFor = new Map<string, { day: string; closes: { date: string; close: number }[] }>();
+const closesFor = new BoundedMap<string, { day: string; closes: { date: string; close: number }[] }>(200);
 
 async function readCloseRows(sym: string): Promise<{ date: string; close: number }[] | null> {
   const day = nyIsoDate();
@@ -195,12 +202,28 @@ async function readCloseRows(sym: string): Promise<{ date: string; close: number
 
 /* A read that failed for a reason other than a down terminal (that is the breaker's, data/theta.ts) waits before the next:
    15 s, doubling to a minute, cleared by an answer. */
-const failed = new Map<string, { until: number; gap: number }>();
+const failed = new BoundedMap<string, { until: number; gap: number }>(500);
 const failWait = (key: string): boolean => (failed.get(key)?.until ?? 0) > Date.now();
 const noteFail = (key: string) => {
   const gap = Math.min(60_000, (failed.get(key)?.gap ?? 7_500) * 2);
   failed.set(key, { until: Date.now() + gap, gap });
 };
+
+/* today's regular close off the vendor's post-market stock-state, asked at most once a minute a name */
+const hintAsked = new BoundedMap<string, { at: number; close: number | null }>(200);
+async function todayCloseHint(sym: string, today: string): Promise<number | null> {
+  const key = `${sym}|${today}`;
+  const hit = hintAsked.get(key);
+  if (hit && (hit.close != null || Date.now() - hit.at < 60_000)) return hit.close;
+  hintAsked.set(key, { at: Date.now(), close: null });
+  const st = await whalesState(sym).catch(() => null);
+  const mt = String(st?.market_time ?? '').toLowerCase();
+  const tape = Date.parse(String((st as { tape_time?: string } | null)?.tape_time ?? ''));
+  const prev = Number(st?.prev_close);
+  const close = mt.startsWith('post') && Number.isFinite(tape) && nyIsoDate(tape) === today && prev > 0 ? prev : null;
+  hintAsked.set(key, { at: Date.now(), close });
+  return close;
+}
 
 function readPrice(sym: string): Promise<void> {
   const key = `S:${sym}`;
@@ -225,8 +248,15 @@ function readPrice(sym: string): Promise<void> {
     const closes = await readCloseRows(sym);
     const today = nyIsoDate();
     const prior = closes ? [...closes].reverse().find(c => c.date < today) : undefined;
-    const own = closes?.find(c => c.date === today);
-    const next: ThetaPrice = { price: print.price, prevClose: prior?.close ?? null, todayClose: own?.close ?? null, at: print.at, read: Date.now() };
+    let own = closes?.find(c => c.date === today);
+    /* after the bell, before the terminal writes today's daily row (~17:15), today's close is the vendor's stock-state
+       prev_close once its print is today's post-market — the same close the vendor-only pages read (data/dayChange.ts) */
+    if (!own && closes && !INDEX.has(sym) && isTradingDay(nyToday()) && nyMinutes() >= sessionCloseMinOn(today)) {
+      const hint = await todayCloseHint(sym, today);
+      if (hint) own = { date: today, close: hint };
+    }
+    const rows = closes ? (own && !closes.some(c => c.date === today) ? [...closes, own] : closes) : undefined;
+    const next: ThetaPrice = { price: print.price, prevClose: prior?.close ?? null, todayClose: own?.close ?? null, closes: rows ? rows.slice(-4) : undefined, at: print.at, read: Date.now() };
     live.set(key, next);
     keep(key, next);
     status = 'up';
@@ -290,25 +320,30 @@ export function ensureThetaMark(ticker: string, expiry: string, strike: number, 
   void readMark(ticker, expiry, strike, right);
 }
 
-/** The price: this session's reading while the terminal answers, else the one kept from before (live false) */
+/* A reading counts as live only while it is fresh: three of its refresh intervals (10 s at least). Polling stops while
+   the tab is hidden and a read can fail without the terminal being down, so a reading minutes old is shown with its
+   instant (live false), never as the current price. */
+const liveForMs = (refreshMs: number) => Math.max(10_000, 3 * refreshMs);
+
+/** The price: this session's fresh reading while the terminal answers, else the last one with its instant (live false) */
 export function peekThetaPrice(ticker: string): Held<ThetaPrice> | null {
   const key = `S:${symbolOf(ticker)}`;
-  const l = live.get(key) as ThetaPrice | undefined;
-  if (l && status !== 'down') return { value: l, live: true };
+  const l = live.peek(key) as ThetaPrice | undefined;
+  if (l && status !== 'down' && Date.now() - l.read < liveForMs(ttl())) return { value: l, live: true };
   const k = (l ?? kept[key]) as ThetaPrice | undefined;
   return k && k.price > 0 ? { value: k, live: false } : null;
 }
 
 export function peekThetaMark(ticker: string, expiry: string, strike: number, right: OptionRight): Held<ThetaMark> | null {
   const key = markKey(ticker, expiry, strike, right);
-  const l = live.get(key) as ThetaMark | undefined;
-  if (l && status !== 'down' && l.at != null) return { value: l, live: true };
+  const l = live.peek(key) as ThetaMark | undefined;
+  if (l && status !== 'down' && l.at != null && Date.now() - l.read < liveForMs(Math.max(5_000, ttl()))) return { value: l, live: true };
   const k = (l ?? kept[key]) as ThetaMark | undefined;
   return k && k.mark > 0 ? { value: k, live: false } : null;
 }
 
 /* one day's regular close, for settling a contract at its expiry */
-const closeOn = new Map<string, number | null>();
+const closeOn = new BoundedMap<string, number | null>(600);
 const closeAsked = new Set<string>();
 
 /** Ask for a name's regular close on one New York date (a past date; kept once read) */
@@ -342,7 +377,7 @@ export function peekThetaCloseOn(ticker: string, iso: string): number | null {
 
 /* today's one-minute bars of a name, for the alerts that read an indicator or run a script: 09:30 through the 16:00
    close bar, whole (an end of 16:00:00 kept only the prints stamped 16:00:00.000 in that bar) */
-const barsOf = new Map<string, { read: number; bars: Candle[] }>();
+const barsOf = new BoundedMap<string, { read: number; bars: Candle[] }>(60);
 const barsAsked = new Set<string>();
 const barsHere = () => thetaAllowedHere('/stock/history/ohlc');
 
@@ -383,16 +418,20 @@ export function peekThetaBars(ticker: string): Candle[] | null {
 
 export const thetaStatus = (): ThetaStatus => status;
 
-/** The regular session's move off a price reading, percent, and which close it is measured from */
-export function thetaMove(p: ThetaPrice | null | undefined, at = Date.now()): { pct: number; base: number; ext: number | null } | null {
-  if (!p || !(p.prevClose && p.prevClose > 0)) return null;
-  const m = nyMinutes(at);
-  /* after the bell with today's row written: the day is its close; the print past it is the after-hours move */
-  if (p.todayClose && p.todayClose > 0 && m >= 960) {
-    const ext = Math.abs(p.price - p.todayClose) >= 0.005 ? ((p.price - p.todayClose) / p.todayClose) * 100 : null;
-    return { pct: ((p.todayClose - p.prevClose) / p.prevClose) * 100, base: p.prevClose, ext };
+/** The day's move off a price reading, by the app's one convention (data/dayChange.ts moveOffCloses): the regular
+    session's change (`pct`, null while the close it needs is not written) and, outside the session, the last trade's
+    move from the last regular close (`ext`, labelled by `extWord`). A reading kept from before the closes were carried is
+    read off its prior close in the session only. */
+export function thetaMove(p: ThetaPrice | null | undefined, at = Date.now()): { pct: number | null; base: number | null; ext: number | null; extWord: ExtWord | null; regClose: number | null; regDate: string | null } | null {
+  if (!p) return null;
+  const closes = p.closes ?? [];
+  if (!closes.length) {
+    if (!(p.prevClose && p.prevClose > 0)) return null;
+    const mv = moveOffCloses(p.price, p.at, [{ date: '0000-00-00', close: p.prevClose }], at);
+    return mv.phase === 'regular' ? { pct: mv.dayPct, base: mv.base, ext: null, extWord: null, regClose: null, regDate: null } : null;
   }
-  return { pct: ((p.price - p.prevClose) / p.prevClose) * 100, base: p.prevClose, ext: null };
+  const mv = moveOffCloses(p.price, p.at, closes, at);
+  return { pct: mv.dayPct, base: mv.base, ext: mv.extPct, extWord: mv.extWord, regClose: mv.regClose, regDate: mv.regDate };
 }
 
 export function subscribeTheta(fn: () => void): () => void {

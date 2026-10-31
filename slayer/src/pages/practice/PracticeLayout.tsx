@@ -52,16 +52,16 @@ const PracticeLayout = () => {
         <dl className="flex flex-wrap gap-x-6 gap-y-2" data-shell-facts>
           {which === 'paper' && (
             <>
-              <Fact label="Prices" testId="source" title="Each contract’s live NBBO from ThetaData; orders fill only on a fresh two-sided quote in the options session">
-                {away ? <span className="text-warn">ThetaData offline</span> : 'ThetaData · live NBBO'}
+              <Fact label="Prices" testId="source" title="Each contract’s live NBBO; orders fill only on a fresh two-sided quote in the options session">
+                {away ? <span className="text-warn">Live data offline</span> : 'Live quotes'}
               </Fact>
               <Fact label="Clock">Today · ET</Fact>
             </>
           )}
           {which === 'backtest' && (
             <>
-              <Fact label="Prices" testId="source" title="ThetaData’s recorded NBBO, minute by minute: buys at the ask, sells at the bid">
-                {away ? <span className="text-warn">ThetaData offline</span> : 'ThetaData · recorded NBBO'}
+              <Fact label="Prices" testId="source" title="The recorded NBBO, minute by minute: buys at the ask, sells at the bid">
+                {away ? <span className="text-warn">Live data offline</span> : 'Recorded quotes'}
               </Fact>
               <Fact label="Clock">A past day · ET</Fact>
             </>

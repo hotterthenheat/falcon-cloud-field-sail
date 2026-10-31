@@ -1,4 +1,11 @@
+export type TerminalState = { state: 'starting' | 'up' | 'down' | 'session_lost' | 'unauthenticated' | 'login_failed'; at: number; pid: number | null; detail: string };
 export function findJar(): string | null;
 export function superviseTheta(opts?: { log?: (message: string) => void; warm?: boolean }): (() => void) | null;
 export const WARM: string[];
 export function warmPath(symbol: string): string;
+export const STATE_FILE: string;
+export function terminalState(): TerminalState;
+export function readTerminalState(file?: string): TerminalState | null;
+export function childEnv(from?: Record<string, string | undefined>, login?: Record<string, string>): Record<string, string>;
+export function loginRefused(text: string): boolean;
+export function lockHeld(file?: string): boolean;

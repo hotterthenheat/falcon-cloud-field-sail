@@ -1,0 +1,78 @@
+indicator,symbol,test,effect,ci_lo,ci_hi,p_boot,p_normal,p_holm,unit
+Permutation entropy,SPY,"next-60m log RV, dR2 over intraday HAR",-0.003265,-0.02929,0.02185,0.8170,8.02e-01,1.0000,pp R2
+Sample entropy,SPY,"next-60m log RV, dR2 over intraday HAR",0.02901,-0.0108,0.07003,0.1490,1.59e-01,1.0000,pp R2
+Market Lyapunov,SPY,"next-60m log RV, dR2 over intraday HAR",-0.002034,-0.007397,0.003983,0.5070,4.83e-01,1.0000,pp R2
+Phase sync R (vol),SPY,"next-60m log RV, dR2 over intraday HAR",0.00147,-0.02003,0.02367,0.9010,8.95e-01,1.0000,pp R2
+Viscosity (Amihud),SPY,"next-60m log RV, dR2 over HAR + rel. volume",0.001428,-0.08299,0.08621,0.9940,9.74e-01,1.0000,pp R2
+Viscosity (Kyle lambda),SPY,"next-60m log RV, dR2 over HAR + rel. volume",0.04569,-0.02644,0.12,0.2260,2.21e-01,1.0000,pp R2
+DFA / Hurst persistence,SPY,"momentum continuation, top-bottom tercile",-0.4453,-1.433,0.5425,0.4180,3.77e-01,1.0000,bps/30m
+Permutation entropy (trend),SPY,"momentum continuation, top-bottom tercile",0.2601,-0.7219,1.279,0.6210,6.10e-01,1.0000,bps/30m
+Phase synchronization,SPY,"next-30m return, top-bottom tercile",-0.4666,-1.537,0.6527,0.4210,4.03e-01,1.0000,bps/30m
+Critical transition (AR1 rise),SPY,"large next-60m move, AUC gain over HAR",-0.0006576,-0.001606,0.000278,0.1820,1.71e-01,1.0000,AUC
+Escape velocity,SPY,"breakout continuation, top-bottom tercile",-0.4295,-1.264,0.4073,0.2960,3.14e-01,1.0000,sigma/30m
+Permutation entropy,QQQ,"next-60m log RV, dR2 over intraday HAR",-0.007135,-0.03035,0.01585,0.5640,5.45e-01,1.0000,pp R2
+Sample entropy,QQQ,"next-60m log RV, dR2 over intraday HAR",0.008144,-0.008287,0.02472,0.3190,3.33e-01,1.0000,pp R2
+Market Lyapunov,QQQ,"next-60m log RV, dR2 over intraday HAR",0.02767,-0.02944,0.08475,0.3370,3.42e-01,1.0000,pp R2
+Phase sync R (vol),QQQ,"next-60m log RV, dR2 over intraday HAR",0.004286,-0.006911,0.01578,0.4560,4.59e-01,1.0000,pp R2
+Viscosity (Amihud),QQQ,"next-60m log RV, dR2 over HAR + rel. volume",0.09808,-0.01796,0.2153,0.0870,9.93e-02,1.0000,pp R2
+Viscosity (Kyle lambda),QQQ,"next-60m log RV, dR2 over HAR + rel. volume",0.1259,0.03042,0.2214,0.0070,9.75e-03,0.5850,pp R2
+DFA / Hurst persistence,QQQ,"momentum continuation, top-bottom tercile",-0.5669,-1.806,0.7419,0.3830,3.83e-01,1.0000,bps/30m
+Permutation entropy (trend),QQQ,"momentum continuation, top-bottom tercile",0.5625,-0.7143,1.863,0.3820,3.92e-01,1.0000,bps/30m
+Phase synchronization,QQQ,"next-30m return, top-bottom tercile",-0.615,-2.01,0.8423,0.4280,3.98e-01,1.0000,bps/30m
+Critical transition (AR1 rise),QQQ,"large next-60m move, AUC gain over HAR",-0.0002741,-0.0007725,0.0001834,0.2400,2.61e-01,1.0000,AUC
+Escape velocity,QQQ,"breakout continuation, top-bottom tercile",-0.3823,-1.199,0.4864,0.3970,3.74e-01,1.0000,sigma/30m
+Permutation entropy,SPX,"next-60m log RV, dR2 over intraday HAR",0.1355,0.06103,0.2141,0.0010,5.22e-04,0.0345,pp R2
+Sample entropy,SPX,"next-60m log RV, dR2 over intraday HAR",-0.01337,-0.1236,0.09371,0.7880,8.09e-01,1.0000,pp R2
+Market Lyapunov,SPX,"next-60m log RV, dR2 over intraday HAR",0.042,-0.03725,0.1236,0.2990,3.06e-01,1.0000,pp R2
+Phase sync R (vol),SPX,"next-60m log RV, dR2 over intraday HAR",-0.004344,-0.01783,0.009387,0.5340,5.31e-01,1.0000,pp R2
+DFA / Hurst persistence,SPX,"momentum continuation, top-bottom tercile",-0.5619,-1.502,0.3922,0.2490,2.45e-01,1.0000,bps/30m
+Permutation entropy (trend),SPX,"momentum continuation, top-bottom tercile",-0.1492,-1.212,0.8159,0.7940,7.73e-01,1.0000,bps/30m
+Phase synchronization,SPX,"next-30m return, top-bottom tercile",-0.4977,-1.606,0.6549,0.3890,3.88e-01,1.0000,bps/30m
+Critical transition (AR1 rise),SPX,"large next-60m move, AUC gain over HAR",-0.001369,-0.003116,0.000208,0.1020,1.06e-01,1.0000,AUC
+Permutation entropy,NVDA,"next-60m log RV, dR2 over intraday HAR",-0.005037,-0.01558,0.004894,0.3320,3.35e-01,1.0000,pp R2
+Sample entropy,NVDA,"next-60m log RV, dR2 over intraday HAR",0.006745,-0.01674,0.03054,0.5740,5.76e-01,1.0000,pp R2
+Market Lyapunov,NVDA,"next-60m log RV, dR2 over intraday HAR",0.01654,-0.0103,0.04489,0.2500,2.40e-01,1.0000,pp R2
+Phase sync R (vol),NVDA,"next-60m log RV, dR2 over intraday HAR",0.06781,0.01422,0.1215,0.0150,1.32e-02,0.7387,pp R2
+Viscosity (Amihud),NVDA,"next-60m log RV, dR2 over HAR + rel. volume",0.05158,0.02008,0.08594,0.0020,2.14e-03,0.1348,pp R2
+Viscosity (Kyle lambda),NVDA,"next-60m log RV, dR2 over HAR + rel. volume",0.03371,0.007972,0.06036,0.0090,1.17e-02,0.6641,pp R2
+DFA / Hurst persistence,NVDA,"momentum continuation, top-bottom tercile",-1.968,-4.289,0.47,0.1080,1.05e-01,1.0000,bps/30m
+Permutation entropy (trend),NVDA,"momentum continuation, top-bottom tercile",0.6442,-1.85,3.142,0.6360,6.13e-01,1.0000,bps/30m
+Phase synchronization,NVDA,"next-30m return, top-bottom tercile",-0.8312,-3.687,2.273,0.5960,5.85e-01,1.0000,bps/30m
+Critical transition (AR1 rise),NVDA,"large next-60m move, AUC gain over HAR",2.521e-05,-0.0007899,0.0008413,0.9420,9.52e-01,1.0000,AUC
+Escape velocity,NVDA,"breakout continuation, top-bottom tercile",0.4926,-0.2473,1.33,0.2180,2.21e-01,1.0000,sigma/30m
+Permutation entropy,AAPL,"next-60m log RV, dR2 over intraday HAR",-0.01734,-0.04026,0.003061,0.1040,1.17e-01,1.0000,pp R2
+Sample entropy,AAPL,"next-60m log RV, dR2 over intraday HAR",0.04921,-0.002117,0.1048,0.0640,7.11e-02,1.0000,pp R2
+Market Lyapunov,AAPL,"next-60m log RV, dR2 over intraday HAR",-0.000673,-0.01605,0.01441,0.9210,9.31e-01,1.0000,pp R2
+Phase sync R (vol),AAPL,"next-60m log RV, dR2 over intraday HAR",-0.0009046,-0.01388,0.01221,0.8970,8.92e-01,1.0000,pp R2
+Viscosity (Amihud),AAPL,"next-60m log RV, dR2 over HAR + rel. volume",-0.01865,-0.06123,0.0249,0.3950,3.96e-01,1.0000,pp R2
+Viscosity (Kyle lambda),AAPL,"next-60m log RV, dR2 over HAR + rel. volume",0.008809,-0.02382,0.04292,0.5780,6.05e-01,1.0000,pp R2
+DFA / Hurst persistence,AAPL,"momentum continuation, top-bottom tercile",0.6678,-0.8664,2.175,0.4020,3.89e-01,1.0000,bps/30m
+Permutation entropy (trend),AAPL,"momentum continuation, top-bottom tercile",-1.038,-2.456,0.3233,0.1420,1.43e-01,1.0000,bps/30m
+Phase synchronization,AAPL,"next-30m return, top-bottom tercile",0.2656,-1.584,2.199,0.8110,7.83e-01,1.0000,bps/30m
+Critical transition (AR1 rise),AAPL,"large next-60m move, AUC gain over HAR",-0.0006675,-0.007077,0.005795,0.8500,8.39e-01,1.0000,AUC
+Escape velocity,AAPL,"breakout continuation, top-bottom tercile",0.3245,-0.3013,1.003,0.3010,3.29e-01,1.0000,sigma/30m
+Grav. wave scanner (vol spillover),QQQ->SPY,"next-60m log RV, dR2 over own HAR",0.04677,-0.01886,0.109,0.1680,1.52e-01,1.0000,pp R2
+Grav. wave scanner (vol spillover),NVDA->SPY,"next-60m log RV, dR2 over own HAR",0.1469,0.03079,0.2554,0.0070,1.03e-02,0.6003,pp R2
+Grav. wave scanner (vol spillover),SPY->QQQ,"next-60m log RV, dR2 over own HAR",0.1101,0.01017,0.2146,0.0320,3.47e-02,1.0000,pp R2
+Grav. wave scanner (vol spillover),NVDA->QQQ,"next-60m log RV, dR2 over own HAR",0.1847,0.0695,0.3006,0.0030,1.73e-03,0.1108,pp R2
+Grav. wave scanner (vol spillover),SPY->NVDA,"next-60m log RV, dR2 over own HAR",0.1653,0.06162,0.2645,0.0005,1.40e-03,0.0910,pp R2
+Grav. wave scanner (vol spillover),QQQ->NVDA,"next-60m log RV, dR2 over own HAR",0.1306,0.02756,0.2257,0.0150,9.78e-03,0.5850,pp R2
+Grav. wave scanner (vol spillover),SPY->AAPL,"next-60m log RV, dR2 over own HAR",1.042,0.713,1.38,0.0005,9.05e-10,0.0000,pp R2
+Grav. wave scanner (vol spillover),QQQ->AAPL,"next-60m log RV, dR2 over own HAR",0.8658,0.5412,1.189,0.0005,1.58e-07,0.0000,pp R2
+Grav. wave scanner (vol spillover),NVDA->AAPL,"next-60m log RV, dR2 over own HAR",0.6159,0.311,0.9207,0.0005,7.51e-05,0.0051,pp R2
+Vol half-life (AR1),SPY,"next-day log RV, MSE cut vs 20-day RV",33.42,19.18,50.87,0.0005,3.57e-05,0.0025,% MSE
+Vol half-life (HAR),SPY,"next-day log RV, MSE cut vs 20-day RV",35.84,21.98,53.44,0.0005,7.96e-06,0.0006,% MSE
+Vol half-life (AR1),QQQ,"next-day log RV, MSE cut vs 20-day RV",28.28,15.66,43.65,0.0005,7.48e-05,0.0051,% MSE
+Vol half-life (HAR),QQQ,"next-day log RV, MSE cut vs 20-day RV",32.05,19.96,47.82,0.0005,6.49e-06,0.0005,% MSE
+Vol half-life (AR1),SPX,"next-day log RV, MSE cut vs 20-day RV",32.65,18.4,49.91,0.0005,4.87e-05,0.0034,% MSE
+Vol half-life (HAR),SPX,"next-day log RV, MSE cut vs 20-day RV",35.39,21.7,52.78,0.0005,8.08e-06,0.0006,% MSE
+Vol half-life (AR1),NVDA,"next-day log RV, MSE cut vs 20-day RV",8.69,-5.715,26.75,0.2460,2.94e-01,1.0000,% MSE
+Vol half-life (HAR),NVDA,"next-day log RV, MSE cut vs 20-day RV",20.84,9.256,36.39,0.0010,2.61e-03,0.1616,% MSE
+Vol half-life (AR1),AAPL,"next-day log RV, MSE cut vs 20-day RV",19.39,5.594,38.56,0.0005,2.12e-02,1.0000,% MSE
+Vol half-life (HAR),AAPL,"next-day log RV, MSE cut vs 20-day RV",25.11,10.89,45.63,0.0005,4.61e-03,0.2809,% MSE
+Gravity well (pin to max-gamma strike),SPY,close distance to well minus to mirror strike,0.07195,0.007693,0.1414,0.0360,3.50e-02,1.0000,% of spot
+Net dealer gamma (vol),SPY,"day log RV, dR2 over daily HAR + VIX",3.664,2.162,5.222,0.0005,2.67e-06,0.0002,pp R2
+Gravity pull direction,SPY,"open-to-close return, top-bottom tercile",-14.51,-33.92,4.355,0.1240,1.37e-01,1.0000,bps/day
+Gravity well (pin to max-gamma strike),QQQ,close distance to well minus to mirror strike,0.03705,-0.04546,0.1267,0.4050,3.99e-01,1.0000,% of spot
+Net dealer gamma (vol),QQQ,"day log RV, dR2 over daily HAR + VIX",4.867,3.37,6.324,0.0005,1.05e-10,0.0000,pp R2
+Gravity pull direction,QQQ,"open-to-close return, top-bottom tercile",-12.33,-34.84,9.125,0.2760,2.72e-01,1.0000,bps/day

@@ -2,12 +2,19 @@ import { useEffect, useState } from 'react';
 import { pageHidden, thetaGet } from './thetaFeed';
 import { thetaUseHere } from './theta';
 import type { DeskSession } from './deskSession';
+import { nyWallStamp } from '../core/nyTime';
+import { printIsCurrent } from '../core/session';
 
 const INDEX = new Set(['SPX', 'RUT', 'NDX', 'VIX', 'XSP']);
 
 interface SessionQuote {
   bid: number;
   ask: number;
+  /** The quote's own instant (epoch ms; 0 when the feed sent none) */
+  at: number;
+  /** Quoted in the session trading now (core/session.ts). Overnight the feed's last stock quote is the 20:00 one from
+      the evening before (the overnight venues are not on it), so it is not current and is shown with its time. */
+  current: boolean;
 }
 
 /** ThetaData's live bid and ask, every 15 s while the tab is in view. Used when a session has no prints, so the cash
@@ -30,7 +37,8 @@ export function useSessionQuote(ticker: string, session: DeskSession, needed: bo
         const row = Array.isArray(res.data) ? (res.data[0] as Record<string, unknown> | undefined) : undefined;
         const bid = Number(row?.bid);
         const ask = Number(row?.ask);
-        if (bid > 0 && ask >= bid) setQuote({ bid, ask });
+        const at = nyWallStamp(row?.timestamp);
+        if (bid > 0 && ask >= bid) setQuote({ bid, ask, at, current: printIsCurrent(at) });
         else if (!res.error) setQuote(null);
       });
     };

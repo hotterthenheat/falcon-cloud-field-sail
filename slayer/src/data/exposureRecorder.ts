@@ -29,6 +29,7 @@ import path from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { nyIsoDate, nyParts, nyWallTime } from '../core/nyTime';
 import { isTradingDay } from '../core/calendar';
+import { phaseAt, sessionAt } from '../core/session';
 import { ALL, closeOf, placeSeg, readAnswer, spanOf, type KeptSeries } from './book/exposureSegs';
 
 export const EXPOSURE_FORMAT = 'exposure-day/1';
@@ -130,6 +131,10 @@ export interface RecorderStatus {
   passes: number;
   /** the vendor calls of the last ten passes, per pass */
   recentVendor: number[];
+  /** cuts the passes did not reach before their deadline, since start, and the passes that missed any (a recorder
+      starved of vendor slots shows here; docs/exposure-recorder.md) */
+  missedTotal: number;
+  passesMissing: number;
 }
 
 export interface Recorder {
@@ -153,14 +158,19 @@ export const cleanTicker = (raw: unknown): string | null => {
 };
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-/** The recorder's slot for an instant: a trading day's minute it reads, or null */
+/** The recorder's slot for an instant: a trading day's minute it reads, or null. By the one session rule
+    (core/session.ts): every minute while the index and ETF options trade their regular session (09:30–16:15; 13:15 on
+    an early close), every `extEvery` minutes in the pre-market and after hours (04:00–09:30, to 20:00; to 17:00 on an
+    early close). Not overnight: the vendor's per-strike exposures are struck off the stock price, which its tape does
+    not carry 20:00–04:00 (its bars and stock state stop at 20:00), so an overnight read would repeat the 19:59 book. */
 export function slotAt(ms: number, extEvery: number): { day: string; minute: number; rth: boolean } | null {
   const p = nyParts(ms);
   if (!isTradingDay(new Date(p.year, p.month - 1, p.day))) return null;
   const minute = p.hour * 60 + p.minute;
   const day = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
-  if (minute >= RTH_FROM && minute < RTH_TO) return { day, minute, rth: true };
-  if (extEvery > 0 && minute >= EXT_FROM && minute < EXT_TO && minute % extEvery === 0) return { day, minute, rth: false };
+  if (sessionAt(ms, 'etfOption').open) return { day, minute, rth: true };
+  const ph = phaseAt(ms);
+  if (extEvery > 0 && (ph === 'pre' || ph === 'post') && minute % extEvery === 0) return { day, minute, rth: false };
   return null;
 }
 
@@ -231,10 +241,29 @@ const alive = (pid: number): boolean => {
   }
 };
 
+/* On Windows a rename over a file another process has open (a reader serving the day, an antivirus scan, the search
+   indexer) fails with EPERM, EACCES or EBUSY for a moment: try again a few times before giving up. */
+const RENAME_RETRY = new Set(['EPERM', 'EACCES', 'EBUSY']);
+export function renameRetrying(from: string, to: string, rename: (a: string, b: string) => void = fs.renameSync): void {
+  for (let i = 0; ; i++) {
+    try {
+      rename(from, to);
+      return;
+    } catch (e) {
+      if (i >= 5 || !RENAME_RETRY.has((e as NodeJS.ErrnoException).code ?? '')) {
+        fs.rmSync(from, { force: true });
+        throw e;
+      }
+      /* a short synchronous wait (20, 40 … 320 ms): the callers are synchronous */
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20 * 2 ** i);
+    }
+  }
+}
+
 function writeAtomic(file: string, text: string | Buffer): void {
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, text);
-  fs.renameSync(tmp, file);
+  renameRetrying(tmp, file);
 }
 
 /** Takes the folder's recorder lock, or says who holds it. A lock not refreshed for two minutes is stale. */
@@ -454,6 +483,8 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
   let backoffUntil = 0;
   let turn = 0;
   let passes = 0;
+  let missedTotal = 0;
+  let passesMissing = 0;
   let last: PassReport | null = null;
   const recentVendor: number[] = [];
 
@@ -550,6 +581,12 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
       rep.took = clock() - t0;
       running = false;
       passes += 1;
+      if (rep.missed > 0) {
+        missedTotal += rep.missed;
+        passesMissing += 1;
+        /* once, then every tenth such pass: a recorder starved of slots says so without filling the log */
+        if (!rep.fault && passesMissing % 10 === 1) log(`[exposure] ${rep.slot}: the pass ran out of time with ${rep.missed} cut(s) unread (${passesMissing} such passes since start)`);
+      }
       last = rep;
       recentVendor.push(rep.vendor);
       if (recentVendor.length > 10) recentVendor.shift();
@@ -668,6 +705,8 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
       last,
       passes,
       recentVendor: [...recentVendor],
+      missedTotal,
+      passesMissing,
     }),
     tick,
     prune,

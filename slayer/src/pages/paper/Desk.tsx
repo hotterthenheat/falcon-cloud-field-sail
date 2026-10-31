@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { X } from 'lucide-react';
+import { extTag, optionProductOf, productHours, sessionAt, whenWords } from '../../core/session';
 import type { KeyLevels } from '../../types/gex';
 import type { ChartOverlays } from '../../components/gex/StrikeChart';
 import { TraceGrid } from '../../components/trace/TraceBox';
@@ -34,6 +35,8 @@ import type { TradeMark } from '../../components/gex/StrikeChart';
 import { chartMenu, planOfMark, positionLines, type Hands } from './deskHands';
 import { buildExposureProfile } from '../../data/exposure';
 import { peekChange, snapshotOf, useBookRev } from '../../data/uwBook';
+import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
+import { closeMoveTitle, signedPct } from '../../data/dayChange';
 import { nameGoesUp } from '../../data/review/engine';
 import { contractKey, contractWords, type ContractId, type Right } from '../../data/review/quotes';
 import { companyName } from '../../data/tickers';
@@ -42,7 +45,7 @@ import { bankedOf, comboRefusal, gapOf, openPreview, optLadderRoom, optLadderTak
 import { putsSecured, readRules, rulesOf, sellSays } from '../../data/paper/rules';
 import { LIFE, PAPER_INDEXES, feedOffline, isPaperIndex, ivOf, liveDeskChain, paperIndex, spotRead, listedNow, spotOf, spotForAskNow, spotForBidNow, stepOf } from '../../data/paper/feed';
 import { futWords } from '../../data/paper/products';
-import { dayBeginsAt, nyMomentWords } from '../../data/paper/clock';
+import { dayBeginsAt, isVixRoot, nyMomentWords, vixSchedule } from '../../data/paper/clock';
 import { nyClock } from '../../core/nyTime';
 import { amendOrder, attachOpt, breakevenOrder, cancelOrder, cancelWorking, closeOpt, flattenAccount, liveMarket, placeComboOrder, placeOptOrder, readPaper, rebaseOrder, setInHand, trailOrder, usePaper } from '../../data/paper/store';
 
@@ -50,7 +53,7 @@ import { amendOrder, attachOpt, breakevenOrder, cancelOrder, cancelWorking, clos
    has no book of its own, so the overlays that read one are not offered, and no daily candle. */
 const NAME_TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '30m', '1h', '1D'];
 const INDEX_TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '30m', '1h'];
-const NAME_OVERLAYS: (keyof ChartOverlays)[] = ['volume', 'levels', 'trails', 'session', 'cone', 'volDrift'];
+const NAME_OVERLAYS: (keyof ChartOverlays)[] = ['volume', 'levels', 'trails', 'session', 'cone', 'volDrift', 'flow', 'netDrift'];
 const INDEX_OVERLAYS: (keyof ChartOverlays)[] = ['volume', 'session'];
 /** Strikes each side of the chain's centre, the least the chain keeps under the account card, and the column's width */
 const CHAIN_EACH = 20;
@@ -198,18 +201,25 @@ const PaperDesk = () => {
   const m = liveMarket();
   const v = viewOf(account, m);
   const rules = readRules(account, v, m);
-  const lock = !holding ? 'The accounts are open in another tab — take them here to trade' : null;
+  const lock = !holding ? 'Open in another tab — use them here to trade (the banner above)' : null;
 
   /* ---- THE NAME: its chain ---- */
   const spot = spotOf(name);
   const expiries = listedNow(name, m.now);
   const exp = expiry && expiries.some(e => e.iso === expiry) ? expiry : ((expiries.find(e => e.dte >= 5) ?? expiries[0])?.iso ?? null);
-  const expiryOptions: DropdownOption<string>[] = expiries.map(e => ({ value: e.iso, label: `${e.label} · ${e.dte}d`, hint: e.dte === 0 ? 'Expires at today’s 16:00 ET' : `${e.kind === 'monthly' ? 'The monthly' : e.kind === 'daily' ? 'A daily' : 'A weekly'}` }));
+  const vix = isVixRoot(name);
+  const shortDate = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const expiryOptions: DropdownOption<string>[] = expiries.map(e => ({
+    value: e.iso,
+    label: `${e.label} · ${e.dte}d`,
+    hint: vix ? `Last trades ${shortDate(vixSchedule(e.iso).lastTrade)} at the close · settles on ${shortDate(vixSchedule(e.iso).settleDay)}’s opening print` : e.dte === 0 ? 'Expires at today’s close ET' : `${e.kind === 'monthly' ? 'The monthly' : e.kind === 'daily' ? 'A daily' : 'A weekly'}`,
+  }));
   /* the chain is laddered off a price that stays put, and only re-centred once the name has run most of the ladder away */
   const ck = `${name}|${exp}`;
   if (exp) {
     const step = stepOf(name, exp);
-    if (!centreRef.current || centreRef.current.key !== ck || Math.abs(spot - centreRef.current.at) > step * (CHAIN_EACH - 4)) centreRef.current = { key: ck, at: spot };
+    /* a centre is only ever a real price: one taken before the name's price was in (NaN, 0) is taken again once it is */
+    if (!centreRef.current || centreRef.current.key !== ck || !(centreRef.current.at > 0) || Math.abs(spot - centreRef.current.at) > step * (CHAIN_EACH - 4)) centreRef.current = { key: ck, at: spot };
   }
   /* The chain as the weigher draws it, on the Live Chart's own quotes (feed.ts liveDeskChain) */
   const chain = exp ? liveDeskChain(name, exp, m.now, CHAIN_EACH, centreRef.current?.at) : null;
@@ -307,7 +317,7 @@ const PaperDesk = () => {
       },
       onTradeMark: mark => setMarkOrder({ name, mark, qty: quickOf(desks) }),
       /* what the name has banked this trading day (since 17:00 ET), and what is open on it — in plain words */
-      corner: <PnlChips name={name} banked={bankedOf(account, name) - bankedOf(account, name, dayBeginsAt(account.day))} open={positions.reduce((x, p) => x + p.pnl, 0)} />,
+      corner: <PnlChips name={name} banked={bankedOf(account, name) - bankedOf(account, name, dayBeginsAt(account.day))} open={positions.length ? positions.reduce((x, p) => x + p.pnl, 0) : null} />,
     };
     built.set(name, made);
     return made;
@@ -402,6 +412,11 @@ const PaperDesk = () => {
     <>
       {accountCard}
       {panelSwitch}
+      {vix && exp && (
+        <p className="text-t11 leading-snug text-warn" data-paper-vix-note>
+          VIX options stop trading Tuesday: the {shortDate(exp)} expiry last trades at {shortDate(vixSchedule(exp).lastTrade)}’s close and settles on {shortDate(vixSchedule(exp).settleDay)}’s VIX opening print.
+        </p>
+      )}
       {panel === 'build' ? <StrategyBuilder desk={strategyDesk} /> : <OptionsChain
         ticker={name}
         chain={chain}
@@ -417,7 +432,7 @@ const PaperDesk = () => {
         /* keyed by whether the strike is held: a buy that fills turns the dropdown to the position with a fresh price box */
         empty={
           feedOffline() ? (
-            <EmptyBox title="ThetaData offline — reconnecting" reason="The chain fills with each contract’s live NBBO once the terminal answers." />
+            <EmptyBox title="Live data offline — reconnecting" reason="The chain fills with each contract’s live quotes once the feed answers." />
           ) : expiries.length ? (
             <LoadingBox shape="table" rows={12} label="Loading the chain" />
           ) : (
@@ -441,9 +456,10 @@ const PaperDesk = () => {
   const marginCell = (p: MarkedOpt) => {
     const l = p.margin;
     if (!l) return <span className="text-textMuted">{p.dir > 0 ? 'paid' : '—'}</span>;
-    if (l.keys[0] !== p.key) return <span className="text-textMuted" title={l.words}>with the {contractWords(v.opt.find(x => x.key === l.keys[0])?.contract ?? p.contract).replace(`${p.contract.ticker} `, '')}</span>;
+    if (l.keys[0] !== p.key) return <span className="text-textMuted" title={l.words}>{l.pair ? `${l.pair}, ` : ''}with the {contractWords(v.opt.find(x => x.key === l.keys[0])?.contract ?? p.contract).replace(`${p.contract.ticker} `, '')}</span>;
     return (
-      <span className="text-textPrimary" title={l.words}>
+      <span className="text-textPrimary" title={l.words} data-margin-line={l.pair ?? l.kind}>
+        {l.pair ? <span className="text-t10 text-textMuted">{l.pair} </span> : null}
         {usd(l.held, 0)}
         {l.kind === 'naked' ? <span className="text-t10 text-warn"> est.</span> : null}
       </span>
@@ -456,7 +472,7 @@ const PaperDesk = () => {
       render: r => (
         <span className="inline-flex items-center gap-1.5 min-w-0">
           <ContractLabel contract={contractWords(r.p.contract)} right={r.p.contract.right} logo={r.p.contract.ticker} size="sm" />
-          {r.p.dir < 0 && <span className="font-mono text-t9 font-bold uppercase tracking-wider text-bear" data-position-short>{r.p.comboName ? r.p.comboName : r.p.contract.short != null ? 'credit spread' : r.p.secured ? 'short · cash-secured' : 'short'}</span>}
+          {r.p.dir < 0 && <span className="font-mono text-t9 font-bold uppercase tracking-wider text-bear" data-position-short>{r.p.comboName ? r.p.comboName : r.p.contract.short != null ? 'credit spread' : r.p.secured ? 'short · cash-secured' : r.p.margin?.pair ? `short · ${r.p.margin.pair}` : 'short'}</span>}
         </span>
       ),
     },
@@ -465,7 +481,7 @@ const PaperDesk = () => {
     { key: 'margin', header: 'Margin', align: 'right', render: r => marginCell(r.p) },
     { key: 'avg', header: 'In at', align: 'right', render: r => <span className="text-textSecondary" title={r.p.dir < 0 ? 'What it was sold at' : 'What was paid'}>{r.p.dir < 0 ? 'sold ' : ''}{r.p.avg.toFixed(2)}</span> },
     { key: 'now', header: 'Bid · ask', align: 'right', render: r => <span className="text-textPrimary">{`${r.p.quote.bid.toFixed(2)} · ${r.p.quote.ask.toFixed(2)}`}</span> },
-    { key: 'carry', header: 'Decay a day', align: 'right', render: r => <span className={r.p.dir < 0 ? 'text-bull' : 'text-textSecondary'} title={r.p.dir < 0 ? 'What its decay pays a day, all else equal — a short gains it' : 'What the contract loses a day, all else equal'}>{r.p.dir < 0 ? '+' : ''}{usd(Math.abs(r.p.quote.theta) * 100 * r.p.qty)}</span> },
+    { key: 'carry', header: 'Decay a session', align: 'right', render: r => <span className={r.p.dir < 0 ? 'text-bull' : 'text-textSecondary'} title={r.p.dir < 0 ? 'What its decay pays over one trading session, all else equal — a short gains it' : 'What the contract loses over one trading session, all else equal'}>{r.p.dir < 0 ? '+' : ''}{usd(Math.abs(r.p.quote.theta) * 100 * r.p.qty)}</span> },
     {
       key: 'close',
       header: '',
@@ -503,6 +519,11 @@ const PaperDesk = () => {
       render: r =>
         r.o.status === 'working' ? (
           <span className="text-silver font-semibold">
+            {r.o.filled ? (
+              <span className="text-textPrimary" title="A fill takes at most the size the quote shows — the rest waits for the next one" data-order-partial={`${r.o.filled}/${r.o.filled + r.o.qty}`}>
+                {r.o.filled} of {r.o.filled + r.o.qty} filled · {r.o.qty} left ·{' '}
+              </span>
+            ) : null}
             Working · {r.o.tif === 'day' ? 'today only' : 'until cancelled'}
             {gapOf(r.o, m.now) != null ? <span className="font-normal text-textMuted"> · the minutes it missed are being checked</span> : null}
             {r.o.unjudged ? (
@@ -513,9 +534,12 @@ const PaperDesk = () => {
             ) : null}
           </span>
         ) : r.o.status === 'filled' ? (
-          <span className="text-textPrimary">Filled at {r.o.fillPrice?.toFixed(2)}</span>
+          <span className="text-textPrimary">
+            {r.o.filled ? `Filled ${r.o.qty} in pieces, the last at` : 'Filled at'} {r.o.fillPrice?.toFixed(2)}
+          </span>
         ) : (
           <span className="text-textMuted" title={r.o.why}>
+            {r.o.filled ? <span className="text-textSecondary">{r.o.filled} filled, {r.o.qty} not · </span> : null}
             {r.o.status === 'refused' ? 'Refused' : 'Cancelled'} — {r.o.why}
           </span>
         ),
@@ -542,15 +566,47 @@ const PaperDesk = () => {
   ];
 
   const nameRead = spotRead(name);
+  const headHeld = useThetaPrice(name).held;
+  const headMove = thetaMove(headHeld?.value);
+  const headPx = headHeld && headHeld.value.price > 0 ? headHeld.value.price : null;
+  const headPct = headMove ? headMove.pct : peekChange(name);
   const picker = (
     <span className="inline-flex items-center gap-2 font-mono text-t12 tnum min-w-0" data-paper-picker={name}>
       <TickerPicker value={name} onChange={n => setName(n)} allowed={allowed} indexPrice={s => spotOf(s)} indexes={allowed ? PAPER_INDEXES.filter(x => allowed.includes(x.symbol)) : PAPER_INDEXES} />
-      <span className="text-textPrimary">{deskName.priceWords}</span>
-      <span className={`text-t11 font-semibold ${deskName.dayPct >= 0 ? 'text-bull' : 'text-bear'}`}>
-        {deskName.dayPct >= 0 ? '▲ +' : '▼ '}
-        {deskName.dayPct.toFixed(2)}%
+      {/* the app's one convention (data/dayChange.ts moveOffCloses), as the rail: the last trade, the regular session's
+          day change, the extended move apart. The desk's own working price (the name's NBBO mid) is in the hover. */}
+      <span className="text-textPrimary" title={`Last trade${headMove?.ext != null ? `, ${headMove.extWord}` : ''}. The desk prices the name at its quote mid, ${deskName.priceWords}.`} data-paper-price>
+        {headPx != null ? headPx.toFixed(2) : deskName.priceWords}
       </span>
+      {headPct != null && (
+        <span className={`text-t11 font-semibold ${headPct >= 0 ? 'text-bull' : 'text-bear'}`} title={headMove ? closeMoveTitle(headMove) : 'The day’s change'} data-paper-day>
+          {headPct >= 0 ? '▲ ' : '▼ '}
+          {signedPct(headPct)}
+        </span>
+      )}
+      {headMove?.ext != null && (
+        <span className="text-t10 text-textMuted" title={closeMoveTitle(headMove)} data-paper-ext>
+          {extTag(headMove.extWord)} {signedPct(headMove.ext)}
+        </span>
+      )}
       {nameRead?.kept && <AsOf at={nameRead.takenAt} />}
+      {/* the name's options session (core/session.ts): an equity option's quote outside 09:30–16:00 is not live, so the
+          desk says when they trade rather than show a stale quote as live; index options say they are in global hours */}
+      {(() => {
+        const os = sessionAt(Date.now(), optionProductOf(name));
+        if (os.window?.kind === 'gth' || os.window?.kind === 'curb')
+          return (
+            <span className="text-t10 text-textMuted" title="Index options trade Cboe's global trading hours 8:15 PM–9:25 AM ET and the 4:15–5:00 PM curb. Orders fill in the regular session." data-paper-options-hours={os.window.kind}>
+              {os.window.kind === 'gth' ? 'Index options · global hours' : 'Index options · curb'}
+            </span>
+          );
+        if (os.open) return null;
+        return (
+          <span className="text-t10 text-textMuted" title={`${productHours(os.product, os.isEarlyClose)}. Quotes shown are the last of the regular session; nothing fills until it opens${os.next ? ` (${whenWords(os.next.at)})` : ''}.`} data-paper-options-hours="shut">
+            {productHours(os.product)}
+          </span>
+        );
+      })()}
     </span>
   );
   const floorRule = rules.find(r => r.id === 'drawdown');
@@ -558,14 +614,14 @@ const PaperDesk = () => {
   return (
     <div className="flex flex-col gap-2.5" data-paper-desk={account.id}>
       {!holding && elsewhere && <HeldElsewhere />}
-      <ThetaLine since={feedOffline()} at={nameRead?.takenAt} what="ThetaData offline — reconnecting · nothing fills until it answers" />
+      <ThetaLine since={feedOffline()} at={nameRead?.takenAt} what="Live data offline — reconnecting · nothing fills until it answers" />
       <DeskShell
         session={{ id: account.id, name: account.name }}
         kind="paper"
         /* no strip over the chart: the account is the right column's first card */
         strip={false}
         picker={picker}
-        foot="ThetaData’s live NBBO — practice, not advice. A sale fills at the bid, a buy at the ask, only on a two-sided quote read in the last few seconds, in the options session (09:30–16:00 ET); positions carry from one visit to the next. Margin on a naked short is a Reg T estimate; a broker’s own can differ."
+        foot="Live quotes (NBBO) — practice, not advice. A sale fills at the bid, a buy at the ask, only on a two-sided quote read in the last few seconds, in the options session (09:30–16:00 ET); positions carry from one visit to the next. Margin on a naked short is a Reg T estimate; a broker’s own can differ."
         revision={revision}
         account={{ equity: v.equity, openPnl: v.openPnl, third: floorRule ? { label: 'above the floor', value: floorRule.room.replace(' above the floor', '') } : { label: 'free', value: usd(v.free, 0) } }}
         names={[deskName]}

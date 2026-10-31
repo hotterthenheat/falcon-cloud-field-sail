@@ -20,7 +20,7 @@ import { NAV_ITEMS } from '../../components/layout/nav';
 import { chime } from '../../core/sound';
 import { TIMEFRAMES, frameServed, type Timeframe } from '../../data/timeframe';
 import { setDeskPrefs, useDeskPrefs, type ClockZone } from '../../data/deskPrefs';
-import { SAMPLE_PROFILE, setProfile, useProfile, type SignInWay } from '../../data/profile';
+import { SAMPLE_PROFILE, setProfile, thisDevice, useProfile, type SignInWay } from '../../data/profile';
 import { ACCOUNTS_ON } from '../../data/supabase';
 import { checkPassword, deleteAccount, leaveAfterDelete, reloadProfile, setPassword, signOut, useAccount } from '../../data/account';
 import { grantHeld, PLAN_RANK, setViewAs, useAccess, type ViewAs } from '../../data/access';
@@ -374,19 +374,14 @@ const AccountPreview = () => {
       {/* Where you are signed in. */}
       <div className="px-5 py-3 border-t border-borderSubtle/60" data-settings-row="devices">
         <div className="text-t12 text-textPrimary">Where you're signed in</div>
-        <div className="text-t11 text-textMuted">Every machine with this account open — sign one out from here</div>
+        <div className="text-t11 text-textMuted">The preview has no account behind it, so this browser is the only session it knows</div>
         <ul className="mt-2.5 flex flex-col gap-1">
-          {p.devices.map(d => (
+          {[thisDevice()].map(d => (
             <li key={d.id} className="flex items-center gap-3 h-8 px-3 rounded-md bg-ink/[0.03]" data-settings-device={d.id}>
               <MonitorSmartphone className="w-3.5 h-3.5 text-textMuted shrink-0" />
               <span className="font-mono text-t11 text-textPrimary">{d.name}</span>
               {d.thisOne && <Tag tone="silver">this machine</Tag>}
               <span className="ml-auto font-mono text-t10 tnum text-textMuted">{d.lastSeen}</span>
-              {!d.thisOne && (
-                <button type="button" onClick={() => setProfile({ devices: p.devices.filter(x => x.id !== d.id) })} className="tap-40 font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors" data-settings-device-out={d.id}>
-                  Sign out
-                </button>
-              )}
             </li>
           ))}
         </ul>
@@ -1033,10 +1028,10 @@ const FeedRows = () => {
   const uw = useFeedProbe(() => uwCall('/stock/SPY/stock-state').then(r => r.error));
   return (
     <>
-      <Row name="ThetaData" line="Real-time stock, index and option quotes, from the terminal on your machine" testId="feed-theta">
+      <Row name="Live quotes" line="Real-time stock, index and option prices, the chains and minute bars" testId="feed-theta">
         <FeedWord s={theta} down="offline" />
       </Row>
-      <Row name="Unusual Whales" line="The dealer book, the tape, flow and the record" testId="feed-uw">
+      <Row name="Market data" line="The dealer book, the tape, flow and the record" testId="feed-uw">
         <FeedWord s={uw} down="not answering" />
       </Row>
     </>
@@ -1179,6 +1174,9 @@ const Settings = () => {
     if (main && main.scrollTop > 0) main.scrollTop = 0;
   }, [current]);
   if (!isSection(section)) return <Navigate to={`/settings/${HOME_SECTION}`} replace />;
+  /* People is the owners' and the team's: anyone else who types the address lands on Account (once the account and its row have answered) */
+  const accountKnown = account.status === 'out' || (account.status === 'in' && account.profile != null);
+  if (current === 'people' && !owner && accountKnown) return <Navigate to={`/settings/${HOME_SECTION}`} replace />;
 
   return (
     <>
@@ -1341,7 +1339,7 @@ const Settings = () => {
           )}
 
           {current === 'account' && <AccountBox />}
-          {current === 'people' && (
+          {current === 'people' && owner && (
             <Suspense fallback={<div className="min-h-[360px]" aria-busy="true" />}>
               <PeopleBox />
             </Suspense>

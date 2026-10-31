@@ -11,6 +11,7 @@ import PageMeta from './components/layout/PageMeta';
 import { EMBEDDED } from './embed';
 import { FaviconFollowsMark } from './brand/favicon';
 import { openAlertsDrawer } from './data/alertsDrawer';
+import { openWatchlist } from './data/nameWatch';
 
 /* Every page is its own chunk, and so is the terminal's shell: the landing and the site pages never load it. */
 const loadShell = () => import('./components/layout/AppShell');
@@ -89,6 +90,22 @@ const AlertsDoor = () => {
   try {
     const kept = sessionStorage.getItem('slayer.lastPage');
     if (kept && kept.startsWith('/') && !kept.startsWith('/alerts')) back = kept;
+  } catch {
+    /* no storage: Pulse */
+  }
+  return <Navigate to={`${back}${back.includes('?') ? '' : search}`} replace />;
+};
+
+/* /watchlist is a drawer too: the last page shown in this tab (else Pulse) with the watchlist open (data/nameWatch.ts) */
+const WatchlistDoor = () => {
+  const { search } = useLocation();
+  useEffect(() => {
+    openWatchlist();
+  }, []);
+  let back = '/pulse';
+  try {
+    const kept = sessionStorage.getItem('slayer.lastPage');
+    if (kept && kept.startsWith('/') && !kept.startsWith('/watchlist') && !kept.startsWith('/alerts')) back = kept;
   } catch {
     /* no storage: Pulse */
   }
@@ -256,14 +273,15 @@ const App = () => {
               <Route path="shorts" element={<Shorts />} />
               <Route path="etfs/:etf" element={<FundFile />} />
               <Route path="etfs" element={<EtfBook />} />
-              <Route path="calendar" element={<Navigate to="/dossier/news#the-day" replace />} />
+              {/* the calendar is the Earnings page (reports and the macro dates under each day) — News has no #the-day anchor */}
+              <Route path="calendar" element={<Navigate to="/dossier/earnings" replace />} />
             </Route>
             <Route path="/stocks" element={<Navigate to="/dossier/stocks" replace />} />
             <Route path="/news" element={<Navigate to="/dossier/news" replace />} />
             <Route path="/newsroom" element={<Navigate to="/dossier/news" replace />} />
             <Route path="/earnings" element={<Navigate to="/dossier/earnings" replace />} />
             <Route path="/earnings/:ticker" element={<EarningsRedirect />} />
-            <Route path="/watchlist" element={<Navigate to="/weigher" replace />} />
+            <Route path="/watchlist" element={<WatchlistDoor />} />
             <Route path="/alerts" element={<AlertsDoor />} />
             <Route path="/tracker" element={<Navigate to="/compass/tracker" replace />} />
             <Route path="/settings/:section?" element={<Settings />} />

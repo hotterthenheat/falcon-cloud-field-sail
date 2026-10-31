@@ -487,7 +487,7 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
           <span className="text-t11 uppercase tracking-wider text-textMuted">Max pain{pain ? ` · ${shortDay(String(pain.expiry ?? '').slice(0, 10))} expiry` : ''}</span>
           <span className="text-t12 font-semibold tnum text-textPrimary">{pain ? String(pain.max_pain ?? '—') : waiting ? '…' : '—'}</span>
         </span>
-        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title={`The vendor's NOPE for the whole name (every expiry), as printed — not split by the window. ${GLOSSARY.nope}`}>
+        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title={`The feed's NOPE for the whole name (every expiry), as printed — not split by the window. ${GLOSSARY.nope}`}>
           <span className="text-t11 uppercase tracking-wider text-textMuted">NOPE · whole name</span>
           <span className="text-t12 font-semibold tnum" style={{ color: lastNope != null && lastNope < 0 ? PUT_WALL : lastNope != null ? BULL : undefined }}>{lastNope != null ? compact(lastNope) : waiting ? '…' : '—'}</span>
         </span>
@@ -508,7 +508,7 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
       ) : null}
       {chartable(nopeLine) ? (
         <>
-          <Head title="NOPE" rest="Net options pricing effect · the vendor's, whole name" />
+          <Head title="NOPE" rest="Net options pricing effect · as printed, whole name" />
           <HouseChart lines={nopeLine} />
         </>
       ) : null}

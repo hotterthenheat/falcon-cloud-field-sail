@@ -288,7 +288,7 @@ const CoverageLine = ({ coverage, window }: { coverage: InsiderCoverage; window:
             : `every ${what} filed since ${shortDay(from)}`;
   const setAside = coverage.notShares + coverage.implausible;
   return (
-    <p className="text-t11 leading-relaxed text-textMuted" data-insiders-coverage title="The vendor sends at most 500 filings a request, newest filed first">
+    <span className="block text-t11 leading-relaxed text-textMuted" data-insiders-coverage title="The vendor sends at most 500 filings a request, newest filed first">
       <span className="text-textSecondary">Purchases:</span> {paged(coverage.buysSince, coverage.buysRanOut, coverage.buysReading, coverage.buysCapped, 'open-market buy')}
       {' · '}
       <span className="text-textSecondary">Sales:</span> {paged(coverage.bigSalesSince, coverage.bigSalesRanOut, coverage.bigSalesReading, coverage.bigSalesCapped, `open-market sale of ${big} or more`)}
@@ -305,7 +305,7 @@ const CoverageLine = ({ coverage, window }: { coverage: InsiderCoverage; window:
           {setAside.toLocaleString()} {setAside === 1 ? 'row' : 'rows'} set aside ({coverage.notShares} not common shares, {coverage.implausible} whose price or size no trade can have — a price ten times off the stock's own, or one trade worth over a quarter of the company)
         </span>
       ) : null}
-    </p>
+    </span>
   );
 };
 

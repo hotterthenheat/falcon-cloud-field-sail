@@ -52,7 +52,7 @@ export const PracticePage = () => (
     head={['Practice on live option quotes.', 'With pretend money and nothing at stake.']}
     intro={
       <>
-        Practice is three rooms. Paper trades options with pretend money, filled at each contract’s live bid and ask during the options session. Backtest replays a recorded ThetaData session, and fills at the bid and ask
+        Practice is three rooms. Paper trades options with pretend money, filled at each contract’s live bid and ask during the options session. Backtest replays a recorded market session, and fills at the bid and ask
         each contract had that minute. The Journal is where every closed trade ends up, on its day, with your words next to it. Options only: neither data feed carries futures.
       </>
     }
@@ -69,7 +69,7 @@ export const PracticePage = () => (
 
     <Aside eyebrow="Backtest" first="Replay a past session." second="At the bid and ask it really had." flip picture={<Picture src={`${SHOTS}/backtest-desk`} alt="The backtest desk on a played day: the chart with a position and its brackets, the chain as it stood, the order" ratio="1440 / 1000" />}>
       <p>
-        A replay trades the bid and ask every contract had each minute of a past day, read from ThetaData’s recorded history. Pick the name and the day, set your rules, and play the clock; every fill is a quote that
+        A replay trades the bid and ask every contract had each minute of a past day, read from recorded market history. Pick the name and the day, set your rules, and play the clock; every fill is a quote that
         printed that minute.
       </p>
       <To to="/products/backtest">Read about Backtest</To>
@@ -167,7 +167,7 @@ export const BacktestPage = () => (
     head={['Replay a past day.', 'At the bid and ask it really had.']}
     intro={
       <>
-        Backtest replays a recorded ThetaData session minute by minute. Every order fills at the bid or ask the contract really had that minute, the chain stands as it stood, and the day runs at the pace you set.
+        Backtest replays a recorded market session minute by minute. Every order fills at the bid or ask the contract really had that minute, the chain stands as it stood, and the day runs at the pace you set.
       </>
     }
     path="/practice/backtest"

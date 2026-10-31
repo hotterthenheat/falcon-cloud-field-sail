@@ -17,6 +17,7 @@
    through the later bars of the same New York session. It is not carried across a session, a weekend, or a holiday.
    JOIN_MS only joins two raw answers into one segment. It does not punch a hole between them. */
 
+import { nyWall, windowAt } from '../../core/session';
 import { useEffect, useSyncExternalStore } from 'react';
 import { nyIsoDate, nyMinutes, nyParts, nyWallTime } from '../../core/nyTime';
 import { isTradingDay } from '../../core/calendar';
@@ -229,27 +230,13 @@ export interface ExposureGrid {
 
 const gridMemo = new Map<string, { key: string; grid: ExposureGrid }>();
 
-/** The desk session a reading belongs to, or null on a weekend or a holiday.
-    Overnight is 8:00 PM to 4:00 AM New York, one session through midnight and from Sunday 8:00 PM.
-    Saturday after 4:00 AM, and Sunday before 8:00 PM, are empty. */
+/** The desk session a reading belongs to, or null while the market is shut (core/session.ts): overnight is 8:00 PM to
+    4:00 AM New York on the nights it trades (from Sunday 8:00 PM; not Friday night, not the evening before a holiday),
+    one session through midnight keyed by its evening; an early close's after hours runs 13:00–17:00. */
 const fieldSession = (ms: number): string | null => {
-  const p = nyParts(ms);
-  const min = p.hour * 60 + p.minute;
-  const session = sessionOfMinute(min);
-  if (session === 'overnight') {
-    if (p.weekday === 6 && min >= 4 * 60) return null;
-    if (p.weekday === 0 && min < 20 * 60) return null;
-    const occ = sessionOccurrence(Math.floor(ms / 1000), 'overnight');
-    const [y, m, d] = occ.split('-').map(Number);
-    const day = new Date(y, m - 1, d);
-    if (day.getDay() === 6) return null;
-    if (day.getDay() !== 0 && !isTradingDay(day)) return null;
-    return `overnight|${occ}`;
-  }
-  if (p.weekday === 0 || p.weekday === 6) return null;
-  const [y, m, d] = nyIsoDate(ms).split('-').map(Number);
-  if (!isTradingDay(new Date(y, m - 1, d))) return null;
-  return `${session}|${nyIsoDate(ms)}`;
+  const w = windowAt(ms, 'equity');
+  if (!w) return null;
+  return `${w.kind === 'regular' ? 'rth' : w.kind}|${nyWall(w.from).iso}`;
 };
 
 /**

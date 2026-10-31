@@ -104,7 +104,7 @@ export const BellCard = ({ facts, onNextDay, onDismiss, roll = false, onRoll, ro
             {s.pnl != null && <span className={`ml-auto font-semibold ${s.pnl >= 0 ? 'text-bull' : 'text-bear'}`}>{usdSigned(s.pnl)}</span>}
           </li>
         ))}
-        {(facts.unsettled ?? 0) > 0 && <li className="text-warn">{facts.unsettled} expired {facts.unsettled === 1 ? 'contract waits' : 'contracts wait'} on the close {facts.unsettled === 1 ? 'it settles' : 'they settle'} on — ThetaData has not answered it yet</li>}
+        {(facts.unsettled ?? 0) > 0 && <li className="text-warn">{facts.unsettled} expired {facts.unsettled === 1 ? 'contract waits' : 'contracts wait'} on the close {facts.unsettled === 1 ? 'it settles' : 'they settle'} on — the data has not answered it yet</li>}
         {facts.dayOrders > 0 && (
           <li>
             {facts.dayOrders} day {facts.dayOrders === 1 ? 'order' : 'orders'} went unfilled and {facts.dayOrders === 1 ? 'was' : 'were'} cancelled

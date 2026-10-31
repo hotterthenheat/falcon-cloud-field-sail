@@ -42,7 +42,7 @@ const NewAccount = ({ onPractice, onPlan }: Props) => {
       {/* THE PLAIN PRACTICE ACCOUNT */}
       <div className={`${card} px-6 py-5 flex flex-col gap-3 max-w-[720px] max-sm:px-4`} data-paper-start-practice>
         <Head icon={<Wallet className="w-4 h-4" />} title="A practice account" />
-        <p className="text-t12 leading-relaxed text-textSecondary">Options off the chain beside the chart, with pretend money, filled at each contract’s live ThetaData bid and ask during the options session (09:30–16:00 ET): buy, or sell to open — naked shorts, credit spreads, iron condors and cash-secured puts, held on a margin estimate. It carries from day to day. Open as many as you like.</p>
+        <p className="text-t12 leading-relaxed text-textSecondary">Options off the chain beside the chart, with pretend money, filled at each contract’s live bid and ask during the options session (09:30–16:00 ET): buy, or sell to open — naked shorts, credit spreads, iron condors and cash-secured puts, held on a margin estimate. It carries from day to day. Open as many as you like.</p>
         <div className="grid grid-cols-4 max-[420px]:grid-cols-2 gap-1.5 max-w-[440px]">
           {PRACTICE_SIZES.map(size => (
             <button key={size} type="button" disabled={!can} onClick={() => onPractice?.(size)} className={sizeBtn} data-paper-start-size={size}>
@@ -51,7 +51,7 @@ const NewAccount = ({ onPractice, onPlan }: Props) => {
           ))}
         </div>
         {/* in the landing's window nothing trades (data/paper/store.ts: never EMBEDDED) — say that, not "another tab" */}
-        <p className="text-t10 text-textMuted">{can ? 'Pick what it starts with.' : EMBEDDED ? 'Open the terminal to start one — nothing trades from this window.' : 'The accounts are open in another tab — take them here first.'}</p>
+        <p className="text-t10 text-textMuted">{can ? 'Pick what it starts with.' : EMBEDDED ? 'Open the terminal to start one — nothing trades from this window.' : 'Open in another tab — use them here first (the banner above).'}</p>
       </div>
 
       {/* THE PROP FIRMS */}

@@ -112,7 +112,7 @@ export async function fetchGaps(a: PaperAccount, now: number): Promise<Fetched> 
     }
     const answers = await Promise.all(jobs);
     const bad = answers.find(x => x != null);
-    if (bad) got.failed.set(g.order.id, bad === 'offline' ? { why: 'ThetaData was offline', again: true } : bad === 'not here' ? { why: 'this page does not read option history', again: true } : { why: 'ThetaData has no history for those minutes', again: false });
+    if (bad) got.failed.set(g.order.id, bad === 'offline' ? { why: 'live data was offline', again: true } : bad === 'not here' ? { why: 'this page does not read option history', again: true } : { why: 'no history was recorded for those minutes', again: false });
   }
   /* a plan's rules are judged on the replayed minutes too: every position held is marked on them, so its minutes are
      asked for as well (best effort — a minute that cannot mark everything held is not judged) */

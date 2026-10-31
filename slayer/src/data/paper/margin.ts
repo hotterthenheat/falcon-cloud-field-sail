@@ -60,6 +60,8 @@ export interface MarginLine {
   held: number;
   /** How it was worked out, in a line */
   words: string;
+  /** A naked call and a naked put held as one: a short straddle (one strike and expiry) or a strangle */
+  pair?: 'straddle' | 'strangle';
 }
 export interface Margin {
   lines: MarginLine[];
@@ -174,6 +176,7 @@ export function marginOf(ps: MarginPos[]): Margin {
       line({
         keys: [cx.p.key, px.p.key],
         kind: 'naked',
+        pair: kind,
         qty: q,
         req: (big.each + other.premium * MULT) * q,
         credit: (cx.p.avg + px.p.avg) * MULT * q,

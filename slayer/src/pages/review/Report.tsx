@@ -18,7 +18,8 @@ import { saveFile } from './JournalPicker';
 import { contractWords } from '../../data/review/quotes';
 import { useSession } from '../../data/review/store';
 import { barTime, dayWords } from '../../data/review/history';
-import { dirInk, heldWords, momentWords, pct, rWords, usd, usdSigned } from '../../components/review/words';
+import { useSessionStats } from '../../data/review/sessionStats';
+import { dirInk, heldWords, momentWords, pct, ratioWords, RATIO_TITLE, rWords, scratchWords, SCRATCH_TITLE, usd, usdSigned } from '../../components/review/words';
 
 const ENDED: Record<Trade['how'], string> = { sold: 'Sold by you', target: 'Target hit', stopped: 'Stopped out', expired: 'Held to the bell', scaled: 'Scaled out' };
 const endedWords = (t: Trade) => (t.how !== 'expired' ? ENDED[t.how] : t.settle === 'cash' ? 'Cash-settled' : t.avgOut > 0 ? 'Exercised at the close' : 'Expired worthless');
@@ -41,7 +42,11 @@ const Report = () => {
     return () => sayPage(null);
   }, [session?.name]); // eslint-disable-line react-hooks/exhaustive-deps
   const trades = useMemo<Trade[]>(() => (!session ? [] : [...accountOf(session).trades]).sort((a, b) => stampOf(a.closed) - stampOf(b.closed)), [session]);
-  const stats = useMemo(() => statsOf(trades), [trades]);
+  /* the figures off the account's own equity: the drawdown minute by minute with its open contracts marked, Sharpe and
+     Sortino off its bells (data/review/engine sessionStatsOf) — re-read as the recorded quotes load */
+  const read = useSessionStats(session);
+  const stats = read.stats ?? statsOf([]);
+  const reading = read.reading;
   const range = useMemo(() => expectancyRange(trades.map(t => t.pnl)), [trades]);
   const cuts = useMemo<{ title: string; rows: { label: string; n: number; winRate: number; net: number; avgR: number | null }[] }[]>(() => cutsOf(trades), [trades]);
   /* the running total of what the closed trades made, a point at each close — the real New York minute it closed on */
@@ -86,7 +91,7 @@ const Report = () => {
       { key: 'dte', header: 'Days to expiry, in', align: 'right', sortValue: t => t.dteIn, render: t => <span className="text-textSecondary">{t.dteIn}d</span> },
       { key: 'delta', header: 'Delta, in', align: 'right', sortValue: t => Math.abs(t.deltaIn), render: t => <span className="text-textSecondary">{t.deltaIn.toFixed(2)}</span> },
       { key: 'held', header: 'Held', align: 'right', sortValue: t => t.heldMin, render: t => <span className="text-textSecondary">{heldWords(t.heldMin)}</span> },
-      { key: 'decay', header: 'Decay a day', align: 'right', sortValue: t => decayPerDay(t), render: t => <span className="text-textSecondary">{usd(decayPerDay(t))}</span> },
+      { key: 'decay', header: 'Decay a session', align: 'right', sortValue: t => decayPerDay(t), render: t => <span className="text-textSecondary">{usd(decayPerDay(t))}</span> },
       { key: 'how', header: 'Ended', sortValue: t => t.how, render: t => <span className="text-textSecondary">{endedWords(t)}</span> },
       { key: 'pnl', header: 'Made or lost', align: 'right', sortValue: t => t.pnl, render: t => <span className={`font-semibold ${dirInk(t.pnl)}`}>{usdSigned(t.pnl)} <span className="text-t10 font-normal opacity-80">{rWords(t.r)}</span></span> },
     ],
@@ -125,7 +130,7 @@ const Report = () => {
   const sentence =
     stats.n === 0
       ? 'No trade has closed in this session yet. The report fills in as trades close — a sale, a target, a stop, or the bell.'
-      : `${stats.n} closed ${stats.n === 1 ? 'trade' : 'trades'}, ${stats.wins} won. A winner made ${usd(stats.avgWin)} on average and a loser gave back ${usd(Math.abs(stats.avgLoss))}, so a trade taken this way has been worth ${usdSigned(stats.expectancy)} (${rWords(stats.expectancyR)}) each. The deepest the running total fell from a high, open dips included, was ${usd(stats.maxDrawdown)}.${range ? ` On ${stats.n} trades the 95% range for what a trade is worth runs ${usdSigned(range.lo)} to ${usdSigned(range.hi)}${range.lo <= 0 && range.hi >= 0 ? ' — it includes zero, so these trades do not yet show an edge' : ''}.` : ''}`;
+      : `${stats.n} closed ${stats.n === 1 ? 'trade' : 'trades'}, ${stats.wins} won. A winner made ${usd(stats.avgWin)} on average and a loser gave back ${usd(Math.abs(stats.avgLoss))}, so a trade taken this way has been worth ${usdSigned(stats.expectancy)} (${rWords(stats.expectancyR)}) each. ${stats.scratches ? `${scratchWords(stats.scratches)} closed at exactly $0 and count as neither. ` : ''}${reading ? '' : `The account’s deepest fall from a high, its open contracts marked minute by minute, was ${usd(stats.maxDrawdown)}.`}${range ? ` On ${stats.n} trades the 95% range for what a trade is worth runs ${usdSigned(range.lo)} to ${usdSigned(range.hi)}${range.lo <= 0 && range.hi >= 0 ? ' — it includes zero, so these trades do not yet show an edge' : ''}.` : ''}`;
 
   return (
     <TraceBox
@@ -138,14 +143,26 @@ const Report = () => {
           <Fact label="Made or lost">
             <span className={dirInk(stats.net)}>{usdSigned(stats.net)}</span>
           </Fact>
-          <Fact label="Won">{stats.n ? pct(stats.winRate) : '—'}</Fact>
+          <Fact label="Won" title={stats.scratches ? SCRATCH_TITLE : 'Of the trades that won or lost'}>
+            {stats.n ? (
+              <>
+                {stats.n - stats.scratches > 0 ? pct(stats.winRate) : '—'}
+                {stats.scratches > 0 && <span className="text-textMuted"> · {scratchWords(stats.scratches)}</span>}
+              </>
+            ) : (
+              '—'
+            )}
+          </Fact>
           <Fact label="Wins over losses" title="Every dollar won for each dollar lost — above 1 the wins outweigh the losses">
             {stats.profitFactor == null ? '—' : stats.profitFactor.toFixed(2)}
           </Fact>
           <Fact label="A trade has been worth" title="After the spread and the fees: every fill was at the recorded bid or ask">{stats.n ? `${usdSigned(stats.expectancy)} · ${rWords(stats.expectancyR)}` : '—'}</Fact>
           <Fact label="95% range a trade" title="The mean trade's 95% range: ± 1.96 standard errors. While it includes zero, there is no edge yet.">{range ? `${usdSigned(range.lo, 0)} to ${usdSigned(range.hi, 0)}` : '—'}</Fact>
-          <Fact label="Deepest fall" title="The running total of the closed trades, from its high to its low — each trade's own open dip counted">{usd(stats.maxDrawdown)}</Fact>
-          <Fact label="Account's deepest fall" title="Bell to bell, the account with its open contracts marked — from its high">{bellFall ? `${usd(bellFall.fall)} · ${(bellFall.pct * 100).toFixed(1)}%` : '—'}</Fact>
+          <Fact label="Deepest fall" title="The account's worst fall from a high, minute by minute, with its open contracts marked at their mid">{reading ? <span className="text-textMuted">reading…</span> : stats.maxDrawdown > 0 ? <span className="text-bear">−{usd(stats.maxDrawdown)}</span> : stats.n || session.fills.length ? 'none' : '—'}</Fact>
+          <Fact label="Deepest fall, bell to bell" title="The account at each 16:00 bell, open contracts marked — its worst fall from a high, and that as a share of the high">{bellFall ? `${bellFall.fall > 0 ? '−' : ''}${usd(bellFall.fall)} · ${(bellFall.pct * 100).toFixed(1)}%` : '—'}</Fact>
+          <Fact label="Sharpe · Sortino" title={RATIO_TITLE}>
+            {ratioWords(stats.sharpe)} · {ratioWords(stats.sortino)}
+          </Fact>
           <Fact label="Fees paid" title="Every fill's fee, each way — the figures above are after them">{usd(fees)}</Fact>
           <Fact label="Longest losing run">{stats.losingRun}</Fact>
           <Fact label="Time in a trade">{stats.n ? heldWords(stats.avgHeldMin) : '—'}</Fact>

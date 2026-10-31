@@ -46,4 +46,4 @@ export function PublishMove({ p, short = false }: { p: NewsPrediction; short?: b
 
 /** The story's name in a row: its ticker, else "mentions MSFT" for a company it only names, else macro or no name */
 export const storyNameWord = (item: { ticker: string | null; category: string; mentions?: string[] }): string =>
-  item.ticker ?? (item.mentions?.length ? `mentions ${item.mentions[0]}` : item.category === 'Macro' ? 'MACRO' : 'NO NAME');
+  item.ticker ?? (item.mentions?.length ? `mentions ${item.mentions[0]}` : item.category === 'Macro' ? 'MACRO' : 'GENERAL');

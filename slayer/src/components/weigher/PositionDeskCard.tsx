@@ -219,7 +219,7 @@ const PositionDeskCard = ({ picked, row, profile, contractKey, onWatch, onClose,
               <dd className="mt-1 font-mono text-t16 font-semibold tnum text-textPrimary">{paid != null ? `$${paid.toFixed(2)}` : '—'}</dd>
             </div>
             <div>
-              <dt className="font-mono text-t9 uppercase tracking-widest text-textMuted">Live</dt>
+              <dt className="font-mono text-t9 uppercase tracking-widest text-textMuted">Now</dt>
               <dd className="mt-1 font-mono text-t16 font-semibold tnum text-textPrimary" data-sim-est>{live != null ? `$${live.toFixed(2)}` : '—'}</dd>
             </div>
             <div>

@@ -225,7 +225,7 @@ export function restoreSection(back: { section: WatchSection; index: number }): 
 let open = false;
 const openSubs = new Set<() => void>();
 const notifyOpen = () => openSubs.forEach(fn => fn());
-const openWatchlist = (): void => {
+export const openWatchlist = (): void => {
   if (open) return;
   open = true;
   notifyOpen();

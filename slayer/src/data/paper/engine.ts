@@ -887,8 +887,15 @@ function withFills(a: PaperAccount, m: PaperMarket, legs: Leg[]): PaperAccount {
   const fills: OptFill[] = legs.map((d, i) => ({ id: `~${i}`, orderId: null, at, contract: d.contract, side: d.side, qty: d.qty, price: cents(d.px), fee: optFee(a, d.contract, d.qty), how: 'market', spot: 0, delta: 0, iv: 0, theta: 0, bar: 0, life: m.life, opens: true, secured: d.secured }));
   return { ...a, opt: { ...a.opt, fills: [...a.opt.fills, ...fills] } };
 }
+/** A VIX option's last day, in words: it stops trading at the close of the Tuesday before the Wednesday it settles on */
+export function vixStopWords(expiry: string): string {
+  const s = vixSchedule(expiry);
+  const day = (iso: string) => dateWords(iso);
+  return `VIX options stop trading Tuesday: this one’s last trade was ${day(s.lastTrade)}’s close, and it settles on ${day(s.settleDay)}’s VIX opening print`;
+}
+const dateWords = (iso: string): string => new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 /** The margin call, in words */
-export const marginCallWords = (v: Pick<PaperView, 'excess' | 'marginReq'>): string => `Margin call — equity is ${money(Math.max(0, -v.excess))} short of what the open shorts hold (${money(v.marginReq)}, re-marked every tick). Nothing new opens until it is cured: buy a short back, or close something`;
+export const marginCallWords = (v: Pick<PaperView, 'excess' | 'marginReq'>): string => `Margin call — excess is ${money(Math.min(0, v.excess))}: cash is short of what the open shorts hold (${money(v.marginReq)}, re-marked every tick), and a long option has no loan value, so the longs held do not count. Nothing new opens until it is cured: buy a short back, or close something`;
 /** The buying power a way in needs: refused on a margin call, or where its fills would leave less than nothing free */
 function powerRefusal(a: PaperAccount, m: PaperMarket, v: PaperView, legs: Leg[]): string | null {
   if (v.marginCall) return marginCallWords(v);
@@ -927,7 +934,7 @@ export function optRefusal(a: PaperAccount, m: PaperMarket, d0: OptDraft, alone 
   const d = draftOf(a, d0);
   const opening = d.opens;
   const late = !opening && lateWindow(a, d.contract, m.now);
-  if (tradingEndsAt(d.contract) <= m.now && !late) return isVixRoot(d.contract.ticker) && d.contract.expiry >= nyAt(m.now).date ? 'VIX options stop trading at the close the day before they settle' : 'That contract has expired';
+  if (tradingEndsAt(d.contract) <= m.now && !late) return isVixRoot(d.contract.ticker) && d.contract.expiry >= nyAt(m.now).date ? vixStopWords(d.contract.expiry) : 'That contract has expired';
   if (d.contract.short != null) {
     const { strike, short, right } = d.contract;
     if (short === strike) return 'A spread needs two different strikes';

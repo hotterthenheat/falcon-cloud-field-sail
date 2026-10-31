@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, ExternalLink, Plus, ShieldAlert } from 'lucide-react';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import { card, head } from '../review/DeskShell';
-import { dirInk, usd, usdSigned } from '../review/words';
+import { dirInk, usd, usdBal, usdSigned } from '../review/words';
 import type { PaperAccount, PaperView } from '../../data/paper/engine';
 import { phaseOf, rulesOf, sellSays, sellWords, type RuleRead } from '../../data/paper/rules';
 import { marginCallWords } from '../../data/paper/engine';
@@ -60,7 +60,7 @@ const TiedBar = ({ v }: { v: PaperView }) => {
         <span className={`h-full ${v.marginCall ? 'bg-bear' : 'bg-warn/70'}`} style={{ width: pct(held) }} />
       </div>
       <div className="mt-1 font-mono text-t9 tnum text-textMuted">
-        in longs <span className="text-textSecondary">{usd(longs, 0)}</span> · margin held <span className="text-textSecondary">{usd(held, 0)}</span> of {usd(v.equity, 0)}
+        in longs <span className="text-textSecondary">{usd(longs, 0)}</span> <span title="A long option has no loan value: it does not hold a short">(no loan value)</span> · margin held <span className="text-textSecondary">{usd(held, 0)}</span> of {Number.isFinite(v.equity) ? usd(v.equity, 0) : '—'}
       </div>
     </div>
   );
@@ -152,17 +152,17 @@ const AccountCard = ({ account: a, accounts, view: v, rules, onPick, onFlatten, 
           <Cell label="All time" testId="paper-all-time">
             <span className={live ? dirInk(v.allTime) : 'text-textMuted'}>{live ? usdSigned(v.allTime) : '—'}</span>
           </Cell>
-          <Cell label="Free" testId="paper-free" title="Buying power: cash less what the open shorts hold — what pays for an option or holds a new short">
-            <span className={v.free < 0 ? 'text-bear' : undefined}>{usd(v.free)}</span>
+          <Cell label="Excess" testId="paper-free" title="Buying power: cash less what the open shorts hold — what pays for an option or holds a new short. A long option has no loan value (Reg T), so the longs held do not add to it; under $0 is a margin call">
+            <span className={v.excess < 0 ? 'text-bear' : undefined}>{usdBal(v.excess)}</span>
           </Cell>
           <Cell label="Margin held" testId="paper-margin" title="What the open shorts hold of your money, re-marked every tick: a credit spread’s or cash-secured put’s whole loss; a naked short’s Reg T estimate less its premium">
             <span className={v.marginCall ? 'text-bear' : v.margin > 0 ? 'text-warn' : 'text-textMuted'}>{usd(v.margin)}</span>
           </Cell>
           <Cell label="Open, up or down" testId="paper-open">
-            <span className={live ? dirInk(v.openPnl) : 'text-textMuted'}>{live ? usdSigned(v.openPnl) : '—'}</span>
+            <span className={live && open ? dirInk(v.openPnl) : 'text-textMuted'}>{live && open ? usdSigned(v.openPnl) : '—'}</span>
           </Cell>
           <Cell label="Closed trades" testId="paper-closed">
-            <span className={dirInk(v.closed)}>{usdSigned(v.closed, 0)}</span>
+            {v.optTrades.length + v.futTrades.length ? <span className={dirInk(v.closed)}>{usdSigned(v.closed, 0)}</span> : <span className="text-textMuted">—</span>}
           </Cell>
         </div>
         {rules.length ? <RuleBars rules={rules} /> : <TiedBar v={v} />}
@@ -186,6 +186,9 @@ const AccountCard = ({ account: a, accounts, view: v, rules, onPick, onFlatten, 
           <span className="font-mono text-t10 tnum text-textMuted mr-auto" data-paper-counts>
             {open} open · {working} working · {v.optTrades.length + v.futTrades.length} closed
           </span>
+          <Link to={`/practice/journal?journal=paper:${encodeURIComponent(a.id)}`} className={`${door} hover:text-textPrimary hover:border-borderMuted`} title="Its closed trades, by day — with its own drawdown, Sharpe and Sortino" data-paper-journal-link>
+            This account’s journal
+          </Link>
           {onCancelAll && a.status === 'open' && working > 0 && (
             <button type="button" onClick={onCancelAll} title="Every working order cancelled — what is open stays open" className={`${door} hover:text-textPrimary hover:border-borderMuted`} data-paper-cancel-all>
               Cancel all

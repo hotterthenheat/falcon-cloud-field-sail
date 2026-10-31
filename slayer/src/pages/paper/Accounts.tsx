@@ -53,7 +53,7 @@ const Row = ({ a, holding, onOpen }: { a: PaperAccount; holding: boolean; onOpen
   const open = v.opt.length;
   const working = a.opt.orders.filter(o => o.status === 'working').length;
   const ask = (what: 'delete' | 'end' | 'reset', run: () => void) => () => (sure === what ? (setSure(null), run()) : setSure(what));
-  const off = holding ? undefined : 'The accounts are open in another tab — take them here first';
+  const off = holding ? undefined : 'Open in another tab — use them here first (the banner above)';
   return (
     <div className="px-5 py-4 max-sm:px-4 border-t border-borderSubtle/70 grid gap-x-6 gap-y-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.6fr)_minmax(0,1.2fr)] items-start" data-paper-row={a.id} data-paper-row-status={a.status}>
       {/* who it is */}
@@ -95,6 +95,9 @@ const Row = ({ a, holding, onOpen }: { a: PaperAccount; holding: boolean; onOpen
         <button type="button" onClick={onOpen} className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-t11 font-semibold transition-opacity hover:opacity-90 tap-40" style={{ background: SILVER_FILL, color: '#0a0a0a' }} data-paper-row-open>
           Open the desk <ArrowRight className="w-3 h-3" />
         </button>
+        <Link to={`/practice/journal?journal=paper:${encodeURIComponent(a.id)}`} className={door} title="Its closed trades, by day — with its own drawdown, Sharpe and Sortino" data-paper-row-journal>
+          This account’s journal
+        </Link>
         {!a.plan?.legacy && (
           <button
             type="button"
@@ -145,15 +148,18 @@ const Accounts = () => {
   const go = (id: string | null) => id && navigate(`/practice/paper/${id}`);
   const onPractice = holding ? (size: number) => go(startPractice(size)) : null;
   const onPlan = holding ? (plan: Parameters<typeof startPlan>[0]) => go(startPlan(plan)) : null;
-  const totals = { worth: 0, all: 0 };
+  const totals = { worth: 0, all: 0, priced: 0 };
   const m = liveMarket();
   for (const a of shown) {
     const v = viewOf(a, m);
     if (Number.isFinite(v.equity)) {
       totals.worth += v.equity;
       totals.all += v.allTime;
+      totals.priced++;
     }
   }
+  /* a total of nothing priced is not $0: it is not known yet; a part of them priced says how many */
+  const partWords = totals.priced && totals.priced < shown.length ? `${totals.priced} of ${shown.length} priced — the rest wait on their quotes` : undefined;
 
   /* none yet: the start card the page has always opened on — the plain sizes, and the prop firms beside them */
   if (!accounts.length) {
@@ -168,19 +174,28 @@ const Accounts = () => {
   return (
     <div className="flex flex-col gap-2.5" data-paper-accounts={shown.length}>
       {!holding && elsewhere && <HeldElsewhere />}
-      <ThetaLine since={feedOffline()} what="ThetaData offline — reconnecting · what each account is worth is as of its last quotes, and nothing fills" />
+      <ThetaLine since={feedOffline()} what="Live data offline — reconnecting · what each account is worth is as of its last quotes, and nothing fills" />
       <div className="relative border border-borderSubtle rounded-xs overflow-clip bg-panel flex flex-col" data-paper-accounts-box>
         <div className="px-5 max-sm:px-4 pt-4 pb-3 flex items-start flex-wrap gap-x-6 gap-y-3">
           <div className="min-w-[min(16rem,100%)] flex-1">
             <h3 className="text-t15 font-semibold leading-tight text-textPrimary">Your paper accounts</h3>
-            <p className="mt-0.5 text-t11 text-textMuted">Each runs on ThetaData’s live NBBO, side by side · a prop-firm account is judged by its firm’s rules on every order and every tick</p>
+            <p className="mt-0.5 text-t11 text-textMuted">Each runs on live quotes (NBBO), side by side · a prop-firm account is judged by its firm’s rules on every order and every tick</p>
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             <Fact label="Accounts">{shown.length}</Fact>
             <Fact label="Open">{shown.filter(a => a.status === 'open').length}</Fact>
-            <Fact label="Worth, all of them">{usd(totals.worth)}</Fact>
-            <Fact label="All time">
-              <span className={dirInk(totals.all)}>{usdSigned(totals.all)}</span>
+            <Fact label="Worth, all of them" title={partWords}>
+              {totals.priced ? (
+                <>
+                  {usd(totals.worth)}
+                  {partWords && <span className="text-textMuted">*</span>}
+                </>
+              ) : (
+                <span className="text-textMuted" title="No account is priced yet — their quotes have not answered">—</span>
+              )}
+            </Fact>
+            <Fact label="All time" title={partWords}>
+              {totals.priced ? <span className={dirInk(totals.all)}>{usdSigned(totals.all)}</span> : <span className="text-textMuted">—</span>}
             </Fact>
           </dl>
         </div>
@@ -215,7 +230,7 @@ const Accounts = () => {
           </>
         )}
       </div>
-      <p className="px-1 font-mono text-t10 text-textMuted">ThetaData’s live NBBO — practice, not advice. A firm’s rules are its own site’s; every time is New York’s (ET).</p>
+      <p className="px-1 font-mono text-t10 text-textMuted">Live quotes (NBBO) — practice, not advice. A firm’s rules are its own site’s; every time is New York’s (ET).</p>
     </div>
   );
 };

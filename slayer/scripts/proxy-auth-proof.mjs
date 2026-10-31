@@ -46,8 +46,20 @@ const supa = http.createServer((req, res) => {
   res.statusCode = 404;
   res.end();
 });
-const terminal = http.createServer((_req, res) => {
+/* the terminal stand-in answers 474 (DISCONNECTED) for the outage path while `outage` is set */
+let outage = false;
+const terminal = http.createServer((req, res) => {
   res.setHeader('content-type', 'application/json');
+  if (req.url.includes('LOGINFAIL')) {
+    res.statusCode = 503;
+    res.end('not logged in');
+    return;
+  }
+  if (req.url.includes('OUTAGE') && outage) {
+    res.statusCode = 474;
+    res.end('DISCONNECTED');
+    return;
+  }
   res.end('{"response":[]}');
 });
 await new Promise((r) => supa.listen(0, '127.0.0.1', r));
@@ -65,6 +77,9 @@ const token = (sub, { key = privateKey, exp = Date.now() / 1000 + 600, iss = `${
 /* ---- the proxies, called as a Node server would ---- */
 
 process.env.THETA_REST_BASE = `http://127.0.0.1:${terminal.address().port}`;
+/* the supervisor's state file, where the proxy reads a refused login (theta/supervisor.mjs) */
+const runDir = (await import('node:fs')).mkdtempSync((await import('node:path')).join((await import('node:os')).tmpdir(), 'proxy-proof-run-'));
+process.env.THETA_RUN_DIR = runDir;
 delete process.env.UNUSUAL_WHALES_API_KEY;
 const { proxyUw } = await import('../server/uwProxy.mjs');
 const { proxyTheta } = await import('../server/thetaProxy.mjs');
@@ -80,7 +95,7 @@ async function call(fn, url, bearer) {
   } catch {
     /* not JSON */
   }
-  return { status: res.statusCode, code };
+  return { status: res.statusCode, code, headers: res.headers };
 }
 const show = (r) => `${r.status}${r.code ? ` ${r.code}` : ''}`;
 const UW = '/api/uw/stock/SPY/info';
@@ -90,6 +105,115 @@ const TH = '/api/theta/calendar/today';
 for (const k of ['SUPABASE_URL', 'VITE_SUPABASE_URL', 'SUPABASE_ANON_KEY', 'VITE_SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'VERCEL', 'UW_PROXY_OPEN']) delete process.env[k];
 check('dev, no Supabase: uw passes the gate', show(await call(proxyUw, UW)), '503');
 check('dev, no Supabase: theta passes the gate', show(await call(proxyTheta, TH)), '200');
+
+/* a 474 during an outage is not kept as the answer to a past day's request (that would be six hours) */
+{
+  const PAST = '/api/theta/option/history/quote?symbol=OUTAGE&expiration=20261016&date=20261015&format=json';
+  outage = true;
+  const during = show(await call(proxyTheta, PAST));
+  outage = false;
+  const after = show(await call(proxyTheta, PAST));
+  check('theta 474 during an outage, then the terminal is back: the next ask answers', `${during} then ${after}`, '474 then 200');
+}
+
+/* the supervisor says the key was refused: a failing terminal answers terminal_login, not "not running" */
+{
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const before = show(await call(proxyTheta, '/api/theta/stock/snapshot/quote?symbol=LOGINFAIL1&format=json'));
+  fs.writeFileSync(path.join(runDir, 'state.json'), JSON.stringify({ state: 'login_failed', at: Date.now(), pid: null, detail: 'invalid credentials' }));
+  await new Promise((r) => setTimeout(r, 5_100));
+  const after = show(await call(proxyTheta, '/api/theta/stock/snapshot/quote?symbol=LOGINFAIL2&format=json'));
+  check('theta: a refused login reads terminal_login (the supervisor\'s state file)', `${before} then ${after}`, '503 then 503 terminal_login');
+  fs.rmSync(runDir, { recursive: true, force: true });
+}
+
+/* ---- Unusual Whales: one breaker for the key, Retry-After honoured, the answer's age sent ---- */
+{
+  const realFetch = globalThis.fetch;
+  /* the vendor stand-in: per path, a list of [status, retry-after] answers (the last one repeats) */
+  const plan = new Map();
+  const calls = new Map();
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (!u.startsWith('https://api.unusualwhales.com/api')) return realFetch(url, init);
+    const p = u.slice('https://api.unusualwhales.com/api'.length);
+    calls.set(p, (calls.get(p) ?? 0) + 1);
+    const steps = plan.get(p) ?? [[200]];
+    const [status, after] = steps[Math.min(calls.get(p) - 1, steps.length - 1)];
+    return new Response(JSON.stringify(status === 200 ? { data: [{ p }] } : { message: 'Too many requests' }), {
+      status,
+      headers: { 'content-type': 'application/json', ...(after != null ? { 'retry-after': String(after) } : {}) },
+    });
+  };
+  process.env.UNUSUAL_WHALES_API_KEY = 'proof-key';
+  const n = (p) => calls.get(p) ?? 0;
+
+  const ok = await call(proxyUw, '/api/uw/stock/AGE/info');
+  check('uw 200 carries the answer\'s age (x-hub-at, Age)', `${ok.status} ${Number(ok.headers['x-hub-at']) > Date.now() - 5_000} ${ok.headers.age}`, '200 true 0');
+
+  /* the recorder has its own background slot: it does not queue behind a refresh that holds the refresh lane */
+  {
+    process.env.SLAYER_HUB_HOURS = 'open';
+    const { uwDirect } = await import('../server/uwProxy.mjs');
+    const slowPath = '/stock/SLOW/stock-state';
+    let slowMs = 10;
+    const inner = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      if (String(url).endsWith(slowPath)) await new Promise((r) => setTimeout(r, slowMs));
+      return inner(url, init);
+    };
+    await call(proxyUw, `/api/uw${slowPath}`);
+    /* past its 3 s freshness: the next ask is answered from the copy and a 2.5 s refresh runs behind it */
+    await new Promise((r) => setTimeout(r, 3_200));
+    slowMs = 2_500;
+    await call(proxyUw, `/api/uw${slowPath}`);
+    await new Promise((r) => setTimeout(r, 50));
+    const t = Date.now();
+    const rec = await uwDirect('/stock/REC/spot-exposures/strike?limit=500&page=0', { lane: 'record', maxAge: 45_000 });
+    check('uw recorder ask while a refresh holds the refresh lane: answered without waiting for it', `${rec.status} ${Date.now() - t < 1_500}`, '200 true');
+    await new Promise((r) => setTimeout(r, 2_600));
+    globalThis.fetch = inner;
+    delete process.env.SLAYER_HUB_HOURS;
+  }
+
+  /* three calls that never settle (not even on their abort signal) hold the key's three slots: each slot comes back
+     after the call's hard limit (15 s), not at the 30 s job limit or never */
+  {
+    const inner = globalThis.fetch;
+    globalThis.fetch = (url, init) => (String(url).includes('/HANG') ? new Promise(() => {}) : inner(url, init));
+    for (const t of ['HANGA', 'HANGB', 'HANGC']) void call(proxyUw, `/api/uw/stock/${t}/info`);
+    await new Promise((r) => setTimeout(r, 100));
+    const t = Date.now();
+    const after = await call(proxyUw, '/api/uw/stock/AFTERHANG/info');
+    const waited = Date.now() - t;
+    check('uw: calls that hang give their slots back after 15 s', `${after.status} ${waited < 20_000}`, '200 true');
+    globalThis.fetch = inner;
+  }
+
+  /* a vendor that keeps refusing with Retry-After 1: one retry after the breaker, not four calls */
+  plan.set('/stock/RL1/info', [[429, 1]]);
+  const t0 = Date.now();
+  const r1 = await call(proxyUw, '/api/uw/stock/RL1/info');
+  check('uw 429 (Retry-After 1) every time: two vendor calls for one ask', `${r1.status} ${n('/stock/RL1/info')}`, '429 2');
+  check('uw 429: the wait honoured Retry-After (about a second)', Date.now() - t0 >= 900, true);
+  await new Promise((r) => setTimeout(r, 1_200));
+
+  /* a long Retry-After (20 s, past what a viewer waits): one call, answered at once with the time left */
+  plan.set('/stock/RL2/info', [[429, 20]]);
+  const t1 = Date.now();
+  const r2 = await call(proxyUw, '/api/uw/stock/RL2/info');
+  check('uw 429 with Retry-After 20: one vendor call, no retries inside the 20 s', `${r2.status} ${n('/stock/RL2/info')}`, '429 1');
+  check('uw 429 with Retry-After 20: answered at once', Date.now() - t1 < 3_000, true);
+  check('uw 429 passes Retry-After on to the browser', Number(r2.headers['retry-after']) >= 15, true);
+
+  /* while the key is cooling, another path never reaches the vendor */
+  const r3 = await call(proxyUw, '/api/uw/stock/RL3/info');
+  check('uw: while the key cools, a different path makes no vendor call', `${r3.status} ${n('/stock/RL3/info')}`, '429 0');
+
+  globalThis.fetch = realFetch;
+  delete process.env.UNUSUAL_WHALES_API_KEY;
+}
 
 /* encoded dot segments never reach the allowlist */
 check('uw %2e%2e rejected', show(await call(proxyUw, '/api/uw/stock/%2e%2e/info')), '404');

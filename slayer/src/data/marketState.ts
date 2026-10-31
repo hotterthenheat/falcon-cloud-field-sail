@@ -1,42 +1,29 @@
 /* Where the market is, one reading for the mark, the signature, the rail and the footer, plus a plain sentence per state
-   (pre-market, open, after hours, closed, early close, holiday). Clock: data/moc.ts; holidays: core/calendar.ts; early closes: the exchange's. */
+   (overnight, pre-market, open, after hours, closed, early close, holiday). The rule is core/session.ts — the one session
+   the whole site follows: the week opens Sunday 20:00 with the overnight session, not Monday 09:30. */
 
-import { EARLY_CLOSES, MARKET_HOLIDAYS, isTradingDay, isoDate } from '../core/calendar';
-import { readSessionClock } from './moc';
+import { EARLY_CLOSES } from '../core/calendar';
+import { nextOpenLine, sessionAt, sessionBadge, whenWords, type MarketSessionAt } from '../core/session';
 
-type MarketStateKind = 'open' | 'pre-market' | 'after-hours' | 'closed' | 'early-close' | 'holiday';
+type MarketStateKind = 'overnight' | 'open' | 'pre-market' | 'after-hours' | 'closed' | 'early-close' | 'holiday';
 
 interface MarketState {
   kind: MarketStateKind;
-  /** the state word the brand prints beside the dot */
+  /** the state word the brand prints beside the dot: live whenever a session trades (overnight, pre, regular, after) */
   word: 'live' | 'closed';
-  /** the short form the rail and the footer print: "pre-market", "market open", "after hours", "closed for the weekend" */
+  /** the short form the rail and the footer print: "overnight", "pre-market", "market open", "after hours", "closed for the weekend" */
   short: string;
+  /** the rail's badge: "Overnight · live" … "Closed · overnight opens Sun 8:00 PM ET" */
+  badge: string;
   /** one plain sentence */
   line: string;
+  session: MarketSessionAt;
 }
 
-const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-/** New York's calendar date as a local Date at midnight */
-const nyDate = (now: Date): Date => {
-  const p = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' }).formatToParts(now).map(x => [x.type, x.value])
-  );
-  return new Date(Number(p.year), Number(p.month) - 1, Number(p.day));
-};
-
-const nextTradingDay = (from: Date): Date => {
-  const d = new Date(from);
-  do d.setDate(d.getDate() + 1);
-  while (!isTradingDay(d));
-  return d;
-};
-
 /** The holiday's name, by where it falls — enough for the line, not a calendar of its own */
-function holidayName(d: Date): string {
-  const m = d.getMonth() + 1;
-  const day = d.getDate();
+function holidayName(iso: string): string {
+  const m = Number(iso.slice(5, 7));
+  const day = Number(iso.slice(8, 10));
   if (m === 1 && day <= 2) return 'New Year’s Day';
   if (m === 1) return 'Martin Luther King Jr. Day';
   if (m === 2) return 'Presidents’ Day';
@@ -49,41 +36,36 @@ function holidayName(d: Date): string {
   return 'Christmas';
 }
 
-const opensWhen = (today: Date, next: Date): string => {
-  const days = Math.round((next.getTime() - today.getTime()) / 86_400_000);
-  const when = days <= 1 ? 'tomorrow ' : `${WEEKDAY[next.getDay()]} `;
-  const early = EARLY_CLOSES.has(isoDate(next)) ? ' and closes early at 12:00 PM CT' : '';
-  return `It opens ${when}at 8:30 AM CT${early}.`;
-};
+/** When the next session opens while the market is shut (null while one trades): "overnight opens Sun 8:00 PM ET" for
+    the rail, "overnight Sun 8:00 PM ET (regular Mon 9:30 AM ET)" for a hover. */
+export function nextOpenWords(now: Date = new Date()): { short: string; long: string } | null {
+  const s = sessionAt(now.getTime());
+  if (s.phase !== 'closed' || !s.nextPhase) return null;
+  const short = nextOpenLine(s) ?? '';
+  const regular = s.regularOpenAt > now.getTime() ? ` · the regular session opens ${whenWords(s.regularOpenAt, now.getTime())}` : '';
+  return { short, long: `${short}${regular}` };
+}
 
 /** Where the market is right now, as the brand says it */
 export function readMarketState(now: Date = new Date()): MarketState {
-  const clock = readSessionClock(now);
-  const today = nyDate(now);
-  const key = isoDate(today);
-  const weekend = today.getDay() === 0 || today.getDay() === 6;
-  if (MARKET_HOLIDAYS.has(key) && !weekend) {
-    const next = nextTradingDay(today);
-    return { kind: 'holiday', word: 'closed', short: `closed for ${holidayName(today)}`, line: `Closed for ${holidayName(today)}. ${opensWhen(today, next).replace('It opens', 'The market opens')}` };
+  const s = sessionAt(now.getTime());
+  const badge = sessionBadge(s);
+  const reg = whenWords(s.regularOpenAt, now.getTime());
+  const early = EARLY_CLOSES.has(s.tradingDay) ? ' Early close at 1:00 PM ET.' : '';
+  const base = { session: s, badge };
+  if (s.phase === 'overnight') return { ...base, kind: 'overnight', word: 'live', short: 'overnight', line: `Overnight session. The regular session opens ${reg}.${early}` };
+  if (s.phase === 'pre') return { ...base, kind: 'pre-market', word: 'live', short: 'pre-market', line: `Pre-market. The regular session opens at 9:30 AM ET.${early}` };
+  if (s.phase === 'regular') {
+    if (s.isEarlyClose) return { ...base, kind: 'early-close', word: 'live', short: 'market open', line: 'Early close today at 1:00 PM ET.' };
+    return { ...base, kind: 'open', word: 'live', short: 'market open', line: 'The market is open.' };
   }
-  if (weekend) {
-    const next = nextTradingDay(today);
-    return { kind: 'closed', word: 'closed', short: 'closed for the weekend', line: `The market is closed. ${opensWhen(today, next)}` };
-  }
-  if (clock.phase === 'PREMARKET') {
-    const early = EARLY_CLOSES.has(key) ? ' Early close today at 12:00 PM CT.' : '';
-    return { kind: 'pre-market', word: 'closed', short: 'pre-market', line: `Pre-market. The market opens at 8:30 AM CT.${early}` };
-  }
-  if (clock.phase === 'OPEN' || clock.phase === 'AUCTION') {
-    if (EARLY_CLOSES.has(key)) {
-      /* the session clock runs to 16:00; an early close stops at 13:00 */
-      if (Number(clock.etTime.slice(0, 2)) >= 13) return { kind: 'closed', word: 'closed', short: 'closed early', line: `The market closed early at 12:00 PM CT. ${opensWhen(today, nextTradingDay(today))}` };
-      return { kind: 'early-close', word: 'live', short: 'market open', line: 'Early close today at 12:00 PM CT.' };
-    }
-    return { kind: 'open', word: 'live', short: 'market open', line: 'The market is open.' };
-  }
-  const next = nextTradingDay(today);
-  /* after hours runs to 20:00 ET; past it the market is simply closed */
-  if (clock.phase === 'AFTERHOURS' && Number(clock.etTime.slice(0, 2)) < 20) return { kind: 'after-hours', word: 'closed', short: 'after hours', line: `After hours. The market opens ${opensWhen(today, next).replace('It opens ', '')}` };
-  return { kind: 'closed', word: 'closed', short: 'closed', line: `The market is closed. ${opensWhen(today, next)}` };
+  if (s.phase === 'post') return { ...base, kind: 'after-hours', word: 'live', short: 'after hours', line: `After hours. ${nextOpenLine({ ...s, open: false, next: s.nextPhase }) ?? ''}`.trim() };
+  const next = nextOpenLine({ ...s, open: false, next: s.nextPhase });
+  const opens = next ? ` The ${next.replace(' opens ', ' session opens ')}.` : '';
+  if (s.isHoliday) return { ...base, kind: 'holiday', word: 'closed', short: `closed for ${holidayName(s.date)}`, line: `Closed for ${holidayName(s.date)}.${opens}` };
+  const wd = new Date(`${s.date}T12:00:00Z`).getUTCDay();
+  const weekend = wd === 0 || wd === 6 || (wd === 5 && s.minute >= 20 * 60);
+  if (weekend) return { ...base, kind: 'closed', word: 'closed', short: 'closed for the weekend', line: `The market is closed.${opens}` };
+  if (EARLY_CLOSES.has(s.date)) return { ...base, kind: 'closed', word: 'closed', short: 'closed early', line: `The market closed early at 1:00 PM ET.${opens}` };
+  return { ...base, kind: 'closed', word: 'closed', short: 'closed', line: `The market is closed.${opens}` };
 }

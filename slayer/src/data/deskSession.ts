@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
-import { isTradingDay } from '../core/calendar';
 import { nyParts } from '../core/nyTime';
+import { phaseAt } from '../core/session';
 
 /* The session the book is read in, one choice for every desk: pre, regular, after hours or overnight (SPX, VIX, XSP).
    Nothing saved follows the clock; a pin stays until Follow the clock. An old saved choice is not a pin. */
@@ -17,16 +17,13 @@ export const DESK_SESSIONS: readonly { value: DeskSession; label: string; hint: 
 const STORAGE_KEY = 'slayer_desk_session_pin';
 const BORN_KEY = 'slayer_desk_session_pin_born';
 
-function clockSession(): DeskSession {
-  const p = nyParts();
-  const mins = p.hour * 60 + p.minute;
-  const trading = isTradingDay(new Date(p.year, p.month - 1, p.day));
-  if (!trading) return p.weekday === 0 && mins >= 20 * 60 ? 'overnight' : 'rth';
-  if (mins >= 4 * 60 && mins < 9 * 60 + 30) return 'pre';
-  if (mins >= 9 * 60 + 30 && mins < 16 * 60) return 'rth';
-  if (mins >= 16 * 60 && mins < 20 * 60) return 'post';
-  return 'overnight';
+/** The desk session the clock is in — the global phase (core/session.ts). Closed (Friday 20:00 → Sunday 20:00, a
+    holiday, the gap after an early close's after hours) reads the last regular session. */
+export function deskSessionAt(ms: number): DeskSession {
+  const ph = phaseAt(ms);
+  return ph === 'overnight' ? 'overnight' : ph === 'pre' ? 'pre' : ph === 'post' ? 'post' : 'rth';
 }
+const clockSession = (): DeskSession => deskSessionAt(Date.now());
 
 function loadPin(): DeskSession | null {
   try {

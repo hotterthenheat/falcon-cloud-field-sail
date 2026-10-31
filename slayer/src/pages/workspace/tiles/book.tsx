@@ -3,6 +3,7 @@
 
 import { holdShort } from '../../../data/wall';
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useRoomSpot } from '../../pinpoint/useRoomSpot';
 import BookRead from '../../../components/gex/BookRead';
 import ExposureLedger from '../../../components/gex/ExposureLedger';
 import ExposureMatrix from '../../../components/gex/ExposureMatrix';
@@ -126,11 +127,18 @@ export const levelsControls = ({ ctx }: { ctx: WorkspaceCtx; state: TileState })
   if (!fam) return [];
   const spot = ctx.exposure.levels.spot;
   const ratio = measuredRatio(fam);
-  return [{ id: 'lens', label: 'Prices in', options: LENSES.map(k => ({ value: k, label: twinLabel(fam, k), hint: k === 'index' && ratio == null ? 'Waits on both live prices (ThetaData)' : fmtTwin(twinPrice(k, spot, ratio)) })), title: 'The instrument the levels are priced in' }];
+  return [{ id: 'lens', label: 'Prices in', options: LENSES.map(k => ({ value: k, label: twinLabel(fam, k), hint: k === 'index' && ratio == null ? 'Waits on both live prices' : fmtTwin(twinPrice(k, spot, ratio)) })), title: 'The instrument the levels are priced in' }];
 };
 
 export const LevelsTile = ({ ctx, state }: TileProps) => {
-  const rows = keyLevelsOf(ctx.snapshot);
+  const rows0 = keyLevelsOf(ctx.snapshot);
+  /* spot is the room's price the rest of the page prints (the matrix's spot row, useRoomSpot), and the distances are read from it — the
+     levels' own marked price (the vendor's last) differed from it by a few cents on a thin after-hours tape */
+  const last = useRoomSpot(ctx.ticker);
+  const rows = useMemo(() => {
+    if (!rows0 || last == null || !(last > 0)) return rows0;
+    return rows0.map(r => (r.kind === 'spot' ? { ...r, price: last } : { ...r, distPct: ((r.price - last) / last) * 100 })).sort((a, b) => b.price - a.price);
+  }, [rows0, last]);
   const fam = twinFamilyFor(ctx.ticker);
   /* a desk saved on the old futures lens reads in the ETF */
   const lens: TwinLensKey = fam && LENSES.includes(state.lens as TwinLensKey) ? (state.lens as TwinLensKey) : 'etf';
@@ -168,7 +176,7 @@ export const TargetsTile = ({ ctx, state, size }: TileProps) => {
   const agenda = agendaOf(ctx.snapshot, order);
   const door = useDoor();
   const { focusOn } = useFocus();
-  if (!agenda) return <TileNoBook ticker={ctx.ticker} why={surface30(ctx.snapshot) ? 'The ranking waits on the name’s at-the-money IV from Unusual Whales.' : undefined} />;
+  if (!agenda) return <TileNoBook ticker={ctx.ticker} why={surface30(ctx.snapshot) ? 'The ranking waits on the name’s at-the-money IV.' : undefined} />;
   const wide = size.room !== 'small';
   /** # · strike · reached · holds · at stake (the stake's lane only where there is room for it) */
   const cols = wide ? '26px minmax(0,1fr) 46px 86px 104px' : '26px minmax(0,1fr) 46px 60px';

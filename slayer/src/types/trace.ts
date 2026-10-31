@@ -151,6 +151,8 @@ export interface BookContract {
   oiDay?: string;
   /** The count after volDay's trading is not out yet */
   oiPending?: boolean;
+  /** New positions likely opened (data/traceRows.ts likelyOpeningOf); null when it cannot be told */
+  likelyOpening?: boolean | null;
 }
 
 export type PrintSentiment = 'BULLISH' | 'BEARISH' | 'NEUTRAL';

@@ -7,7 +7,7 @@ import { indexRoot } from '../../data/traceLive';
 
 const COARSE_TITLE = 'The index level comes in whole points — too coarse for a distance on a small index (XSP, VIX)';
 const OTM_TITLE = 'Out of the money by this much of the spot, calls and puts alike; negative is in the money';
-const INDEX_OTM_TITLE = "Against the vendor's whole-point index level — approximate";
+const INDEX_OTM_TITLE = "Against the feed's whole-point index level — approximate";
 
 /** "+2.1%" out of the money, "−3.0%" in it; "≈" against an index level; "—" when no distance can be stated */
 export const OtmCell = ({ otmPct, ticker, spot, className = 'text-textPrimary' }: { otmPct: number; ticker: string; spot?: number; className?: string }) =>

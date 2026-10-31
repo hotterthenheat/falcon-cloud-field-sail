@@ -14,6 +14,7 @@ import type { DeskContract, DeskChain } from '../../data/weigherDesk';
 import type { OptionRight } from '../../types/compass';
 import { useWeigherSpot } from '../../data/weigherTape';
 import { fmtStrike } from '../../core/format';
+import { EUROPEAN_NOTE } from '../../data/weigherGate';
 
 export { fmtStrike };
 const grouped = (v: number, digits: number) => v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -66,11 +67,11 @@ export const CHAIN_COLUMNS: ChainCol[] = [
   { key: 'prevClose', label: 'Prev close', head: 'Prev close', render: c => ({ text: money(c.prevClose) }) },
   { key: 'delta', label: 'Delta', head: 'Delta', term: 'Delta', render: c => ({ text: fixed(c.delta, 2) }) },
   { key: 'gamma', label: 'Gamma', head: 'Gamma', term: 'Gamma', render: c => ({ text: fixed(c.gamma, 4) }) },
-  { key: 'theta', label: 'Theta', head: 'Theta', term: 'Theta', render: c => ({ text: fixed(c.theta, 4) }) },
+  { key: 'theta', label: 'Theta per session', head: 'Theta/sess', term: 'Theta', render: c => ({ text: fixed(c.theta, 4) }) },
   { key: 'vega', label: 'Vega', head: 'Vega', term: 'Vega', render: c => ({ text: fixed(c.vega, 4) }) },
   { key: 'rho', label: 'Rho', head: 'Rho', term: 'Rho', render: c => ({ text: fixed(c.rho, 4) }) },
-  /* what the contract loses a day in DOLLARS a contract — theta × 100, the figure a buyer feels */
-  { key: 'decay', label: 'Decay a calendar day', head: 'Decay/day', term: 'Theta', render: c => ({ text: Number.isFinite(c.theta) ? money(Math.abs(c.theta * 100)) : '—', ink: 'text-bear' }) },
+  /* what the contract loses over one trading session in DOLLARS a contract — theta × 100, the figure a buyer feels */
+  { key: 'decay', label: 'Decay per session', head: 'Decay/sess', term: 'Theta', render: c => ({ text: Number.isFinite(c.theta) ? money(Math.abs(c.theta * 100)) : '—', ink: 'text-bear' }) },
   { key: 'iv', label: 'IV', head: 'IV', term: 'IV', render: c => ({ text: Number.isFinite(c.iv) ? `${grouped(c.iv, 1)}%` : '—' }) },
   { key: 'itm', label: 'Probability ITM (model)', head: 'ITM · model', term: 'ITM odds', render: c => ({ text: pct0(c.itmOdds) }) },
   { key: 'otm', label: 'Probability OTM (model)', head: 'OTM · model', term: 'OTM odds', render: c => ({ text: Number.isFinite(c.itmOdds) ? pct0(100 - c.itmOdds) : '—' }) },
@@ -581,7 +582,7 @@ const WeighGrids = ({ c }: { c: DeskContract }) => (
             <StatCell label="Prev close" value={money(c.prevClose)} />
             <StatCell label="Low" value={money(c.low)} />
             <StatCell label="IV" term="IV" value={Number.isFinite(c.iv) ? `${grouped(c.iv, 1)}%` : '—'} />
-            <StatCell label="Open interest" term="Open interest" value={fmtCount(c.oi)} />
+            <StatCell label="Open int." term="Open interest" value={fmtCount(c.oi)} />
             <StatCell label="Breakeven" term="Breakeven" value={money(c.breakeven)} />
             <StatCell
               label="From spot"
@@ -595,10 +596,15 @@ const WeighGrids = ({ c }: { c: DeskContract }) => (
           <div className="grid grid-cols-3 md:grid-cols-5 gap-x-4 gap-y-2.5">
             <StatCell label="Delta" term="Delta" value={fixed(c.delta, 4)} />
             <StatCell label="Gamma" term="Gamma" value={fixed(c.gamma, 4)} />
-            <StatCell label="Theta / calendar day" term="Theta" value={fixed(c.theta, 4)} />
+            <StatCell label="Theta / sess" term="Theta" value={fixed(c.theta, 4)} />
             <StatCell label="Vega" term="Vega" value={fixed(c.vega, 4)} />
             <StatCell label="Rho" term="Rho" value={fixed(c.rho, 4)} />
           </div>
+          {c.europeanApprox && (
+            <span className="text-t11 leading-snug text-warn" data-european-note>
+              {EUROPEAN_NOTE}
+            </span>
+          )}
         </div>
   </>
 );

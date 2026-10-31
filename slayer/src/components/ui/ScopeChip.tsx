@@ -6,6 +6,8 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, Link2, Unlink2 } from 'lucide-react';
 import { extendedLine, useLiveQuote } from '../../data/liveQuote';
 import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
+import { closeMoveTitle, sessionWhen, signedPct } from '../../data/dayChange';
+import { extTag } from '../../core/session';
 import { thetaUseHere } from '../../data/theta';
 import CompanyLogo from './CompanyLogo';
 import TickerLookup from './TickerLookup';
@@ -96,7 +98,8 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
   const live = useLiveQuote(shown && !theta ? ticker : null);
   const price = live ? (live.phase !== 'regular' && live.extPrice != null && live.extPrice > 0 ? live.extPrice : live.spot) : null;
   const sessionMove = live != null && live.phase !== 'regular';
-  const change = !live ? null : sessionMove ? live.extPct : live.changePct;
+  /* the day's change by the one convention (data/dayChange.ts): the regular session's; the extended move rides beside it */
+  const change = live && Number.isFinite(live.changePct) ? live.changePct : null;
 
   const menu =
     open &&
@@ -146,12 +149,17 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
           const asOf = thetaRead.live ? '' : ` · last print kept from ${new Date(p.read).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} ET`;
           return (
             <>
-              <span className={`text-t11 tnum leading-none ${thetaRead.live ? 'text-textPrimary' : 'text-textSecondary'}`} title={`ThetaData last print${asOf}`} data-scope-price>
+              <span className={`text-t11 tnum leading-none ${thetaRead.live ? 'text-textPrimary' : 'text-textSecondary'}`} title={`Live last print${asOf}`} data-scope-price>
                 ${p.price.toFixed(2)}
               </span>
-              {mv && (
-                <span className={`text-t10 tnum leading-none whitespace-nowrap ${Math.abs(mv.pct) < 0.005 ? 'text-textSecondary' : mv.pct > 0 ? 'text-bull' : 'text-bear'}`} title={`Against the prior regular close, ${mv.base.toFixed(2)}${mv.ext != null ? ` · after hours ${mv.ext >= 0 ? '+' : '−'}${Math.abs(mv.ext).toFixed(2)}%` : ''}`} data-scope-change>
-                  {`${mv.pct > 0 ? '+' : mv.pct < 0 ? '−' : ''}${Math.abs(mv.pct).toFixed(2)}%`}
+              {mv && mv.pct != null && (
+                <span className={`text-t10 tnum leading-none whitespace-nowrap ${Math.abs(mv.pct) < 0.005 ? 'text-textSecondary' : mv.pct > 0 ? 'text-bull' : 'text-bear'}`} title={closeMoveTitle(mv)} data-scope-change>
+                  {signedPct(mv.pct)}
+                </span>
+              )}
+              {mv && mv.ext != null && (
+                <span className="text-t9 tnum leading-none whitespace-nowrap text-textMuted" title={closeMoveTitle(mv)} data-scope-ext>
+                  {extTag(mv.extWord)} {signedPct(mv.ext)}
                 </span>
               )}
             </>
@@ -164,12 +172,12 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
             </span>
             {/* the regular session's change, the extended move beside it (zero is neutral); outside the session it is named by
                 its date */}
-            <span className={`text-t10 tnum leading-none whitespace-nowrap ${change == null || Math.abs(change) < 0.005 ? 'text-textSecondary' : change > 0 ? 'text-bull' : 'text-bear'}`} title={sessionMove ? `${live?.phase === 'pre' ? 'Premarket' : 'After hours'} from the regular close${live?.regClose != null ? ` ${live.regClose.toFixed(2)}` : ''}` : 'The regular session, against the close before it'} data-scope-change>
-              {change == null ? '…' : `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(change).toFixed(2)}%`}
+            <span className={`text-t10 tnum leading-none whitespace-nowrap ${change == null || Math.abs(change) < 0.005 ? 'text-textSecondary' : change > 0 ? 'text-bull' : 'text-bear'}`} title={sessionMove ? `${sessionWhen(live?.regDate) ?? 'The last'} regular-session change${live?.regClose != null ? ` (close ${live.regClose.toFixed(2)})` : ''}${extendedLine(live) ? ` · ${extendedLine(live)} since that close` : ''}` : 'The regular session, against the close before it'} data-scope-change>
+              {change == null ? '…' : signedPct(change)}
             </span>
-            {!sessionMove && extendedLine(live) && (
-              <span className="text-t10 tnum leading-none text-textMuted whitespace-nowrap" data-scope-ext>
-                · {extendedLine(live)!.replace('after hours', 'AH').replace('pre-market', 'pre')}
+            {sessionMove && extendedLine(live) && (
+              <span className="text-t9 tnum leading-none text-textMuted whitespace-nowrap" data-scope-ext>
+                {extendedLine(live)!.replace('after hours', 'AH').replace('pre-market', 'PM').replace('overnight', 'ON')}
               </span>
             )}
           </>

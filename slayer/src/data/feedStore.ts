@@ -3,14 +3,15 @@
    answers this browser kept (uwSwr's store). */
 
 import { useSyncExternalStore } from 'react';
-import { isTradingDay, today as nyToday } from '../core/calendar';
-import { nyCloseMin, nyMinutes, SESSION_OPEN_MIN } from '../core/nyTime';
+import { phaseAt } from '../core/session';
 import { uwCall, uwKept } from './whales';
 const NY_DAY_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
 
 /* ---- reads -------------------------------------------------------------------- */
 
-export type Answer = { status: number; data: unknown; error: string | null };
+/** `at`/`held`: when the server's hub took the answer from the vendor, and whether it is serving it past its normal life
+    (data/whales.ts UwAnswer); a reader showing `held` answers should say "as of" `at`. */
+export type Answer = { status: number; data: unknown; error: string | null; at?: number | null; held?: boolean };
 /** One GET by path: the vendor through the proxy, or the kept answers */
 export type Get = (path: string, priority?: boolean) => Promise<Answer>;
 export const liveGet: Get = (path, priority) => uwCall(path, priority);
@@ -82,47 +83,18 @@ export function useStore<S, T = S>(store: Store<S>, pick: (s: S) => T = s => s a
   );
 }
 
-/** A map of books by name that keeps the `max` most recently read; an older one is read again when asked */
-export class BoundedMap<K, V> {
-  private m = new Map<K, V>();
-  constructor(private max: number) {}
-  get(k: K): V | undefined {
-    const v = this.m.get(k);
-    if (v !== undefined) {
-      this.m.delete(k);
-      this.m.set(k, v);
-    }
-    return v;
-  }
-  /** Read without marking it used */
-  peek(k: K): V | undefined {
-    return this.m.get(k);
-  }
-  has(k: K): boolean {
-    return this.m.has(k);
-  }
-  set(k: K, v: V): void {
-    this.m.delete(k);
-    this.m.set(k, v);
-    while (this.m.size > this.max) this.m.delete(this.m.keys().next().value as K);
-  }
-  delete(k: K): void {
-    this.m.delete(k);
-  }
-  entries(): IterableIterator<[K, V]> {
-    return this.m.entries();
-  }
-}
+export { BoundedMap } from './boundedMap';
 
 /* ---- the session and the clock ---------------------------------------------------- */
 
 export type Session = 'open' | 'extended' | 'closed';
-/** Where New York's session stands: the regular hours, the pre-market and evening (04:00–20:00), or shut */
+/** Where New York's session stands for the vendor's books (core/session.ts): the regular hours, the pre-market and the
+    after hours (04:00–20:00; 17:00 on an early close), or shut. The overnight reads at the shut pace: the vendor's tape
+    has no overnight prints (its bars and stock state end at 20:00 and resume at 04:00), so nothing new is there to read. */
 export function sessionNow(at: number = Date.now()): Session {
-  if (!isTradingDay(nyToday())) return 'closed';
-  const m = nyMinutes(at);
-  if (m >= SESSION_OPEN_MIN && m < nyCloseMin(at)) return 'open';
-  return m >= 4 * 60 && m < 20 * 60 ? 'extended' : 'closed';
+  const ph = phaseAt(at);
+  if (ph === 'regular') return 'open';
+  return ph === 'pre' || ph === 'post' ? 'extended' : 'closed';
 }
 
 /** How often a book is read again: in the session, around it, and when the market is shut (null: not again) */

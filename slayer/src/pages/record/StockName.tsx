@@ -607,11 +607,11 @@ const StockName = () => {
             title={
               live < pageSources.length
                 ? `Not live: ${pageSources.filter(x => x.status !== 'live').map(x => `${x.label} (${x.stamp})`).join('; ')}. The read itself — the trend, the numbers and the money — is scored off the screener row alone, so it does not wait on ${pageSources.length - live === 1 ? 'it' : 'them'}; the boxes that show ${pageSources.length - live === 1 ? 'it' : 'them'} say so.`
-                : 'Every source on the page is live. The read is scored off the screener row; the rest is shown beside it.'
+                : 'Every source on the page answered. Each box stamps when its figures are from; the read is scored off the screener row, the rest is shown beside it.'
             }
           >
-            {live} of {pageSources.length} sources live
-            {live < pageSources.length ? <span className="normal-case tracking-normal"> · {pageSources.filter(x => x.status !== 'live').map(x => x.label.toLowerCase()).join(', ')} not live · not in the read</span> : null}
+            {live} of {pageSources.length} sources answered
+            {live < pageSources.length ? <span className="normal-case tracking-normal"> · {pageSources.filter(x => x.status !== 'live').map(x => x.label.toLowerCase()).join(', ')} not in · not in the read</span> : null}
           </span>
         </div>
       </div>
@@ -816,7 +816,7 @@ const StockName = () => {
               {news.nextEarnings ? (
                 <span className="text-textSecondary truncate min-w-0">
                   reports <span className="text-textPrimary">{news.nextEarnings.label}</span> · {untilWords(news.nextEarnings.daysOut)} {news.nextEarnings.impliedMovePct > 0 ? <> · the options price <span className="text-textPrimary">±{news.nextEarnings.impliedMovePct.toFixed(1)}%</span></> : <> · not priced yet</>}
-                  {!news.nextEarnings.confirmed && <span className="text-warn" title="The company has not announced this date yet — it is Unusual Whales' estimate and can move"> · date estimated</span>}
+                  {!news.nextEarnings.confirmed && <span className="text-warn" title="The company has not announced this date yet — it is our data provider's estimate and can move"> · date estimated</span>}
                   {news.nextEarnings.timeKnown === false && <span className="text-textMuted"> · time not set</span>}
                   {news.reaction && (
                     <span className="text-textMuted">
@@ -1001,12 +1001,12 @@ const StockName = () => {
             {file.tapes === 'loading' && (
               <p className="mt-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted" data-stock-alerts="reading">reading the flow alerts of {sessionWord}…</p>
             )}
-            {file.tapes === 'live' && money.askSharePct != null && money.sweepSharePct != null && (
+            {file.tapes === 'live' && money.askSharePct != null && Number.isFinite(money.askSharePct) && money.sweepSharePct != null && Number.isFinite(money.sweepSharePct) && (
               <p className="mt-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted" data-stock-alerts>
                 {money.flowWindow.complete
                   ? `${money.flowWindow.alerts.toLocaleString('en-US')} flow alerts on ${sessionWord}`
                   : `the latest ${money.flowWindow.alerts.toLocaleString('en-US')} flow alerts on ${sessionWord}, ${money.flowWindow.from}–${money.flowWindow.to} ET`}{' '}
-                · {money.askSharePct.toFixed(1)}% of their premium filled on the ask · {money.sweepSharePct.toFixed(0)}% swept
+                · {money.askSharePct.toFixed(1)}% of the sided premium on the ask · {money.sweepSharePct.toFixed(0)}% swept
               </p>
             )}
           </div>
@@ -1506,7 +1506,8 @@ function NameWithoutBook({ ticker, file, quote }: { ticker: string; file: StockF
   const today = nyIsoDate();
   const next = dates.find(d => d >= today) ?? null;
   const px = quote ? (quote.phase !== 'regular' && quote.extPrice != null && quote.extPrice > 0 ? quote.extPrice : quote.spot > 0 ? quote.spot : null) : null;
-  const pct = quote ? (quote.phase === 'regular' ? quote.changePct : quote.extPct) : null;
+  /* the day's change (data/dayChange.ts): the regular session's, never the after-hours move in its place */
+  const pct = quote && Number.isFinite(quote.changePct) ? quote.changePct : null;
   const filed = quarterFacts(file.quarters);
   return (
     <div className="border border-borderSubtle rounded-md bg-panel px-5 py-4" data-stock-empty={ticker}>

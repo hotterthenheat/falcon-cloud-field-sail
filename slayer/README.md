@@ -11,28 +11,64 @@ Which vendor feeds which box is in `docs/DATA_MAP.md`; the rules are in `docs/DA
 
 ## Run it on your PC
 
-You need Node 22, Java 21 and the ThetaData terminal jar (see `docs/theta-terminal.md`, "One-time setup").
+You need:
 
-1. **Get the code** (PowerShell or the VS Code terminal):
+- **Node 22 or 24** (https://nodejs.org, the LTS installer). Check with `node -v`.
+- **Java 21** or newer (Eclipse Temurin 21 from https://adoptium.net). Check with `java -version`.
+- **A ThetaData account and its API key** (`td1_...`, from your account page at https://www.thetadata.net), and
+  **the v3 ThetaData terminal jar**, downloaded from thetadata.net: put it at `slayer/theta/lib/<build>.jar` (the
+  newest `.jar` there wins) or `slayer/theta/ThetaTerminalv3.jar`. Older v1/v2 terminals do not work: the app calls the
+  v3 REST API (`/v3/...` on port 25503). Details: `docs/theta-terminal.md`, "One-time setup".
+- **An Unusual Whales API key.**
+
+Every command below runs in PowerShell (or the VS Code terminal) **from the `slayer` folder**.
+
+1. **Get the code** (the first time):
    ```powershell
-   git fetch origin
-   git checkout claude/real-data-ui-lock     # or main, once the pull requests are merged
-   git pull
+   git clone https://github.com/hotterthenheat/falcon-cloud-field-sail.git
+   cd falcon-cloud-field-sail
+   git checkout main
    cd slayer
    npm ci
    ```
+   Already cloned: `git checkout main`, `git pull`, then `cd slayer` and `npm ci`.
 2. **Keys.** Create `slayer/.env.local` (it is git-ignored and never leaves your PC):
    ```
    UNUSUAL_WHALES_API_KEY=...
    THETADATA_API_KEY=td1_...
    ```
-   ThetaData allows **one terminal per account**. Run it in one place only: either let the app start it (step 3), or
-   start it yourself with `npm run theta` / the autostart task (`docs/theta-terminal.md`) and add
-   `THETA_AUTOSTART=0` to `.env.local` so the app never starts a second one.
+   **ThetaData allows one terminal per account, anywhere.** A second terminal started with the same key (another PC,
+   a laptop, the jar double-clicked, `npm run dev` while the autostart task runs) ends the first one's session, and the
+   two then keep throwing each other off. Run it in one place only: either let the app start it (step 3), or start it
+   yourself with `npm run theta` / the autostart task (`docs/theta-terminal.md`) and add `THETA_AUTOSTART=0` to
+   `.env.local` so the app never starts a second one.
 3. **Start it:** `npm run dev`, then open **http://localhost:8080**. The dev server also starts and supervises the
-   ThetaData terminal (restarts it if it stops, logs back in if the session is taken, keeps it warm).
+   ThetaData terminal (restarts it if it stops, leaves it to reconnect if the session is taken, keeps it warm). If the
+   key is wrong, the server log says `ThetaData login failed: check THETADATA_API_KEY` and it stops trying for a while.
 4. **Check ThetaData:** with the terminal up, `npm run theta:check` asks it for every kind of data the pages use and
    prints status, rows, and cold and warm time for each.
+
+Settings for one session go in PowerShell's syntax, before the command (`.env.local` is the place for ones you keep):
+
+```powershell
+$env:PORT = "9000"; npm run serve            # another port
+$env:THETA_AUTOSTART = "0"; npm run dev      # do not start a terminal
+Remove-Item Env:PORT                         # back to the default
+```
+
+(`PORT=9000 npm run serve` is the macOS/Linux spelling and does not work in PowerShell.)
+
+### Updating
+
+```powershell
+git pull
+npm ci
+npm run build
+```
+
+then restart whatever runs the app: stop `npm run dev` with Ctrl+C and start it again, or, with the autostart tasks,
+`Stop-ScheduledTask SlayerSite; Start-ScheduledTask SlayerSite` (and the same for `SlayerTheta` if `theta/` changed).
+The SlayerSite task also rebuilds by itself on start when the code changed since its last build.
 
 The first page view after a start takes a few seconds while the shared data hub fills; after that pages paint at
 once, and a reload paints the last data this browser kept (stamped "as of …") while the fresh data loads.
@@ -52,8 +88,9 @@ and never gets ahead of a viewer. `EXPOSURE_RECORDER=0` turns it off. Budget and
 
 ## Keep it running 24/7 on your PC
 
-From the `slayer` folder, once: `powershell -ExecutionPolicy Bypass -File theta\install-autostart.ps1`. It registers
-two Windows tasks that start at every log-in and restart within a minute if they stop: **SlayerTheta** (the ThetaData
+From the `slayer` folder, once: `powershell -ExecutionPolicy Bypass -File theta\install-autostart.ps1` (from an
+Administrator PowerShell they also start at boot, before anyone logs in). It registers two Windows tasks that start at
+every log-in and start their program again within seconds whenever it exits: **SlayerTheta** (the ThetaData
 terminal) and **SlayerSite** (the built site, the data proxies, the Compass engine and the exposure recorder on
 http://localhost:8080), so Compass scans and Terrain's field is recorded every session. Keep
 the PC from sleeping. Don't also run `npm run dev` while SlayerSite runs. Details: `docs/theta-terminal.md`.
@@ -64,7 +101,7 @@ For more than a few viewers, run the production build instead of the dev server:
 
 ```powershell
 npm run build
-npm run serve          # http://localhost:8080, or PORT=... to change it
+npm run serve          # http://localhost:8080; $env:PORT = "9000" first to change it
 ```
 
 `npm run serve` does not start ThetaData: run `npm run theta` (or the autostart task) alongside it. Every viewer is

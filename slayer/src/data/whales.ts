@@ -105,7 +105,10 @@ async function uw<T>(path: string, priority = false): Promise<T> {
 
 /* One request per path: concurrent asks share it in flight, and a slow route's answer is reused for a minute. Routes
    that move with the tape are shared in flight only. Each caller gets its own copy of the body. */
-type UwAnswer = { status: number; data: unknown; error: string | null };
+/** `at`: when the server's hub took this answer from the vendor (epoch ms, the proxy's x-hub-at header; null when
+    unknown). `held`: the server is serving it past its route's normal life because the vendor is refusing (it may for up
+    to 4× the route's freshness, 20 min for a slow route); a feed should then show it "as of" `at`, not as live. */
+export type UwAnswer = { status: number; data: unknown; error: string | null; at?: number | null; held?: boolean };
 /* the proxy's short-lived classes (server/uwProxy.mjs ttlFor): shared in flight only */
 const LIVE_PATH = /\/(option-trades|flow-alerts|market-tide|sector-tide|etf-tide|top-net-impact|net-flow|greek-flow|stock-state|quote|flow-per-strike-intraday|net-prem-ticks|nope|spot-exposures|greek-exposure|gex-levels|flow-per-|oi-|option-contracts|atm-chains|interpolated-iv|ohlc\/(?:1m|2m|3m|5m|15m|1h)|darkpool|lit-flow|options-volume|stock-price-levels|stock-volume-price-levels)(\/|$)|^\/option-contract\//;
 const REUSE_MS = 60_000;
@@ -157,14 +160,18 @@ export async function uwCall(path: string, priority = false, low = false): Promi
   entry.at = Date.now();
   if (got.status === 422) noteNotCarried(path);
   if (got.error) shared.delete(path);
-  else save(path, got.status, got.data);
+  else save(path, got.status, got.data, got.at);
   if (shared.size > 400) for (const [k, v] of shared) if (v.done && Date.now() - v.at > REUSE_MS) shared.delete(k);
   return copyOf(got);
 }
 
+/** ms since the server's hub took an answer from the vendor, or null when the proxy did not say */
+export const uwAge = (a: Pick<UwAnswer, 'at'>, now = Date.now()): number | null => (a.at ? Math.max(0, now - a.at) : null);
+
 /**
  * Paint first, then refresh: hands `on` the answer this browser kept for the path (with the instant it was kept), then
- * the fresh one (savedAt null). A reader shows the kept copy as "as of" that instant, never as live.
+ * the fresh one (savedAt null). A reader shows the kept copy as "as of" that instant, never as live. An answer the
+ * server is holding past its route's normal life (`held`: the vendor refusing) comes with its own instant too.
  */
 export async function uwSwr<T>(path: string, on: (data: T, savedAt: number | null) => void, priority = false): Promise<UwAnswer> {
   let freshIn = false;
@@ -173,7 +180,7 @@ export async function uwSwr<T>(path: string, on: (data: T, savedAt: number | nul
   });
   const got = await uwCall(path, priority);
   freshIn = true;
-  if (!got.error) on(got.data as T, null);
+  if (!got.error) on(got.data as T, got.held ? got.at ?? null : null);
   return got;
 }
 
@@ -195,24 +202,91 @@ function noteFail(path: string) {
   return ms;
 }
 
-async function uwFetch(path: string, priority: boolean, low = false): Promise<UwAnswer> {
+/* The key's rate limit is the server's to wait out (server/uwProxy.mjs, one breaker for the key). When it answers 429
+   with Retry-After, every read from this browser holds until then, outside the five slots, so a refusal never parks a
+   slot in a sleep or multiplies into more asks. */
+let coolUntil = 0;
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const gatewayFault = (s: number) => s === 502 || s === 503 || s === 504;
+/** Longest this browser waits out a refusal before giving the reader the error (its feed asks again on its own beat) */
+const MAX_HOLD_MS = 8_000;
+
+type Got = { status: number; ok: boolean; headers: Headers; text: string };
+
+function retryAfterMs(res: Got): number {
+  const h = res.headers.get('retry-after');
+  const s = h == null ? NaN : Number(h);
+  return Number.isFinite(s) && s > 0 ? s * 1000 : 0;
+}
+
+/** When the hub took the answer from the vendor (x-hub-at), epoch ms; null when the proxy did not say */
+function hubAt(res: Got): number | null {
+  const at = Number(res.headers.get('x-hub-at'));
+  return Number.isFinite(at) && at > 0 ? at : null;
+}
+
+async function uwOnce(path: string, priority: boolean, low: boolean, headers: HeadersInit): Promise<Got> {
   await takeSlot(priority, low);
   try {
-    const held = retryWait(path);
-    if (held > 0) await new Promise(r => setTimeout(r, held));
+    const res = await fetch(`/api/uw${path}`, { headers });
+    /* the body is read inside the slot, as before; nothing sleeps in it */
+    const text = await res.text();
+    return { status: res.status, ok: res.ok, headers: res.headers, text };
+  } finally {
+    releaseSlot();
+  }
+}
+
+/** A failed answer's words for the reader: the vendor's message, or "unavailable <status>" (never an HTML page) */
+function faultWords(status: number, parsed: unknown, text: string): string {
+  if (parsed && typeof parsed === 'object' && ('message' in parsed || 'error' in parsed)) {
+    const m = String((parsed as { message?: unknown; error?: unknown }).message || (parsed as { error?: unknown }).error || '');
+    if (m && !/^\s*</.test(m)) return m.slice(0, 180);
+  }
+  /* a gateway's error page (Vercel's, a proxy's) or any body that is not the vendor's JSON */
+  if (typeof parsed === 'string' && text && !/^\s*</.test(text) && text.length <= 180) return text;
+  return `unavailable ${status}`;
+}
+
+async function uwFetch(path: string, priority: boolean, low = false): Promise<UwAnswer> {
+  try {
     const auth = await feedHeaders();
     if (!auth.ok) return { status: 401, data: null, error: auth.code };
-    let res = await fetch(`/api/uw${path}`, { headers: auth.headers });
-    /* after two failures (429 or gateway), wait 2 s, then 4, then 8, up to 30 s; a 200 clears the wait. The first
-       failure still retries once. */
-    if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
-      const ms = noteFail(path);
-      await new Promise(r => setTimeout(r, ms > 0 ? ms : 1500));
-      res = await fetch(`/api/uw${path}`, { headers: auth.headers });
+    let res: Got | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      /* waits happen before a slot is taken: the key's breaker (given up past MAX_HOLD_MS), and the path's own backoff */
+      const keyHold = coolUntil - Date.now();
+      if (keyHold > MAX_HOLD_MS) {
+        if (res) break;
+        return { status: 429, data: null, error: 'rate limited; asked again shortly', at: null };
+      }
+      const held = Math.max(retryWait(path), keyHold);
+      if (held > 0) await sleep(held);
+      res = await uwOnce(path, priority, low, auth.headers);
+      if (res.ok) {
+        failWait.delete(path);
+        break;
+      }
+      if (res.status === 429) {
+        /* the server already retried once behind its breaker: one more try here only when the wait is short */
+        const ms = retryAfterMs(res) || 2_000;
+        coolUntil = Math.max(coolUntil, Date.now() + ms);
+        noteFail(path);
+        if (ms > MAX_HOLD_MS) break;
+        continue;
+      }
+      if (gatewayFault(res.status)) {
+        /* a gateway blip (a cold function, a dropped connection) gets one more try after 1.5 s; after two failures
+           in a row the path waits 2 s, then 4, then 8, up to 30 s before its next ask; a 200 clears the wait */
+        noteFail(path);
+        /* (a path already backing off waits that out at the top of the loop instead) */
+        if (attempt === 0 && retryWait(path) === 0) await sleep(1500);
+        continue;
+      }
+      break;
     }
-    if (res.ok) failWait.delete(path);
-    else if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) noteFail(path);
-    const text = await res.text();
+    if (!res) return { status: 0, data: null, error: 'unusual whales unreachable', at: null };
+    const text = res.text;
     let parsed: unknown = null;
     try {
       parsed = text ? JSON.parse(text) : null;
@@ -220,18 +294,10 @@ async function uwFetch(path: string, priority: boolean, low = false): Promise<Uw
       parsed = text;
     }
     const data = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'data' in parsed ? (parsed as { data: unknown }).data : parsed;
-    if (!res.ok) {
-      const msg =
-        parsed && typeof parsed === 'object' && ('message' in parsed || 'error' in parsed)
-          ? String((parsed as { message?: unknown; error?: unknown }).message || (parsed as { error?: unknown }).error)
-          : text.slice(0, 180) || `unusual whales ${res.status}`;
-      return { status: res.status, data, error: msg };
-    }
-    return { status: res.status, data, error: null };
+    if (!res.ok) return { status: res.status, data: typeof parsed === 'string' ? null : data, error: faultWords(res.status, parsed, text), at: null };
+    return { status: res.status, data, error: null, at: hubAt(res), held: res.headers.get('x-hub-held') === '1' };
   } catch (e) {
-    return { status: 0, data: null, error: e instanceof Error ? e.message : 'unusual whales unreachable' };
-  } finally {
-    releaseSlot();
+    return { status: 0, data: null, error: e instanceof Error ? e.message : 'unusual whales unreachable', at: null };
   }
 }
 

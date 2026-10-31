@@ -956,7 +956,8 @@ export function useStockLast(ticker: string | null): LivePack<StockLast | null> 
     return q.price > 0 ? q : null;
   }, null, !!name, READ_POLL_MS, 'live');
 }
-/** Cumulative share volume for one dated session: regular stops at 16:00 so after-hours bars are not the regular day's total */
+/** Cumulative share volume for one dated session: regular stops at 16:00 (its cumulative total then, pre-market
+    included); extended is the whole day to 20:00 — the dark share's divisor */
 function datedDayVolume(bars: Record<string, unknown>[], session: 'regular' | 'extended'): number {
   let maxAll = 0;
   let maxReg = 0;
@@ -1012,7 +1013,9 @@ function tickerKnown(name: string): Promise<boolean> {
           knownTickers.delete(t);
           return true;
         }
-        return d != null && (d.data ?? null) != null;
+        /* uwCall has already unwrapped the vendor's { data } box: a carried name answers its state, an unknown one null */
+        const state = d != null && typeof d === 'object' && 'data' in d ? d.data : d;
+        return state != null;
       })
       .catch(() => {
         knownTickers.delete(t);
@@ -1067,7 +1070,10 @@ export function useNameDark(ticker: string | null, untilMs: number | null = null
       /* the stock's own last trade, never a cross's price (a cross may be an own-terms print far off the market); with no
          quote there is no spot, and nothing is placed against one */
       const spot = quote.price > 0 ? quote.price : 0;
-      const dayVol = datedDayVolume(bars, session);
+      /* one dark share in the app (data/darkBaseline.ts): the day's price levels hold the whole day's dark shares, so they
+         are divided by the whole day's volume, pre-market to 20:00, in either session view — the same figure the
+         20-session baseline compares. Over the volume to 16:00 it read AAPL 57% against the baseline's 40.1%. */
+      const dayVol = datedDayVolume(bars, 'extended');
       const dayRaw = darkDayOf(levels, dayVol);
       const day = dayRaw ? { ...dayRaw, iso: day0 } : null;
       return { view: darkView(name, mapped, darkLevels(levels, spot, mapped), spot, day && Number.isFinite(day.sharePct) ? day.sharePct : 0), lit: lit.filter(r => !r.canceled).map((r, i) => darkPrint(r, i, 0, 'lit')).filter(onDay), day };
@@ -1199,6 +1205,19 @@ async function loadNewestOi(rows: BookContract[]): Promise<void> {
 /** Pair the open interest of the rows a grid has on screen (TraceGrid onVisible) */
 export function pairOiFor(rows: readonly BookContract[]): void {
   void loadNewestOi(rows.slice(0, OI_HISTORIC_CAP));
+}
+
+/** The next session's count for a contract (its vendor symbol) traded on `sessionIso`, from what pairOiFor has already
+    read — never asks: { oi, before } once paired; null or undefined when not to hand */
+export function nextOiOf(occ: string, sessionIso: string): { oi: number; before: number } | null | undefined {
+  return newestOiCache.get(`${occ}:${nextSessionIso(sessionIso)}`);
+}
+/** Called whenever pairOiFor's counts change; returns the unsubscribe */
+export function onNextOi(f: () => void): () => void {
+  newestOiListeners.add(f);
+  return () => {
+    newestOiListeners.delete(f);
+  };
 }
 
 /** The rows with the open interest of their volume's session wherever it is out (see above) */

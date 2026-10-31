@@ -23,8 +23,8 @@ const isLive = (ticker?: string): boolean => {
 export function sourceWords(ticker?: string): { short: string; long: string; live: boolean } {
   if (isLive(ticker))
     return {
-      short: 'Unusual Whales',
-      long: "Unusual Whales' live open-interest book: each strike's gamma, vanna and charm are its spot-exposures rows (open interest × the greek, repriced every minute — gamma as dollars per 1% move, vanna as dollars of delta per vol point, charm as dollars of delta per session). Delta is the greek-exposure rows. Open interest, vega and each contract's own implied vol are the option-contracts rows. The whole book is the sum of its expiries' own rows, not a separate whole-book total, which is a second snapshot and can differ (MU +$212M against +$155M summed)",
+      short: 'Market-data book',
+      long: "The live open-interest book from our market-data feed: each strike's gamma, vanna and charm are its spot-exposures rows (open interest × the greek, repriced every minute — gamma as dollars per 1% move, vanna as dollars of delta per vol point, charm as dollars of delta per session). Delta is the greek-exposure rows. Open interest, vega and each contract's own implied vol are the option-contracts rows. The whole book is the sum of its expiries' own rows, not a separate whole-book total, which is a second snapshot and can differ (MU +$212M against +$155M summed)",
       live: true,
     };
   return { short: 'House book', long: "the terminal's own chain, open interest and tape, built in the terminal", live: false };
@@ -67,13 +67,13 @@ const Formula = ({ greek, words, unit }: { greek: string; words: string; unit: s
   </li>
 );
 
-/** The other products' names for the same levels — so a reader coming from one knows what they are looking at */
-const LEVEL_NAMES: { ours: string; what: string; theirs: string }[] = [
-  { ours: 'Supreme', what: 'the strike with the most net gamma, either sign, on the Levels card’s contracts (Today’s expiry, or every listed one) — the one the chart and the matrix wear in magenta', theirs: 'Absolute Gamma strike (SpotGamma) · GEX 1 (Menthor Q) · King Node (Skylit)' },
-  { ours: 'Call wall', what: 'the strike with the most call gamma on the Levels card’s contracts (Today’s expiry, or every listed one), either side of spot — while dealers are long gamma there, their hedging slows a rise', theirs: 'Call Wall (SpotGamma, Unusual Whales) · Call Resistance (Menthor Q)' },
-  { ours: 'Put wall', what: 'the strike with the most put gamma on the Levels card’s contracts, either side of spot — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet', theirs: 'Put Wall (SpotGamma, Unusual Whales) · Put Support (Menthor Q)' },
-  { ours: 'Flip', what: FLIP_RULE, theirs: 'Gamma flip (Unusual Whales, GEXBot) · HVL (Menthor Q) — not the Vol Trigger. SpotGamma’s Zero Gamma is the same idea: the book re-priced across spot, where it crosses zero (the profile’s ZERO GAMMA line)' },
-  { ours: 'Pin', what: 'the strike with the most open interest in the window — where price tends to settle into expiry', theirs: 'max-OI strike — not max pain, which is a different calculation' },
+/** What each level is */
+const LEVEL_NAMES: { ours: string; what: string }[] = [
+  { ours: 'Supreme', what: 'the strike with the most net gamma, either sign, on the Levels card’s contracts (Today’s expiry, or every listed one) — the one the chart and the matrix wear in magenta' },
+  { ours: 'Call wall', what: 'the strike with the most call gamma on the Levels card’s contracts (Today’s expiry, or every listed one), either side of spot — while dealers are long gamma there, their hedging slows a rise' },
+  { ours: 'Put wall', what: 'the strike with the most put gamma on the Levels card’s contracts, either side of spot — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling' },
+  { ours: 'Flip', what: FLIP_RULE },
+  { ours: 'Largest OI', what: 'the strike with the most open interest in the window (not max pain, which is a different calculation) — where the chain is heaviest. Not a level price is drawn to: tested on SPY and QQQ, the close did not settle toward it.' },
 ];
 
 /** THE CARD — the source, the freshness, the formula, the sign, the levels, the window */
@@ -119,11 +119,11 @@ export const DataCard = ({ ticker, surface, greeks, expiries, rings, view }: Car
         </p>
       </div>
       <div>
-        <p className="text-t12 font-semibold text-textPrimary">The levels, and what others call them</p>
+        <p className="text-t12 font-semibold text-textPrimary">The levels</p>
         <ul className="mt-1 flex flex-col gap-1.5">
           {LEVEL_NAMES.map(l => (
             <li key={l.ours} className="text-t115 leading-relaxed text-textSecondary">
-              <span className="font-semibold text-textPrimary">{l.ours}</span> — {l.what.replace(/[.]\s*$/, '')}. <span className="text-textMuted">Elsewhere: {l.theirs}.</span>
+              <span className="font-semibold text-textPrimary">{l.ours}</span> — {l.what.replace(/[.]\s*$/, '')}.
             </li>
           ))}
         </ul>
@@ -144,7 +144,7 @@ export const DataCard = ({ ticker, surface, greeks, expiries, rings, view }: Car
                 {role} <span className="font-mono tnum text-textPrimary">{role === 'supreme' ? fmtStrike(surface.levels.supreme) : role === 'call wall' ? fmtStrike(surface.levels.callWall) : role === 'put wall' ? fmtStrike(surface.levels.putWall) : surface.levels.flipFound === false ? 'none within ±10%' : fmtStrike(surface.levels.flip)}</span>
               </span>
             ))}
-            {surface.levels.pinFound === false ? null : <> · pin <span className="font-mono tnum text-textPrimary">{fmtStrike(surface.levels.pin)}</span></>}
+            {surface.levels.pinFound === false ? null : <> · largest OI <span className="font-mono tnum text-textPrimary">{fmtStrike(surface.levels.pin)}</span></>}
           </li>
         </ul>
       </div>

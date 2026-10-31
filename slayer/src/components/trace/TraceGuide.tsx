@@ -660,7 +660,7 @@ export const OdteGuide = () => (
       <DeskFigure />
     </Section>
     <Section title="One name">
-      <p>The search opens a name's own contracts expiring that session under the desk, by the day's premium, with its same-day net calls and puts from the vendor's flow by expiry. Type and Premium cut the list; it pages on as you scroll.</p>
+      <p>The search opens a name's own contracts expiring that session under the desk, by the day's premium, with its same-day net calls and puts from the flow by expiry. Type and Premium cut the list; it pages on as you scroll.</p>
     </Section>
     <Section title="A pane">
       <p>The spot, the net calls and puts, and the volume on the floor, through the session.</p>
@@ -736,7 +736,7 @@ export const LiveTapeGuide = () => (
   <div data-trace-guide="live-tape">
     <SidesRule />
     <Section title="A print">
-      <p>One contract traded once — when, the name, the contract with its days left and where the stock stood, how many at what price, the dollars, and its kind. A block is one leg of 100 contracts or $250K and up; a print with legs is multi-leg; the rest are single prints. P/C is put premium over call premium.</p>
+      <p>One contract traded once — when, the name, the contract with its days left and where the stock stood, how many at what price, the dollars, and its kind. A block is one leg, 100 contracts or more and $50K or more, in one print; a print with legs is multi-leg; the rest are single prints. P/C is put premium over call premium.</p>
       <TapeRowFigure />
     </Section>
     <Section title="Fill &amp; market">
@@ -745,7 +745,7 @@ export const LiveTapeGuide = () => (
     </Section>
     <Section title="Side, lean and window">
       <p>A print's side is its own tag — at the ask, on the bid, or mid — the same on the tape, the card and every count; a tag the quote at the print contradicts gives way to the quote, and a fill through the quote says "under bid" or "over ask". The day lean is the contract's whole day so far: its contracts at the ask, on the bid, and at the mid or with no side — a lean is called only when at least half the day traded on a side. The head and the sentence count the prints in hand — the newest unbroken stretch of the tape, up to 20,000 — and the Window fact says from when to when; with one name typed, its biggest contracts of the whole day stand beside them.</p>
-      <p>Type (calls or puts), Side (at the ask or on the bid), Premium, Kind and Expiry ask the vendor for that cut, so the tape refills with it from the whole session and pages on as you scroll; Lean, mid fills and single prints cut the prints in hand.</p>
+      <p>Type (calls or puts), Side (at the ask or on the bid), Premium, Kind and Expiry ask the feed for that cut, so the tape refills with it from the whole session and pages on as you scroll; Lean, mid fills and single prints cut the prints in hand.</p>
     </Section>
     <Section title="The inks">
       <p>Premium quiet below $250K, bold above, the largest print on the tape in magenta.</p>
@@ -815,7 +815,7 @@ export const CompareGuide = () => (
       <p>Pick any two names on today's book — the two searches offer exactly those, and the arrow between them swaps the sides. The Clock and Money cards cut both names the same way, so every row compares like with like.</p>
     </Section>
     <Section title="Where the net comes from">
-      <p>Each name's net, net calls and net puts are the vendor's flow by expiry, the whole day, on the Clock's expiries: the one route a clock can cut, so the headline never changes source when you pick one. The row under them, "Net · minute ticks", is the same name off the minute ticks — every expiry, the regular session — the series the panes draw and Intervals sums. Both routes carry the same contracts by side, but on names heavy with spreads their put money can differ, even in sign.</p>
+      <p>Each name's net, net calls and net puts are the flow by expiry, the whole day, on the Clock's expiries: the one route a clock can cut, so the headline never changes source when you pick one. The row under them, "Net · minute ticks", is the same name off the minute ticks — every expiry, the regular session — the series the panes draw and Intervals sums. Both routes carry the same contracts by side, but on names heavy with spreads their put money can differ, even in sign.</p>
     </Section>
     <Section title="The card">
       <p>Each row is one fact printed for both names, the way a fight card is laid out: the first name's figure on the left, the fact in the middle with what the two say against each other under it, the second name's figure on the right. The figure that leads is lit; the other stays quiet. A signed figure keeps its direction ink on both sides.</p>

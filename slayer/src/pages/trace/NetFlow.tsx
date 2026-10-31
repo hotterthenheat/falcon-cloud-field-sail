@@ -85,11 +85,12 @@ const NetFlow = () => {
 
   const facts = useMemo(() => {
     /* the board's gross lean: every row prints its share of it */
-    const { calls, puts, gross, bullish } = boardSums(leaders);
+    const { calls, puts, gross, bullish, bearish, neutral } = boardSums(leaders);
     const top = leaders[0] ?? null;
     const bottom = leaders.length ? leaders[leaders.length - 1] : null;
     const topIsChamp = !!top && !!bottom && Math.abs(top.net) >= Math.abs(bottom.net);
-    return { calls, puts, gross, bullish, bearish: leaders.length - bullish, top, bottom, topIsChamp };
+    /* a name at exactly zero net is neither end: counted apart, never as bearish */
+    return { calls, puts, gross, bullish, bearish, neutral, top, bottom, topIsChamp };
   }, [leaders]);
 
   /* Regular: the tide's running figure at the last regular minute less its figure before the bell. Extended: the tide's
@@ -129,7 +130,7 @@ const NetFlow = () => {
             <span className="font-semibold tnum text-textPrimary">{signed(market.net)}</span> (net calls <span className="tnum text-textPrimary">{signed(market.calls)}</span> less net puts <span className="tnum text-textPrimary">{signed(market.puts)}</span>) — extended-hours money trades against thin quotes and is shown, not read.{' '}
           </>
         )}
-        <RichRead text={`On the board — the ${facts.bullish} most bullish and ${facts.bearish} most bearish names ${dayAdv()}, summed totals with spread legs and floor packages in them — `} />
+        <RichRead text={`On the board — the ${facts.bullish} most bullish and ${facts.bearish} most bearish names${facts.neutral ? ` (and ${facts.neutral} at zero)` : ''} ${dayAdv()}, summed totals with spread legs and floor packages in them — `} />
         the bullish names sum to <Lean v={facts.calls} /> and the bearish to <Lean v={facts.puts} />.{' '}
         <ReadDoor onOpen={() => onQuery(top.ticker)} title={`Put ${top.ticker} on the pane`}>
           {top.ticker}
@@ -189,7 +190,7 @@ const NetFlow = () => {
             {leaders.length === 0 ? <span className="text-textMuted">—</span> : <><Lean v={facts.calls} className="font-normal" /> <span className="text-textSecondary">·</span> <Lean v={facts.puts} className="font-normal" /></>}
           </Fact>
           <Fact label="Names" testId="names">
-            {leaders.length === 0 ? <span className="text-textMuted">—</span> : <>{num(leaders.length)} <span className="text-textSecondary">·</span> <span className="text-bull">{facts.bullish} bullish</span> <span className="text-textSecondary">·</span> <span className="text-bear">{facts.bearish} bearish</span></>}
+            {leaders.length === 0 ? <span className="text-textMuted">—</span> : <>{num(leaders.length)} <span className="text-textSecondary">·</span> <span className="text-bull">{facts.bullish} bullish</span> <span className="text-textSecondary">·</span> <span className="text-bear">{facts.bearish} bearish</span>{facts.neutral > 0 && <> <span className="text-textSecondary">·</span> <span className="text-textSecondary" title="Names whose net premium is exactly zero — neither end">{facts.neutral} neutral</span></>}</>}
           </Fact>
           {/* the two ends of the board, each named for what it is; the larger of the two wears the magenta */}
           {facts.top && facts.top.net > 0 && (
