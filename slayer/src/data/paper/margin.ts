@@ -6,15 +6,18 @@
      the credit). A put spread and a call spread sold on the same name and expiry are one iron condor (or butterfly): they
      hold the most the pair can lose at expiry, once — at most one side of an uncrossed condor can be in the money.
    - A put sold cash-secured holds its strike × 100 (with the premium in, the strike less the premium: its whole loss).
-   - A single sold against a long of the same kind on the same expiry (a spread put on in two orders) holds what the pair
-     can lose: the distance between the strikes where the long is further out, nothing where it is nearer.
+   - A single sold against a long of the same kind on the same expiry or a later one (a spread put on in two orders, a
+     calendar, a diagonal) holds the distance between the strikes where the long is further out, nothing where it is
+     nearer.
+   - A naked call and a naked put on the same name (a short straddle or strangle) hold the greater of the two sides'
+     requirements plus the other side's premium now, once (CBOE): only one side can finish in the money.
    - A single sold with nothing over it (naked) holds a broker-style Reg T ESTIMATE, re-marked on every tick: the greater
      of 20% of the name less what the contract is out of the money, plus its premium now, or 10% of the name (a call) or
      of the strike (a put), plus its premium now — 15% and 10% on a broad-based index. A broker's own figure can differ.
 
    `req` is the whole of what is held; `held` is that less the premium the position took in (what the reader's own money
-   holds: a credit spread's or a cash-secured put's whole loss). Free = cash − req. Equity under what the open shorts
-   still need (free + the longs at their bid below zero) is a margin call. */
+   holds: a credit spread's or a cash-secured put's whole loss). Free = cash − req. A margin call is free under zero:
+   under Reg T a listed option has no loan value, so the longs held do not count toward what holds the shorts. */
 
 import { MULT } from '../review/engine';
 import type { ContractId, Quote } from '../review/quotes';
@@ -123,6 +126,7 @@ export function marginOf(ps: MarginPos[]): Margin {
   }
 
   /* ---- singles sold ---- */
+  const naked: { p: MarginPos; n: number; each: number; premium: number; words: string }[] = [];
   const longs = new Map(ps.filter(p => p.dir > 0 && p.contract.short == null).map(p => [p.key, p.qty]));
   for (const p of shorts) {
     if (p.contract.short != null) continue;
@@ -132,9 +136,10 @@ export function marginOf(ps: MarginPos[]): Margin {
       line({ keys: [p.key], kind: 'csp', qty: n, req: c.strike * MULT * n, credit: p.avg * MULT * n, words: `Cash-secured: holds the strike, ${k(c.strike)} × 100${n > 1 ? ` × ${n}` : ''} — with the premium in, its whole loss` });
       continue;
     }
-    /* a long of the same kind on the same expiry caps it: the one that caps it closest first */
+    /* a long of the same kind on the same expiry, or a later one (a calendar or diagonal: the long outlives the short),
+       caps it: the one that caps it closest first */
     const covers = ps
-      .filter(x => x.dir > 0 && x.contract.short == null && x.contract.ticker === c.ticker && x.contract.expiry === c.expiry && x.contract.right === c.right)
+      .filter(x => x.dir > 0 && x.contract.short == null && x.contract.ticker === c.ticker && x.contract.expiry >= c.expiry && x.contract.right === c.right)
       .map(x => ({ x, gap: Math.max(0, c.right === 'C' ? x.contract.strike - c.strike : c.strike - x.contract.strike) }))
       .sort((u, w) => u.gap - w.gap);
     for (const { x, gap } of covers) {
@@ -150,8 +155,33 @@ export function marginOf(ps: MarginPos[]): Margin {
     const spot = p.quote.spot > 0 ? p.quote.spot : p.spotIn;
     const premium = Number.isFinite(p.quote.mark) && p.quote.mark >= 0 ? p.quote.mark : Number.isFinite(p.last ?? NaN) ? p.last! : p.avg;
     const r = regT(c, spot, premium);
-    line({ keys: [p.key], kind: 'naked', qty: n, req: r.each * n, credit: p.avg * MULT * n, words: `${r.words}${n > 1 ? `, × ${n}` : ''}` });
+    naked.push({ p, n, each: r.each, premium, words: r.words });
   }
+  /* ---- naked calls against naked puts on the same name: a short straddle or strangle (CBOE / Reg T) holds the greater of
+     the two sides' requirements plus the other side's premium now — only one side can be in the money at expiry ---- */
+  const nakedCalls = naked.filter(x => x.p.contract.right === 'C').sort((u, w) => w.each - u.each);
+  const nakedPuts = naked.filter(x => x.p.contract.right === 'P').sort((u, w) => w.each - u.each);
+  for (const cx of nakedCalls)
+    for (const px of nakedPuts) {
+      if (cx.p.contract.ticker !== px.p.contract.ticker) continue;
+      const q = Math.min(cx.n, px.n);
+      if (q < 1) continue;
+      cx.n -= q;
+      px.n -= q;
+      const big = cx.each >= px.each ? cx : px;
+      const other = big === cx ? px : cx;
+      const kind = cx.p.contract.strike === px.p.contract.strike && cx.p.contract.expiry === px.p.contract.expiry ? 'straddle' : 'strangle';
+      line({
+        keys: [cx.p.key, px.p.key],
+        kind: 'naked',
+        qty: q,
+        req: (big.each + other.premium * MULT) * q,
+        credit: (cx.p.avg + px.p.avg) * MULT * q,
+        words: `A short ${kind}: the ${big.p.contract.right === 'C' ? 'call' : 'put'} side’s ${big.words.replace(/ — a broker’s own figure can differ$/, '')}, plus the ${other.premium.toFixed(2)} premium of the other side, × 100${q > 1 ? ` × ${q}` : ''} — once, not both (only one side can finish in the money) — a broker’s own figure can differ`,
+      });
+      if (cx.n < 1) break;
+    }
+  for (const x of naked) if (x.n > 0) line({ keys: [x.p.key], kind: 'naked', qty: x.n, req: x.each * x.n, credit: x.p.avg * MULT * x.n, words: `${x.words}${x.n > 1 ? `, × ${x.n}` : ''}` });
   const req = cents(lines.reduce((x, l) => x + l.req, 0));
   return { lines, req, held: cents(lines.reduce((x, l) => x + l.held, 0)) };
 }

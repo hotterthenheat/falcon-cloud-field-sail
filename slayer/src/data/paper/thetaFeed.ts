@@ -7,8 +7,8 @@
 import { thetaCall } from '../theta';
 import { readSaved, save as keep } from '../uwStore';
 import { flatRows } from '../review/history';
-import { nyAt } from './clock';
-import { isTradingDay } from '../../core/calendar';
+import { nyAt, nyInstant } from './clock';
+import { isTradingDay, sessionCloseMinOn } from '../../core/calendar';
 
 /** A quote older than this (from when it was read) does not fill: the desk says the feed is behind */
 export const FRESH_MS = 8_000;
@@ -253,8 +253,18 @@ function start(): void {
   document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && void beat());
 }
 
-/** Is a read fresh enough to fill on */
-export const isFresh = (takenAt: number, kept: boolean | undefined, now = Date.now()): boolean => !kept && now - takenAt <= FRESH_MS;
+/** Is a read fresh enough to fill on: read in the last few seconds, not a kept one — and, where the quote's own stamp is
+    known (`quotedAt`, ThetaData's timestamp), quoted today, and past the day's close (16:00, 13:00 on an early close)
+    only if it changed after the close (a late name's 16:15 window). A snapshot read after a 13:00 close still answers
+    with the 12:59 quote, freshly read: it is frozen, and nothing fills on it. */
+export function isFresh(takenAt: number, kept: boolean | undefined, now = Date.now(), quotedAt?: number): boolean {
+  if (kept || now - takenAt > FRESH_MS) return false;
+  if (!(quotedAt != null && quotedAt > 0)) return true;
+  const day = nyAt(now).date;
+  if (nyAt(quotedAt).date !== day) return false;
+  const close = nyInstant(day, sessionCloseMinOn(day));
+  return now <= close || quotedAt > close;
+}
 
 /* ---- the test seam ---- */
 export function putName(ticker: string, q: NameQuote): void {

@@ -39,6 +39,29 @@ export interface Quote {
   dead: boolean;
   /** Where the name stood */
   spot: number;
+  /** The contracts shown at the bid and at the ask, where the feed says (a spread: the fewer its legs show on that side) —
+      a fill takes at most this many of one quote; the rest waits for the next (fillableQty) */
+  bidSize?: number;
+  askSize?: number;
+  /** Which quote it is (the feed's stamp: ms live, the recorded row's minute in a backtest) — the shown size is taken once */
+  quotedAt?: number;
+}
+
+/** How many of an order one quote can fill: what is shown on the side it trades into (a buy takes the ask's size, a sell
+    the bid's), less what this order already took of the same quote. No size known: all of it. */
+export function fillableQty(o: { side: 'buy' | 'sell'; qty: number; took?: { at: number; qty: number } }, q: Pick<Quote, 'bidSize' | 'askSize' | 'quotedAt'>): number {
+  const size = o.side === 'buy' ? q.askSize : q.bidSize;
+  if (!(size != null && Number.isFinite(size) && size > 0)) return o.qty;
+  const used = o.took && q.quotedAt != null && o.took.at === q.quotedAt ? o.took.qty : 0;
+  return Math.max(0, Math.min(o.qty, Math.floor(size) - used));
+}
+/** A spread's sizes from its legs: bought at the spread's ask is the long leg's ask and the short leg's bid */
+export function spreadSizes(long: Pick<Quote, 'bidSize' | 'askSize' | 'quotedAt'>, short: Pick<Quote, 'bidSize' | 'askSize' | 'quotedAt'>): Pick<Quote, 'bidSize' | 'askSize' | 'quotedAt'> {
+  const lo = (a?: number, b?: number) => (a != null && b != null ? Math.min(a, b) : (a ?? b));
+  const askSize = lo(long.askSize, short.bidSize);
+  const bidSize = lo(long.bidSize, short.askSize);
+  const quotedAt = long.quotedAt != null || short.quotedAt != null ? Math.max(long.quotedAt ?? -Infinity, short.quotedAt ?? -Infinity) : undefined;
+  return { ...(askSize != null ? { askSize } : {}), ...(bidSize != null ? { bidSize } : {}), ...(quotedAt != null ? { quotedAt } : {}) };
 }
 
 const fmtK = (k: number) => (k % 1 === 0 ? k.toFixed(0) : k.toFixed(2).replace(/0$/, ''));
@@ -87,13 +110,23 @@ export const bookMark = (bid: number, ask: number, round: (v: number) => number)
 const intrinsicOf = (c: ContractId, spot: number) => (spot > 0 ? Math.max(0, c.right === 'C' ? spot - c.strike : c.strike - spot) : 0);
 const noQuote = (c: ContractId, spot: number): Quote => ({ bid: 0, ask: 0, mark: NaN, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic: cents(intrinsicOf(c, spot)), dead: true, spot });
 
+/** Theta a day, the one definition the paper desk and the backtest share: what the contract loses over ONE TRADING SESSION
+    on the trading clock, the name and the vol held — V(S, K, t − 1/252, σ) − V(S, K, t, σ), with t in trading years
+    (session minutes ÷ 390 × 252) and σ solved on that clock; inside the last session, intrinsic − V. A dollar figure a
+    share, negative. It is per SESSION: a page that quotes theta per calendar day (∂V/∂t ÷ 365) reads about 7/5 of it
+    smaller a week out, since a week is 5 sessions and 7 days. */
+export function thetaPerSession(S: number, K: number, t: number, iv: number, right: 'C' | 'P'): number {
+  const dayOn = Math.max(0, t - 1 / 252);
+  const intrinsic = S > 0 ? Math.max(0, right === 'C' ? S - K : K - S) : 0;
+  return (dayOn > 0 ? blackScholesPrice(S, K, dayOn, iv, right) : intrinsic) - blackScholesPrice(S, K, t, iv, right);
+}
+
 /** Greeks of a bought leg from its mid, the name's price and the time left */
 function greeksOn(c: ContractId, mid: number, spot: number, t: number): Pick<Quote, 'iv' | 'delta' | 'gamma' | 'theta' | 'vega' | 'rho'> {
   const iv = t > 0 && spot > 0 ? impliedVolFromPrice(mid, spot, c.strike, t, c.right) : null;
   if (iv == null) return { iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0 };
   const g = blackScholesGreeks(spot, c.strike, t, iv);
-  const dayOn = Math.max(0, t - 1 / 252);
-  const theta = (dayOn > 0 ? blackScholesPrice(spot, c.strike, dayOn, iv, c.right) : intrinsicOf(c, spot)) - blackScholesPrice(spot, c.strike, t, iv, c.right);
+  const theta = thetaPerSession(spot, c.strike, t, iv, c.right);
   return { iv, delta: c.right === 'C' ? g.deltaCall : g.deltaPut, gamma: g.gamma, theta, vega: g.vega, rho: c.right === 'C' ? g.rhoCall : g.rhoPut };
 }
 
@@ -103,7 +136,8 @@ function legQuote(c: ContractId, iso: string, minute: number): Quote {
   const q = nbboAt(c, iso, minute);
   if (!q || !(q.ask > 0) || !(q.bid > 0)) return { ...noQuote(c, spot), bid: q?.bid ?? 0, ask: q?.ask ?? 0, mark: q ? mid4((q.bid + q.ask) / 2) : NaN };
   const mark = mid4((q.bid + q.ask) / 2);
-  return { bid: q.bid, ask: q.ask, mark, ...greeksOn(c, (q.bid + q.ask) / 2, spot, yearsLeft(iso, minute, c.expiry)), intrinsic: cents(intrinsic), dead: false, spot };
+  const sizes = { ...(q.bidSize != null ? { bidSize: q.bidSize } : {}), ...(q.askSize != null ? { askSize: q.askSize } : {}), quotedAt: dateOf(iso).getTime() / 60_000 + q.at };
+  return { bid: q.bid, ask: q.ask, mark, ...greeksOn(c, (q.bid + q.ask) / 2, spot, yearsLeft(iso, minute, c.expiry)), intrinsic: cents(intrinsic), dead: false, spot, ...sizes };
 }
 
 /** The quote at the end of a minute, as it was recorded: a spread is its two legs at their natural prices */
@@ -129,6 +163,7 @@ export function quoteAt(c: ContractId, iso: string, minute: number): Quote {
     intrinsic,
     dead: bid <= 0,
     spot: bought.spot,
+    ...spreadSizes(bought, sold),
   };
 }
 

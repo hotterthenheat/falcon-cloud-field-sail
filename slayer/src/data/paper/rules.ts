@@ -20,7 +20,7 @@ import type { ContractId } from '../review/quotes';
 import { contractKey, legsOf } from '../review/quotes';
 import { MULT } from '../review/engine';
 import { listKey } from './whitelists';
-import { addDays, dateAt, dayEndsAt, nyAt, nyInstant, sessionFrom } from './clock';
+import { addDays, dateAt, dayEndsAt, lastTradeDayOf, nyAt, nyInstant, sessionFrom, sessionTimeOn } from './clock';
 import type { OptTrade, PaperAccount, PaperMarket, PaperView, OptDraft } from './engine';
 
 /* ================================================================== */
@@ -51,8 +51,9 @@ export interface PropRules {
   /** The most the account may lose in all, from a high mark: the start (static), the best day's close (eod), or the
       best moment, open trades in (intraday). `lockAt`: the floor stops trailing once it reaches the account's starting
       size plus this many dollars (0: at the start) — null: it trails for good. A static floor is under the start. `on`: measured on the worth (open trades in) or
-      the balance (closed trades only). */
-  drawdown: { amount: number; mode: DrawdownMode; lockAt: number | null; on: 'equity' | 'balance' } | null;
+      the balance (closed trades only). `perPhase`: each phase starts its own drawdown — the floor is measured from the
+      balance the phase began at, and the high mark starts again there (a plan whose steps each carry the allowance). */
+  drawdown: { amount: number; mode: DrawdownMode; lockAt: number | null; on: 'equity' | 'balance'; perPhase?: boolean } | null;
   /** Trading days with at least one fill before the target counts */
   minDays: number | null;
   /** Trading days that made at least `min` each before the target counts */
@@ -167,6 +168,9 @@ const minutesOf = (hhmm: string): number => {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + (m || 0);
 };
+/** A plan's "15:55" on a day's real session: itself on a full day; on a 13:00 early close the same distance from the
+    close (12:55; clock.ts sessionTimeOn) */
+const planAt = (day: string, hhmm: string): number => nyInstant(day, sessionTimeOn(day, minutesOf(hhmm)));
 /** The minute a position is closed when it may not be held past the close and no flat-by time is set: a minute before
     the 16:00 bell, so the close fills on the session's own quotes */
 export const BEFORE_BELL = '15:59';
@@ -195,10 +199,15 @@ export const worthOf = (a: PaperAccount, v: PaperView): number => (rulesOf(a)?.m
 const ddMeasure = (a: PaperAccount, v: PaperView): number => (rulesOf(a)?.drawdown?.on === 'balance' ? v.balance : worthOf(a, v));
 
 /** The floor the drawdown rule puts under the account now — or null where it has none */
+/** What the drawdown is measured from: the account's start — or, where each phase starts its own, the phase's */
+export function ddBaseOf(a: PaperAccount): number {
+  const d = rulesOf(a)?.drawdown;
+  return d?.perPhase && a.phaseStart ? a.phaseStart.equity : a.startCash;
+}
 export function floorOf(a: PaperAccount): number | null {
   const d = rulesOf(a)?.drawdown;
   if (!d) return null;
-  const base = a.startCash;
+  const base = ddBaseOf(a);
   if (d.mode === 'static') return cents(base - d.amount);
   const trailed = a.peak - d.amount;
   return cents(d.lockAt == null ? trailed : Math.min(trailed, base + d.lockAt));
@@ -207,7 +216,7 @@ export function floorOf(a: PaperAccount): number | null {
 export function floorLocked(a: PaperAccount): boolean {
   const d = rulesOf(a)?.drawdown;
   if (!d || d.mode === 'static' || d.lockAt == null) return false;
-  return a.peak - d.amount >= a.startCash + d.lockAt - EPS;
+  return a.peak - d.amount >= ddBaseOf(a) + d.lockAt - EPS;
 }
 /** What the day's loss is measured from, and the day's floor */
 export function dayFloorOf(a: PaperAccount): { from: number; floor: number } | null {
@@ -231,12 +240,28 @@ const phaseTrades = (a: PaperAccount, v: PaperView): OptTrade[] => {
   const from = phaseOf(a).at;
   return v.optTrades.filter(t => t.closed.at >= from);
 };
-/** Each day's result since the phase began — the closed days', and today's as it stands */
+/** Each day's result since the phase began — its CLOSED P&L (the balance at its end less the balance at its start), the
+    closed days' and today's as it stands. What is still open does not count: the target is on the balance, and so are
+    the best day (consistency) and the profitable days. A day written before its end balance was kept reads the next
+    day's start balance, else its equity change. */
 function dayResults(a: PaperAccount, v: PaperView): number[] {
   const ph = phaseOf(a);
   const out: number[] = [];
-  for (const [day, d] of Object.entries(a.ledger)) if (day >= ph.day && day !== a.day && d.close != null) out.push(d.close - d.open);
-  if (Number.isFinite(v.equity)) out.push(v.equity - (a.ledger[a.day]?.open ?? ph.base));
+  const days = Object.keys(a.ledger).sort();
+  days.forEach((day, i) => {
+    if (day < ph.day) return;
+    const d = a.ledger[day];
+    const start = day === ph.day ? ph.base : (d.bal ?? d.open);
+    if (day === a.day) {
+      const end = Number.isFinite(v.balance) ? v.balance : v.equity;
+      if (Number.isFinite(end)) out.push(end - start);
+      return;
+    }
+    if (d.close == null) return;
+    const nextBal = days[i + 1] ? a.ledger[days[i + 1]].bal : undefined;
+    const end = d.closeBal ?? nextBal;
+    out.push(end != null ? end - start : d.close - d.open);
+  });
   return out;
 }
 /** The profit that counts toward the target, the best day or trade, and what the target in effect is */
@@ -267,14 +292,14 @@ export function flatTimeOf(a: PaperAccount, day: string, c: ContractId | null, m
   const r = rulesOf(a);
   if (!r) return null;
   const out: { at: number; why: string; rule: RuleId }[] = [];
-  const bell = (why: string, rule: RuleId) => out.push({ at: nyInstant(day, minutesOf(BEFORE_BELL)), why, rule });
-  if (r.flatBy) out.push({ at: nyInstant(day, minutesOf(r.flatBy)), why: `flat by ${r.flatBy} ET`, rule: 'flat' });
+  const bell = (why: string, rule: RuleId) => out.push({ at: planAt(day, BEFORE_BELL), why, rule });
+  if (r.flatBy) out.push({ at: planAt(day, r.flatBy), why: `flat by ${r.flatBy} ET`, rule: 'flat' });
   if (!r.overnight) bell('nothing is held past the close', 'overnight');
   else if (!r.weekend && breakFollows(day)) bell('nothing is held over the weekend or a market holiday', 'weekend');
-  if (c && r.expiryClose && c.expiry === day) {
+  if (c && r.expiryClose && lastTradeDayOf(c) === day) {
     const late = r.expiryClose.except.includes(c.ticker.toUpperCase());
-    if (!late) out.push({ at: nyInstant(day, minutesOf(r.expiryClose.at)), why: `an expiring contract is closed at ${r.expiryClose.at} ET on its expiry day`, rule: 'expiry' });
-    else if (r.expiryClose.lateAt) out.push({ at: nyInstant(day, minutesOf(r.expiryClose.lateAt)), why: `an expiring ${c.ticker.toUpperCase()} contract is closed at ${r.expiryClose.lateAt} ET on its expiry day`, rule: 'expiry' });
+    if (!late) out.push({ at: planAt(day, r.expiryClose.at), why: `an expiring contract is closed at ${r.expiryClose.at} ET on its expiry day`, rule: 'expiry' });
+    else if (r.expiryClose.lateAt) out.push({ at: planAt(day, r.expiryClose.lateAt), why: `an expiring ${c.ticker.toUpperCase()} contract is closed at ${r.expiryClose.lateAt} ET on its expiry day`, rule: 'expiry' });
   }
   const name = c?.ticker.toUpperCase();
   if (!r.earnings && name) {
@@ -292,7 +317,7 @@ export function flatTimeOf(a: PaperAccount, day: string, c: ContractId | null, m
 export function lateCloseOf(a: PaperAccount, c: ContractId): number | null {
   const x = rulesOf(a)?.expiryClose;
   if (!x?.lateAt || !x.except.includes(c.ticker.toUpperCase())) return null;
-  return nyInstant(c.expiry, minutesOf(x.lateAt));
+  return planAt(c.expiry, x.lateAt);
 }
 
 /* ================================================================== */
@@ -569,7 +594,7 @@ export function readRules(a: PaperAccount, v: PaperView, m: Pick<PaperMarket, 'n
       state: limitState(fill),
       value: `floor ${money(floor, 2)}`,
       room: `${money(Math.max(0, room))} above the floor`,
-      says: `${r.drawdown.mode === 'static' ? `A fixed floor ${money(r.drawdown.amount)} under the start` : `A floor ${money(r.drawdown.amount)} under the ${r.drawdown.mode === 'eod' ? 'best day’s close' : 'best moment, open trades in'}`}${r.drawdown.mode !== 'static' ? (r.drawdown.lockAt != null ? `; it stops trailing at ${money(a.startCash + r.drawdown.lockAt)}${locked ? ' — and has' : ''}` : '; it never stops trailing in the evaluation') : ''}. Measured on ${r.drawdown.on === 'balance' ? 'the balance (closed trades)' : `what the account is worth, open contracts at their ${r.markAt === 'bid' ? 'bid' : 'mid'}`}, every tick. Reached: the account fails.`,
+      says: `${r.drawdown.mode === 'static' ? `A fixed floor ${money(r.drawdown.amount)} under the start` : `A floor ${money(r.drawdown.amount)} under the ${r.drawdown.mode === 'eod' ? 'best day’s close' : 'best moment, open trades in'}`}${r.drawdown.mode !== 'static' ? (r.drawdown.lockAt != null ? `; it stops trailing at ${money(ddBaseOf(a) + r.drawdown.lockAt)}${locked ? ' — and has' : ''}` : '; it never stops trailing in the evaluation') : ''}. Measured on ${r.drawdown.on === 'balance' ? 'the balance (closed trades)' : `what the account is worth, open contracts at their ${r.markAt === 'bid' ? 'bid' : 'mid'}`}, every tick. Reached: the account fails.`,
     });
   }
   if (r.minDays != null) {

@@ -3,9 +3,9 @@
   The rules page (docs/review-backtest-rules.md), checked against the engine on a hand-made market
   (scripts/review-market-fixture.ts), where every fill can be worked out from its formula. Exits 1 on a miss.
 */
-import { accountOf, advance, amend, attach, bankedOf, bookOf, cancel, cashOf, cutsOf, dayStateOf, dayStopOf, equityAtOpen, floorOf, ladderRoom, namesOf, newSession, nextOpen, pendingSettlement, place, playStep, rebase, refusal, setBreakeven, setTrail, spokenFor, stampOf, statsOf, MULT, type Session } from '../src/data/review/engine';
+import { accountOf, advance, amend, attach, bankedOf, bookOf, equityCurveOf, sessionStatsOf, cancel, cashOf, cutsOf, dayStateOf, dayStopOf, equityAtOpen, floorOf, ladderRoom, namesOf, newSession, nextOpen, pendingSettlement, place, playStep, rebase, refusal, setBreakeven, setTrail, spokenFor, stampOf, statsOf, MULT, type Session } from '../src/data/review/engine';
 import { TRADE_COLUMNS, dayRowsOf, reportDaysCsv, reportTradesCsv, tradeFees } from '../src/data/review/reportCsv';
-import { csvCells } from '../src/data/review/journalManual';
+import { csvCells, readJournalCsv } from '../src/data/review/journalManual';
 import { splitQty } from '../src/data/review/ladder';
 import { chainAt, contractKey, contractWords, expiriesAt, quoteAt, quoteWith, spotForBid, yearsLeft } from '../src/data/review/quotes';
 import { LAST_MIN, barTime, closeMinOf, nbboAt, parseBars, parseListing, parseQuotes, putBars, putQuotes, spotAt } from '../src/data/review/history';
@@ -46,7 +46,8 @@ installTestMarket();
   ok('…and a minute that was no market is not carried over by an older quote', nbboAt(leg, '2026-11-02', 9) == null && nbboAt(leg, '2026-11-02', 12) == null);
   /* bars are stamped at their start: 09:30:00 is minute 0 */
   const b = parseBars('2026-10-28', [{ timestamp: '2026-10-28T09:30:00.000', open: 1, high: 2, low: 0.5, close: 1.5, volume: 10 }, { timestamp: '2026-10-28T09:32:00.000', open: 1.6, high: 1.7, low: 1.6, close: 1.7, volume: 5 }])!;
-  ok('a bar is stamped at its start; a minute with no trade carries the last close flat, with no volume', b.bars.length === 3 && b.bars[0].close === 1.5 && b.bars[1].close === 1.5 && b.bars[1].volume === 0 && b.bars[2].close === 1.7 && b.last === 2);
+  /* a minute with no trade is a gap (411b43b: no made-up flat candles); every reader looks a minute up by its time */
+  ok('a bar is stamped at its start; a minute with no trade is a gap, not a flat candle', b.bars.length === 2 && b.bars[0].time === barTime('2026-10-28', 0) && b.bars[0].close === 1.5 && b.bars[1].time === barTime('2026-10-28', 2) && b.bars[1].close === 1.7 && b.last === 2);
   const l = parseListing('2026-10-28', [{ symbol: 'SPY', expiration: '2026-10-27', strike: 500, right: 'C' }, { symbol: 'SPY', expiration: '2026-10-30', strike: 501, right: 'PUT' }, { symbol: 'SPY', expiration: '2026-10-30', strike: 499, right: 'P' }])!;
   ok('the listing keeps the expiries at or after the day, strikes low to high', l.expiries.join() === '2026-10-30' && l.strikes['2026-10-30|P'].join() === '499,501');
   /* an early close: the name's last bar is 12:59 (minute 209); after it no quote stands */
@@ -450,6 +451,75 @@ ok('contracts are shared out with the nearer level taking the odd one', splitQty
 
 const sum = statsOf([...trades, bt]);
 ok('the report adds up', sum.n === 2 && near(sum.net, trades[0].pnl + bt.pnl, 0.001), `net ${sum.net.toFixed(2)} · drawdown ${sum.maxDrawdown.toFixed(2)}`);
+
+/* ================= the Practice math audit: known numbers ================= */
+{
+  /* 1. running average cost: buy 2 @ 1.00, sell 1 @ 2.00, buy 1 @ 3.00 (no fees) — avg 2.00, banked 100 */
+  const base = newSession({ id: 'avg', name: 'avg', ticker: 'SPY', startCash: 10000, startDay: D1, now: 0 });
+  const fill = (id: string, minute: number, side: 'buy' | 'sell', qty: number, price: number) => ({ id, orderId: null, at: { day: D1, minute }, contract: call500, side, qty, price, fee: 0, how: 'market' as const, spot: 500, delta: 0.5, iv: 0.2, theta: 0 });
+  const sx: Session = { ...base, fills: [fill('f1', 10, 'buy', 2, 1), fill('f2', 11, 'sell', 1, 2), fill('f3', 12, 'buy', 1, 3)] };
+  const p = bookOf(sx).positions[0];
+  ok('running average cost: buy 2 @ 1, sell 1 @ 2, buy 1 @ 3 — avg 2.00, the sale banked 100, what is held cost 400', p?.avg === 2 && p.banked === 100 && p.cost === 400, `avg ${p?.avg} · banked ${p?.banked} · cost ${p?.cost}`);
+}
+
+{
+  /* 4. the drawdown is read off the equity curve: two trades each down 300 at the same minute, each closed +50 */
+  const t2 = (id: string) => ({ pnl: 50, r: 0.1, closed: { day: D1, minute: 200 }, heldMin: 100, lowOpen: -300 });
+  ok('two trades down 300 at once: the trades alone say 300 (each its own low)', statsOf([t2('a'), t2('b')]).maxDrawdown === 300);
+  ok('…the account’s curve (10,000 → 9,400 → 10,100) says 600', statsOf([t2('a'), t2('b')], { equity: [10_000, 9_400, 10_100] }).maxDrawdown === 600 && statsOf([t2('a')], { equity: [1] }).drawdownFrom === 'curve');
+  /* the minute curve of a backtest: buy 2 of the 500 call at D1 minute 30 (ask 3.15): 9,368.70 cash; marked at its mid it
+     peaks at minute 100 (SPY 502: mid 4.50 → 10,268.70) and falls to the bell (SPY 499.11: mid 2.50 → 9,868.70) */
+  let ec = advance(newSession({ id: 'ec', name: 'curve', ticker: 'SPY', startCash: 10000, startDay: D1, now: 0 }), { day: D1, minute: 30 }, 0);
+  ec = place(ec, { contract: call500, side: 'buy', qty: 2, kind: 'market' }, 0);
+  ec = advance(ec, { day: D1, minute: LAST_MIN }, 0);
+  const curve = equityCurveOf(ec);
+  ok('a backtest’s minute equity curve: 10,000 at the start, 9,988.70 at minute 30, 10,268.70 at the peak, 9,868.70 at the bell', curve[0] === 10000 && curve[1] === 9988.7 && Math.max(...curve) === 10268.7 && curve[curve.length - 1] === 9868.7, `${curve[1]} · ${Math.max(...curve)} · ${curve[curve.length - 1]}`);
+  ok('…its drawdown is the fall from that peak, 400 — with nothing closed, the trades say 0', sessionStatsOf(ec).maxDrawdown === 400 && statsOf(bookOf(ec).trades).maxDrawdown === 0, `${sessionStatsOf(ec).maxDrawdown}`);
+}
+{
+  /* 11. a $0 trade is a scratch; Sharpe and Sortino on daily equity returns */
+  const tr = (pnl: number, minute: number) => ({ pnl, r: 0, closed: { day: D1, minute }, heldMin: 1 });
+  const st = statsOf([tr(100, 1), tr(0, 2), tr(-50, 3)]);
+  ok('a trade closed at $0 is a scratch: 1 win, 1 loss, 1 scratch, a 50% win rate', st.wins === 1 && st.scratches === 1 && st.winRate === 0.5 && st.avgLoss === -50, `${st.wins} · ${st.scratches} · ${st.winRate} · ${st.avgLoss}`);
+  ok('…it neither starts nor breaks a losing run: −50, 0, −50 is a run of 2', statsOf([tr(-50, 1), tr(0, 2), tr(-50, 3)]).losingRun === 2);
+  /* returns +1%, −1%, +1%: mean 0.3333%, sample sd 1.1547% → Sharpe 0.2887 × √252 = 4.583; downside dev √(0.0001 / 3) → Sortino 9.165 */
+  const rs = statsOf([], { daily: [100, 101, 99.99, 100.9899] });
+  ok('Sharpe on daily equity returns, annualised: +1%, −1%, +1% → 4.583', rs.sharpe != null && near(rs.sharpe, 4.5826, 0.001), `${rs.sharpe}`);
+  ok('…Sortino on the downside deviation → 9.165', rs.sortino != null && near(rs.sortino, 9.1652, 0.001), `${rs.sortino}`);
+  ok('…too few days: none said', statsOf([], { daily: [100, 101] }).sharpe === null);
+}
+
+{
+  /* 5. a fill takes at most the size the quote shows: QQQ 390C (FAR) on D2 shows 3 at the ask and 2 at the bid, every minute */
+  const leg = { ticker: 'QQQ', expiry: FAR, strike: 390, right: 'C' as const };
+  const b: number[] = [];
+  const a2: number[] = [];
+  for (let m = 0; m < 390; m++) {
+    const sq = spot('QQQ', D2, m);
+    b.push(bidOf(sq, 390, 'C'));
+    a2.push(askOf(sq, 390, 'C'));
+  }
+  putQuotes(leg, D2, b, a2, b.map(() => 2), a2.map(() => 3));
+  let z = advance(newSession({ id: 'sz', name: 'size', ticker: 'QQQ', startCash: 25000, startDay: D2, now: 0 }), { day: D2, minute: 10 }, 0);
+  z = place(z, { contract: leg, side: 'buy', qty: 5, kind: 'market' }, 0);
+  ok('a market buy of 5 against an ask showing 3 fills 3 now, at that ask; 2 stay working', z.fills.length === 1 && z.fills[0].qty === 3 && z.fills[0].price === askOf(spot('QQQ', D2, 10), 390, 'C') && z.orders[0].status === 'working' && z.orders[0].qty === 2);
+  z = advance(z, { day: D2, minute: 12 }, 0);
+  ok('…the rest fills on the next minute’s quote, at its ask — 5 in all, the order filled', z.fills.length === 2 && z.fills[1].qty === 2 && z.fills[1].at.minute === 11 && z.fills[1].price === askOf(spot('QQQ', D2, 11), 390, 'C') && z.orders[0].status === 'filled' && z.orders[0].qty === 5, `${z.fills.map(f => `${f.at.minute}:${f.qty}@${f.price}`).join(' ')}`);
+  z = place(z, { contract: leg, side: 'sell', qty: 5, kind: 'limit', price: 0.5 }, 0);
+  z = advance(z, { day: D2, minute: 15 }, 0);
+  const sells = z.fills.filter(f => f.side === 'sell');
+  ok('a sell limit of 5 against a bid showing 2: 2, 2, then 1, minute by minute, each at the bid', sells.map(f => f.qty).join() === '2,2,1' && sells.every(f => f.price === bidOf(spot('QQQ', D2, f.at.minute), 390, 'C')), sells.map(f => `${f.at.minute}:${f.qty}`).join(' '));
+  ok('…and the trade is whole: bought 5, sold 5', bookOf(z).trades[0]?.qty === 5 && bookOf(z).positions.length === 0);
+}
+
+{
+  /* 11. a trades file with the contract column blank: an option row is still 100 to the point */
+  const got = readJournalCsv(['date,ticker,contract,side,qty,entry,exit', '2026-10-28,SPY241030C00580000,,long,2,1.00,1.50', '2026-10-28,SPY 580C,,long,1,1.00,2.00', '2026-10-28,AAPL,,long,10,100,101'].join('\n'));
+  ok('blank contract, an OCC symbol in the ticker: (1.50 − 1.00) × 2 × 100 = 100 — not 1', got.trades[0]?.pnl === 100, `${got.trades[0]?.pnl}`);
+  ok('…"SPY 580C" in the ticker: 100; a plain stock row stays 1 a share: 10', got.trades[1]?.pnl === 100 && got.trades[2]?.pnl === 10, `${got.trades[1]?.pnl} · ${got.trades[2]?.pnl}`);
+  const byQty = readJournalCsv(['date,ticker,side,contracts,entry,exit', '2026-10-28,SPY,long,3,2.00,2.50'].join('\n'));
+  ok('…a quantity headed "contracts": 0.50 × 3 × 100 = 150', byQty.trades[0]?.pnl === 150, `${byQty.trades[0]?.pnl}`);
+}
 
 console.log(misses ? `\n${misses} MISSED` : '\nall rules hold');
 process.exit(misses ? 1 : 0);

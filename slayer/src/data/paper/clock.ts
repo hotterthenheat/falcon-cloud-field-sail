@@ -1,7 +1,7 @@
 /* The paper account's clock: New York's wall clock, the trading day, the bell and years to expiry, as pure
    functions of an instant so the engine can be handed any moment. */
 
-import { isTradingDay, isoDate, sessionsBetween, MONTHS } from '../../core/calendar';
+import { isTradingDay, isoDate, sessionCloseMinOn, sessionLengthOn, MONTHS } from '../../core/calendar';
 import { nyClock } from '../../core/nyTime';
 
 /** The minutes after midnight New York's clock names: the open, the bell, the flat-by and the roll */
@@ -9,7 +9,21 @@ export const OPEN_MIN = 9 * 60 + 30;
 export const BELL_MIN = 16 * 60;
 const FLAT_MIN = 16 * 60 + 59;
 const ROLL_MIN = 17 * 60;
+/** A full session's minutes — the unit the trading year counts in (an early close is 210 of them) */
 const SESSION_MIN = BELL_MIN - OPEN_MIN;
+
+/** Minute of New York's day the options session closes on a date: 16:00, 13:00 on an early close (core/calendar) */
+export const closeMinOn = (date: string): number => sessionCloseMinOn(date);
+/** A plan's time written against the 16:00 bell ("15:55", "15:59", "16:10"), on a date's real session. On a full day it
+    is itself. On an early close (13:00) a time from 15:00 on keeps its distance from the bell — 15:55 → 12:55, 15:59 →
+    12:59, 16:10 → 13:10 (a late name's 16:15 close is 13:15) — and a time between the early close and 15:00 is the minute
+    before it (12:59). A time before the early close stands. */
+export function sessionTimeOn(date: string, minutes: number): number {
+  const close = sessionCloseMinOn(date);
+  if (close === BELL_MIN || minutes < close) return minutes;
+  if (minutes >= BELL_MIN - 60) return close + (minutes - BELL_MIN);
+  return close - 1;
+}
 
 interface NyTime {
   /** New York's date, YYYY-MM-DD */
@@ -74,20 +88,53 @@ export function dayBeginsAt(day: string): number {
   for (let i = 0; i < 12 && !isTradingDay(dateAt(d)); i++) d = addDays(d, -1);
   return nyInstant(d, ROLL_MIN);
 }
-/** 16:00 New York on a date — when a contract expiring that day settles */
-export const bellOf = (date: string): number => nyInstant(date, BELL_MIN);
+/** The options session's close on a date — 16:00 New York, 13:00 on an early close: when a contract expiring that day
+    settles and the session's orders stop filling */
+export const bellOf = (date: string): number => nyInstant(date, sessionCloseMinOn(date));
+/** VIX options: their listed expiration is the Wednesday they settle on (the special opening quotation, SOQ, of that
+    morning); they last trade on the Tuesday before. A listing that names the Tuesday is read the same way. */
+export const isVixRoot = (ticker: string): boolean => /^VIXW?$/i.test(ticker);
+export function vixSchedule(expiry: string): { lastTrade: string; settleDay: string } {
+  const wd = dateAt(expiry).getDay();
+  if (wd === 2) return { lastTrade: expiry, settleDay: sessionFrom(addDays(expiry, 1)) };
+  let d = addDays(expiry, -1);
+  for (let i = 0; i < 12 && !isTradingDay(dateAt(d)); i++) d = addDays(d, -1);
+  return { lastTrade: d, settleDay: expiry };
+}
+/** The last day a contract trades: its expiry — the Tuesday before for VIX */
+export const lastTradeDayOf = (c: { ticker: string; expiry: string }): string => (isVixRoot(c.ticker) ? vixSchedule(c.expiry).lastTrade : c.expiry);
+/** When a contract stops trading: the close of its last trading day (13:00 on an early close) */
+export const tradingEndsAt = (c: { ticker: string; expiry: string }): number => bellOf(lastTradeDayOf(c));
+
 /** 16:59 New York on a trading day — an evaluation's flat-by */
 export const flatByOf = (day: string): number => nyInstant(day, FLAT_MIN);
 
-/** Years of trading time an option has left at an instant: the sessions after today up to its expiry, and the share of
-    today's 09:30–16:00 still to come (all of it before the open, none after the bell, none on a day with no session) */
+/** Years of trading time an option has left at an instant, on the trading clock (core/tradingYear): the session minutes
+    still to come today (all of it before the open, none after the close, none on a day with no session) and every
+    session's minutes after today up to the expiry's close — an early close counts its 210 minutes, not 390 — over
+    390 × 252. Unlike tradingYears it has no five-minute floor and counts the seconds: 0 at the close. */
 export function yearsToExpiry(expiry: string, ms: number): number {
   const t = nyAt(ms);
   if (expiry < t.date) return 0;
-  const session = isTradingDay(dateAt(t.date));
-  const today = !session ? 0 : t.minutes < OPEN_MIN ? 1 : t.minutes >= BELL_MIN ? 0 : (BELL_MIN - t.minutes - t.seconds / 60) / SESSION_MIN;
-  if (expiry === t.date) return today / 252;
-  return (sessionsBetween(dateAt(t.date), dateAt(expiry)) + today) / 252;
+  let minutes = 0;
+  if (isTradingDay(dateAt(t.date))) {
+    const close = sessionCloseMinOn(t.date);
+    const now = t.minutes + t.seconds / 60;
+    minutes += t.minutes < OPEN_MIN ? close - OPEN_MIN : Math.max(0, close - now);
+  }
+  return (minutes + sessionMinutesAfter(t.date, expiry)) / (SESSION_MIN * 252);
+}
+/** Session minutes on the trading days after `from` up to and including `to` — kept, every quote asks the same few */
+const afterMemo = new Map<string, number>();
+function sessionMinutesAfter(from: string, to: string): number {
+  const key = `${from}|${to}`;
+  let v = afterMemo.get(key);
+  if (v != null) return v;
+  v = 0;
+  for (let d = addDays(from, 1), guard = 0; d <= to && guard < 4000; d = addDays(d, 1), guard++) if (isTradingDay(dateAt(d))) v += sessionLengthOn(d);
+  if (afterMemo.size > 5000) afterMemo.clear();
+  afterMemo.set(key, v);
+  return v;
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
