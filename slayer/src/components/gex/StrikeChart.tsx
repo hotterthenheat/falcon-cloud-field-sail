@@ -48,7 +48,7 @@ import {
 } from '../../data/timeframe';
 import { BEAD_INK_CSS, GexTrailsPrimitive, signedDollars, type BeadHit, type EdgeLevel } from './gexNodesPrimitive';
 import { ExpectedMovePrimitive, type ConeHit } from './expectedMovePrimitive';
-import { coneTerm, ensureCone, useConeRev } from '../../data/coneFeed';
+import { coneMissed, coneTerm, ensureCone, useConeRev } from '../../data/coneFeed';
 import { coneFrame, coneMarks, forwardCone, runwaySlots, todayOpenOf, tradingMinutesPerBar } from '../../data/terrainCone';
 import { EXTRA_INK, coneRungs } from './levelExtras';
 import { KeyLevelsPrimitive, KEY_LEVEL_KEYS, KEY_LEVEL_WORDS, type KeyLevelKey, type KeyLevelRung } from './keyLevelsPrimitive';
@@ -110,6 +110,7 @@ import { INDICATOR_ITEMS, indicatorBlurb } from './indicatorItems';
 import StrikeExposureBand, { type BandMetric } from './StrikeExposureBand';
 import { buildExposureProfile } from '../../data/exposure';
 import type { ExposureProfileData } from '../../types/gex';
+import GapChip, { GAP_GRACE_MS } from './GapChip';
 
 /* The shape this chart needs off a print: whatever FlowPrint is, plus the instant it arrived. Declared here rather
    than imported from the provider so a chart never depends on a React context it does not use. */
@@ -594,6 +595,11 @@ interface StrikeChartProps {
   compact?: boolean;
   /** This chart is inside a page that scrolls — leave the wheel to it. */
   pageScroll?: boolean;
+  /** The pane's "not in yet" notes (an overlay waiting on its feed). Given, the host shows them in its own corner chip
+      row and the chart draws none over the plot; absent, the chart shows them as one small chip in its top-right
+      corner. Either way a note only shows once it has stood for a few seconds — a feed that lands soon never says it
+      is late. */
+  onGapNotes?: (lines: string[]) => void;
 }
 
 /** Mark a moment on this chart on another pane's behalf; null clears it. */
@@ -869,6 +875,7 @@ const StrikeChart = ({
   onReadout,
   projectionRef,
   exportRef,
+  onGapNotes,
 }: StrikeChartProps) => {
   /* A date frame the feed does not serve yet never reaches the tape. The menu
      stays on the frame already up; a stored week or month falls back here. */
@@ -4420,7 +4427,7 @@ const StrikeChart = ({
     if (!clock && overlays.session && sessionLines(buildSessionLevels(baseBars(), sessionOr)).length === 0) {
       push('Session levels — not enough of this session');
     }
-    if (!clock && overlays.cone && !coneTerm(ticker)) push('Expected move — waiting on implied vol');
+    if (!clock && overlays.cone && !coneTerm(ticker)) push(coneMissed(ticker) ? 'Expected move — no implied vol on this name' : 'Expected move — waiting on implied vol');
     if (overlays.levels && ![levels.callWall, levels.putWall, levels.flip, levels.supreme].some(v => Number.isFinite(v) && v > 0)) {
       push('Key levels — the book has not named a wall yet');
     }
@@ -4440,6 +4447,32 @@ const StrikeChart = ({
     }
     return lines;
   })();
+  /* A note waits out a grace before it shows: three expiries of vols take a while, and a note that flashes up for
+     the seconds a feed takes to land is noise over the tape. */
+  const gapKey = gapNotes.join('\n');
+  const gapSeenRef = useRef(new Map<string, number>());
+  const [gapRipe, setGapRipe] = useState('');
+  useEffect(() => {
+    const seen = gapSeenRef.current;
+    const lines = gapKey ? gapKey.split('\n') : [];
+    const now = Date.now();
+    for (const k of [...seen.keys()]) if (!lines.includes(k)) seen.delete(k);
+    for (const l of lines) if (!seen.has(l)) seen.set(l, now);
+    const ripen = () => setGapRipe(lines.filter(l => Date.now() - (seen.get(l) ?? Date.now()) >= GAP_GRACE_MS).join('\n'));
+    ripen();
+    const waits = lines.map(l => GAP_GRACE_MS - (now - (seen.get(l) ?? now))).filter(w => w > 0);
+    if (!waits.length) return;
+    const t = window.setTimeout(ripen, Math.min(...waits) + 30);
+    return () => window.clearTimeout(t);
+  }, [gapKey]);
+  const shownGaps = gapRipe ? gapRipe.split('\n').filter(l => gapNotes.includes(l)) : [];
+  const shownGapKey = shownGaps.join('\n');
+  const onGapNotesRef = useRef(onGapNotes);
+  onGapNotesRef.current = onGapNotes;
+  useEffect(() => {
+    onGapNotesRef.current?.(shownGapKey ? shownGapKey.split('\n') : []);
+  }, [shownGapKey]);
+  useEffect(() => () => onGapNotesRef.current?.([]), []);
 
   let exposureBand: ExposureProfileData | null = null;
   let exposureNote = '';
@@ -4621,15 +4654,16 @@ const StrikeChart = ({
             ))}
           </div>
         )}
-        {gapNotes.length > 0 && !replay && !quiet && (
+        {/* What is not in yet: one small chip in the plot's top-right corner, clear of the candles' left edge and the
+            legends — the full lines on hover. A host with its own corner row takes them instead (onGapNotes). */}
+        {!onGapNotes && shownGaps.length > 0 && !replay && !quiet && (
           <div
-            className="absolute left-3 z-[4] flex max-w-[280px] flex-col items-start gap-1 pointer-events-none"
-            style={{ top: legendTop + builtinOn.length * 23 }}
+            className="absolute z-[4] flex max-w-[min(260px,45%)] pointer-events-auto"
+            style={{ top: chromeInset > 0 ? chromeInset + 6 : 8, right: PRICE_SCALE_MIN_WIDTH + 8 }}
+            title={shownGaps.join('\n')}
             data-indicator-gaps
           >
-            {gapNotes.map(line => (
-              <p key={line} className="rounded bg-canvas/80 px-1.5 py-0.5 font-mono text-t10 text-textSecondary leading-snug">{line}</p>
-            ))}
+            <GapChip lines={shownGaps} />
           </div>
         )}
         {/* Every band says its own name, the way the reference does. An unlabelled strip under a chart is a puzzle;

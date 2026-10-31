@@ -47,6 +47,7 @@ import { useFadeClose } from '../../components/ui/useFadeClose';
 import CompareControl from '../../components/gex/CompareControl';
 import TickerTabStrip, { TAB_MAX } from '../../components/gex/TickerTabStrip';
 import FieldKey from '../../components/gex/FieldKey';
+import GapChip from '../../components/gex/GapChip';
 import { dealerOf } from '../../core/dealerSign';
 import { useMaxPain } from '../../components/gex/levelExtras';
 import { composeSnapshot, snapshotName } from '../../components/gex/snapshot';
@@ -888,6 +889,8 @@ const Pane = ({
   useFocusTrap(expanded, overlayRef);
 
   const [focus, setFocus] = useState<number | null>(arriveFocus);
+  /* The chart's "not in yet" notes, shown as a chip in this pane's corner row — never over the candles */
+  const [gapLines, setGapLines] = useState<string[]>([]);
   const chartKeepStrike = useCallback((price: number) => setFocus(cur => (cur != null && Math.abs(cur - price) < 1e-9 ? null : price)), []);
   /* A strike belongs to its name: let go of when the pane changes name (never on the mount — an arrival's would go
      with it) */
@@ -1280,21 +1283,36 @@ const Pane = ({
               exportRef={exportPngRef}
               pageScroll={belowLg}
               frameless
+              onGapNotes={setGapLines}
             />
             </Deferred>
-            {/* The field's key: the model, its switch, the colour scale and the cut's net GEX */}
-            {overlays.trails && !replay && (
-              /* A chip in the top-right corner, under the expand door and in the price scale's top margin — it never
-                 sits on a bar (the card it replaced stood over the candles and the volume at the bottom-left) */
-              <div className="absolute z-20" style={{ top: expanded ? 52 : 34, right: PRICE_GUTTER_PX + 6 }} data-terrain-field-key>
-                <FieldKey
-                  ticker={ticker}
-                  cut={railCut === 'book' ? 'book' : shownBook?.date ?? null}
-                  cutWords={railCut === 'book' ? (rootTradesSession(ticker, session) ? 'the whole book' : 'options shut') : shownBook?.label ?? '—'}
-                  scale={fieldScale}
-                  oiNet={fieldOiNet}
-                  compact={isPhone || (paneCount > 1 && !expanded)}
-                />
+            {/* The pane's corner chip row: the field's key (the model, its switch, the colour scale and the cut's net
+                GEX) and, beside it, what is not in yet */}
+            {!replay && (overlays.trails || gapLines.length > 0) && (
+              /* Chips in the top-right corner, under the expand door and in the price scale's top margin — they never
+                 sit on a bar (the card it replaced stood over the candles and the volume at the bottom-left) */
+              <div
+                className="absolute z-20 flex w-max max-w-[calc(100%-120px)] items-center justify-end gap-1.5"
+                style={{ top: expanded ? 52 : 34, right: PRICE_GUTTER_PX + 6 }}
+                data-terrain-corner-chips
+              >
+                {gapLines.length > 0 && (
+                  <span className="flex min-w-0 max-w-[260px]" data-terrain-gaps>
+                    <GapChip lines={gapLines} />
+                  </span>
+                )}
+                {overlays.trails && (
+                  <div className="shrink-0" data-terrain-field-key>
+                    <FieldKey
+                      ticker={ticker}
+                      cut={railCut === 'book' ? 'book' : shownBook?.date ?? null}
+                      cutWords={railCut === 'book' ? (rootTradesSession(ticker, session) ? 'the whole book' : 'options shut') : shownBook?.label ?? '—'}
+                      scale={fieldScale}
+                      oiNet={fieldOiNet}
+                      compact={isPhone || (paneCount > 1 && !expanded)}
+                    />
+                  </div>
+                )}
               </div>
             )}
 

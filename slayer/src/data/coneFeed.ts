@@ -24,6 +24,8 @@ interface Surface {
 
 const cache = new Map<string, Surface>();
 const inflight = new Set<string>();
+/** Names whose last read came back empty — the chart says "no vol", not "waiting", for them */
+const missed = new Set<string>();
 const listeners = new Set<() => void>();
 let rev = 0;
 
@@ -161,6 +163,15 @@ export function ensureCone(ticker: string): void {
       const surface = thetaUseHere() === 'all' ? await fromTheta(name) : await fromUw(name);
       if (surface) {
         cache.set(key, surface);
+        missed.delete(key);
+        emit();
+      } else if (!missed.has(key)) {
+        missed.add(key);
+        emit();
+      }
+    } catch {
+      if (!missed.has(key)) {
+        missed.add(key);
         emit();
       }
     } finally {
@@ -176,6 +187,12 @@ export function coneTerm(ticker: string): { rows: { expiry: string; iv: number }
   if (!surface) return null;
   const rows = surface.rows.filter(r => r.iv > 0).map(r => ({ expiry: r.expiry, iv: r.iv }));
   return rows.length ? { rows, source: surface.source === 'theta' ? 'theta' : 'uw', at: surface.at } : null;
+}
+
+/** The last read of this name's vols came back with none (and none is cached from before) */
+export function coneMissed(ticker: string): boolean {
+  const key = keyOf(ticker);
+  return !cache.has(key) && missed.has(key);
 }
 
 /** The surface's revision: it moves when a name's vols land */
