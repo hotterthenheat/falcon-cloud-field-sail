@@ -130,6 +130,10 @@ export interface RecorderStatus {
   passes: number;
   /** the vendor calls of the last ten passes, per pass */
   recentVendor: number[];
+  /** cuts the passes did not reach before their deadline, since start, and the passes that missed any (a recorder
+      starved of vendor slots shows here; docs/exposure-recorder.md) */
+  missedTotal: number;
+  passesMissing: number;
 }
 
 export interface Recorder {
@@ -231,10 +235,29 @@ const alive = (pid: number): boolean => {
   }
 };
 
+/* On Windows a rename over a file another process has open (a reader serving the day, an antivirus scan, the search
+   indexer) fails with EPERM, EACCES or EBUSY for a moment: try again a few times before giving up. */
+const RENAME_RETRY = new Set(['EPERM', 'EACCES', 'EBUSY']);
+export function renameRetrying(from: string, to: string, rename: (a: string, b: string) => void = fs.renameSync): void {
+  for (let i = 0; ; i++) {
+    try {
+      rename(from, to);
+      return;
+    } catch (e) {
+      if (i >= 5 || !RENAME_RETRY.has((e as NodeJS.ErrnoException).code ?? '')) {
+        fs.rmSync(from, { force: true });
+        throw e;
+      }
+      /* a short synchronous wait (20, 40 … 320 ms): the callers are synchronous */
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20 * 2 ** i);
+    }
+  }
+}
+
 function writeAtomic(file: string, text: string | Buffer): void {
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, text);
-  fs.renameSync(tmp, file);
+  renameRetrying(tmp, file);
 }
 
 /** Takes the folder's recorder lock, or says who holds it. A lock not refreshed for two minutes is stale. */
@@ -454,6 +477,8 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
   let backoffUntil = 0;
   let turn = 0;
   let passes = 0;
+  let missedTotal = 0;
+  let passesMissing = 0;
   let last: PassReport | null = null;
   const recentVendor: number[] = [];
 
@@ -550,6 +575,12 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
       rep.took = clock() - t0;
       running = false;
       passes += 1;
+      if (rep.missed > 0) {
+        missedTotal += rep.missed;
+        passesMissing += 1;
+        /* once, then every tenth such pass: a recorder starved of slots says so without filling the log */
+        if (!rep.fault && passesMissing % 10 === 1) log(`[exposure] ${rep.slot}: the pass ran out of time with ${rep.missed} cut(s) unread (${passesMissing} such passes since start)`);
+      }
       last = rep;
       recentVendor.push(rep.vendor);
       if (recentVendor.length > 10) recentVendor.shift();
@@ -668,6 +699,8 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
       last,
       passes,
       recentVendor: [...recentVendor],
+      missedTotal,
+      passesMissing,
     }),
     tick,
     prune,

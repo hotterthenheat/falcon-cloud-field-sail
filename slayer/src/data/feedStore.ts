@@ -10,7 +10,9 @@ const NY_DAY_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_Yor
 
 /* ---- reads -------------------------------------------------------------------- */
 
-export type Answer = { status: number; data: unknown; error: string | null };
+/** `at`/`held`: when the server's hub took the answer from the vendor, and whether it is serving it past its normal life
+    (data/whales.ts UwAnswer); a reader showing `held` answers should say "as of" `at`. */
+export type Answer = { status: number; data: unknown; error: string | null; at?: number | null; held?: boolean };
 /** One GET by path: the vendor through the proxy, or the kept answers */
 export type Get = (path: string, priority?: boolean) => Promise<Answer>;
 export const liveGet: Get = (path, priority) => uwCall(path, priority);
@@ -82,37 +84,7 @@ export function useStore<S, T = S>(store: Store<S>, pick: (s: S) => T = s => s a
   );
 }
 
-/** A map of books by name that keeps the `max` most recently read; an older one is read again when asked */
-export class BoundedMap<K, V> {
-  private m = new Map<K, V>();
-  constructor(private max: number) {}
-  get(k: K): V | undefined {
-    const v = this.m.get(k);
-    if (v !== undefined) {
-      this.m.delete(k);
-      this.m.set(k, v);
-    }
-    return v;
-  }
-  /** Read without marking it used */
-  peek(k: K): V | undefined {
-    return this.m.get(k);
-  }
-  has(k: K): boolean {
-    return this.m.has(k);
-  }
-  set(k: K, v: V): void {
-    this.m.delete(k);
-    this.m.set(k, v);
-    while (this.m.size > this.max) this.m.delete(this.m.keys().next().value as K);
-  }
-  delete(k: K): void {
-    this.m.delete(k);
-  }
-  entries(): IterableIterator<[K, V]> {
-    return this.m.entries();
-  }
-}
+export { BoundedMap } from './boundedMap';
 
 /* ---- the session and the clock ---------------------------------------------------- */
 

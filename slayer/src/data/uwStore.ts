@@ -48,15 +48,16 @@ export async function readSaved(path: string): Promise<SavedAnswer | null> {
 }
 
 let writes = 0;
-/** Keep a good answer. Fire and forget; storage that is full or blocked just skips it. */
-export function save(path: string, status: number, data: unknown): void {
+/** Keep a good answer (fire and forget; storage that is full or blocked just skips it). `at` is when the server took it
+    from the vendor (x-hub-at), else now. */
+export function save(path: string, status: number, data: unknown, at?: number | null): void {
   if (status !== 200 || data == null) return;
   void db().then(d => {
     if (!d) return;
     try {
       if (JSON.stringify(data).length > MAX_CHARS) return;
       const tx = d.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).put({ at: Date.now(), status, data } satisfies SavedAnswer, path);
+      tx.objectStore(STORE).put({ at: at ?? Date.now(), status, data } satisfies SavedAnswer, path);
       if (++writes % 50 === 0) trim(d);
     } catch {
       /* quota or a structured-clone failure: the answer is simply not kept */

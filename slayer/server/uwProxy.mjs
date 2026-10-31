@@ -133,13 +133,17 @@ const recent = [];
    Every upstream call takes a slot and the rest queue. The limit is per process (per Vercel instance). */
 const UPSTREAM_SLOTS = 3;
 let upstreamBusy = 0;
-let refreshBusy = 0;
-/* A viewer goes ahead of every background refresh, and a quick request ahead of a slow one: a route whose answers
-   have been taking over 1.5 s (a whole chain, a long tape) waits behind the quick ones (a quote, the day's exposure),
-   so one viewer's heavy walk never makes another's price time out. Refreshes hold at most one of the three slots. */
+/* A viewer goes ahead of all background work, and a quick request ahead of a slow one: a route whose answers have been
+   taking over 1.5 s (a whole chain, a long tape) waits behind the quick ones (a quote, the day's exposure), so one
+   viewer's heavy walk never makes another's price time out.
+   Background work has two lanes of one slot each: the hub's refreshes (keep-warm and the popular paths) and the exposure
+   recorder ('record'), so the recorder's minute is never spent queued behind 35–70 s of refreshes. Both run only while
+   no viewer waits, and together they never hold the last slot. */
 const quickQueue = [];
 const viewerQueue = [];
 const refreshQueue = [];
+const recordQueue = [];
+const busy = { refresh: 0, record: 0 };
 const took = new Map();
 const routeOf = (path) => path.split('?')[0].replace(/\/[A-Z0-9.$_-]{1,12}(?=\/|$)/g, '/:t').replace(/\/[0-9a-f-]{20,}/g, '/:id');
 const slow = (path) => (took.get(routeOf(path)) ?? 0) > 1_500;
@@ -148,20 +152,20 @@ const noteTook = (path, ms) => {
   const was = took.get(r);
   took.set(r, was == null ? ms : 0.7 * was + 0.3 * ms);
 };
-/* slow work (a viewer's heavy route, or a refresh) never holds the last slot: a quick ask always finds one free */
+/* slow work (a viewer's heavy route, a refresh, the recorder) never holds the last slot: a quick ask always finds one */
 let slowBusy = 0;
 const slowMayGo = () => upstreamBusy < UPSTREAM_SLOTS && slowBusy < UPSTREAM_SLOTS - 1;
-const refreshMayGo = () => slowMayGo() && refreshBusy < 1 && quickQueue.length === 0 && viewerQueue.length === 0;
+const backgroundMayGo = (lane) => slowMayGo() && busy[lane] < 1 && quickQueue.length === 0 && viewerQueue.length === 0;
 /* a slot is counted for the lane its holder was let in from */
 function take(kind) {
   upstreamBusy += 1;
   if (kind !== 'quick') slowBusy += 1;
-  if (kind === 'refresh') refreshBusy += 1;
+  if (kind === 'refresh' || kind === 'record') busy[kind] += 1;
 }
 function give(kind) {
   upstreamBusy -= 1;
   if (kind !== 'quick') slowBusy -= 1;
-  if (kind === 'refresh') refreshBusy -= 1;
+  if (kind === 'refresh' || kind === 'record') busy[kind] -= 1;
 }
 function wake() {
   while (upstreamBusy < UPSTREAM_SLOTS && quickQueue.length) {
@@ -172,41 +176,44 @@ function wake() {
     take('viewer');
     viewerQueue.shift().go('viewer');
   }
-  if (refreshQueue.length && refreshMayGo()) {
-    take('refresh');
-    refreshQueue.shift().go('refresh');
+  /* the recorder first: its pass has a deadline, a refresh does not */
+  for (const [lane, q] of [['record', recordQueue], ['refresh', refreshQueue]]) {
+    if (q.length && backgroundMayGo(lane)) {
+      take(lane);
+      q.shift().go(lane);
+    }
   }
 }
-/* the background refreshes still waiting for a slot, by path */
-const refreshWaiting = new Map();
-/** A viewer is waiting on this path's background refresh (server/hub.mjs): it leaves the refresh lane for the viewers'. */
+/* the background asks still waiting for a slot, by path */
+const backgroundWaiting = new Map();
+/** A viewer is waiting on this path's background ask (server/hub.mjs): it leaves the background lane for the viewers'. */
 function promote(path) {
-  const entry = refreshWaiting.get(path);
-  const at = entry ? refreshQueue.indexOf(entry) : -1;
-  if (at < 0) return;
-  refreshQueue.splice(at, 1);
-  refreshWaiting.delete(path);
+  const entry = backgroundWaiting.get(path);
+  const q = entry ? [refreshQueue, recordQueue].find((x) => x.includes(entry)) : null;
+  if (!q) return;
+  q.splice(q.indexOf(entry), 1);
+  backgroundWaiting.delete(path);
   (slow(path) ? viewerQueue : quickQueue).push(entry);
   wake();
 }
 /** Takes a waiting ask out of its queue (its job was given up): it never reaches the vendor. */
 function withdraw(entry) {
-  for (const q of [quickQueue, viewerQueue, refreshQueue]) {
+  for (const q of [quickQueue, viewerQueue, refreshQueue, recordQueue]) {
     const at = q.indexOf(entry);
     if (at >= 0) {
       q.splice(at, 1);
-      if (refreshWaiting.get(entry.path) === entry) refreshWaiting.delete(entry.path);
+      if (backgroundWaiting.get(entry.path) === entry) backgroundWaiting.delete(entry.path);
       entry.go(null);
       return;
     }
   }
 }
 async function upstreamSlot(fn, lane = 'viewer', path = '', ticket = {}) {
-  const refresh = lane !== 'viewer';
-  /* a refresh is slow work whatever its route; a viewer's ask is slow when its route has been taking long */
-  const heavy = refresh || slow(path);
-  const want = refresh ? 'refresh' : heavy ? 'viewer' : 'quick';
-  const free = refresh ? refreshMayGo() : heavy ? slowMayGo() && viewerQueue.length === 0 : upstreamBusy < UPSTREAM_SLOTS;
+  const background = lane === 'refresh' || lane === 'record' ? lane : null;
+  /* background work is slow whatever its route; a viewer's ask is slow when its route has been taking long */
+  const heavy = !!background || slow(path);
+  const want = background ?? (heavy ? 'viewer' : 'quick');
+  const free = background ? backgroundMayGo(background) : heavy ? slowMayGo() && viewerQueue.length === 0 : upstreamBusy < UPSTREAM_SLOTS;
   let kind = want;
   if (free) take(kind);
   else {
@@ -214,12 +221,12 @@ async function upstreamSlot(fn, lane = 'viewer', path = '', ticket = {}) {
     const entry = { path, go: () => {} };
     kind = await new Promise((r) => {
       entry.go = r;
-      (refresh ? refreshQueue : heavy ? viewerQueue : quickQueue).push(entry);
-      if (refresh) refreshWaiting.set(path, entry);
+      (background === 'record' ? recordQueue : background ? refreshQueue : heavy ? viewerQueue : quickQueue).push(entry);
+      if (background) backgroundWaiting.set(path, entry);
       ticket.entry = entry;
     });
     ticket.entry = null;
-    if (refreshWaiting.get(path) === entry) refreshWaiting.delete(path);
+    if (backgroundWaiting.get(path) === entry) backgroundWaiting.delete(path);
     if (!kind) throw new Error('withdrawn');
   }
   try {
@@ -260,33 +267,120 @@ const send = (res, status, body, type = 'application/json') => {
   res.end(body);
 };
 
+/* ---- the key's breaker ----
+   A 429 is about the key, not the path: every caller holds off until the vendor's Retry-After (else 1 s, 2 s, 4 s … up
+   to 30 s) has passed. The wait happens outside the three slots, background work (refreshes, the recorder) never waits
+   at all (it gives up at once and the hub keeps the last good copy), and a viewer waits at most VIEWER_COOL_MS before
+   being answered 429 with the time left, which the browser honours (data/whales.ts). */
+let coolUntil = 0;
+let strikes = 0;
+const VIEWER_COOL_MS = 8_000;
+const MAX_COOL_MS = 60_000;
+const stats429 = { refusals: 0, held: 0, gaveUp: 0 };
+/** ms the vendor asked us to wait (Retry-After in seconds or as a date), or 0 */
+function retryAfterMs(h) {
+  if (!h) return 0;
+  const s = Number(h);
+  if (Number.isFinite(s)) return s > 0 ? s * 1000 : 0;
+  const at = Date.parse(h);
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : 0;
+}
+function noteRefused(header) {
+  strikes += 1;
+  stats429.refusals += 1;
+  const ms = Math.min(MAX_COOL_MS, retryAfterMs(header) || Math.min(30_000, 1000 * 2 ** (strikes - 1)));
+  coolUntil = Math.max(coolUntil, Date.now() + ms);
+}
+const coolLeft = () => Math.max(0, coolUntil - Date.now());
+const tooMany = () => ({
+  status: 429,
+  body: Buffer.from(JSON.stringify({ error: 'unusual whales is rate limiting this key; asked again shortly', code: 'rate_limited_upstream' })),
+  type: 'application/json',
+});
+const COOLING = Symbol('cooling');
+/* UW_PROXY_DEBUG=1 logs every vendor call: its lane, status, time and path */
+const DEBUG = process.env.UW_PROXY_DEBUG === '1';
+/* the longest one vendor call may hold a slot, answer and body together */
+const CALL_MS = 15_000;
+
 async function load(path, key, lane) {
   const ticket = { entry: null, dead: false };
+  const background = lane !== 'viewer';
   const job = (async () => {
-    /* The vendor's 429s are waited out here (Retry-After, else 0.8 s, 1.6 s, 3.2 s), not in the browser. */
+    /* At most one retry of a 429 (after the key's breaker has passed) and two of a gateway error; never a sleep inside
+       a slot. */
     let upstream;
     let buf;
+    let refusals = 0;
     for (let attempt = 0; ; attempt++) {
       if (ticket.dead) throw new Error('withdrawn');
+      const wait = coolLeft();
+      if (wait > 0) {
+        if (background || wait > VIEWER_COOL_MS) {
+          stats429.gaveUp += 1;
+          return tooMany();
+        }
+        stats429.held += 1;
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
       /* the body is read inside the slot, so a slot frees only once the vendor has finished answering */
-      [upstream, buf] = await upstreamSlot(async () => {
+      const got = await upstreamSlot(async () => {
+        /* the breaker tripped while this ask waited for its slot: give the slot back without a call */
+        if (coolLeft() > 0) return COOLING;
         const t0 = Date.now();
-        const r = await fetch(`https://api.unusualwhales.com/api${path}`, {
-          headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
-          signal: AbortSignal.timeout(12_000),
-        });
-        const body = Buffer.from(await r.arrayBuffer());
+        if (DEBUG) console.log(`[uw] ${lane} asks ${path.slice(0, 80)}`);
+        /* A call that never settles must not hold its slot for ever: one was seen hanging past its abort signal and
+           kept the only refresh slot for minutes. The slot is given back after CALL_MS whatever the fetch does. */
+        const ctl = new AbortController();
+        let hard;
+        const call = (async () => {
+          const r = await fetch(`https://api.unusualwhales.com/api${path}`, {
+            headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
+            signal: AbortSignal.any([ctl.signal, AbortSignal.timeout(12_000)]),
+          });
+          return [r, Buffer.from(await r.arrayBuffer())];
+        })();
+        let r;
+        let body;
+        try {
+          [r, body] = await Promise.race([
+            call,
+            new Promise((_, reject) => {
+              hard = setTimeout(() => {
+                ctl.abort();
+                reject(Object.assign(new Error('unusual whales did not answer'), { name: 'TimeoutError' }));
+              }, CALL_MS);
+            }),
+          ]);
+        } finally {
+          clearTimeout(hard);
+          call.catch(() => {});
+        }
         noteTook(path, Date.now() - t0);
+        if (DEBUG) console.log(`[uw] ${lane} ${r.status} ${Date.now() - t0}ms ${path.slice(0, 80)}`);
         return [r, body];
       }, lane, path, ticket).catch((e) => {
+        if (DEBUG) console.log(`[uw] ${lane} ${e?.name || "error"} ${path.slice(0, 80)}`);
         if (!ticket.dead) recent.push(`${e?.name || 'error'} ${path.slice(0, 60)}`);
         throw e;
       });
+      if (got === COOLING) {
+        attempt -= 1;
+        continue;
+      }
+      [upstream, buf] = got;
       recent.push(`${upstream.status} ${path.slice(0, 60)}`);
       if (recent.length > 20) recent.splice(0, recent.length - 20);
-      if (!retryable(upstream.status) || attempt >= 3) break;
-      const after = Number(upstream.headers.get('retry-after'));
-      await new Promise((r) => setTimeout(r, Number.isFinite(after) && after > 0 && after <= 5 ? after * 1000 : 800 * 2 ** attempt));
+      if (upstream.status === 429) {
+        noteRefused(upstream.headers.get('retry-after'));
+        refusals += 1;
+        if (refusals >= 2 || background) break;
+        continue;
+      }
+      if (upstream.status < 500) strikes = 0;
+      if (!retryable(upstream.status) || attempt >= 2) break;
+      await new Promise((r) => setTimeout(r, 800 * 2 ** attempt));
     }
     /* a refusal that outlasts the retries comes back as is; the hub keeps the last good answer on screen */
     const type = upstream.headers.get('content-type') || 'application/json';
@@ -341,7 +435,7 @@ export async function proxyUw(req, res) {
     return;
   }
   if (/^(?:\/api\/uw)?\/__hub(?:\?|$)/.test(req.url || '') && process.env.VERCEL_ENV !== 'production') {
-    send(res, 200, JSON.stringify({ ...hub.stats(), slotsBusy: upstreamBusy, slowSlots: slowBusy, refreshSlots: refreshBusy, quickQueued: quickQueue.length, viewersQueued: viewerQueue.length, refreshesQueued: refreshQueue.length, recent }));
+    send(res, 200, JSON.stringify({ ...hub.stats(), slotsBusy: upstreamBusy, slowSlots: slowBusy, refreshSlots: busy.refresh, recordSlots: busy.record, recordsQueued: recordQueue.length, quickQueued: quickQueue.length, viewersQueued: viewerQueue.length, refreshesQueued: refreshQueue.length, coolingMs: coolLeft(), ...stats429, recent }));
     return;
   }
   const path = forwardPath(req.url, /^\/api\/uw/, 400);
@@ -361,6 +455,10 @@ export async function proxyUw(req, res) {
   }
   try {
     const got = await hub.get(path);
+    /* a refusal tells the browser how long the key's breaker still holds, so it waits that out instead of asking again */
+    if (got.status === 429) res.setHeader('retry-after', String(Math.max(1, Math.ceil(coolLeft() / 1000))));
+    /* how old the answer is (Age, x-hub-at), so a feed can say "as of" when the hub is holding an old copy */
+    else for (const [k, v] of Object.entries(hub.ageHeaders(path, got))) res.setHeader(k, v);
     send(res, got.status, got.body, got.type);
   } catch {
     send(res, 502, JSON.stringify({ error: 'unusual whales unreachable' }));
