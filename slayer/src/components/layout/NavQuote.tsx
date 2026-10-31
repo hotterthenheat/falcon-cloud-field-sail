@@ -96,9 +96,11 @@ export function useNavQuote(ticker: string): NavQuoteRead {
       priceWord: uw && uw.extPrice != null && uw.phase !== 'regular' ? (uw.phase === 'pre' ? 'pre-market' : 'after hours') : null,
       dayWhen: uw && uw.phase !== 'regular' ? sessionWhen(uw.regDate) : null,
       regClose: uw?.regClose ?? null,
-      live: !!uw,
+      /* the vendor's last print belongs to the session trading now, or it is shown with its time (the weekend's
+         Friday, the after-hours print overnight — the vendor's tape has no overnight prints) */
+      live: !!uw && printIsCurrent(uw.tapeAt),
       offline: false,
-      asOf: null,
+      asOf: uw && !printIsCurrent(uw.tapeAt) ? uw.tapeAt : null,
       source: 'uw',
     };
   }
@@ -137,7 +139,7 @@ OfflineLine.displayName = 'OfflineLine';
 export const NavPrice = memo(({ ticker, compact = false }: { ticker: string; compact?: boolean }) => {
   const q = useNavQuote(ticker);
   const priceTitle = q.asOf
-    ? quoteStamp(asOfText(q.asOf))
+    ? `Last trade${q.priceWord ? `, ${q.priceWord}` : ''} · ${asOfText(q.asOf)}${q.regClose != null ? ` · regular close ${q.regClose.toFixed(2)}` : ''}`
     : q.priceWord
       ? `Last trade, ${q.priceWord}${q.regClose != null ? ` · regular close ${q.regClose.toFixed(2)}` : ''}`
       : q.source === 'uw'
@@ -175,7 +177,7 @@ NavPrice.displayName = 'NavPrice';
 export const NavOffline = memo(({ ticker }: { ticker: string }) => {
   const q = useNavQuote(ticker);
   if (q.offline) return <OfflineLine asOf={q.asOf} className="px-1 h-4" />;
-  if (q.source === 'uw' && q.asOf) return <AsOf at={q.asOf} className="px-1 h-4" title="Kept from the last visit. The fresh quote replaces it when it lands." />;
+  if (q.source === 'uw' && q.asOf) return <AsOf at={q.asOf} className="px-1 h-4" title={q.live ? 'Kept from the last visit. The fresh quote replaces it when it lands.' : 'The last print, from an earlier session: nothing has printed in the session trading now.'} />;
   if (q.source === 'theta' && q.asOf) return <AsOf at={q.asOf} className="px-1 h-4" title="The last trade on this feed, from an earlier session: nothing has printed in the session trading now." />;
   return null;
 });

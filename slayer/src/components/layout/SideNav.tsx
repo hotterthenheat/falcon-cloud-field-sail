@@ -77,7 +77,7 @@ const NavClock = () => {
     const id = window.setInterval(() => setTime(nyClock(undefined, { seconds: true, zone: true })), 1000);
     return () => window.clearInterval(id);
   }, []);
-  return <span className="ml-auto text-textMuted select-none">{time}</span>;
+  return <span className="ml-auto whitespace-nowrap text-textMuted select-none">{time}</span>;
 };
 
 const SideNav = ({ onOpenPalette }: SideNavProps) => {
@@ -595,8 +595,8 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
           ) : (
             <>
               <Signature state={marketWord} rule={false} className="text-t105" />
-              <span className="mt-1.5 flex items-center gap-2 font-mono text-t10 tnum">
-                <span className="min-w-0 truncate text-textSecondary" title={!open && nextOpen ? `${marketState.line} ${nextOpen.long}` : `${sessionWords} · ${clock.label}. ${marketState.line}`} data-session-line data-session-phase={session.phase}>
+              <span className="mt-1.5 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 font-mono text-t10 tnum">
+                <span className="min-w-0 text-textSecondary leading-snug" title={!open && nextOpen ? `${marketState.line} ${nextOpen.long}` : `${sessionWords} · ${clock.label}. ${marketState.line}`} data-session-line data-session-phase={session.phase}>
                   {/* 16:00–16:15 on Trace: stock options are shut, index and ETF options still trade. */}
                   {pathname.startsWith('/trace') && marketPhase() === 'late' ? 'After hours · index & ETF options to 16:15 ET' : sessionWords}
                 </span>
