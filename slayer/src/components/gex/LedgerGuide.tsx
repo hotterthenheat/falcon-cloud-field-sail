@@ -9,14 +9,17 @@ import type { ExposureSurface, Greek } from '../../data/exposureSurface';
 import { todayColumn } from '../../data/exposureSurface';
 import { heatCellStyle, type HeatMode } from './heatmap';
 import { fmtStrike } from '../../core/format';
+import { CALL_WALL as PALETTE_CALL_WALL, PUT_WALL as PALETTE_PUT_WALL } from './palette';
 
 const INK = 'rgb(var(--text-primary))';
 const INK_2 = 'rgb(var(--text-secondary))';
 const INK_3 = 'rgb(var(--text-muted))';
 const SILVER = 'rgb(var(--silver))';
 const SUPREME = 'rgb(var(--supreme))';
-const PUT_WALL = 'rgb(var(--bear))';
-const CALL_WALL = 'rgb(var(--bull))';
+/* the walls in the chart's own inks (palette.ts) — the words say gold and blue; bull/bear green and red are the
+   gamma's sign, not the walls */
+const PUT_WALL = PALETTE_PUT_WALL;
+const CALL_WALL = PALETTE_CALL_WALL;
 const GRID = 'rgb(var(--ink) / 0.07)'; /* the ink token: on paper the white hairline was none */
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const SANS = '"Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
