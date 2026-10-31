@@ -51,7 +51,7 @@ const NewAccount = ({ onPractice, onPlan }: Props) => {
           ))}
         </div>
         {/* in the landing's window nothing trades (data/paper/store.ts: never EMBEDDED) — say that, not "another tab" */}
-        <p className="text-t10 text-textMuted">{can ? 'Pick what it starts with.' : EMBEDDED ? 'Open the terminal to start one — nothing trades from this window.' : 'The accounts are open in another tab — take them here first.'}</p>
+        <p className="text-t10 text-textMuted">{can ? 'Pick what it starts with.' : EMBEDDED ? 'Open the terminal to start one — nothing trades from this window.' : 'Open in another tab — use them here first (the banner above).'}</p>
       </div>
 
       {/* THE PROP FIRMS */}

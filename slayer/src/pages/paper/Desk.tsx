@@ -42,7 +42,7 @@ import { bankedOf, comboRefusal, gapOf, openPreview, optLadderRoom, optLadderTak
 import { putsSecured, readRules, rulesOf, sellSays } from '../../data/paper/rules';
 import { LIFE, PAPER_INDEXES, feedOffline, isPaperIndex, ivOf, liveDeskChain, paperIndex, spotRead, listedNow, spotOf, spotForAskNow, spotForBidNow, stepOf } from '../../data/paper/feed';
 import { futWords } from '../../data/paper/products';
-import { dayBeginsAt, nyMomentWords } from '../../data/paper/clock';
+import { dayBeginsAt, isVixRoot, nyMomentWords, vixSchedule } from '../../data/paper/clock';
 import { nyClock } from '../../core/nyTime';
 import { amendOrder, attachOpt, breakevenOrder, cancelOrder, cancelWorking, closeOpt, flattenAccount, liveMarket, placeComboOrder, placeOptOrder, readPaper, rebaseOrder, setInHand, trailOrder, usePaper } from '../../data/paper/store';
 
@@ -198,18 +198,25 @@ const PaperDesk = () => {
   const m = liveMarket();
   const v = viewOf(account, m);
   const rules = readRules(account, v, m);
-  const lock = !holding ? 'The accounts are open in another tab — take them here to trade' : null;
+  const lock = !holding ? 'Open in another tab — use them here to trade (the banner above)' : null;
 
   /* ---- THE NAME: its chain ---- */
   const spot = spotOf(name);
   const expiries = listedNow(name, m.now);
   const exp = expiry && expiries.some(e => e.iso === expiry) ? expiry : ((expiries.find(e => e.dte >= 5) ?? expiries[0])?.iso ?? null);
-  const expiryOptions: DropdownOption<string>[] = expiries.map(e => ({ value: e.iso, label: `${e.label} · ${e.dte}d`, hint: e.dte === 0 ? 'Expires at today’s 16:00 ET' : `${e.kind === 'monthly' ? 'The monthly' : e.kind === 'daily' ? 'A daily' : 'A weekly'}` }));
+  const vix = isVixRoot(name);
+  const shortDate = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const expiryOptions: DropdownOption<string>[] = expiries.map(e => ({
+    value: e.iso,
+    label: `${e.label} · ${e.dte}d`,
+    hint: vix ? `Last trades ${shortDate(vixSchedule(e.iso).lastTrade)} at the close · settles on ${shortDate(vixSchedule(e.iso).settleDay)}’s opening print` : e.dte === 0 ? 'Expires at today’s close ET' : `${e.kind === 'monthly' ? 'The monthly' : e.kind === 'daily' ? 'A daily' : 'A weekly'}`,
+  }));
   /* the chain is laddered off a price that stays put, and only re-centred once the name has run most of the ladder away */
   const ck = `${name}|${exp}`;
   if (exp) {
     const step = stepOf(name, exp);
-    if (!centreRef.current || centreRef.current.key !== ck || Math.abs(spot - centreRef.current.at) > step * (CHAIN_EACH - 4)) centreRef.current = { key: ck, at: spot };
+    /* a centre is only ever a real price: one taken before the name's price was in (NaN, 0) is taken again once it is */
+    if (!centreRef.current || centreRef.current.key !== ck || !(centreRef.current.at > 0) || Math.abs(spot - centreRef.current.at) > step * (CHAIN_EACH - 4)) centreRef.current = { key: ck, at: spot };
   }
   /* The chain as the weigher draws it, on the Live Chart's own quotes (feed.ts liveDeskChain) */
   const chain = exp ? liveDeskChain(name, exp, m.now, CHAIN_EACH, centreRef.current?.at) : null;
@@ -307,7 +314,7 @@ const PaperDesk = () => {
       },
       onTradeMark: mark => setMarkOrder({ name, mark, qty: quickOf(desks) }),
       /* what the name has banked this trading day (since 17:00 ET), and what is open on it — in plain words */
-      corner: <PnlChips name={name} banked={bankedOf(account, name) - bankedOf(account, name, dayBeginsAt(account.day))} open={positions.reduce((x, p) => x + p.pnl, 0)} />,
+      corner: <PnlChips name={name} banked={bankedOf(account, name) - bankedOf(account, name, dayBeginsAt(account.day))} open={positions.length ? positions.reduce((x, p) => x + p.pnl, 0) : null} />,
     };
     built.set(name, made);
     return made;
@@ -402,6 +409,11 @@ const PaperDesk = () => {
     <>
       {accountCard}
       {panelSwitch}
+      {vix && exp && (
+        <p className="text-t11 leading-snug text-warn" data-paper-vix-note>
+          VIX options stop trading Tuesday: the {shortDate(exp)} expiry last trades at {shortDate(vixSchedule(exp).lastTrade)}’s close and settles on {shortDate(vixSchedule(exp).settleDay)}’s VIX opening print.
+        </p>
+      )}
       {panel === 'build' ? <StrategyBuilder desk={strategyDesk} /> : <OptionsChain
         ticker={name}
         chain={chain}
@@ -441,9 +453,10 @@ const PaperDesk = () => {
   const marginCell = (p: MarkedOpt) => {
     const l = p.margin;
     if (!l) return <span className="text-textMuted">{p.dir > 0 ? 'paid' : '—'}</span>;
-    if (l.keys[0] !== p.key) return <span className="text-textMuted" title={l.words}>with the {contractWords(v.opt.find(x => x.key === l.keys[0])?.contract ?? p.contract).replace(`${p.contract.ticker} `, '')}</span>;
+    if (l.keys[0] !== p.key) return <span className="text-textMuted" title={l.words}>{l.pair ? `${l.pair}, ` : ''}with the {contractWords(v.opt.find(x => x.key === l.keys[0])?.contract ?? p.contract).replace(`${p.contract.ticker} `, '')}</span>;
     return (
-      <span className="text-textPrimary" title={l.words}>
+      <span className="text-textPrimary" title={l.words} data-margin-line={l.pair ?? l.kind}>
+        {l.pair ? <span className="text-t10 text-textMuted">{l.pair} </span> : null}
         {usd(l.held, 0)}
         {l.kind === 'naked' ? <span className="text-t10 text-warn"> est.</span> : null}
       </span>
@@ -456,7 +469,7 @@ const PaperDesk = () => {
       render: r => (
         <span className="inline-flex items-center gap-1.5 min-w-0">
           <ContractLabel contract={contractWords(r.p.contract)} right={r.p.contract.right} logo={r.p.contract.ticker} size="sm" />
-          {r.p.dir < 0 && <span className="font-mono text-t9 font-bold uppercase tracking-wider text-bear" data-position-short>{r.p.comboName ? r.p.comboName : r.p.contract.short != null ? 'credit spread' : r.p.secured ? 'short · cash-secured' : 'short'}</span>}
+          {r.p.dir < 0 && <span className="font-mono text-t9 font-bold uppercase tracking-wider text-bear" data-position-short>{r.p.comboName ? r.p.comboName : r.p.contract.short != null ? 'credit spread' : r.p.secured ? 'short · cash-secured' : r.p.margin?.pair ? `short · ${r.p.margin.pair}` : 'short'}</span>}
         </span>
       ),
     },
@@ -503,6 +516,11 @@ const PaperDesk = () => {
       render: r =>
         r.o.status === 'working' ? (
           <span className="text-silver font-semibold">
+            {r.o.filled ? (
+              <span className="text-textPrimary" title="A fill takes at most the size the quote shows — the rest waits for the next one" data-order-partial={`${r.o.filled}/${r.o.filled + r.o.qty}`}>
+                {r.o.filled} of {r.o.filled + r.o.qty} filled · {r.o.qty} left ·{' '}
+              </span>
+            ) : null}
             Working · {r.o.tif === 'day' ? 'today only' : 'until cancelled'}
             {gapOf(r.o, m.now) != null ? <span className="font-normal text-textMuted"> · the minutes it missed are being checked</span> : null}
             {r.o.unjudged ? (
@@ -513,9 +531,12 @@ const PaperDesk = () => {
             ) : null}
           </span>
         ) : r.o.status === 'filled' ? (
-          <span className="text-textPrimary">Filled at {r.o.fillPrice?.toFixed(2)}</span>
+          <span className="text-textPrimary">
+            {r.o.filled ? `Filled ${r.o.qty} in pieces, the last at` : 'Filled at'} {r.o.fillPrice?.toFixed(2)}
+          </span>
         ) : (
           <span className="text-textMuted" title={r.o.why}>
+            {r.o.filled ? <span className="text-textSecondary">{r.o.filled} filled, {r.o.qty} not · </span> : null}
             {r.o.status === 'refused' ? 'Refused' : 'Cancelled'} — {r.o.why}
           </span>
         ),

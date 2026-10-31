@@ -8,7 +8,7 @@ import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import { ChainCard, CHAIN_COLUMNS, COLUMN_GROUPS } from '../weigher/ChainGrid';
 import { card, head, headWord } from '../review/DeskShell';
 import LadderFields, { LADDER_AT_REST, bracketOf, type LadderDraft } from '../review/LadderFields';
-import { dirInk, usd, usdSigned } from '../review/words';
+import { dirInk, usd, usdBal, usdSigned } from '../review/words';
 import { Act, BracketsHead, Pills, PriceBox, SizeRow, labelCls, whyWords } from './OrderPanel';
 import { MULT, type OrderKind } from '../../data/review/engine';
 import { contractWords, legsOf, longLeg, spreadWidth, strikeWords, type ContractId, type Quote, type Right } from '../../data/review/quotes';
@@ -407,7 +407,7 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
           <div className="text-textSecondary">
             Takes in {n} × {uw(quote.bid)} × 100 = <span className="text-textPrimary font-semibold">{uw(credit)}</span> <span className="text-textMuted">· fee {usd(fees)}</span>
           </div>
-          {pv && <div className="text-textSecondary" data-order-margin>Holds <span className="text-textPrimary font-semibold">{usd(pv.held)}</span> of margin · free after {usd(pv.free)}</div>}
+          {pv && <div className="text-textSecondary" data-order-margin>Holds <span className="text-textPrimary font-semibold">{usd(pv.held)}</span> of margin · free after <span className={pv.free < 0 ? 'text-bear font-semibold' : undefined}>{usdBal(pv.free)}</span></div>}
           {whyLine ? (
             <div className="text-warn">{whyLine}</div>
           ) : (
@@ -470,7 +470,7 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
           <div className="text-warn">{whyLine}</div>
         ) : (
           <div className="text-textMuted">
-            Free after {usd(desk.free - cost - fees)} · {width > 0 ? `can lose what it costs, can make ${usd(Math.max(0, width - px) * MULT * n)}` : 'the most a buy can lose is what it costs'}
+            Free after <span className={desk.free - cost - fees < 0 ? 'text-bear font-semibold' : undefined}>{usdBal(desk.free - cost - fees)}</span> · {width > 0 ? `can lose what it costs, can make ${usd(Math.max(0, width - px) * MULT * n)}` : 'the most a buy can lose is what it costs'}
           </div>
         )}
       </div>

@@ -54,7 +54,7 @@ const JournalStats = ({ rows, periodDays, periodLabel, stats, whole = false }: P
       <div className="px-5 pt-3.5 pb-2.5">
         <div className="font-mono text-t10 font-semibold uppercase tracking-widest text-textPrimary">{periodLabel}</div>
         <div className={`mt-1.5 font-mono text-t24 font-semibold tnum leading-none ${s.n ? dirInk(s.net) : 'text-textMuted'}`} data-journal-stats-net>
-          {s.n ? usdSigned(s.net) : '$0.00'}
+          {s.n ? usdSigned(s.net) : '—'}
         </div>
         <div className="mt-1.5 font-mono text-t11 tnum text-textSecondary">{s.n ? `${s.n} ${s.n === 1 ? 'trade' : 'trades'} · ${periodDays.size} ${periodDays.size === 1 ? 'day' : 'days'} traded` : 'Nothing closed in this period'}</div>
       </div>

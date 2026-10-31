@@ -171,6 +171,14 @@ const minutesOf = (hhmm: string): number => {
 /** A plan's "15:55" on a day's real session: itself on a full day; on a 13:00 early close the same distance from the
     close (12:55; clock.ts sessionTimeOn) */
 const planAt = (day: string, hhmm: string): number => nyInstant(day, sessionTimeOn(day, minutesOf(hhmm)));
+const clockOf = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+/** A plan's time as it falls on a day, in words: "15:55" on a full session; "12:55 (15:55 on a full day — the market closes
+    at 13:00)" on an early close */
+export function planWords(day: string, hhmm: string): string {
+  const real = sessionTimeOn(day, minutesOf(hhmm));
+  if (real === minutesOf(hhmm)) return hhmm;
+  return `${clockOf(real)} (${hhmm} on a full day — the market closes early, at 13:00)`;
+}
 /** The minute a position is closed when it may not be held past the close and no flat-by time is set: a minute before
     the 16:00 bell, so the close fills on the session's own quotes */
 export const BEFORE_BELL = '15:59';
@@ -293,13 +301,13 @@ export function flatTimeOf(a: PaperAccount, day: string, c: ContractId | null, m
   if (!r) return null;
   const out: { at: number; why: string; rule: RuleId }[] = [];
   const bell = (why: string, rule: RuleId) => out.push({ at: planAt(day, BEFORE_BELL), why, rule });
-  if (r.flatBy) out.push({ at: planAt(day, r.flatBy), why: `flat by ${r.flatBy} ET`, rule: 'flat' });
+  if (r.flatBy) out.push({ at: planAt(day, r.flatBy), why: `flat by ${planWords(day, r.flatBy)} ET`, rule: 'flat' });
   if (!r.overnight) bell('nothing is held past the close', 'overnight');
   else if (!r.weekend && breakFollows(day)) bell('nothing is held over the weekend or a market holiday', 'weekend');
   if (c && r.expiryClose && lastTradeDayOf(c) === day) {
     const late = r.expiryClose.except.includes(c.ticker.toUpperCase());
-    if (!late) out.push({ at: planAt(day, r.expiryClose.at), why: `an expiring contract is closed at ${r.expiryClose.at} ET on its expiry day`, rule: 'expiry' });
-    else if (r.expiryClose.lateAt) out.push({ at: planAt(day, r.expiryClose.lateAt), why: `an expiring ${c.ticker.toUpperCase()} contract is closed at ${r.expiryClose.lateAt} ET on its expiry day`, rule: 'expiry' });
+    if (!late) out.push({ at: planAt(day, r.expiryClose.at), why: `an expiring contract is closed at ${planWords(day, r.expiryClose.at)} ET on its expiry day`, rule: 'expiry' });
+    else if (r.expiryClose.lateAt) out.push({ at: planAt(day, r.expiryClose.lateAt), why: `an expiring ${c.ticker.toUpperCase()} contract is closed at ${planWords(day, r.expiryClose.lateAt)} ET on its expiry day`, rule: 'expiry' });
   }
   const name = c?.ticker.toUpperCase();
   if (!r.earnings && name) {

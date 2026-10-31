@@ -9,6 +9,8 @@ export const usd = (v: number, digits = 2): string => `$${Math.abs(v).toLocaleSt
 /** "+$1,240.50" · "−$310.00" · "$0.00" */
 export const usdSigned = (v: number, digits = 2): string => (Math.abs(v) < 0.005 ? usd(0, digits) : `${v > 0 ? '+' : MINUS}${usd(v, digits)}`);
 /** "+0.42R" */
+/** A balance: a minus where it is under zero, no plus where it is not */
+export const usdBal = (v: number, digits = 2): string => (v < -0.005 ? `${MINUS}${usd(v, digits)}` : usd(v, digits));
 export const rWords = (r: number): string => `${r >= 0 ? '+' : MINUS}${Math.abs(r).toFixed(2)}R`;
 export { pct };
 /** The direction's ink for a signed figure — flat money is plain */
