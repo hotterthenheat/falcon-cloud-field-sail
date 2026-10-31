@@ -5,7 +5,7 @@
    second quotes. Nothing is filled from a quote that was not printed. */
 
 import { nyParts } from '../core/nyTime';
-import { lotteryExit, optionFees, reversalLine, stopAfter, treeExit } from './compassParams';
+import { lotteryExit, reversalLine, stopAfter, treeExit } from './compassParams';
 import type { OptionRight } from '../types/compass';
 
 export type SignalBook = 'A' | 'B' | 'C';
@@ -31,6 +31,8 @@ export interface SignalCore {
   firedAt: number;
   /** The session's last regular minute on an early-close day (13:00 ET is 780): the flats move with it */
   closeMin?: number;
+  /** The call's own flat, epoch ms (its session's: 09:20 overnight and pre-market). Absent: the day's flat. */
+  flatAt?: number;
 }
 
 export type OutcomeStatus = 'waiting' | 'open' | 'closed' | 'unavailable';
@@ -47,9 +49,8 @@ export interface Outcome {
   last: PathQuote | null;
   /** Exit against the fill, percent, one decimal */
   ret: number | null;
-  /** Per contract, dollars, after fees */
+  /** Per contract, dollars: (exit - fill ask) x 100. No fees: Compass publishes entries and exits, it does not trade */
   pnl: number | null;
-  fees: number | null;
   /** Minutes from the fill to the exit (or to the last quote) */
   heldMin: number | null;
 }
@@ -69,8 +70,6 @@ const dayOf = (ms: number) => {
 /** The New York minute a ms instant falls in, as epoch ms of that minute's start. */
 const minuteStart = (ms: number) => Math.floor(ms / 60_000) * 60_000;
 
-/** The round trip's fees (compassParams optionFees: commission, exchange, the SEC fee and FINRA's TAF on the sale). */
-export { optionFees };
 
 const validQuote = (q: PathQuote) => q.ask > 0 && q.bid >= 0 && q.ask >= q.bid;
 
@@ -87,8 +86,22 @@ function ret5At(bars: readonly PathBar[], at: number): number {
   return now > 0 && then > 0 ? now / then - 1 : NaN;
 }
 
+/** A call's P&L per contract: (exit - entry) x 100, to the cent. */
+export function grossPnl(entryAsk: number, exitPx: number): number {
+  return Number(((exitPx - entryAsk) * 100).toFixed(2));
+}
+
+/** An outcome as the owner's rule reads it: a closed call's P&L is (exit - fill ask) x 100. Records settled before
+    the rule carried the round trip's fees inside it; they are read without them. */
+export function noFees<T extends { outcome: Outcome | null }>(row: T): T {
+  const o = row.outcome as (Outcome & { fees?: unknown }) | null;
+  if (!o) return row;
+  const { fees: _fees, ...rest } = o;
+  const pnl = o.status === 'closed' && o.fill && o.exit ? grossPnl(o.fill.ask, o.exit.px) : o.pnl;
+  return { ...row, outcome: { ...rest, pnl } };
+}
+
 function closed(fill: PathQuote, exit: { at: number; px: number; why: string }, peak: number, stop: number, last: PathQuote): Outcome {
-  const fees = optionFees(exit.px);
   return {
     status: 'closed',
     fill: { at: fill.t, bid: fill.bid, ask: fill.ask },
@@ -97,8 +110,7 @@ function closed(fill: PathQuote, exit: { at: number; px: number; why: string }, 
     stop,
     last,
     ret: Number(((exit.px / fill.ask - 1) * 100).toFixed(1)),
-    pnl: Number(((exit.px - fill.ask) * 100 - fees).toFixed(2)),
-    fees,
+    pnl: grossPnl(fill.ask, exit.px),
     heldMin: Math.max(0, Math.round((exit.at - fill.t) / 60_000)),
   };
 }
@@ -109,7 +121,7 @@ function closed(fill: PathQuote, exit: { at: number; px: number; why: string }, 
  */
 export function settleSignal(sig: SignalCore, quotes: readonly PathQuote[], under: readonly PathBar[], now: number): Outcome {
   const rows = quotes.filter(q => Number.isFinite(q.t) && q.t > sig.firedAt).slice().sort((a, b) => a.t - b.t);
-  const base: Outcome = { status: 'waiting', fill: null, exit: null, peak: 0, stop: 0, last: null, ret: null, pnl: null, fees: null, heldMin: null };
+  const base: Outcome = { status: 'waiting', fill: null, exit: null, peak: 0, stop: 0, last: null, ret: null, pnl: null, heldMin: null };
   const due = minuteStart(sig.firedAt) + 60_000;
   const fillAt = rows.findIndex(q => q.t >= due);
   if (fillAt < 0 || rows[fillAt].t > sig.firedAt + FILL_WAIT_MS) {
@@ -126,12 +138,14 @@ export function settleSignal(sig: SignalCore, quotes: readonly PathQuote[], unde
   const flatMin = early != null ? early - 5 : FLAT_MIN;
   const lotteryFlatMin = early != null ? early - 10 : LOTTERY_FLAT_MIN;
   const flatWord = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')} flat`;
+  /* a Book A/B call that carries its session's flat (an overnight or pre-market call flats at 09:20, before the halt) */
+  const ownFlat = !lottery && sig.flatAt != null && sig.flatAt > sig.firedAt ? sig.flatAt : null;
   let peak = 0;
   let last: PathQuote = fill;
   for (let i = fillAt + 1; i < rows.length; i++) {
     const q = rows[i];
     if (!validQuote(q)) continue;
-    const late = dayOf(q.t) !== day || minuteOfDay(q.t) >= (lottery ? lotteryFlatMin : flatMin);
+    const late = ownFlat != null ? q.t >= ownFlat : dayOf(q.t) !== day || minuteOfDay(q.t) >= (lottery ? lotteryFlatMin : flatMin);
     if (lottery) {
       const hit = lotteryExit(paid, q.bid, (q.t - fill.t) / 1000);
       if (hit) return closed(fill, { at: q.t, px: hit.px, why: hit.why }, Math.max(peak, q.bid), 0, q);
@@ -145,13 +159,13 @@ export function settleSignal(sig: SignalCore, quotes: readonly PathQuote[], unde
         const line = reversalLine(paid, q.bid, sig.right, ret5At(under, q.t));
         if (line) return closed(fill, { at: q.t, px: q.bid, why: line }, peak, stopAfter(paid, peak, runner), q);
       }
-      if (late) return closed(fill, { at: q.t, px: q.bid, why: flatWord(flatMin) }, peak, stopAfter(paid, peak, runner), q);
+      if (late) return closed(fill, { at: q.t, px: q.bid, why: flatWord(ownFlat != null ? minuteOfDay(ownFlat) : flatMin) }, peak, stopAfter(paid, peak, runner), q);
     }
     peak = Math.max(peak, q.bid);
     last = q;
   }
   /* The session is over and no quote stood at the flat: the last quote printed is the exit. */
-  const over = dayOf(now) !== day || minuteOfDay(now) >= (early != null ? early : 16 * 60) + 5;
+  const over = ownFlat != null ? now >= ownFlat + 10 * 60_000 : dayOf(now) !== day || minuteOfDay(now) >= (early != null ? early : 16 * 60) + 5;
   if (over) {
     const p = nyParts(last.t);
     const why = `Last quote ${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')} ET`;
@@ -166,7 +180,6 @@ export function settleSignal(sig: SignalCore, quotes: readonly PathQuote[], unde
     last,
     ret: last.bid >= 0 ? Number(((last.bid / paid - 1) * 100).toFixed(1)) : null,
     pnl: null,
-    fees: null,
     heldMin: Math.max(0, Math.round((last.t - fill.t) / 60_000)),
   };
 }
@@ -211,9 +224,9 @@ export function fineWindows(sig: SignalCore, quotes: readonly PathQuote[], now =
 export interface DaySummary {
   /** Calls fired */
   calls: number;
-  /** Closed with a gain after fees */
+  /** Closed with a gain */
   won: number;
-  /** Closed at or under the fill after fees */
+  /** Closed at or under the fill */
   lost: number;
   /** Filled and still held */
   open: number;
@@ -221,17 +234,15 @@ export interface DaySummary {
   waiting: number;
   /** No valid quote in the three minutes after the call */
   unavailable: number;
-  /** Closed calls, dollars per contract after the round trip's fees */
+  /** Closed calls, dollars per contract: (exit - fill) x 100 */
   net: number;
-  /** Open calls marked at their last bid, dollars per contract after the round trip's fees */
+  /** Open calls marked at their last bid, dollars per contract */
   openMark: number;
-  /** Round-trip fees inside `net` and `openMark` */
-  fees: number;
 }
 
 /** The day in one line: calls, won, lost, open, and the net per contract after the round-trip cost. */
 export function daySummary(rows: readonly { outcome: Outcome | null }[]): DaySummary {
-  const out: DaySummary = { calls: rows.length, won: 0, lost: 0, open: 0, waiting: 0, unavailable: 0, net: 0, openMark: 0, fees: 0 };
+  const out: DaySummary = { calls: rows.length, won: 0, lost: 0, open: 0, waiting: 0, unavailable: 0, net: 0, openMark: 0 };
   for (const { outcome: o } of rows) {
     if (!o || o.status === 'waiting') out.waiting += 1;
     else if (o.status === 'unavailable') out.unavailable += 1;
@@ -239,16 +250,12 @@ export function daySummary(rows: readonly { outcome: Outcome | null }[]): DaySum
       if (o.pnl > 0) out.won += 1;
       else out.lost += 1;
       out.net += o.pnl;
-      out.fees += o.fees ?? 0;
     } else if (o.status === 'open' && o.fill && o.last) {
       out.open += 1;
-      const fees = optionFees(o.last.bid);
-      out.openMark += (o.last.bid - o.fill.ask) * 100 - fees;
-      out.fees += fees;
+      out.openMark += (o.last.bid - o.fill.ask) * 100;
     } else out.waiting += 1;
   }
   out.net = Number(out.net.toFixed(2));
   out.openMark = Number(out.openMark.toFixed(2));
-  out.fees = Number(out.fees.toFixed(2));
   return out;
 }

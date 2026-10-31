@@ -10,6 +10,7 @@ import { importMarks, setScanMeta, type MarkRow, type ScanMeta } from './compass
 import { noteCompassCall } from './compassAlerts';
 import { feedHeaders } from './feedGate';
 import type { Setup } from '../types/compass';
+import { userWords } from './compassParams';
 
 /** The served state (data/compassServer.ts CompassState), as this browser reads it. */
 interface Served {
@@ -83,7 +84,7 @@ function apply(s: Served, status: FeedStatus): void {
 /* the kept copy paints the first frame */
 try {
   const kept = typeof localStorage !== 'undefined' ? localStorage.getItem(KEEP) : null;
-  const s = kept ? (JSON.parse(kept) as Served) : null;
+  const s = kept ? (JSON.parse(userWords(kept)) as Served) : null;
   if (s && s.format && s.model && Array.isArray(s.signals)) apply(s, 'kept');
 } catch {
   /* nothing kept, or storage is closed: the first read paints */
@@ -102,7 +103,8 @@ async function pull(): Promise<void> {
       return;
     }
     const res = await fetch(`/api/compass/state${served ? `?rev=${served}` : ''}`, { headers: auth.headers });
-    const body = (await res.json().catch(() => null)) as (Served & { same?: boolean; error?: string; code?: string }) | null;
+    /* the engine's own words, with the names a viewer reads (compassParams userWords) */
+    const body = (await res.text().then(t => JSON.parse(userWords(t))).catch(() => null)) as (Served & { same?: boolean; error?: string; code?: string }) | null;
     if (!res.ok || !body) {
       const why = body?.code === 'engine_hosted' || res.status === 404
         ? 'This deployment has no Compass engine. It runs on the always-on server beside the terminal.'

@@ -11,7 +11,7 @@
 import { compassHost, type ThetaAnswer } from './compassHost';
 import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { setupIdOf } from './compass';
-import { GEX_CORE, WEEKLY_STRIKES, inLottery, sessionScanOpen, weekdayDte } from './compassParams';
+import { BOOK_NAME, GEX_CORE, WEEKLY_STRIKES, inLottery, sessionScanOpen, weekdayDte } from './compassParams';
 import { deskPhase, odteAsleep, optionScanOpen, sessionDayOpen, sessionIso, sessionYmd } from './compassSession';
 import { COMPASS_TICKERS } from './compassUniverse';
 import {
@@ -120,6 +120,15 @@ async function theta(path: string, jump = false): Promise<ThetaAnswer> {
   if (down && meta.theta !== 'down') setScanMeta({ theta: 'down', downSince: Date.now() });
   else if (!got.error && meta.theta !== 'up') setScanMeta({ theta: 'up', downSince: 0 });
   return got;
+}
+
+/** The terminal answered for this name: rows, or its "no data" (472), or a refusal that asking again will not change
+    (a 4xx). A busy terminal (429 after the retries), an empty 200, a 5xx or a lost terminal is not an answer: the name
+    stays pending and the late pass asks again (they used to read as "no quotes" and mark the name not scored). */
+export function terminalAnswered(got: Pick<ThetaAnswer, 'status' | 'error'>): boolean {
+  if (!got.error || got.error === 'no_data') return true;
+  if (got.error === 'terminal_down' || got.error === 'busy' || got.error === 'empty') return false;
+  return got.status >= 400 && got.status < 500 && got.status !== 408 && got.status !== 429;
 }
 
 function finite(v: unknown): number {
@@ -326,7 +335,7 @@ async function once(symbol: string, now: number, only: string, jump = false, fre
   const range = only.slice(0, 10) === today ? 16 : WEEKLY_STRIKES;
   const exp = weekly ? '*' : only.replace(/-/g, '');
   const got = await theta(`/option/snapshot/greeks/first_order?symbol=${symbol}&expiration=${exp}&right=both&strike_range=${range}${weekly ? '&max_dte=11' : ''}&format=json`, jump);
-  if (got.error) return { setups: [], spot: 0, ok: got.error !== 'terminal_down', rows: 0 };
+  if (got.error) return { setups: [], spot: 0, ok: terminalAnswered(got), rows: 0 };
   const drafts = new Map<string, Draft[]>();
   let spot = 0;
   const items = asRows(got.data);
@@ -362,7 +371,9 @@ async function expirationsOf(symbol: string): Promise<string[] | null> {
   const hit = expiryMemo.get(symbol);
   if (hit && Date.now() - hit.at < 3_600_000) return hit.list;
   const got = await theta(`/option/list/expirations?symbol=${encodeURIComponent(symbol)}&format=json`);
-  if (got.error === 'terminal_down') return null;
+  /* a fault is not an empty listing: it was memoised for an hour, and every weekly late mark of the name read "no
+     quotes" */
+  if (!terminalAnswered(got)) return null;
   const list = asRows(got.data).map(r => String(r.expiration ?? '').slice(0, 10)).filter(e => /^\d{4}-\d{2}-\d{2}$/.test(e));
   expiryMemo.set(symbol, { at: Date.now(), list });
   return list;
@@ -396,8 +407,7 @@ export async function atMark(symbol: string, markAt: number, sleeve: 'odte' | 'w
   const time = `${two(p.hour)}:${two(p.minute)}:${two(p.second)}.000`;
   const range = sleeve === 'weekly' ? WEEKLY_STRIKES : 16;
   const got = await theta(`/option/at_time/quote?symbol=${encodeURIComponent(symbol)}&expiration=${expiry.replace(/-/g, '')}&right=both&strike_range=${range}&start_date=${day}&end_date=${day}&time_of_day=${time}&format=json`);
-  if (got.error === 'terminal_down') return { setups: [], spot: 0, ok: false, rows: 0 };
-  if (got.error) return { setups: [], spot: 0, ok: true, rows: 0 };
+  if (got.error) return { setups: [], spot: 0, ok: terminalAnswered(got), rows: 0 };
   const items = asRows(got.data);
   if (!items.length) return { setups: [], spot: 0, ok: true, rows: 0 };
   const spot = await underAt(symbol, markAt);
@@ -485,7 +495,7 @@ function pickLine(): string {
   const a = rows.filter(s => s.band === 'top').length;
   const b = rows.filter(s => s.band === 'wing').length;
   const c = rows.filter(s => s.band === 'lottery').length;
-  return `Book A ${a}. Book B ${b}. Book C ${c}.`;
+  return `${BOOK_NAME.A} ${a}. ${BOOK_NAME.B} ${b}. ${BOOK_NAME.C} ${c}.`;
 }
 
 function noteSpots(snaps: { symbol: string; spot: number }[]): void {
@@ -614,20 +624,23 @@ function lotteryWindow(mins: number, second: number): boolean {
   return inLottery(mins, second);
 }
 
-async function lotterySweep(now: number, late: boolean): Promise<boolean> {
+export async function lotterySweep(now: number, late: boolean): Promise<boolean> {
   const at = late ? now : Date.now();
   const names = odteNames(at);
   const row = markRow(minuteStart(at), 'lottery', names);
-  const found: Setup[] = [];
+  const byName = new Map<string, Setup[]>();
   let answered = false;
   await pool(names, 6, async symbol => {
     const snap = late ? await atMark(symbol, at, 'odte') : await once(symbol, at, sessionIso(at), true, 20_000);
     if (!snap.ok) return;
     answered = true;
     row.names[symbol] = !snap.rows && late ? 'none' : snap.setups.length ? (late ? 'late' : 'live') : 'quiet';
-    found.push(...snap.setups);
+    byName.set(symbol, snap.setups);
   });
   if (!answered) return false;
+  /* the five go to the roots in the book's own order (odteBook), not in the order the terminal happened to answer:
+     the sweep used to hand its seats to whichever names came back first, so the same quotes could pick other roots */
+  const found = names.flatMap(n => byName.get(n) ?? []);
   await scoreLottery(found, at, late);
   recordPicks(at);
   row.scored = found.length;
@@ -779,6 +792,14 @@ export function regularOpen(iso: string): number {
   return nyWallTime(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), Number(iso.slice(8, 10)), 9, 30);
 }
 
+/** The first minute of a session date's book (YYYY-MM-DD): 20:15 ET the calendar day before, when the overnight
+    session opens (Sunday 20:15 for a Monday; the evening of a holiday for the day after it). The late fill starts
+    here, so overnight and pre-market marks the engine missed are filled too (it used to start at 09:30). */
+export function sessionOpenAt(iso: string): number {
+  const prev = new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))) - 86_400_000);
+  return nyWallTime(prev.getUTCFullYear(), prev.getUTCMonth() + 1, prev.getUTCDate(), 20, 15);
+}
+
 const said = new Map<string, number>();
 
 /** Logs a failure of one step of the scan, the same line at most once a minute. */
@@ -822,7 +843,7 @@ async function fillLate(now: number): Promise<void> {
   if (lateBusy || running) return;
   lateBusy = true;
   try {
-    const from = opts.backfillFrom ? opts.backfillFrom(day) : regularOpen(day);
+    const from = opts.backfillFrom ? opts.backfillFrom(day) : sessionOpenAt(day);
     /* every mark since the last look gets its row, so a minute nobody scanned is never skipped */
     if (laidDay !== day) {
       laidDay = day;

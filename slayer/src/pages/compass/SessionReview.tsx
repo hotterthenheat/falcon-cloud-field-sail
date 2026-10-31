@@ -16,7 +16,9 @@ import { isoDate, type Expiry } from '../../core/calendar';
 const WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const expiryOfDay = (iso: string): Expiry => {
   const date = new Date(`${iso}T12:00:00`);
-  return { date, label: `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${String(date.getFullYear()).slice(2)}`, weekday: WEEK[date.getDay()], dte: 0, sessions: 0 };
+  /* "Today" only on today's New York date (every session read "Today · Oct 29") */
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  return { date, label: `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${String(date.getFullYear()).slice(2)}`, weekday: WEEK[date.getDay()], dte: iso === today ? 0 : 1, sessions: 0 };
 };
 
 /** The session the page shows: ?day=, else the newest on record. */
@@ -55,7 +57,7 @@ const SessionReview = () => {
       facts={
         <>
           <Fact label="Calls" testId="calls">{calls.length}</Fact>
-          <Fact label="Won · lost" testId="won" title="Live calls, after the round trip's fees.">
+          <Fact label="Won · lost" testId="won" title="Live calls: a win is an exit above the fill.">
             <span className="text-bull">{calls.filter(t => (t.after.pnl ?? 0) > 0).length}</span> · <span className="text-bear">{calls.filter(t => t.after.pnl != null && t.after.pnl <= 0).length}</span>
           </Fact>
           <Fact label="Would have called" testId="would" title="Marks scored late from recorded quotes. Never calls, never seats.">{would.length}</Fact>
@@ -75,7 +77,7 @@ const SessionReview = () => {
           />
         </>
       }
-      sentence={doc ? <span>Built {new Date(doc.builtAt).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })} ET from ThetaData&apos;s recorded quotes. Causes come from repricing the mid step by step: the underlying&apos;s move, time, implied vol, the spread.</span> : false}
+      sentence={doc ? <span>Built {new Date(doc.builtAt).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })} ET from the recorded quotes. Causes come from repricing the mid step by step: the underlying&apos;s move, time, implied vol, the spread.</span> : false}
     >
       <div className="border-t border-borderSubtle">
         {status === 'loading' && !doc ? (

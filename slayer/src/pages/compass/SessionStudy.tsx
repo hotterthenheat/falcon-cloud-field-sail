@@ -16,7 +16,7 @@ import ContractLabel from '../../components/ui/ContractLabel';
 import { EmptyBox, ErrorBox, LoadingBox } from '../../components/ui/states';
 import { useCompassDoc } from '../../data/compassReviewFeed';
 import { holdCompassFeed } from '../../data/compassFeed';
-import { P1_MIN } from '../../data/compassParams';
+import { BOOK_NAME, MODEL_1_NAME, P1_MIN } from '../../data/compassParams';
 import { POOL_BAR, type Mover, type PooledStudy, type Rate } from '../../data/compassStudy';
 import { isoDate } from '../../core/calendar';
 import { expiryOfDay, useReviewDay } from './SessionReview';
@@ -30,7 +30,7 @@ const COLUMNS: Column<Mover>[] = [
   { key: 'best', header: 'Best bid', align: 'right', sortValue: r => r.bestBid, render: r => <span className="tnum text-bull">{r.bestBid.toFixed(2)} <span className="text-textMuted">{r.bestAt}</span></span> },
   { key: 'ratio', header: 'Move', align: 'right', sortValue: r => r.ratio, render: r => <span className="tnum text-bull">{r.ratio.toFixed(2)}×</span> },
   { key: 'stop', header: 'Stop first', align: 'right', sortValue: r => (r.stopFirst ? 1 : 0), render: r => (r.stopFirst ? <span className="text-warn">Yes</span> : <span className="text-textMuted">No</span>) },
-  { key: 'p1', header: 'Model 1', align: 'right', sortValue: r => r.p1 ?? -1, render: r => (r.p1 == null ? blank : <span className={`tnum ${r.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'}`}>{(r.p1 * 100).toFixed(1)}%</span>) },
+  { key: 'p1', header: MODEL_1_NAME, align: 'right', sortValue: r => r.p1 ?? -1, render: r => (r.p1 == null ? blank : <span className={`tnum ${r.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'}`}>{(r.p1 * 100).toFixed(1)}%</span>) },
   { key: 'gate', header: 'What stopped it', sortValue: r => r.gate, render: r => <span className="text-textSecondary">{r.gate}</span> },
   { key: 'held', header: 'Held down by', sortValue: r => r.heldDown[0]?.name ?? '', render: r => (r.heldDown.length ? <span className="text-textMuted">{r.heldDown.map(d => d.name).join(', ')}</span> : blank) },
 ];
@@ -63,7 +63,7 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
   const io = doc.inputsOverTime;
   return (
     <>
-      <Section title="Can Model 1 be read as a probability?">
+      <Section title={`Can the ${MODEL_1_NAME} be read as a probability?`}>
         <p className={`text-t12 leading-relaxed ${doc.verdict.ready ? 'text-textPrimary' : 'text-textSecondary'}`} data-pool-verdict={doc.verdict.ready ? 'ready' : 'not-yet'}>
           <span className="font-semibold text-textPrimary">{doc.verdict.ready ? 'The bars are met. ' : 'Not yet. '}</span>
           {(() => {
@@ -95,17 +95,17 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
           </tbody>
         </table>
         <p className="mt-2 font-mono text-t10 text-textMuted">
-          The bars are fixed: {POOL_BAR.sessions}+ sessions, {POOL_BAR.rowsPerBucket}+ settled rows in every bucket inside the trained minutes, each bucket within ±{POOL_BAR.gapPoints} points of its mean score. Meeting them is evidence for the owner, not a switch: the “Unvalidated” label stays until the owner lifts it after the input check.
+          The bars are fixed: {POOL_BAR.sessions}+ sessions, {POOL_BAR.rowsPerBucket}+ effective rows in every bucket inside the trained minutes (settled rows counted after clustering by session, since one session’s rows move together), each bucket within ±{POOL_BAR.gapPoints} points of its mean score. Meeting them is evidence for the owner, not a switch: the “Unvalidated” label stays until the owner lifts it after the input check.
         </p>
       </Section>
-      <Section title={`Model 1 against what happened · ${doc.days.length} session${doc.days.length === 1 ? '' : 's'} pooled`}>
+      <Section title={`${MODEL_1_NAME} against what happened · ${doc.days.length} session${doc.days.length === 1 ? '' : 's'} pooled`}>
         <table className="w-full font-mono text-t11 tnum [&_td+td]:pl-3 [&_th+th]:pl-3" data-pool-calibration>
           <thead>
             <tr className="text-textMuted text-t9 uppercase tracking-widest">
-              <th className={`text-left ${TH}`}>Model 1</th>
-              <th className={`text-right ${TH}`} title="Settled rows inside the trained minutes, 09:45–15:00 ET">Rows</th>
-              <th className={`text-right ${TH}`} title="Mean Model 1 of those rows">Score</th>
-              <th className={`text-right ${TH}`} title="Took the 1.50× profit by Book A's rules from the mark">Took</th>
+              <th className={`text-left ${TH}`}>{MODEL_1_NAME}</th>
+              <th className={`text-right ${TH}`} title="Settled rows inside the trained minutes, 09:45–15:00 ET, then the effective count after clustering by session (the bar reads the effective count)">Rows · eff.</th>
+              <th className={`text-right ${TH}`} title={`Mean ${MODEL_1_NAME} of those rows`}>Score</th>
+              <th className={`text-right ${TH}`} title={`Took the 1.50× profit by the ${BOOK_NAME.A} rules from the mark`}>Took</th>
               <th className={`text-right ${TH} max-sm:hidden`}>95% interval</th>
               <th className={`text-right ${TH}`} title="Took minus score, points">Gap</th>
               <th className={`text-left ${TH} pl-4 max-md:hidden w-[28%]`}>
@@ -119,7 +119,7 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
             {doc.calibration.map(c => (
               <tr key={c.bucket} className={`border-b border-borderSubtle/40 ${c.lo >= P1_MIN ? 'text-textPrimary' : 'text-textSecondary'}`}>
                 <td className="py-1 whitespace-nowrap">{c.bucket}</td>
-                <td className={`py-1 text-right ${c.win.n < POOL_BAR.rowsPerBucket ? 'text-warn' : ''}`}>{c.win.n.toLocaleString('en-US')}</td>
+                <td className={`py-1 text-right whitespace-nowrap ${(c.win.nEff ?? c.win.n) < POOL_BAR.rowsPerBucket ? 'text-warn' : ''}`}>{c.win.n.toLocaleString('en-US')} · {Math.round(c.win.nEff ?? c.win.n).toLocaleString('en-US')}</td>
                 <td className="py-1 text-right">{c.meanP1 == null ? blank : pct(c.meanP1)}</td>
                 <td className="py-1 text-right">{c.win.n ? pct(c.win.rate) : blank}</td>
                 <td className="py-1 text-right text-textMuted max-sm:hidden">{band(c.win)}</td>
@@ -140,7 +140,7 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
               <th className={`text-right ${TH}`}>Rows</th>
               <th className={`text-right ${TH}`}>Took</th>
               <th className={`text-right ${TH} max-sm:hidden`}>95% interval</th>
-              <th className={`text-right ${TH}`} title="Mean Book A return per row, percent">Mean return</th>
+              <th className={`text-right ${TH}`} title={`Mean ${BOOK_NAME.A} return per row, percent`}>Mean return</th>
               <th className={`text-right ${TH}`} title="Sessions whose mean return at this cut was positive, of those with a row">Sessions up</th>
             </tr>
           </thead>
@@ -173,7 +173,7 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
             </tbody>
           </table>
           <table className="w-full font-mono text-t11 tnum [&_td+td]:pl-3 [&_th+th]:pl-3" data-pool-held>
-            <thead><tr className="text-textMuted text-t9 uppercase tracking-widest"><th className={`text-left ${TH}`}>Input holding Model 1 down</th><th className={`text-right ${TH}`}>Movers</th><th className={`text-right ${TH}`}>Sessions</th></tr></thead>
+            <thead><tr className="text-textMuted text-t9 uppercase tracking-widest"><th className={`text-left ${TH}`}>Input holding the {MODEL_1_NAME} down</th><th className={`text-right ${TH}`}>Movers</th><th className={`text-right ${TH}`}>Sessions</th></tr></thead>
             <tbody>
               {doc.heldDownMost.map(r => (
                 <tr key={r.col} className="border-b border-borderSubtle/40">
@@ -273,7 +273,7 @@ const SessionStudy = () => {
   return (
     <TraceBox
       title="Session study"
-      sub={view === 'all' ? 'Every labelled session pooled: Model 1 against what happened, and whether it reads as a probability yet' : "What made 50%+ in the scan's band, what the model read, and what stopped it"}
+      sub={view === 'all' ? `Every labelled session pooled: the ${MODEL_1_NAME} against what happened, and whether it reads as a probability yet` : "What made 50%+ in the scan's band, what the model read, and what stopped it"}
       testId="compass-study"
       facts={
         view === 'all' ? (
@@ -281,7 +281,7 @@ const SessionStudy = () => {
             <Fact label="Sessions pooled" testId="pool-sessions">{pool.doc ? pool.doc.days.length : '—'}</Fact>
             <Fact label="Rows labelled · settled" testId="pool-labels">{pool.doc ? `${pool.doc.labels.toLocaleString('en-US')} · ${pool.doc.settled.toLocaleString('en-US')}` : '—'}</Fact>
             <Fact label="Movers" testId="pool-movers" title="Contracts whose bid reached 1.50× an ask at a mark, before the flat, every session">{pool.doc ? pool.doc.movers.toLocaleString('en-US') : '—'}</Fact>
-            <Fact label="Model 1 as a probability" testId="pool-verdict">{pool.doc ? <span className={pool.doc.verdict.ready ? 'text-bull' : 'text-warn'}>{pool.doc.verdict.ready ? 'Bars met' : 'Not yet'}</span> : '—'}</Fact>
+            <Fact label={`${MODEL_1_NAME} as a probability`} testId="pool-verdict">{pool.doc ? <span className={pool.doc.verdict.ready ? 'text-bull' : 'text-warn'}>{pool.doc.verdict.ready ? 'Bars met' : 'Not yet'}</span> : '—'}</Fact>
           </>
         ) : (
           <>
@@ -300,7 +300,7 @@ const SessionStudy = () => {
             value={view}
             options={[
               { value: 'one', label: 'One session', hint: "A session's movers, gates and calibration" },
-              { value: 'all', label: 'All sessions', hint: 'Every labelled session pooled, with a verdict on Model 1' },
+              { value: 'all', label: 'All sessions', hint: `Every labelled session pooled, with a verdict on the ${MODEL_1_NAME}` },
             ]}
             onChange={setView}
             title="One session, or every labelled session pooled"
@@ -364,7 +364,7 @@ const SessionStudy = () => {
                 </tbody>
               </table>
               <table className="w-full font-mono text-t11 tnum" data-study-held>
-                <thead><tr className="text-textMuted text-t9 uppercase tracking-widest"><th className="text-left font-normal pb-1">Input holding Model 1 down</th><th className="text-right font-normal pb-1">Movers</th></tr></thead>
+                <thead><tr className="text-textMuted text-t9 uppercase tracking-widest"><th className="text-left font-normal pb-1">Input holding the {MODEL_1_NAME} down</th><th className="text-right font-normal pb-1">Movers</th></tr></thead>
                 <tbody>
                   {doc.heldDownMost.map(r => (
                     <tr key={r.col} className="border-b border-borderSubtle/40">
@@ -376,12 +376,12 @@ const SessionStudy = () => {
               </table>
             </div>
           </Section>
-          <Section title="Model 1 against what happened (Book A rules from each mark)">
+          <Section title={`${MODEL_1_NAME} against what happened (${BOOK_NAME.A} rules from each mark)`}>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[420px] font-mono text-t11 tnum" data-study-calibration>
                 <thead>
                   <tr className="text-textMuted text-t9 uppercase tracking-widest">
-                    <th className="text-left font-normal pb-1">Model 1</th>
+                    <th className="text-left font-normal pb-1">{MODEL_1_NAME}</th>
                     <th className="text-right font-normal pb-1">Rows</th>
                     <th className="text-right font-normal pb-1">Took 1.50×</th>
                     <th className="text-right font-normal pb-1">Bid hit 1.50×</th>
@@ -408,7 +408,7 @@ const SessionStudy = () => {
                 {doc.falsePositives.map(f => (
                   <li key={`${f.contract}${f.would}`} className="flex gap-3">
                     <span className="text-textPrimary">{f.contract}</span>
-                    <span className="text-textMuted">Book {f.book}{f.would ? ' · would have called' : ''}</span>
+                    <span className="text-textMuted">{BOOK_NAME[f.book as 'A' | 'B' | 'C'] ?? f.book}{f.would ? ' · would have called' : ''}</span>
                     <span className="text-bear tnum">{f.pnl == null ? '—' : `−$${Math.abs(f.pnl).toFixed(2)}`}</span>
                     <span className="text-textSecondary">{f.cause}</span>
                   </li>
@@ -434,7 +434,7 @@ const SessionStudy = () => {
                   aside={<span className="text-bull">{r.ratio.toFixed(2)}×</span>}
                   figures={[
                     <span key="m">{r.mark} ET · ask {r.ask.toFixed(2)} → {r.bestBid.toFixed(2)} at {r.bestAt}</span>,
-                    <span key="g">{r.p1 == null ? 'Not scored' : `Model 1 ${(r.p1 * 100).toFixed(1)}%`} · {r.gate}</span>,
+                    <span key="g">{r.p1 == null ? 'Not scored' : `${MODEL_1_NAME} ${(r.p1 * 100).toFixed(1)}%`} · {r.gate}</span>,
                   ]}
                 />
               )}
