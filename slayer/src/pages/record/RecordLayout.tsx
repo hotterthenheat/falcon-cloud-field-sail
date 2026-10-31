@@ -29,14 +29,14 @@ const RecordLayout = () => {
   return (
     <>
       <header className="flex items-start gap-6 flex-wrap pb-3 max-sm:pb-2 border-b border-borderSubtle" data-shell data-record-shell={page.label}>
-        <div className="min-w-0 flex-1 basis-full sm:basis-auto">
+        <div className="min-w-0 flex-1 basis-full sm:basis-0">
           <div className="h-6 flex items-center gap-2.5" data-shell-page>
             <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0" aria-hidden="true">
               <PageIcon className="w-3.5 h-3.5" />
             </span>
             <h1 className="text-t15 font-semibold leading-tight text-textPrimary">{page.label}</h1>
           </div>
-          <p className="mt-0.5 text-t11 text-textMuted sm:whitespace-nowrap sm:truncate max-sm:hidden">{page.subtitle}</p>
+          <p className="mt-0.5 text-t11 text-textMuted max-sm:hidden">{page.subtitle}</p>
         </div>
         <div className="flex items-center gap-x-4 gap-y-2 flex-wrap min-w-0 max-w-full max-sm:hidden">
           <dl className="flex flex-wrap gap-x-6 gap-y-2 min-w-0 max-w-full" data-shell-facts>
