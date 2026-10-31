@@ -1,4 +1,4 @@
-/* A coming-soon wall over a page (it reads through the glass): lamp, wordmark, countdown, notify field. The host wraps its body
+/* A coming-soon wall over a page (it reads through the glass): lamp, wordmark, countdown, the opening line. The host wraps its body
    in a `relative` box and renders this after it; `useWalled` reads `?wall` / `?open` from the URL. */
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -7,7 +7,6 @@ import { useLocation } from 'react-router-dom';
 
 /** The day the walled pages open — a placeholder until launch is dated (a Monday's open, New York) */
 const OPENS_AT = Date.UTC(2026, 10, 2, 14, 30);
-const NOTIFY_KEY = 'slayer_room_notify';
 
 /** The time left to the day, in four figures — zeros once it has come */
 const partsTo = (at: number, now: number): [number, string][] => {
@@ -65,33 +64,16 @@ const ComingSoonWall = ({ kicker, blurb, foot }: Props) => {
     document.body.classList.add('room-walled');
     return () => document.body.classList.remove('room-walled');
   }, []);
-  /* The countdown ticks each second while the wall is up */
+  /* The countdown ticks each second while the wall is up; once the day has come and the wall still stands it says
+     "Opening soon", never a row of zeros */
   const [now, setNow] = useState(() => Date.now());
+  const due = now >= OPENS_AT;
   useEffect(() => {
+    if (due) return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [due]);
   const countdown = partsTo(OPENS_AT, now);
-  /* Notify me — kept in this browser until the service exists */
-  const [email, setEmail] = useState('');
-  const [noted, setNoted] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(NOTIFY_KEY);
-    } catch {
-      return null;
-    }
-  });
-  const emailOk = /^\S+@\S+\.\S+$/.test(email.trim());
-  const notify = () => {
-    if (!emailOk) return;
-    const v = email.trim();
-    try {
-      localStorage.setItem(NOTIFY_KEY, v);
-    } catch {
-      /* storage off — the note lives for the session */
-    }
-    setNoted(v);
-  };
 
   return (
     /* no overflow-hidden on the glass: a clipped box becomes the sticky card's scroller and it would ride off with the page */
@@ -149,46 +131,31 @@ const ComingSoonWall = ({ kicker, blurb, foot }: Props) => {
             Coming soon
           </h2>
           <p className="mt-5 max-w-lg text-t13 leading-relaxed text-textSecondary">{blurb}</p>
-          <p className="mt-9 font-mono text-t9 uppercase tracking-widest text-textMuted">Opens in</p>
-          <div className="mt-2 flex items-start gap-3" data-room-countdown>
-            {countdown.map(([v, label], i) => (
-              <Fragment key={label}>
-                <div className="w-16">
-                  <div className="font-mono text-t32 font-bold tnum leading-none text-textPrimary">{String(v).padStart(2, '0')}</div>
-                  <div className="mt-2 font-mono text-t9 uppercase tracking-widest text-textMuted">{label}</div>
-                </div>
-                {i < countdown.length - 1 && <span className="font-mono text-t28 leading-none text-textMuted pt-0.5">:</span>}
-              </Fragment>
-            ))}
-          </div>
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              notify();
-            }}
-            className="mt-9 flex items-center gap-2"
-            data-room-notify
-          >
-            {noted ? (
-              <span className="text-t12 text-textSecondary">
-                We will write to <span className="font-mono text-textPrimary">{noted}</span> the day it opens.
-              </span>
-            ) : (
-              <>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="you@somewhere.com"
-                  className="w-64 h-8 max-sm:h-10 bg-inputBg border border-borderSubtle rounded-md px-3 font-mono text-t12 text-textPrimary placeholder:text-textMuted focus:border-borderMuted outline-none transition-colors"
-                  aria-label="Your email"
-                />
-                <button type="submit" disabled={!emailOk} className="shrink-0 whitespace-nowrap h-8 max-sm:h-10 px-3 rounded-md border border-silver/50 bg-silver/[0.08] font-mono text-t10 uppercase tracking-wider text-silver hover:bg-silver/[0.14] transition-colors disabled:opacity-40 disabled:pointer-events-none">
-                  Notify me
-                </button>
-              </>
-            )}
-          </form>
+          {due ? (
+            <p className="mt-9 font-mono text-t12 uppercase tracking-widest text-textSecondary" data-room-countdown="due">
+              Opening soon
+            </p>
+          ) : (
+            <>
+              <p className="mt-9 font-mono text-t9 uppercase tracking-widest text-textMuted">Opens in</p>
+              {/* four figures and three colons fit a 390 px phone: narrower cells and smaller digits under sm */}
+              <div className="mt-2 flex items-start gap-3 max-sm:gap-1.5" role="timer" aria-label={`Opens in ${countdown.map(([v, label]) => `${v} ${label}`).join(', ')}`} data-room-countdown>
+                {countdown.map(([v, label], i) => (
+                  <Fragment key={label}>
+                    <div className="w-16 max-sm:w-[52px]">
+                      <div className="font-mono text-t32 max-sm:text-t24 font-bold tnum leading-none text-textPrimary">{String(v).padStart(2, '0')}</div>
+                      <div className="mt-2 font-mono text-t9 uppercase tracking-widest max-sm:tracking-wider text-textMuted">{label}</div>
+                    </div>
+                    {i < countdown.length - 1 && <span className="font-mono text-t28 max-sm:text-t20 leading-none text-textMuted pt-0.5">:</span>}
+                  </Fragment>
+                ))}
+              </div>
+            </>
+          )}
+          {/* no sign-up field: nothing here can send an email yet, so the wall promises only what the page will do */}
+          <p className="mt-9 max-w-sm text-t12 text-textSecondary" data-room-notify>
+            We’ll show it here when it opens.
+          </p>
           {foot && (
             <div className="mt-12 flex items-center gap-4" aria-hidden>
               {foot}
