@@ -38,6 +38,10 @@ import { dayAdv, shortDay, spanWords } from '../../components/trace/dayWords';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
 import OpeningTag from '../../components/trace/OpeningTag';
 import { coversSpan, coversTip } from '../../components/trace/coversWords';
+import FlowStructures from '../../components/trace/FlowStructures';
+import { detectRolls, printKey as rollPrintKey, withoutRollLegs, type RollRead } from '../../data/flowRolls';
+import { detectRepeats, type RepeatRead } from '../../data/flowRepeats';
+import { nextOiOf, nyDateOf, onNextOi } from '../../data/traceLive';
 
 /* the chooser stores the hidden set; the old key held the visible one */
 const COLS_KEY = 'slayer_tape_hidden_v2';
@@ -195,7 +199,7 @@ function spanLength(xs: readonly FlowPrint[]): string | null {
 }
 
 /** The view's read: the window named, which way the sided money leads, the largest print as a door, what stands apart */
-function tapeRead(rows: FlowPrint[], summary: TapeSummary, noun: 'prints' | 'alerts' = 'prints'): ReadSeg[] {
+function tapeRead(rows: FlowPrint[], summary: TapeSummary, noun: 'prints' | 'alerts' = 'prints', rollLegs: { count: number; premium: number } = { count: 0, premium: 0 }): ReadSeg[] {
   if (rows.length === 0) return [noun === 'alerts' ? 'Awaiting alerts…' : 'Awaiting prints…'];
   const zdte = rows.filter(r => r.dte === 0).length;
   const lead = summary.bullPremium >= summary.bearPremium ? 'Bullish' : 'Bearish';
@@ -221,6 +225,7 @@ function tapeRead(rows: FlowPrint[], summary: TapeSummary, noun: 'prints' | 'ale
   if (summary.spreadLegs.count > 0) segs.push(` · ${num(summary.spreadLegs.count)} spread legs (${fmtUsd(summary.spreadLegs.premium)}) not read`);
   if (summary.crosses.count > 0) segs.push(` · ${num(summary.crosses.count)} crosses (${fmtUsd(summary.crosses.premium)}) not read`);
   if (summary.compression.count > 0) segs.push(` · ${num(summary.compression.count)} compression prints (${fmtUsd(summary.compression.premium)}) apart`);
+  if (rollLegs.count > 0) segs.push(` · ${num(rollLegs.count)} roll legs (${fmtUsd(rollLegs.premium)}) apart — one position moved, not two bets`);
   if (rows.length >= 20 && zdte / rows.length > 0.25) segs.push(` · 0DTE ${(Math.round((zdte * 1000) / rows.length + 1e-9) / 10).toFixed(1)}%`);
   segs.push('.');
   return segs;
@@ -393,6 +398,8 @@ const ALERT_PACK_HINT = 'Alerts that are legs of a floor package — no side, fi
 const TAPE_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
 const tapeIsoToday = () => TAPE_DAY.format(new Date());
 const alertIdOf = (p: FlowPrint) => p.vendorId || String(p.id);
+const NO_ROLLS: RollRead = { rolls: [], excludeIds: new Set() };
+const NO_REPEATS: RepeatRead = { clusters: [], strips: [] };
 
 const LiveTape = () => {
   const phone = useIsPhone();
@@ -531,7 +538,17 @@ const LiveTape = () => {
   }, [paused, liveRows]);
   const { isWatched, toggle: toggleWatch } = useWatch();
 
-  const summary = useMemo(() => summarizeTape(rows), [rows]);
+  /* rolls and working orders read the prints in hand; a roll's two legs are one position moved, so the directional
+     figures leave them out. The next session's counts, where a book page already paired them, settle which leg closed. */
+  const [oiVer, setOiVer] = useState(0);
+  useEffect(() => onNextOi(() => setOiVer(v => v + 1)), []);
+  const rollRead = useMemo<RollRead>(() => {
+    void oiVer;
+    return lane === 'prints' ? detectRolls(rows, { nextOi: u => (u.occ ? nextOiOf(u.occ, nyDateOf(u.ts)) : null) }) : NO_ROLLS;
+  }, [rows, lane, oiVer]);
+  const repeatRead = useMemo<RepeatRead>(() => (lane === 'prints' ? detectRepeats(rows, { exclude: rollRead.excludeIds }) : NO_REPEATS), [rows, lane, rollRead]);
+  const isRollLeg = useCallback((p: FlowPrint) => rollRead.excludeIds.size > 0 && rollRead.excludeIds.has(rollPrintKey(p)), [rollRead]);
+  const summary = useMemo(() => summarizeTape(withoutRollLegs(rows, rollRead)), [rows, rollRead]);
 
   /* scrolled into the rows, new prints wait in the pill; back at the top they join */
   useEffect(() => {
@@ -654,21 +671,31 @@ const LiveTape = () => {
   /* the head reads the active cut, and renames itself to it */
   const scopeActive = searchQuery.trim() !== '' || flowFilter !== 'ALL' || sentFilter !== 'ALL' || minPremKey !== '0' || expiry !== null || rightKey !== 'ALL' || sideKey !== 'ALL';
   const beamRows = scopeActive ? filtered : rows;
-  const beamSummary = useMemo(() => (scopeActive ? summarizeTape(filtered) : summary), [scopeActive, filtered, summary]);
+  const beamSummary = useMemo(() => (scopeActive ? summarizeTape(withoutRollLegs(filtered, rollRead)) : summary), [scopeActive, filtered, summary, rollRead]);
+  const beamRollLegs = useMemo(() => {
+    let count = 0;
+    let premium = 0;
+    if (rollRead.excludeIds.size) for (const p of beamRows) if (isRollLeg(p)) {
+      count++;
+      premium += p.premium;
+    }
+    return { count, premium };
+  }, [beamRows, rollRead, isRollLeg]);
 
   const whales = useMemo(() => {
     let all: FlowPrint | null = null;
     let bull: FlowPrint | null = null;
     let bear: FlowPrint | null = null;
     for (const p of beamRows) {
-      if (notCrownable(p)) continue;
+      /* a roll leg is half of one position moved: never crowned a bet */
+      if (notCrownable(p) || isRollLeg(p)) continue;
       if (!all || p.premium > all.premium) all = p;
       const s = sentimentOf(p);
       if (s === 'BULLISH' && (!bull || p.premium > bull.premium)) bull = p;
       if (s === 'BEARISH' && (!bear || p.premium > bear.premium)) bear = p;
     }
     return { all, bull, bear };
-  }, [beamRows]);
+  }, [beamRows, isRollLeg]);
   /* the one magenta figure: the largest print the head names */
   const champId = whales.all?.id ?? -1;
 
@@ -704,9 +731,9 @@ const LiveTape = () => {
     const lead: ReadSeg[] = lane === 'prints' && anchor ? [`The tape below is the session's last stretch, walked back from the 16:15 ET close${anchor.iso !== tapeIsoToday() ? ` of ${shortDay(anchor.iso)}` : ''}. `] : [];
     return dayLead.concat(
       lead,
-      beamRows.length === 0 ? [tapeDown ? 'The tape did not answer.' : rows.length === 0 ? (lane === 'alerts' ? 'Reading the alerts…' : tickerOnly ? `Reading ${tickerOnly}'s prints…` : 'Reading the tape…') : `No ${lane === 'alerts' ? 'alerts' : 'prints'} in this view.`] : tapeRead(beamRows, beamSummary, lane === 'alerts' ? 'alerts' : 'prints')
+      beamRows.length === 0 ? [tapeDown ? 'The tape did not answer.' : rows.length === 0 ? (lane === 'alerts' ? 'Reading the alerts…' : tickerOnly ? `Reading ${tickerOnly}'s prints…` : 'Reading the tape…') : `No ${lane === 'alerts' ? 'alerts' : 'prints'} in this view.`] : tapeRead(beamRows, beamSummary, lane === 'alerts' ? 'alerts' : 'prints', beamRollLegs)
     );
-  }, [beamRows, beamSummary, tapeDown, rows, lane, anchor, dayNet, regularOnly, scopeActive, tickerOnly]);
+  }, [beamRows, beamSummary, tapeDown, rows, lane, anchor, dayNet, regularOnly, scopeActive, tickerOnly, beamRollLegs]);
   const windowSpan = useMemo(() => spanWords(rows), [rows]);
   const cutSpan = useMemo(() => (scopeActive ? spanWords(beamRows) : null), [scopeActive, beamRows]);
 
@@ -721,6 +748,14 @@ const LiveTape = () => {
     [toggleWatch]
   );
   const keyOf = useCallback((r: TapeRow) => printId(r.p), []);
+  /* a roll's leg or a working order's hit opens that print's card */
+  const openByKey = useCallback((k: string) => {
+    const p = rowsRef.current.find(r => rollPrintKey(r) === k);
+    if (p) setOpenPrint(p);
+  }, []);
+  const [structPick, setStructPick] = useState<boolean | null>(null);
+  /* open at a desk, folded on a phone so the first print stays near the top */
+  const structOpen = structPick ?? !phone;
   const openRow = useCallback((r: TapeRow) => setOpenPrint(r.p), []);
 
   /* stepping walks the rows the reader is looking at; a print that aged out stays open, just not steerable */
@@ -935,7 +970,7 @@ const LiveTape = () => {
           </>
         )}
       </Fact>
-      <Fact label="Premium" testId="premium" title={`Call and put premium in this view${beamSummary.compression.count ? '; compression left out' : ''}${beamSummary.covers ? ` · ${coversTip(beamSummary.covers)}` : ''}`}>
+      <Fact label="Premium" testId="premium" title={`Call and put premium in this view${beamSummary.compression.count ? '; compression left out' : ''}${beamRollLegs.count ? '; roll legs left out' : ''}${beamSummary.covers ? ` · ${coversTip(beamSummary.covers)}` : ''}`}>
         {headReading ? (
           <span className="text-textMuted">—</span>
         ) : (
@@ -953,6 +988,11 @@ const LiveTape = () => {
       {beamSummary.compression.count > 0 && (
         <Fact label="Compression" testId="compression" title="OPRA cbmo / mctp packages — not bets, in no other figure">
           {num(beamSummary.compression.count)} <span className="text-textSecondary">· {fmtUsd(beamSummary.compression.premium)}</span>
+        </Fact>
+      )}
+      {beamRollLegs.count > 0 && (
+        <Fact label="Roll legs" testId="roll-legs" title="The two legs of each roll in this view — one position moved, not two bets: in no other figure">
+          {num(beamRollLegs.count)} <span className="text-textSecondary">· {fmtUsd(beamRollLegs.premium)}</span>
         </Fact>
       )}
       {beamSummary.spreadLegs.count > 0 && (
@@ -1214,6 +1254,18 @@ const LiveTape = () => {
                 </div>
               </div>
             </div>
+          )}
+          {lane === 'prints' && (
+            <FlowStructures
+              rolls={rollRead.rolls}
+              repeats={repeatRead}
+              prints={rows.length}
+              span={windowSpan}
+              reading={tapeReading && !frozen && rows.length === 0}
+              open={structOpen}
+              onToggle={() => setStructPick(!structOpen)}
+              onOpenPrint={openByKey}
+            />
           )}
           {lane === 'alerts' && openAlert && (
             <div className="px-5 py-2 border-b border-borderSubtle flex items-center gap-3" data-alert-trades>

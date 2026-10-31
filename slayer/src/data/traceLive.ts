@@ -1201,6 +1201,19 @@ export function pairOiFor(rows: readonly BookContract[]): void {
   void loadNewestOi(rows.slice(0, OI_HISTORIC_CAP));
 }
 
+/** The next session's count for a contract (its vendor symbol) traded on `sessionIso`, from what pairOiFor has already
+    read — never asks: { oi, before } once paired; null or undefined when not to hand */
+export function nextOiOf(occ: string, sessionIso: string): { oi: number; before: number } | null | undefined {
+  return newestOiCache.get(`${occ}:${nextSessionIso(sessionIso)}`);
+}
+/** Called whenever pairOiFor's counts change; returns the unsubscribe */
+export function onNextOi(f: () => void): () => void {
+  newestOiListeners.add(f);
+  return () => {
+    newestOiListeners.delete(f);
+  };
+}
+
 /** The rows with the open interest of their volume's session wherever it is out (see above) */
 function usePairedOi(rows: BookContract[], only?: string): BookContract[] {
   const [ver, setVer] = useState(newestOiVer);
