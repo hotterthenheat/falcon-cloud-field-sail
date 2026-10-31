@@ -4,7 +4,8 @@ import { ChevronUp, Code2, Link2, Maximize2, Minimize2, Rows3, SlidersHorizontal
 import { AnimatePresence, motion } from 'framer-motion';
 import { DOCK_ROOM, openEditor } from '../../data/editorDock';
 import { useDeskSession, sessionMeta, type DeskSession } from '../../data/deskSession';
-import { chainForDate, expiryLabel, peekSpot, useBookRev } from '../../data/uwBook';
+import { chainForDate, expiryLabel, peekSpot, snapshotFor, useBookRev } from '../../data/uwBook';
+import { levelNetPath } from '../../data/flipLevel';
 import { rootTradesSession } from '../../data/compassSession';
 import { useSessionQuote } from '../../data/sessionQuote';
 import { barInTape, peekPrint, peekTape, usePrintRev, useTapeRev, useThetaTape, wantPrint } from '../../data/thetaTape';
@@ -833,8 +834,16 @@ const Pane = ({
   }, [ticker]);
 
   /* What a move to each strike forces dealers to trade — the panel's second lane, off the same rows the size lane
-     draws, so the flow beside a capsule is the flow of that capsule's book. */
-  const flow = useMemo(() => (rail.rows.length ? buildFlowFromRows(rail.rows, levels.spot) : null), [rail, levels.spot]);
+     draws (the cut's own chain, `fieldNodes`), integrated over that book re-priced along the walk: the ladder Pinpoint's
+     walls print (wall.ts). A book that cannot be re-priced draws no rungs. */
+  const flow = useMemo(() => {
+    if (!rail.rows.length) return null;
+    const snap = snapshotFor(ticker, '0DTE');
+    const chain = fieldNodes;
+    const repriced = snap?.liveBook && chain?.length ? (prices: readonly number[]) => levelNetPath(snap, chain, prices)?.path.map(v => -v) ?? null : undefined;
+    return buildFlowFromRows(rail.rows, levels.spot, repriced);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rail, levels.spot, fieldNodes, ticker, revision]);
   /* The ladder's two legs: the put and call hedging behind every strike's net, off the live chain, and the net at
      the open as a ratio of now for the spine's ghost — the size lane draws the strike ladder's rows */
   const legs = railData.legs;

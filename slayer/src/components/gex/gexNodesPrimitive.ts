@@ -717,7 +717,8 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
         if (at == null) continue;
         const v = dealerOf(levelValue(l, greek));
         values[c * R + at] = v;
-        if (v !== 0) sizes.push(Math.abs(v));
+        /* a missing figure is not a size: one NaN in the sort leaves the 98th percentile (the field's full light) wherever it fell */
+        if (v !== 0 && Number.isFinite(v)) sizes.push(Math.abs(v));
       }
     }
     sizes.sort((a, b) => a - b);

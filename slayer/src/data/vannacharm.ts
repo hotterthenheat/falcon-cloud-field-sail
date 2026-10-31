@@ -13,12 +13,13 @@ interface LevelSet {
   supreme: number;
 }
 
-/** The live book's levels: the same walls, supreme and flip the levels card prints. */
+/** The live book's levels: the same walls, supreme and flip the levels card prints. A level the book does not have is
+    NaN ("—"), never the spot standing in — a spot-valued wall read "0.00% away" and a flip "at price". */
 function liveLevels(snapshot: MarketSnapshot, chain: readonly StrikeNode[]): LevelSet {
   const w = pickLegWalls(chain, n => n.callGex, n => n.putGex);
-  const supreme = chain.reduce((b, n) => (Math.abs(n.netGex) > Math.abs(b.netGex) ? n : b), chain[0])?.strike ?? snapshot.spot;
+  const top = chain.reduce<StrikeNode | null>((b, n) => (n.netGex !== 0 && (!b || Math.abs(n.netGex) > Math.abs(b.netGex)) ? n : b), null);
   const flip = levelFlip(snapshot, chain).flip;
-  return { callWall: w.callWall ?? snapshot.spot, putWall: w.putWall ?? snapshot.spot, flip: flip ?? snapshot.spot, supreme };
+  return { callWall: w.callWall ?? Number.NaN, putWall: w.putWall ?? Number.NaN, flip: flip ?? Number.NaN, supreme: top?.strike ?? Number.NaN };
 }
 
 // ---- top-level assembly -----------------------------------------------------------
@@ -31,7 +32,9 @@ export function buildVannaCharm(
   const { ticker, spot, chain } = snapshot;
 
   const desc = [...chain].sort((a, b) => b.strike - a.strike);
-  const spotIdx = Math.max(0, desc.findIndex(n => n.strike <= spot));
+  /* spot under every strike: the nearest are the lowest, at the bottom of the list */
+  const below = desc.findIndex(n => n.strike <= spot);
+  const spotIdx = below >= 0 ? below : Math.max(0, desc.length - 1);
   const start = Math.max(0, spotIdx - half);
   const window = desc.slice(start, start + half * 2 + 1);
 
@@ -68,7 +71,7 @@ export function buildVannaCharm(
   // The read is measurements, not narrative: levels with distances, the charm concentration, the biggest move since the
   // last scan, and one line stating what the scenario computes.
   const fmt = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
-  const dist = (price: number) => Number((((price - spot) / spot) * 100).toFixed(2));
+  const dist = (price: number) => (Number.isFinite(price) && spot > 0 ? Number((((price - spot) / spot) * 100).toFixed(2)) : Number.NaN);
   const lvl = (price: number) => ({ price, distPct: dist(price) });
 
   let charmStrike = window[0]?.strike ?? spot;

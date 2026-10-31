@@ -16,7 +16,9 @@ import { buildExpectedMoveCone, daySigmaOfIv, sigmaFromStraddle, STRADDLE_K, tou
 import { contractHigher } from '../src/data/liveHigher';
 import { buildFlowFromRows, buildHedgeFlowLadder } from '../src/data/hedgeFlow';
 import { blackScholesGreeks } from '../src/core/greeks';
-import { dealerOf } from '../src/core/dealerSign';
+import { dealerOf, keptLeg, keptVendorLeg } from '../src/core/dealerSign';
+import { dealerInventory } from '../src/core/volClock';
+import { dealerPuts, emptyNode } from '../src/data/book/scale';
 import { shownGreek } from '../src/components/gex/retailSign';
 import type { StrikeNode } from '../src/types/market';
 
@@ -81,6 +83,13 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
   check(`SPY 772: call ${M(-k772.callGex)} put ${M(-k772.putGex)} = vendor ${M(Number(v772.call_gamma_oi))} / ${M(Number(v772.put_gamma_oi))}`, Math.abs(-k772.callGex - Number(v772.call_gamma_oi)) < 1 && Math.abs(-k772.putGex - Number(v772.put_gamma_oi)) < 1);
   const oi772 = (fx.contracts.find(c => c.option_symbol === occ('C', 772))?.open_interest as number) ?? 0;
   check(`SPY 772C counts its open interest (${k772.callBook}) for every greek, not a flow inventory`, k772.callBook === oi772 && oi772 === 1310);
+  /* units (docs/DATA_MAP.md §7): the spot-exposure row is dollars per 1% — Γ·OI·100 shares × S²·1% at the row's price */
+  {
+    const c772 = fx.contracts.find(c => c.option_symbol === occ('C', 772))!;
+    const px = Number(v772.price);
+    const dollars = Number(c772.gamma) * oi772 * 100 * px * px * 0.01;
+    check(`units: 772C Γ·OI·100·S²·1% = ${M(dollars)} at ${px} against the row's ${M(Number(v772.call_gamma_oi))} (shares would read ${(Number(c772.gamma) * oi772 * 100).toFixed(0)})`, Math.abs(dollars / Number(v772.call_gamma_oi) - 1) < 0.05);
+  }
   /* the walls off the book against the walls off the raw rows */
   const w = pickLegWalls(book, n => n.callGex, n => n.putGex);
   const by = (f: (r: Record<string, string>) => number) => Number(fx.spotExposures.reduce((b, r) => (f(r) > f(b) ? r : b)).strike);
@@ -103,7 +112,6 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
   const profile = { strikes: near.map(n => ({ strike: n.strike, gex: { net: n.netGex } })), levels: { spot } } as never;
   const at = (S: number) => netGammaAt(legs, spot, S, 0.042, 0);
   const ladder = buildHedgeFlowLadder(profile, prices => prices.map(at));
-  const old = buildFlowFromRows(near.map(n => ({ strike: n.strike, value: n.netGex })), spot);
   let ok = true;
   for (const K of [765, 771, 775, 780]) {
     let fine = 0;
@@ -113,8 +121,7 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
       fine += (at(x) / x) * ((K - spot) / N) * 100;
     }
     const got = ladder.rungs.find(r => r.strike === K)!.flow;
-    const was = old.rungs.find(r => r.strike === K)!.flow;
-    console.log(`     flow to ${K}: ${M(got)} (fine sum ${M(fine)}; the old crossed-strikes sum ${M(was)})`);
+    console.log(`     flow to ${K}: ${M(got)} (fine sum ${M(fine)})`);
     if (Math.abs(got - fine) > 0.01 * Math.max(Math.abs(fine), 1e6)) ok = false;
   }
   check('the hedge-flow ladder equals ∫ G(x)·dx/(0.01·x) of the re-priced book', ok);
@@ -233,6 +240,143 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
     }
   }
   check('every greek follows one model: dealers long the calls, short the puts — and prints in that sign', ok);
+}
+
+/* 9 — the flow book's contract counts follow the same model: dealers are long the calls (an ask buy leaves them fewer)
+   and short the puts (an ask buy leaves them MORE short) — the vendor's own put_gamma_ask prints with put_gamma_oi's
+   sign (SPY 10/30 755P: oi −101.3M, ask −784.7M, bid +750.1M). 1,000 open, 50,000 lifted, 5,000 hit. */
+{
+  const calls = dealerInventory(1000, 50000, 5000, 0, 60000);
+  const puts = dealerPuts(1000, 50000, 5000, 0, 60000);
+  check(`ask-heavy call: dealers long ${calls} (1,000 − 50,000 + 5,000); ask-heavy put: dealers short ${puts} (1,000 + 50,000 − 5,000)`, calls === -44000 && puts === 46000);
+  const vendorPutDealer = keptVendorLeg('P', -101.3e6 - 784.7e6 + 750.1e6, true);
+  const countPutDealer = keptLeg('P', 1, puts);
+  check('the put count moves the dealer the way the vendor\'s ask and bid columns do (both more short gamma)', Math.sign(vendorPutDealer) === Math.sign(countPutDealer));
+}
+
+/* 10 — a row without delta, vanna and charm is not a zero book: its contracts price them (C 780, P 765 above) */
+{
+  const book = expiryBookFromRows([row(780, 5_000_000, 0)], [hot('C', 780)] as never[], spot, expiry);
+  const n = book.find(x => x.strike === 780)!;
+  check(`no vendor delta: the call's $delta is its contracts' (${M(dealerOf(n.callDex))} for 1,000 OI)`, dealerOf(n.callDex) > 0 && dealerOf(n.callVanna) !== 0 && dealerOf(n.callCharm) !== 0);
+}
+
+/* 11 — the regime and the flip read one curve. A book priced at 100 (call leg 103 −0.9M, put leg 97 +1.0M, house sign,
+   20 sessions, 25%) read at a live spot of 101.5: Σg0 = +0.1M (short), but re-priced at 101.5 the net is −0.069M (long)
+   and the crossing is at 100.87, below spot — before, netAtSpot was Σg0 and the page said "short gamma" above a flip. */
+{
+  const t20 = 20 / 252;
+  const legs: GammaLeg[] = [
+    { strike: 103, g0: -0.9e6, iv: 0.25, t: t20, s0: 100 },
+    { strike: 97, g0: 1e6, iv: 0.25, t: t20, s0: 100 },
+  ];
+  const r = repricedFlip(legs, 101.5, 0.042, 0.1, 0);
+  const exact = netGammaAt(legs, 101.5, 101.5, 0.042, 0);
+  check(`priced at 100, read at 101.5: net at spot ${M(r.netAtSpot)} (re-priced ${M(exact)}; Σg0 +0.10M), regime ${regimeOfNet(r.netAtSpot)}, flip ${r.flip?.toFixed(2)} below spot`, Math.abs(r.netAtSpot - exact) < 1e-6 && regimeOfNet(r.netAtSpot) === 'LONG' && r.flip != null && Math.abs(r.flip - 100.8746) < 0.001 && r.beyond === 'short');
+  const atFlip = netGammaAt(legs, 101.5, r.flip!, 0.042, 0);
+  check(`the flip is the exact curve's zero, not the grid's line between points (net there ${atFlip.toExponential(1)})`, Math.abs(atFlip) < 1e-3);
+  /* two 0DTE legs ($90 call, $110 put, 5 minutes, 20%): between them both underflow to an exact 0 — the net steps from
+     long through a run of exact zeros to short. The old walk skipped any zero point and found no flip. */
+  const t5 = 5 / (390 * 252);
+  const far: GammaLeg[] = [
+    { strike: 90, g0: 0, iv: 0.2, t: t5, oi: 1000, side: -1 },
+    { strike: 110, g0: 0, iv: 0.2, t: t5, oi: 1000, side: 1 },
+  ];
+  const z = repricedFlip(far, 100, 0.042, 0.15, 0);
+  check(`a crossing through exact zeros is found: flip ${z.flip?.toFixed(2)} inside the zero run (90…110)`, z.flip != null && z.flip > 91 && z.flip < 109 && netGammaAt(far, 100, z.flip, 0.042, 0) === 0);
+}
+
+/* 12 — Terrain's ladder off bare rows is the same integral. Spot 100, 20 sessions, 25%: 1,000 calls at each strike
+   100…115 and 1,500 puts at each 85…100 (house net at spot +$1.34M, short gamma; −$1.12M at 102, long). The old rows
+   arithmetic (the net of the strikes crossed × the move) read −$1.68M to 102 — dealers selling $1.7M; the book re-priced
+   along the walk says dealers BUY $0.21M. Without re-pricing no rung is drawn: the net at spot carried flat reads
+   +1.34M to 101 against +0.71M re-priced. */
+{
+  const S = 100;
+  const t20 = 20 / 252;
+  const book: GammaLeg[] = [];
+  for (let k = 85; k <= 115; k++) {
+    if (k >= 100) book.push({ strike: k, g0: -1000 * dollarGammaPerContract(S, k, t20, 0.25, 0.042, 0), iv: 0.25, t: t20, oi: 1000, side: -1, ownIv: true });
+    if (k <= 100) book.push({ strike: k, g0: 1500 * dollarGammaPerContract(S, k, t20, 0.25, 0.042, 0), iv: 0.25, t: t20, oi: 1500, side: 1, ownIv: true });
+  }
+  const rows = [...new Set(book.map(l => l.strike))].map(k => ({ strike: k, value: book.filter(l => l.strike === k).reduce((a, l) => a + l.g0, 0) }));
+  const G = (x: number) => netGammaAt(book, S, x, 0.042, 0);
+  const integral = (K: number) => {
+    let f = 0;
+    const N = 4000;
+    for (let i = 0; i < N; i++) {
+      const x = S + ((K - S) * (i + 0.5)) / N;
+      f += (G(x) / x) * ((K - S) / N) * 100;
+    }
+    return f;
+  };
+  const ladder = buildFlowFromRows(rows, S, prices => prices.map(G));
+  const at102 = ladder.rungs.find(r => r.strike === 102)!.flow;
+  check(`rows ladder to 102: ${M(at102)} (dealers buy) against the integral ${M(integral(102))} (the old rows sum read −1.68M)`, Math.abs(at102 - integral(102)) < 0.01 * Math.abs(integral(102)) && Math.abs(integral(102) - 0.2054e6) < 0.002e6);
+  const flat = buildFlowFromRows(rows, S);
+  const firstOrder101 = G(S) * Math.log(101 / S) * 100;
+  check(`no re-pricing, no rungs (${flat.rungs.length}): first order would read ${M(firstOrder101)} to 101 against ${M(integral(101))}`, flat.rungs.length === 0 && Math.abs(firstOrder101 / integral(101) - 1) > 0.5);
+}
+
+/* 13 — the surface's columns count trading sessions, not calendar days (it once put dte in `sessions`) */
+{
+  const { sessionsTo } = await import('../src/data/exposureSurface');
+  const fri = Date.parse('2026-10-30T18:00:00Z');
+  const got = [sessionsTo('2026-10-30', fri), sessionsTo('2026-11-02', fri), sessionsTo('2026-11-06', fri), sessionsTo('2026-11-27', Date.parse('2026-11-25T15:00:00Z'))];
+  check(`sessions to expiry from Fri 10/30: same day ${got[0]}, Mon ${got[1]} (3 calendar days), next Fri ${got[2]}; Wed 11/25 → Fri 11/27 over Thanksgiving ${got[3]}`, JSON.stringify(got) === JSON.stringify([0, 1, 5, 1]));
+}
+
+/* 14 — a level the book does not have is blank, never the spot: a call-only book at 100 has no put wall and no flip */
+{
+  const { buildVannaCharm } = await import('../src/data/vannacharm');
+  const chain = [100, 105].map(k => ({ ...emptyNode(k), callGex: -1e6, netGex: -1e6, callOI: 100 }));
+  const vc = buildVannaCharm({ ticker: 'TEST', spot: 100, chain } as never, 'CHARM', -1);
+  check(`call-only book: put wall ${vc.read.putWall.price} (${vc.read.putWall.distPct}%), flip ${vc.read.flip.price} — not 100 "0.00% away"`, Number.isNaN(vc.read.putWall.price) && Number.isNaN(vc.read.putWall.distPct) && Number.isNaN(vc.read.flip.price) && vc.read.callWall.price === 100);
+}
+
+/* 15 — one test rule (levelRecord levelTicks): a visit is one test however many bars it sits on the level. A call wall
+   at 100: three bars on it then away below (one test, held), back up and a close at 100.5 (a second test, broke), back
+   under, then a close at 100.01 (inside the ±0.02% band: not beyond). The old ticks read 5 tests and 2 breaks (every
+   bar on the level a test, the 100.01 close a break); the wall card counted 3 visits — the Map's report disagreed. */
+{
+  const { levelTicks, levelTests } = await import('../src/data/levelRecord');
+  const { testEvents } = await import('../src/data/wall');
+  const { flipCrossings } = await import('../src/data/flipGauge');
+  const bar = (time: number, low: number, high: number, close: number) => ({ time, open: close, high, low, close, volume: 0 });
+  const bars = [bar(1, 99.5, 100.2, 99.9), bar(2, 99.6, 100.1, 99.8), bar(3, 99.7, 100.05, 99.9), bar(4, 99.0, 99.5, 99.2), bar(5, 99.4, 100.6, 100.5), bar(6, 99.3, 99.9, 99.5), bar(7, 99.6, 100.1, 100.01)];
+  const ticks = levelTicks(bars, 100, 'call');
+  const t = levelTests(bars, 100, 'call');
+  const w = testEvents(bars, 100, 'call');
+  check(`one rule: ${ticks.map(x => `${x.kind}@${x.i}`).join(' ')} — ${t.tests} tests, ${t.held} held, ${t.broke} broke; the wall card reads the same (${w.tests}/${w.held}/${w.broke})`, JSON.stringify(ticks.map(x => [x.kind, x.i])) === JSON.stringify([['held', 3], ['broke', 4], ['held', 6]]) && JSON.stringify(t) === JSON.stringify(w) && t.tests === 3);
+  check(`the flip's crossings on the same bars at 100: ${flipCrossings(bars, 100)} (up through 100.5, back under; 100.01 is inside the band)`, flipCrossings(bars, 100) === 2);
+}
+
+/* 16 — spot under every strike (strikes 100…140, spot 50): the profile's window is the lowest strikes (100…110), the nearest —
+   it took the highest (140…120), the farthest */
+{
+  const { buildExposureProfile } = await import('../src/data/exposure');
+  const chain = Array.from({ length: 41 }, (_, i) => ({ ...emptyNode(100 + i), callGex: -1e5, netGex: -1e5, callOI: 10 }));
+  const p = buildExposureProfile({ ticker: 'TEST', spot: 50, chain } as never, '0DTE', 10);
+  const ks = p.strikes.map(s => s.strike);
+  check(`spot 50 under strikes 100–140: the window is ${Math.min(...ks)}–${Math.max(...ks)} (${ks.length} strikes)`, Math.min(...ks) === 100 && Math.max(...ks) === 110 && ks.length === 11);
+}
+
+/* 17 — the whole book's vega is the live dates' only: a settled 10/27 date holding −5 of call vex
+   and a live 2027-01-15 date holding −3 put −3 on the whole book, not −8 */
+{
+  const { vexOntoAll } = await import('../src/data/book/levels');
+  const node = (vex: number) => ({ ...emptyNode(770), callVex: vex, netVex: vex });
+  const entry = { all: [node(0)], byDate: { '2026-10-27': [node(-5)], '2027-01-15': [node(-3)] } } as never as { all: StrikeNode[] };
+  vexOntoAll(entry as never);
+  check(`whole-book call vex at 770: ${entry.all[0].callVex} (the settled 10/27 date's −5 left off)`, entry.all[0].callVex === -3);
+}
+
+/* 18 — the exposure log's series end at the expiry's own close: 13:00 New York on the day after Thanksgiving, not 16:00
+   (the field drew three hours of a dead 11/27 series) */
+{
+  const { closeOf } = await import('../src/data/book/exposureSegs');
+  const hm = (ms: number) => new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ms));
+  check(`series close: 11/27 ${hm(closeOf('2026-11-27'))}, 11/30 ${hm(closeOf('2026-11-30'))}`, hm(closeOf('2026-11-27')) === '13:00' && hm(closeOf('2026-11-30')) === '16:00');
 }
 
 if (fail) {

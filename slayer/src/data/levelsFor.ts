@@ -27,7 +27,11 @@ export interface TickerLevels {
   flip: number | null;
   /** Net GEX on every strike of these contracts, dollars per 1% move, RETAIL sign (+ = dealers long gamma, absorbs) */
   netGex: number;
-  /** LONG (absorbs) or SHORT (amplifies): the sign of netGex */
+  /** Net gamma re-priced AT spot (core/gammaFlip.ts), RETAIL sign — netGex when the book was priced at spot; before the
+      open (the rows marked at the close, spot the pre-market print) the same contracts at the price they are at now */
+  netAtSpot: number;
+  /** LONG (absorbs) or SHORT (amplifies): the sign of netAtSpot — the ONE regime rule (flipLevel.ts regimeOfNet), the
+      same curve the flip is the zero of, so the regime and the side of the flip never disagree */
   regime: 'LONG' | 'SHORT' | null;
   /** False while some of the scope's expiries are still loading — the figures are then provisional */
   complete: boolean;
@@ -125,7 +129,8 @@ function levelsOf(t: string, scope: LevelsScope, snap: NonNullable<ReturnType<ty
     putWall: hasPut ? lv.putWall : null,
     flip: flip.flip,
     netGex: house === 0 ? 0 : -house,
-    regime: regimeOfNet(house),
+    netAtSpot: flip.netAtSpot === 0 ? 0 : -flip.netAtSpot,
+    regime: regimeOfNet(flip.netAtSpot),
     /* "Today" before its own expiry's chain is in reads the whole book — never final */
     netAt: (k: number) => {
       const n = book.chain.find(x => x.strike === k);

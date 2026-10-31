@@ -9,7 +9,7 @@
 import { done, expectEqual, expectNear, freezeClock, installUwFixtures, recordedAt } from './uwFixtures';
 import { pruneSet } from './pinpointRaw';
 import { dealerOf } from '../../src/core/dealerSign';
-import { bsVega, byStrike, contractRow, contractOi, contractVols, exposureRows, impliedMove, levelsOfRows, oiChangeRows, phiCdf, rawAnswers, rawFlip, rawFlowTo, rawLegs, yearsTrading } from './pinpointRaw';
+import { bsVega, byStrike, contractRow, contractOi, contractVols, exposureRows, impliedMove, levelsOfRows, oiChangeRows, phiCdf, pricedFlip, pricedFlowTo, pricedLegs, pricedNet, rawAnswers, termVols, yearsTrading } from './pinpointRaw';
 
 const SET = 'pinpoint-2026-10-29';
 const NAMES = ['SPY', 'NVDA'] as const;
@@ -84,14 +84,14 @@ const SQRT_PI_2 = Math.sqrt(Math.PI / 2);
 const GOLD = {
   SPY: {
     front: '2026-10-29',
-    today: { net: 107_689_622.85, flip: 771.10993193321, call: 775, put: 758, supreme: 758 },
-    all: { net: -3_576_479_393.82, flip: 775.5505781162503, call: 800, put: 750, supreme: 750 },
+    today: { net: 107_689_622.85, flip: 771.1081929770314, call: 775, put: 758, supreme: 758 },
+    all: { net: -3_576_479_393.82, flip: 775.5497779899063, call: 800, put: 750, supreme: 750 },
     straddle: 5.09247441828498,
   },
   NVDA: {
     front: '2026-10-30',
-    today: { net: 280_962_174.09, flip: 209.4994357176802, call: 217.5, put: 210, supreme: 217.5 },
-    all: { net: 545_826_799.8, flip: 209.0106614193673, call: 220, put: 200, supreme: 220 },
+    today: { net: 280_962_174.09, flip: 209.49980850770302, call: 217.5, put: 210, supreme: 217.5 },
+    all: { net: 545_826_799.8, flip: 209.01341059736782, call: 220, put: 200, supreme: 220 },
     straddle: 4.72607032383704,
   },
 } as const;
@@ -105,7 +105,10 @@ for (const t of NAMES) {
   const spot = snap.spot;
   const rows = exposureRows(raw, t);
   const ois = contractOi(raw, t);
-  const vols = contractVols(raw, t, spot, '2026-10-28');
+  /* the price the rows (and the close quotes) were marked at: the latest row's — the pre-market spot is a different price */
+  const marked = Number([...rows].sort((a, b) => String(b.time).localeCompare(String(a.time)))[0].price);
+  expectEqual(`${t}: before the open the page prices at the pre-market print (${spot}), not the rows' close (${marked})`, spot !== marked && spot === (book.peekEntry(t) as { last?: number }).last, true);
+  const vols = contractVols(raw, t, marked, '2026-10-28');
   const liveDates = new Set(rows.map(r => String(r.expiry)).filter(d => d >= '2026-10-29'));
   const scopes = [
     ['today', lv0, new Set([gold.front])],
@@ -119,12 +122,52 @@ for (const t of NAMES) {
     expectEqual(`${t} ${name}: call · put wall · supreme (raw ${hand.callWall} · ${hand.putWall} · ${hand.supreme})`, [lv.callWall, lv.putWall, lv.supreme], [want.call, want.put, want.supreme]);
     expectEqual(`${t} ${name}: raw rows name the same levels`, [hand.callWall, hand.putWall, hand.supreme], [want.call, want.put, want.supreme]);
     expectNear(`${t} ${name}: flip`, lv.flip ?? NaN, want.flip, 1e-9);
-    const rf = rawFlip(rawLegs(rows, dates, vols, ois), spot);
+    const priced = pricedLegs(rows, dates, vols, ois, termVols(raw, t));
+    const rf = pricedFlip(priced, spot);
     expectNear(`${t} ${name}: independent re-pricing of the rows puts the flip at ${rf?.toFixed(2)}`, rf ?? NaN, want.flip, (0.0002 * spot) / want.flip);
     expectEqual(`${t} ${name}: final`, lv.complete, true);
-    expectEqual(`${t} ${name}: regime is the sign of the net`, lv.regime, want.net > 0 ? 'LONG' : 'SHORT');
+    /* the regime is the sign of the net RE-PRICED AT SPOT — the curve the flip is the zero of. Before the open the rows'
+       net (at the close) and the net where price is now can differ in sign: SPY Today's rows net +107.7M at 772.31, but
+       at the 770.06 pre-market print, below the 771.11 flip, the same contracts net −99M — short gamma. */
+    const atSpot = pricedNet(priced, spot);
+    expectNear(`${t} ${name}: the net re-priced at spot ${(atSpot / 1e6).toFixed(1)}M (rows ${(want.net / 1e6).toFixed(1)}M)`, lv.netAtSpot, atSpot, 0.02);
+    expectEqual(`${t} ${name}: regime is the sign of the net at spot`, lv.regime, atSpot > 0 ? 'LONG' : 'SHORT');
   }
   expectEqual(`${t}: Today reads the front expiry`, lv0.date, gold.front);
+  /* the flip gauge counts crossings against the flip as it stood at each bar (the book re-priced at each minute's own
+     clock): ten one-minute closes alternating 0.5% either side of the printed flip cross it nine times; ten closes 2%
+     on spot's side, never */
+  {
+    const { flipCrossingsAsOf } = await import('../../src/data/flipGauge');
+    const chain0 = snap.uwChains?.['0DTE'] ?? snap.chain;
+    /* at the rows' own minute (after the bell no trading time passes, so each bar's flip is the printed one) */
+    const t0 = Date.parse('2026-10-28T20:16:00Z') / 1000;
+    const f = lv0.flip!;
+    const alt = Array.from({ length: 10 }, (_, i) => ({ time: t0 + i * 60, open: f, high: f, low: f, close: f * (i % 2 ? 1.005 : 0.995), volume: 0 }));
+    const away = alt.map(b => ({ ...b, close: f * (spot > f ? 1.02 : 0.98) }));
+    expectEqual(`${t}: crossings as of each bar — alternating ±0.5% of ${f.toFixed(2)}: 9, held 2% off: 0`, [flipCrossingsAsOf(snap, chain0, alt), flipCrossingsAsOf(snap, chain0, away)], [9, 0]);
+  }
+  /* the watchlist's nearest wall reads the walls Pinpoint prints for the scope (it read the raw whole book) */
+  {
+    const { scopeWalls } = await import('../../src/data/book/levels');
+    const { pickLegWalls } = await import('../../src/core/walls');
+    const raw0 = pickLegWalls(book.peekEntry(t)!.all, x => x.callGex, x => x.putGex);
+    const w0 = scopeWalls(t, '0DTE');
+    const wA = scopeWalls(t, 'ALL');
+    expectEqual(`${t}: watchlist walls = the levels' walls, Today ${lv0.callWall}/${lv0.putWall} and All ${lvA.callWall}/${lvA.putWall} (the raw book read ${raw0.callWall}/${raw0.putWall})`, [w0?.callWall, w0?.putWall, wA?.callWall, wA?.putWall], [lv0.callWall, lv0.putWall, lvA.callWall, lvA.putWall]);
+  }
+  /* the profile's dealer-gamma curve prints the one flip and the one regime (it once read its own zero off its grid) */
+  {
+    const { buildExposureSurface } = await import('../../src/data/exposureSurface');
+    const { buildExposureCurve } = await import('../../src/data/exposureCurve');
+    const surface = buildExposureSurface(snap, 20);
+    const front = surface.expiries.findIndex(e => e.iso === gold.front);
+    const curve = buildExposureCurve(surface, [front]);
+    expectNear(`${t}: the curve's flip over the front date is the printed flip (${lv0.flip?.toFixed(2)})`, curve.flip ?? NaN, lv0.flip ?? NaN, 1e-12);
+    expectEqual(`${t}: the curve's net at spot carries the printed regime`, curve.atSpot < 0 ? 'LONG' : 'SHORT', lv0.regime);
+    const profile0 = buildExposureProfile(snap, '0DTE', LEVELS_WINDOW);
+    expectEqual(`${t}: the profile's bias is the same regime`, profile0.bias, lv0.regime === 'LONG' ? 'LONG_GAMMA' : 'SHORT_GAMMA');
+  }
 
   /* the expected move, and the odds read off it */
   const straddle = impliedMove(raw, t, gold.front);
@@ -165,12 +208,12 @@ for (const t of NAMES) {
   expectNear(`${t}: Building's change at ${busiest?.[0]} = Σ oi_diff × row gamma ÷ OI (${(busiest?.[1] ?? 0).toFixed(0)})`, brow?.change ?? NaN, busiest?.[1] ?? NaN, 1e-6);
 
   /* the hedge-flow ladder against a fine integral of the independently re-priced rows */
-  const legsFront = rawLegs(rows, new Set([gold.front]), vols, ois);
+  const legsFront = pricedLegs(rows, new Set([gold.front]), vols, ois);
   const chain = snap.uwChains?.['0DTE'] ?? [];
   const ladder = buildHedgeFlowLadder(profile, prices => levelNetPath(snap, chain, prices)?.path.map(v => -v) ?? null);
   for (const k of [lv0.callWall!, lv0.putWall!]) {
     const got = ladder.rungs.find(r => r.strike === k)?.flow ?? NaN;
-    const hand = -rawFlowTo(legsFront, spot, k);
+    const hand = -pricedFlowTo(legsFront, spot, k);
     expectNear(`${t}: dealer flow to ${k} ${(got / 1e6).toFixed(1)}M against the raw integral ${(hand / 1e6).toFixed(1)}M`, got, hand, 0.01);
   }
   /* the one dealer model on every greek: each leg against the vendor's own figures for the same contract */
@@ -187,7 +230,9 @@ for (const t of NAMES) {
     const share = tCal / yearsTrading('2026-10-28', gold.front);
     const want = {
       dex: sideSign * Number(row.delta) * oi * 100 * spot,
-      vex: sideSign * Number(row.vega) * oi * 100,
+      /* the vendor's vega is at its own price; the page prices vega at spot — the vendor's figure moved there by the ratio
+         of Black-Scholes vegas at the contract's solved vol (sticky strike), never the app's vol */
+      vex: sideSign * Number(row.vega) * oi * 100 * (bsVega(spot, k, yearsTrading('2026-10-28', gold.front), vols.get(`${gold.front}|${k}|${right}`) ?? NaN) / bsVega(marked, k, yearsTrading('2026-10-28', gold.front), vols.get(`${gold.front}|${k}|${right}`) ?? NaN)),
       vanna: Number(se.get(k)![right === 'C' ? 'call_vanna_oi' : 'put_vanna_oi']) * px * 0.01,
       charm: (Number(se.get(k)![right === 'C' ? 'call_charm_oi' : 'put_charm_oi']) / (0.01 * 365 * 252)) * share,
     };
