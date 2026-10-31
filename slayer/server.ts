@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { proxyUw } from './server/uwProxy.mjs';
 import { proxyTheta } from './server/thetaProxy.mjs';
 import { proxyLogo } from './server/logoProxy.mjs';
-import { compassMount } from './server/compassApi.mjs';
+import { compassMount, installProcessLogger } from './server/compassApi.mjs';
 import { exposureMount } from './server/exposureApi.mjs';
 
 try {
@@ -12,6 +12,9 @@ try {
 } catch {
   /* production reads its keys from the host's environment */
 }
+
+/* a promise or exception nobody caught is logged, not lost */
+installProcessLogger();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
