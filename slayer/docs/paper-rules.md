@@ -455,3 +455,11 @@ Every rule below has a known-number check in `scripts/paper-proof.ts` (paper) an
   account's ledger), annualised by √252, no risk-free rate taken off: mean ÷ sample standard deviation; mean ÷ downside
   deviation (√ of the mean squared negative return over every day). +1%, −1%, +1%: Sharpe 4.58, Sortino 9.17. Fewer
   than three points: none said.
+- **A fill takes at most the size the quote shows** (paper and backtest, one model: `review/quotes.ts fillableQty`). A
+  buy takes the ask's size, a sell the bid's; a spread the fewer its legs show on that side (bought: the long leg's ask
+  and the short leg's bid). What the quote cannot fill stays working: a limit at its price, a market order as a market
+  order that fills on the following quotes (the next live quote, the next recorded minute) — each quote's size is taken
+  once (the order keeps the quote's stamp and what it took of it). A bracket goes on once all of the buy has filled, for
+  all of it. Not capped: a leg of an order of several (the legs fill together or not at all), the rules' and the page's
+  closes, a settlement — and any quote that carries no size (an old saved backtest day). Market buy 5 against an ask
+  showing 3: 3 now, 2 on the next quote.

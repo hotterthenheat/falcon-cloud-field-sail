@@ -908,5 +908,21 @@ const fixed = (price: () => number, t = now): PaperMarket => ({
   ok('…and the report reads it from there', paperCurveOf(x).maxDrawdown === 200);
 }
 
+{
+  /* 5. a fill takes at most the size the quote shows: 3 at the ask, 2 at the bid; each tick a new quote unless its stamp is the same */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  let stamp = T0;
+  const sized = (t: number): PaperMarket => ({ ...fixed(() => 2, t), optQuote: (c: ContractId) => ({ ...fixed(() => 2, t).optQuote(c), askSize: 3, bidSize: 2, quotedAt: stamp }) });
+  const c: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: '2026-10-16' };
+  let x = newAccount({ id: 'sz', kind: 'practice', name: 'sz', startCash: 10_000, now: T0, sandbox: true });
+  x = optPlace(x, sized(T0), { contract: c, side: 'buy', qty: 5, kind: 'market', bracket: { target: 3 } });
+  ok('paper: a market buy of 5 against an ask showing 3 fills 3; 2 stay working, and no target yet', x.opt.fills.length === 1 && x.opt.fills[0].qty === 3 && x.opt.orders[0].status === 'working' && x.opt.orders[0].qty === 2 && !x.opt.orders.some(o => o.oco));
+  x = tick(x, sized(T0 + 2000)).account;
+  ok('…the same quote read again (its stamp unchanged) fills nothing more', x.opt.fills.length === 1);
+  stamp = T0 + 3000;
+  x = tick(x, sized(T0 + 4000)).account;
+  ok('…a new quote fills the rest, 2; the order is filled, 5 in all, and its target rides all 5', x.opt.fills.length === 2 && x.opt.fills[1].qty === 2 && x.opt.orders[0].status === 'filled' && x.opt.orders[0].qty === 5 && x.opt.orders.some(o => o.oco && o.qty === 5 && o.status === 'working'), x.opt.orders.map(o => `${o.kind}:${o.qty}:${o.status}`).join(' '));
+}
+
 console.log(`\n${passed} held · ${failed} missed`);
 if (failed) process.exit(1);

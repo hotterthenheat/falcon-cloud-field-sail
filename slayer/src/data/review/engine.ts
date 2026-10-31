@@ -4,7 +4,7 @@
    days a move walks must be loaded first (store.ts does that). */
 
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from './ladder';
-import { contractKey, dteAt, legsOf, markAt, quoteAt, quoteWith, settlementAt, spotForBid, type ContractId, type Quote, type SettleStyle } from './quotes';
+import { contractKey, dteAt, fillableQty, legsOf, markAt, quoteAt, quoteWith, settlementAt, spotForBid, type ContractId, type Quote, type SettleStyle } from './quotes';
 import { LAST_MIN, dateOf, dayNumber, sessionAfter } from './history';
 import { sessionsBetween } from '../../core/calendar';
 import type { DayNote, JournalEntry } from './journal';
@@ -51,6 +51,10 @@ export interface Order {
   peak?: number;
   /** When a switch last moved it (breakeven) — the book says so */
   moved?: Moment;
+  /** Filled in pieces so far: a fill takes at most the size the quote shows (fillableQty); `qty` is what is left */
+  filled?: number;
+  /** …and how much of which quote it has taken (the same quote's size is not taken twice) */
+  took?: { at: number; qty: number };
 }
 /** What rides a buy: a ladder's rungs (or the single target and stop), the two switches — and what they wait on */
 export interface Bracket extends LadderBracket {
@@ -475,7 +479,15 @@ function afterSell(s: Session, sold: Order, q: Quote, at: Moment): Session {
   return next;
 }
 
-function fillNow(s: Session, o: Order, price: number, how: FillHow, q: Quote, at: Moment, settle?: SettleStyle): Session {
+function fillNow(s: Session, o0: Order, price: number, how: FillHow, q: Quote, at: Moment, settle?: SettleStyle): Session {
+  /* the reader's order takes at most the size the quote shows; the rest stays working for the next quote (a limit at its
+     price, a market order at the next minute's) — a settlement or the engine's own close is not capped */
+  const capped = !!o0.id && how !== 'expired' && !settle;
+  const n = capped ? fillableQty(o0, q) : o0.qty;
+  if (n < 1) return s;
+  const rest = o0.qty - n;
+  const total = (o0.filled ?? 0) + n;
+  const o: Order = rest > 0 ? { ...o0, qty: n } : o0;
   let [id, next] = nextId(s, 'f');
   const fill: Fill = { id, orderId: o.id || null, at, contract: o.contract, side: o.side, qty: o.qty, price: cents(price), fee: how === 'expired' ? 0 : cents(s.fee * o.qty * legsOf(o.contract)), how, spot: q.spot, delta: q.delta, iv: q.iv, theta: q.theta, tag: o.tag, plannedStop: plannedStopOf(o, at), ...(settle ? { settle } : {}) };
   /* a sell that leaves the position flat closes the trade: its lowest mark is read now, while its days are loaded */
@@ -486,11 +498,18 @@ function fillNow(s: Session, o: Order, price: number, how: FillHow, q: Quote, at
       fill.lowOpen = lowOpenOf(o.contract, legs);
     }
   }
-  next = { ...next, fills: [...next.fills, fill], orders: next.orders.map(x => (x.id === o.id ? { ...x, qty: o.qty, status: 'filled' as const, done: at, fillPrice: fill.price } : x)) };
+  const used = o0.took && q.quotedAt != null && o0.took.at === q.quotedAt ? o0.took.qty : 0;
+  next = {
+    ...next,
+    fills: [...next.fills, fill],
+    orders: next.orders.map(x =>
+      x.id !== o.id ? x : rest > 0 ? { ...x, qty: rest, filled: total, ...(q.quotedAt != null ? { took: { at: q.quotedAt, qty: used + n } } : {}) } : { ...x, qty: total, status: 'filled' as const, done: at, fillPrice: fill.price }
+    ),
+  };
   /* a sell: the ladder it belongs to — or stands beside — is made to fit what is still held */
   if (o.side === 'sell') next = afterSell(next, o, q, at);
-  /* a buy that carried ways out leaves them working, as one group */
-  const { targets, stops } = rungsOf(o.side === 'buy' ? o.bracket : undefined, o.qty);
+  /* a buy that carried ways out leaves them working, as one group — once all of it has filled */
+  const { targets, stops } = rungsOf(o.side === 'buy' && rest === 0 ? o.bracket : undefined, total);
   if (targets.length || stops.length) {
     const [oco, n2] = nextId(next, 'g');
     next = n2;
@@ -828,7 +847,7 @@ function minuteOrders(s: Session, at: Moment): Session {
     if (q.dead) continue;
     if (o.side === 'sell') {
       /* waits on the NAME: the minute it is there, the contracts are sold at that minute's bid — whatever it is */
-      const hit = o.on === 'name' ? nameHit(o, q.spot) : o.kind === 'limit' ? q.bid >= o.price! : o.kind === 'stop' ? q.bid <= o.price! : false;
+      const hit = o.kind === 'market' ? true : o.on === 'name' ? nameHit(o, q.spot) : o.kind === 'limit' ? q.bid >= o.price! : o.kind === 'stop' ? q.bid <= o.price! : false;
       if (!hit) continue;
       /* never more than is held: what is left of the position is what it sells */
       const held = heldOf(next, o.contract);
@@ -836,11 +855,11 @@ function minuteOrders(s: Session, at: Moment): Session {
         next = cancelled(next, o.id, at, 'nothing was held by then');
         continue;
       }
-      next = fillNow(next, held < o.qty ? { ...o, qty: held } : o, o.on === 'name' || o.kind === 'stop' ? q.bid : Math.max(o.price!, q.bid), o.kind, q, at);
+      next = fillNow(next, held < o.qty ? { ...o, qty: held } : o, o.kind === 'market' || o.on === 'name' || o.kind === 'stop' ? q.bid : Math.max(o.price!, q.bid), o.kind, q, at);
       continue;
     }
     /* a buy that waits: a limit when the ask comes down to it, a stop when the ask comes up to it — at that ask */
-    const hit = o.kind === 'limit' ? q.ask <= o.price! : o.kind === 'stop' ? q.ask >= o.price! : false;
+    const hit = o.kind === 'market' ? true : o.kind === 'limit' ? q.ask <= o.price! : o.kind === 'stop' ? q.ask >= o.price! : false;
     if (!hit) continue;
     const px = o.kind === 'limit' ? Math.min(o.price!, q.ask) : q.ask;
     /* the reader's daily stop was reached while this order rested: it does not open a position on a day that is over */

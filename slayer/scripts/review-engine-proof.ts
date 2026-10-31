@@ -489,5 +489,28 @@ ok('the report adds up', sum.n === 2 && near(sum.net, trades[0].pnl + bt.pnl, 0.
   ok('…too few days: none said', statsOf([], { daily: [100, 101] }).sharpe === null);
 }
 
+{
+  /* 5. a fill takes at most the size the quote shows: QQQ 390C (FAR) on D2 shows 3 at the ask and 2 at the bid, every minute */
+  const leg = { ticker: 'QQQ', expiry: FAR, strike: 390, right: 'C' as const };
+  const b: number[] = [];
+  const a2: number[] = [];
+  for (let m = 0; m < 390; m++) {
+    const sq = spot('QQQ', D2, m);
+    b.push(bidOf(sq, 390, 'C'));
+    a2.push(askOf(sq, 390, 'C'));
+  }
+  putQuotes(leg, D2, b, a2, b.map(() => 2), a2.map(() => 3));
+  let z = advance(newSession({ id: 'sz', name: 'size', ticker: 'QQQ', startCash: 25000, startDay: D2, now: 0 }), { day: D2, minute: 10 }, 0);
+  z = place(z, { contract: leg, side: 'buy', qty: 5, kind: 'market' }, 0);
+  ok('a market buy of 5 against an ask showing 3 fills 3 now, at that ask; 2 stay working', z.fills.length === 1 && z.fills[0].qty === 3 && z.fills[0].price === askOf(spot('QQQ', D2, 10), 390, 'C') && z.orders[0].status === 'working' && z.orders[0].qty === 2);
+  z = advance(z, { day: D2, minute: 12 }, 0);
+  ok('…the rest fills on the next minute’s quote, at its ask — 5 in all, the order filled', z.fills.length === 2 && z.fills[1].qty === 2 && z.fills[1].at.minute === 11 && z.fills[1].price === askOf(spot('QQQ', D2, 11), 390, 'C') && z.orders[0].status === 'filled' && z.orders[0].qty === 5, `${z.fills.map(f => `${f.at.minute}:${f.qty}@${f.price}`).join(' ')}`);
+  z = place(z, { contract: leg, side: 'sell', qty: 5, kind: 'limit', price: 0.5 }, 0);
+  z = advance(z, { day: D2, minute: 15 }, 0);
+  const sells = z.fills.filter(f => f.side === 'sell');
+  ok('a sell limit of 5 against a bid showing 2: 2, 2, then 1, minute by minute, each at the bid', sells.map(f => f.qty).join() === '2,2,1' && sells.every(f => f.price === bidOf(spot('QQQ', D2, f.at.minute), 390, 'C')), sells.map(f => `${f.at.minute}:${f.qty}`).join(' '));
+  ok('…and the trade is whole: bought 5, sold 5', bookOf(z).trades[0]?.qty === 5 && bookOf(z).positions.length === 0);
+}
+
 console.log(misses ? `\n${misses} MISSED` : '\nall rules hold');
 process.exit(misses ? 1 : 0);

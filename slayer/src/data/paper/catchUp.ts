@@ -8,7 +8,7 @@ import { isTradingDay, isoDate, sessionCloseMinOn, sessionLengthOn } from '../..
 import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
 import { thetaAllowedHere, thetaCall } from '../theta';
 import { barTime, flatRows, legKey, parseBars, parseQuotes, rowAt, standingAt } from '../review/history';
-import { bookMark, contractKey, longLeg, spreadBook, type ContractId, type Quote } from '../review/quotes';
+import { bookMark, contractKey, longLeg, spreadBook, spreadSizes, type ContractId, type Quote } from '../review/quotes';
 import { dateAt, nyAt, nyInstant, yearsToExpiry, OPEN_MIN } from './clock';
 import { gapOf, judgeOrders, type OptOrder, type PaperAccount, type PaperMarket } from './engine';
 import { optionRootOf } from './thetaFeed';
@@ -47,7 +47,7 @@ interface Gap {
 }
 /** What a replay needs, fetched: each leg's day of quotes, each name's day of bars — or why it could not be had */
 export interface Fetched {
-  quotes: Map<string, { bid: number[]; ask: number[] }>;
+  quotes: Map<string, { bid: number[]; ask: number[]; bidSize?: number[]; askSize?: number[] }>;
   /** Real prints only — a missing minute is a gap, not a flat zero-volume candle */
   bars: Map<string, { time: number; close: number }[]>;
   /** By order id: why its minutes could not be read, and whether to ask again (the terminal away) or not */
@@ -138,7 +138,9 @@ function recorded(c: ContractId, day: string, m: number, f: Fetched, at: number)
     const t = Math.max(yearsToExpiry(k.expiry, at), 1 / (252 * 390));
     const iv = spot > 0 ? impliedVolFromPrice(mid, spot, k.strike, t, k.right) : null;
     const g = iv != null ? blackScholesGreeks(spot, k.strike, t, iv) : null;
-    return { bid: q.bid, ask: q.ask, mark: cents(mid), iv: iv ?? 0, delta: g ? (k.right === 'C' ? g.deltaCall : g.deltaPut) : 0, gamma: g?.gamma ?? 0, theta: 0, vega: g?.vega ?? 0, rho: 0, intrinsic: cents(intrinsic), dead: false, spot };
+    /* the sizes the row showed: a replayed fill is capped the way a live one is (the row's minute is which quote it is) */
+    const sz = { ...(q.bidSize != null ? { bidSize: q.bidSize } : {}), ...(q.askSize != null ? { askSize: q.askSize } : {}), quotedAt: nyInstant(day, OPEN_MIN) + (q.at + 1) * 60_000 };
+    return { bid: q.bid, ask: q.ask, mark: cents(mid), iv: iv ?? 0, delta: g ? (k.right === 'C' ? g.deltaCall : g.deltaPut) : 0, gamma: g?.gamma ?? 0, theta: 0, vega: g?.vega ?? 0, rho: 0, intrinsic: cents(intrinsic), dead: false, spot, ...sz };
   };
   if (c.short == null) return leg(c);
   const b = leg(longLeg(c));
@@ -146,7 +148,7 @@ function recorded(c: ContractId, day: string, m: number, f: Fetched, at: number)
   if (b.dead || s.dead) return { ...b, bid: 0, ask: 0, mark: NaN, dead: true };
   const width = Math.abs(c.short - c.strike);
   const { bid, ask } = spreadBook(b.bid - s.ask, b.ask - s.bid, width);
-  return { ...b, bid, ask, mark: bookMark(bid, ask, cents), delta: b.delta - s.delta, dead: bid <= 0 };
+  return { ...b, bid, ask, mark: bookMark(bid, ask, cents), delta: b.delta - s.delta, dead: bid <= 0, ...spreadSizes(b, s) };
 }
 
 /** Did this name print a quote after 16:00 that day — so a missing minute in that window is a hole, not a closed session */
