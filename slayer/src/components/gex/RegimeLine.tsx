@@ -89,8 +89,9 @@ const RegimeLine = ({ ticker, stamp = true }: { ticker: string | null | undefine
           {said ? (tone === 'SHORT' ? 'Short gamma' : 'Long gamma') : name ? 'Reading…' : '…'}
         </span>
         {lv?.complete && (
-          <span className={`font-mono text-t11 tnum ${lv.netGex > 0 ? 'text-bull' : lv.netGex < 0 ? 'text-bear' : 'text-textMuted'}`} data-regime-net>
-            {fmtGexUsd(lv.netGex)}
+          /* the net re-priced at spot — the figure the regime word is the sign of, so the two never disagree */
+          <span className={`font-mono text-t11 tnum ${lv.netAtSpot > 0 ? 'text-bull' : lv.netAtSpot < 0 ? 'text-bear' : 'text-textMuted'}`} title="Net dealer gamma re-priced at the current price — its sign is the regime" data-regime-net>
+            {fmtGexUsd(lv.netAtSpot)} <span className="text-textMuted">at spot</span>
           </span>
         )}
         {lv?.flip != null && (

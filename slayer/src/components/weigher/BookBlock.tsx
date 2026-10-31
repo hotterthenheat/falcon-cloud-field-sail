@@ -21,7 +21,8 @@ export const ShapeChip = ({ shape }: { shape: NonNullable<BookAtStrike['shape']>
 
 const BookBlock = ({ read, c }: { read: BookAtStrike | null; c: DeskContract }) => {
   if (!read) return null;
-  const part = read.role ? read.role : `${Math.abs(read.flipDistPct).toFixed(1)}% ${read.flipDistPct >= 0 ? 'above' : 'below'} the flip`;
+  /* a level the book could not place is NaN (no flip inside ±10%, a wall with no gamma): a dash, never "NaN%" */
+  const part = read.role ? read.role : Number.isFinite(read.flipDistPct) ? `${Math.abs(read.flipDistPct).toFixed(1)}% ${read.flipDistPct >= 0 ? 'above' : 'below'} the flip` : '—';
   const partInk = read.role === 'call wall' ? 'text-bull' : read.role === 'put wall' ? 'text-bear' : read.role === 'supreme' ? 'text-supreme' : undefined;
   /* held + broke = the tests; the count of visits is implied so the cell keeps to one line */
   const held = read.held ? (read.held.tests === 0 ? 'not reached today' : `held ${read.held.held} · broke ${read.held.broke}`) : '—';
@@ -31,17 +32,17 @@ const BookBlock = ({ read, c }: { read: BookAtStrike | null; c: DeskContract }) 
   return (
     <div className="flex flex-col gap-2" data-book-block={read.strike}>
       <span className="inline-flex items-center gap-2">
-        <span className="font-mono text-t9 font-bold uppercase tracking-widest text-textSecondary">The book at {fmtStrike(read.strike)}</span>
+        <span className="font-mono text-t9 font-bold uppercase tracking-widest text-textSecondary">The book at {Number.isFinite(read.strike) ? fmtStrike(read.strike) : '—'}</span>
         {read.shape && <ShapeChip shape={read.shape} />}
       </span>
       {/* three across, two rows: these cells hold WORDS (Stats' five-across holds figures) — five across ran the words into
           each other inside the chain's card at 1440 */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2.5">
-        <StatCell label="Dealer gamma" term="GEX" value={`${read.net >= 0 ? '+' : '−'}${fmtDollars(Math.abs(read.net))}`} ink={read.net < 0 ? 'text-bull' : 'text-bear'} />
+        <StatCell label="Dealer gamma" term="GEX" value={Number.isFinite(read.net) ? `${read.net >= 0 ? '+' : '−'}${fmtDollars(Math.abs(read.net))}` : '—'} ink={!Number.isFinite(read.net) ? undefined : read.net < 0 ? 'text-bull' : 'text-bear'} />
         <StatCell label="A move through it" value={read.lean === 'push back' ? 'dealers push back' : 'dealers push it along'} ink={read.lean === 'push back' ? 'text-bull' : 'text-bear'} />
         <StatCell label="Its part today" value={part} ink={partInk} />
         <StatCell label="Held today" value={held} />
-        <StatCell label={c.right === 'C' ? 'Closes at or above' : 'Closes at or below'} term="Close odds" value={odds == null ? '—' : `${odds.toFixed(0)}%`} />
+        <StatCell label={c.right === 'C' ? 'Closes at or above' : 'Closes at or below'} term="Close odds" value={odds == null || !Number.isFinite(odds) ? '—' : `${odds.toFixed(0)}%`} />
         <StatCell label="Since the open" value={change} ink={read.change?.verdict === 'building' ? 'text-bull' : read.change?.verdict === 'draining' ? 'text-bear' : undefined} />
       </div>
     </div>
