@@ -114,7 +114,10 @@ const Stat = ({ label, tip, stat, todayText, meanText, values, fmt, testId }: { 
 
 const DarkBaselineStrip = ({ ticker, todayIso, sessionLive }: { ticker: string; todayIso: string; sessionLive: boolean }) => {
   const k = keyOf(ticker, todayIso);
-  const [base, setBase] = useState<DarkBaseline | null>(() => kept.get(k) ?? null);
+  /* held with the name and day it is for: on a switch the last name's baseline is not painted for a frame under the new
+     one while the effect below catches up */
+  const [held, setHeld] = useState<{ k: string; base: DarkBaseline | null }>(() => ({ k, base: kept.get(k) ?? null }));
+  const base = held.k === k ? held.base : kept.get(k) ?? null;
   const [progress, setProgress] = useState<Progress | null>(null);
   const [failed, setFailed] = useState(false);
   const alive = useRef(k);
@@ -128,7 +131,7 @@ const DarkBaselineStrip = ({ ticker, todayIso, sessionLive }: { ticker: string; 
       b => {
         entry.listeners.delete(f);
         if (alive.current !== key) return;
-        setBase(b);
+        setHeld({ k: key, base: b });
         setProgress(null);
       },
       () => {
@@ -142,7 +145,7 @@ const DarkBaselineStrip = ({ ticker, todayIso, sessionLive }: { ticker: string; 
 
   /* a new name or day: what is kept for it, or the read already running for it */
   useEffect(() => {
-    setBase(kept.get(k) ?? null);
+    setHeld({ k, base: kept.get(k) ?? null });
     setFailed(false);
     setProgress(null);
     const r = running.get(k);
