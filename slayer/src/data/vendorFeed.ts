@@ -5,7 +5,7 @@ import { nyClock, nyParts, nySessionPhase } from '../core/nyTime';
 import { houseNameFromSlug } from './liveFiles';
 import { setLiveCatalysts, setLiveFda, setLivePosts, setLiveSchedule, type CalEvent } from './monthCalendar';
 import { setFlexBook } from './oiHeat';
-import { uwCall } from './whales';
+import { uwCall, type UwAnswer } from './whales';
 import { nyIsoDaysBack } from './nyDate';
 import { SIM_DESK } from './deskMode';
 import { createStore, keptRead } from './feedStore';
@@ -39,6 +39,8 @@ interface Job {
   label: string;
   path: string;
   kind: 'uw';
+  /** The read through a store another reader shares (the book's max pain, the open-interest change), instead of the path's own */
+  read?: () => Promise<UwAnswer>;
 }
 
 const store = createStore(0);
@@ -159,7 +161,7 @@ async function runJob(key: string, job: Job): Promise<unknown> {
     const view = briefOf(kept.data);
     paint(key, job.id, { state: view.empty ? 'empty' : 'live', brief: view.brief, n: view.n, data: clip(kept.data), path: job.path, label: job.label, okAt: k.at, keptAt: k.at, fault: null });
   });
-  const res = await uwCall(job.path);
+  const res = job.read ? await job.read() : await uwCall(job.path);
   if (res.error) {
     const fault = faultOf(res.error, res.status);
     const prior = books.get(key)?.rows.find(r => r.id === job.id);
@@ -432,9 +434,10 @@ function pinJobs(t: string): Job[] {
   return [
     { id: 'greek-flow', label: 'Delta and vega flow each minute', path: `/stock/${e}/greek-flow`, kind: 'uw' },
     { id: 'flow-expiry', label: 'Flow per expiry', path: `/stock/${e}/flow-per-expiry`, kind: 'uw' },
-    { id: 'max-pain', label: 'Max pain', path: `/stock/${e}/max-pain`, kind: 'uw' },
+    /* the book's max pain and open-interest change, one store each (data/book/maxPain.ts, data/book/oiChange.ts) */
+    { id: 'max-pain', label: 'Max pain', path: `/stock/${e}/max-pain`, kind: 'uw', read: () => import('./book/maxPain').then(m => m.maxPainAnswer(t, PIN_REFRESH_MS - 2_000)) },
     { id: 'nope', label: 'NOPE', path: `/stock/${e}/nope`, kind: 'uw' },
-    { id: 'oi-change', label: "Day's open-interest change", path: `/stock/${e}/oi-change?limit=40`, kind: 'uw' },
+    { id: 'oi-change', label: "Day's open-interest change", path: `/stock/${e}/oi-change?limit=500&page=0&order=desc`, kind: 'uw', read: () => import('./book/oiChange').then(m => m.oiChangeTopPage(t, 30 * 60_000)) },
     { id: 'flex-list', label: 'FLEX contracts', path: `/flex-options?ticker_symbol=${e}`, kind: 'uw' },
     { id: 'vstats', label: 'Volatility statistics', path: `/stock/${e}/volatility/stats`, kind: 'uw' },
     { id: 'term-dist', label: 'Term-structure distribution', path: `/stock/${e}/volatility/term-structure/distribution`, kind: 'uw' },

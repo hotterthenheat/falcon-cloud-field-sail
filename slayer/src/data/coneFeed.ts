@@ -6,6 +6,7 @@
 import { useSyncExternalStore } from 'react';
 import { nyIsoDate } from '../core/nyTime';
 import { thetaGet } from './thetaFeed';
+import { listExpirations } from './chainDates';
 import { thetaUseHere } from './theta';
 import { uwCall } from './whales';
 import { onRebuiltTerm, rebuiltTerm } from './book/exposureLog';
@@ -167,7 +168,7 @@ export async function coneRowsAll(root: string, today = nyIsoDate()): Promise<Ro
 
 /** The per-expiry way, kept as the fallback: the listed expiries, then one snapshot for each of the three the cone draws */
 export async function coneRowsPerExpiry(root: string, today = nyIsoDate()): Promise<Row[] | null> {
-  const got = await thetaGet(`/option/list/expirations?symbol=${encodeURIComponent(root)}&format=json`);
+  const got = await listExpirations(root);
   if (got.error) return null;
   const dates: string[] = [];
   for (const row of asRows(got.data)) {

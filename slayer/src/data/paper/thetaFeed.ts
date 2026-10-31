@@ -5,6 +5,7 @@
    reload, stamped with when it was taken; a kept or stale quote never fills. */
 
 import { thetaCall } from '../theta';
+import { listExpirations } from '../chainDates';
 import { readSaved, save as keep } from '../uwStore';
 import { flatRows } from '../review/history';
 import { nyAt, nyInstant } from './clock';
@@ -115,7 +116,8 @@ export function nameQuote(ticker: string): NameQuote | null {
 const expiries = new Map<string, { list: string[]; takenAt: number; kept?: boolean }>();
 const expAsked = new Map<string, number>();
 async function pullExpiries(root: string): Promise<void> {
-  const got = await thetaCall(`/option/list/expirations?symbol=${encodeURIComponent(root)}&format=json`, true);
+  /* the one expiries store (data/chainDates.ts), shared with the Weigher and the cone */
+  const got = await listExpirations(root, true);
   if (!noteAnswer(got.error, got.status) || got.error) return;
   const list = flatRows(got.data)
     .map(r => String(r.expiration ?? r.date ?? '').slice(0, 10))

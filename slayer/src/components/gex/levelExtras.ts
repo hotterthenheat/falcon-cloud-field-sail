@@ -1,7 +1,7 @@
 /* The key levels beside the book's walls, flip and supreme: max pain (the vendor's, per expiry), today's expected move and
    the 1σ to the close (the cone's numbers, data/terrainCone.ts) — and each wall's size against the cut's largest strike. */
 import { useEffect, useSyncExternalStore } from 'react';
-import { uwCall } from '../../data/whales';
+import { maxPainAnswer } from '../../data/book/maxPain';
 import type { ForwardCone } from '../../data/terrainCone';
 import type { StrikeNode } from '../../types/market';
 import type { KeyLevelRung } from './keyLevelsPrimitive';
@@ -26,7 +26,8 @@ export function ensureMaxPain(ticker: string): Promise<void> {
   const last = asked.get(t) ?? 0;
   if (Date.now() - last < PAIN_MS) return Promise.resolve();
   asked.set(t, Date.now());
-  return uwCall(`/stock/${encodeURIComponent(t)}/max-pain`).then(res => {
+  /* the book's one max-pain store (data/book/maxPain.ts), shared with Pinpoint's readings */
+  return maxPainAnswer(t, PAIN_MS).then(res => {
     if (res.error || !Array.isArray(res.data)) return;
     const byExpiry = new Map<string, number>();
     for (const r of res.data as Record<string, unknown>[]) {

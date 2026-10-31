@@ -4,6 +4,7 @@
 
 import { expiryFor, isoDate, isTradingDay, type Expiry, MONTHS as MONTHS_SHORT } from '../core/calendar';
 import { keepTheta, keptTheta, noData, thetaGet } from './thetaFeed';
+import { listExpirations } from './chainDates';
 import { atmIvAt, expectedMovePctOf, readContract } from './weigherGate';
 import { weekdayDte } from './compassParams';
 import { nameTape } from './compassSession';
@@ -371,7 +372,7 @@ export async function listLiveExpiries(ticker: string): Promise<{ rows: ListedEx
   const roots = optionRoots(ticker);
   /* ahead of the queue (data/theta.ts take): the chain waits on this small list, and behind a chart's history reads it
      waited 15–20 s on a first Weigher visit after Terrain */
-  const got = await Promise.all(roots.map(root => thetaGet(`/option/list/expirations?symbol=${encodeURIComponent(root)}&format=json`, true)));
+  const got = await Promise.all(roots.map(root => listExpirations(root, true)));
   const up = got.map(g => !g.error);
   if (up.some(Boolean)) {
     got.forEach((g, i) => up[i] && keepTheta(`expirations:${roots[i]}`, g.data));

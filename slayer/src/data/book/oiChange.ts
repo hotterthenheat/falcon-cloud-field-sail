@@ -1,7 +1,7 @@
 /* The last session's open-interest change, contract by contract (oi-change): what was built and drained overnight. */
 
 import { nyIsoDate, nyMinutes } from '../../core/nyTime';
-import { uwCall } from '../whales';
+import { uwCall, type UwAnswer } from '../whales';
 import { PREMARKET_MIN } from './load';
 import { num, parseOcc } from './scale';
 import { emit, isHot } from './store';
@@ -35,6 +35,26 @@ export interface OiChange {
   /** 'top': the largest 500 increases and 500 decreases only (the Board's read); 'full': every changed contract */
   depth: 'top' | 'full';
 }
+/* ONE STORE OF A NAME'S OPEN-INTEREST CHANGE (audit D7): the largest increases, page 0 of oi-change in descending order,
+   is read once and shared — the contract-by-contract count below starts from it, the probe for a newer count reads it,
+   and Pinpoint's Agenda (data/vendorFeed.ts, which read its own oi-change?limit=40 beside it) shows it. */
+const topPages = new Map<string, { at: number; p: Promise<UwAnswer> }>();
+/** Page 0 of the name's oi-change, largest increases first: the copy held when it is younger than `maxAgeMs`, else read */
+export function oiChangeTopPage(ticker: string, maxAgeMs: number): Promise<UwAnswer> {
+  const t = ticker.toUpperCase();
+  const hit = topPages.get(t);
+  if (hit && (hit.at === 0 || Date.now() - hit.at < maxAgeMs)) return hit.p;
+  const entry = { at: 0, p: uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&page=0&order=desc`, isHot(t), !isHot(t)) };
+  topPages.set(t, entry);
+  void entry.p.then(a => {
+    if (a.error) {
+      if (topPages.get(t) === entry) topPages.delete(t);
+    } else entry.at = Date.now();
+  });
+  if (topPages.size > 120) for (const [k, v] of topPages) if (v.at && Date.now() - v.at > OI_CHANGE_MS) topPages.delete(k);
+  return entry.p;
+}
+
 const oiChangeCache = new Map<string, OiChange>();
 const oiChangeAt = new Map<string, number>();
 /* the count is set once overnight — re-read every half hour, so a page left open across the roll picks up the new one */
@@ -78,7 +98,7 @@ export function ensureOiChange(ticker: string, depth: 'top' | 'full' = 'full'): 
   if (held && behind) {
     /* a probe: the first page's dates — the whole count is read again only when they move */
     void (async () => {
-      const res = await uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&page=0&order=desc`, isHot(t), !isHot(t));
+      const res = await oiChangeTopPage(t, 60_000);
       oiChangeChecked.set(t, Date.now());
       const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
       const newer = rows.some(r => String(r.curr_date ?? '') > (held.currDate ?? ''));
@@ -103,7 +123,7 @@ function readOiChange(t: string, depth: 'top' | 'full'): void {
     for (const order of ['desc', 'asc'] as const) {
       for (let page = 0; page < (depth === 'top' ? 1 : OI_PAGES); page++) {
         /* a name off screen reads its change in the background lane */
-        const res = await uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&page=${page}&order=${order}`, isHot(t), !isHot(t));
+        const res = order === 'desc' && page === 0 ? await oiChangeTopPage(t, 60_000) : await uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&page=${page}&order=${order}`, isHot(t), !isHot(t));
         const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
         let reachedZero = false;
         for (const r of rows) {

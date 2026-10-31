@@ -154,11 +154,15 @@ async function refreshDatesGamma(entry: Entry, token: number): Promise<void> {
 
 /** One date's chain. With the greeks: the vendor's strike rows (delta, vanna, charm) carrying the live gamma. Without:
     the live gamma alone (one call — the Board reads nothing else off a date), the strike rows only if it fails. */
-async function dateChain(ticker: string, date: string, spot: number, withGreeks: boolean, priority = false): Promise<StrikeNode[] | null> {
+async function dateChain(ticker: string, date: string, spot: number, withGreeks: boolean, priority = false, walk: Promise<Map<string, LiveGamma> | null> | null = null): Promise<StrikeNode[] | null> {
   const settled = date < isoDate(bookToday());
+  /* a date's live gamma is sliced from the name's one walk of every expiry when one is under way (audit D6b): the walk
+     already carries this date's rows, so asking spot-exposures/expiry-strike for it alone read them twice. A date the
+     walk has no rows for has none; a failed walk falls back to the date's own read. */
+  const own = () => liveGamma(ticker, date, priority);
   const [rows, live] = await Promise.all([
     withGreeks || settled ? whalesGreekStrikeExpiry(ticker, date).catch(() => null) : Promise.resolve(null),
-    liveGamma(ticker, date, priority).catch(() => null),
+    (walk ? walk.then(w => (w ? w.get(date) ?? (new Map() as LiveGamma) : own())) : own()).catch(() => null),
   ]);
   let base = Array.isArray(rows) ? chainFrom(rows, spot, new Map(), undefined, date) : [];
   /* A date that settled at 4:00: its live rows are kept to come off the whole book (liveAll); its chain is the vendor's
@@ -761,10 +765,13 @@ async function loadExpiriesNow(entry: Entry, token: number): Promise<void> {
   const near = dates.slice(0, 6);
   /* null: the read failed (asked again); []: the vendor has no strikes on that date */
   /* the near dates with their greek rows; a far date's gamma, delta, vanna and charm are the walk's rows (no call of its own) */
-  const pull = (list: string[], first = list === near, greeks = true) =>
+  /* every date's live gamma in one walk (liveGammaAll), started with the front date: the near dates after the front are
+     sliced from it, and the far dates read their gamma from the walk's cache */
+  let walk: Promise<Map<string, LiveGamma> | null> | null = null;
+  const pull = (list: string[], first = list === near, greeks = true, fromWalk: Promise<Map<string, LiveGamma> | null> | null = null) =>
     mapLimit(list, 3, async date => {
       try {
-        return [date, await within(dateChain(entry.ticker, date, entry.spot, greeks, isHot(entry.ticker) && first), DATE_READ_MS)] as const;
+        return [date, await within(dateChain(entry.ticker, date, entry.spot, greeks, isHot(entry.ticker) && first, fromWalk), DATE_READ_MS)] as const;
       } catch {
         return [date, null] as const;
       }
@@ -798,14 +805,14 @@ async function loadExpiriesNow(entry: Entry, token: number): Promise<void> {
   /* the far dates' live gamma in one walk (liveGammaAll); each far date then asks only its greek rows */
   /* the front date first, on its own: "Today" is final once its chain and contracts are in */
   const front = near.slice(0, 1);
+  if (dates.length > 6) walk = liveGammaAll(entry.ticker, isHot(entry.ticker)).catch(() => null);
   const frontGot = await pull(front, true);
   if (!still()) return;
   apply(frontGot, false);
   const atFront = cache.get(entry.ticker);
   /* the front date's contracts before the rest: "Today" is final with them */
   const frontFacts = atFront ? fillExpiryFacts(atFront, liveToken(), front) : null;
-  const walk = dates.length > 6 ? liveGammaAll(entry.ticker, isHot(entry.ticker)).catch(() => null) : null;
-  const nearGot = await pull(near.slice(1), true);
+  const nearGot = await pull(near.slice(1), true, true, walk);
   if (!still()) return;
   const retryNear = dates.length <= 6 ? nearGot.filter(([, c]) => c == null).map(([d]) => d) : [];
   apply(nearGot, dates.length <= 6 && !retryNear.length);
