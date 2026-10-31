@@ -71,7 +71,7 @@ export function useJournalSource(kind: JournalKind): JournalSource {
               /* a replayed journal has no today of its own: its newest day stands in */
               today: rows[0] ? calendarDayOf(rows[0]) : new Date().toISOString().slice(0, 10),
               current: null,
-              foot: 'Backtest trades fill at ThetaData’s recorded NBBO at the end of each minute — practice, not advice. Every time on this page is New York’s (ET).',
+              foot: 'Backtest trades fill at the recorded NBBO at the end of each minute — practice, not advice. Every time on this page is New York’s (ET).',
     };
   }, [kind, kind === 'paper' ? paper.accounts : sessions, words, paper.inHand]); // eslint-disable-line react-hooks/exhaustive-deps
 }

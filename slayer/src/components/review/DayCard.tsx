@@ -96,7 +96,7 @@ const DayCard = ({ label, value, onChange, min, title, testId, size = 'md' }: Pr
             }}
           />
           <p className="mt-2 pt-2 border-t border-borderSubtle/70 text-t10 text-textMuted" data-day-card-window>
-            {w.first ? `ThetaData’s recorded sessions, ${dayWords(w.first, true).replace(/^\w+, /, '')} to ${dayWords(w.last, true).replace(/^\w+, /, '')}` : `Recorded sessions up to ${dayWords(w.last, true).replace(/^\w+, /, '')} — how far back the quotes reach is being checked`}
+            {w.first ? `Recorded sessions, ${dayWords(w.first, true).replace(/^\w+, /, '')} to ${dayWords(w.last, true).replace(/^\w+, /, '')}` : `Recorded sessions up to ${dayWords(w.last, true).replace(/^\w+, /, '')} — how far back the quotes reach is being checked`}
             {min ? ', from where the clock stands' : ''}.
           </p>
         </Popover.Content>

@@ -168,12 +168,12 @@ const Accounts = () => {
   return (
     <div className="flex flex-col gap-2.5" data-paper-accounts={shown.length}>
       {!holding && elsewhere && <HeldElsewhere />}
-      <ThetaLine since={feedOffline()} what="ThetaData offline — reconnecting · what each account is worth is as of its last quotes, and nothing fills" />
+      <ThetaLine since={feedOffline()} what="Live data offline — reconnecting · what each account is worth is as of its last quotes, and nothing fills" />
       <div className="relative border border-borderSubtle rounded-xs overflow-clip bg-panel flex flex-col" data-paper-accounts-box>
         <div className="px-5 max-sm:px-4 pt-4 pb-3 flex items-start flex-wrap gap-x-6 gap-y-3">
           <div className="min-w-[min(16rem,100%)] flex-1">
             <h3 className="text-t15 font-semibold leading-tight text-textPrimary">Your paper accounts</h3>
-            <p className="mt-0.5 text-t11 text-textMuted">Each runs on ThetaData’s live NBBO, side by side · a prop-firm account is judged by its firm’s rules on every order and every tick</p>
+            <p className="mt-0.5 text-t11 text-textMuted">Each runs on live quotes (NBBO), side by side · a prop-firm account is judged by its firm’s rules on every order and every tick</p>
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             <Fact label="Accounts">{shown.length}</Fact>
@@ -215,7 +215,7 @@ const Accounts = () => {
           </>
         )}
       </div>
-      <p className="px-1 font-mono text-t10 text-textMuted">ThetaData’s live NBBO — practice, not advice. A firm’s rules are its own site’s; every time is New York’s (ET).</p>
+      <p className="px-1 font-mono text-t10 text-textMuted">Live quotes (NBBO) — practice, not advice. A firm’s rules are its own site’s; every time is New York’s (ET).</p>
     </div>
   );
 };
