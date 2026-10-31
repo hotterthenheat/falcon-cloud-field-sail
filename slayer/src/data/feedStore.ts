@@ -10,7 +10,9 @@ const NY_DAY_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_Yor
 
 /* ---- reads -------------------------------------------------------------------- */
 
-export type Answer = { status: number; data: unknown; error: string | null };
+/** `at`/`held`: when the server's hub took the answer from the vendor, and whether it is serving it past its normal life
+    (data/whales.ts UwAnswer); a reader showing `held` answers should say "as of" `at`. */
+export type Answer = { status: number; data: unknown; error: string | null; at?: number | null; held?: boolean };
 /** One GET by path: the vendor through the proxy, or the kept answers */
 export type Get = (path: string, priority?: boolean) => Promise<Answer>;
 export const liveGet: Get = (path, priority) => uwCall(path, priority);

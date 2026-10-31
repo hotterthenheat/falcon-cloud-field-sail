@@ -87,7 +87,7 @@ async function call(fn, url, bearer) {
   } catch {
     /* not JSON */
   }
-  return { status: res.statusCode, code };
+  return { status: res.statusCode, code, headers: res.headers };
 }
 const show = (r) => `${r.status}${r.code ? ` ${r.code}` : ''}`;
 const UW = '/api/uw/stock/SPY/info';
@@ -106,6 +106,54 @@ check('dev, no Supabase: theta passes the gate', show(await call(proxyTheta, TH)
   outage = false;
   const after = show(await call(proxyTheta, PAST));
   check('theta 474 during an outage, then the terminal is back: the next ask answers', `${during} then ${after}`, '474 then 200');
+}
+
+/* ---- Unusual Whales: one breaker for the key, Retry-After honoured, the answer's age sent ---- */
+{
+  const realFetch = globalThis.fetch;
+  /* the vendor stand-in: per path, a list of [status, retry-after] answers (the last one repeats) */
+  const plan = new Map();
+  const calls = new Map();
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (!u.startsWith('https://api.unusualwhales.com/api')) return realFetch(url, init);
+    const p = u.slice('https://api.unusualwhales.com/api'.length);
+    calls.set(p, (calls.get(p) ?? 0) + 1);
+    const steps = plan.get(p) ?? [[200]];
+    const [status, after] = steps[Math.min(calls.get(p) - 1, steps.length - 1)];
+    return new Response(JSON.stringify(status === 200 ? { data: [{ p }] } : { message: 'Too many requests' }), {
+      status,
+      headers: { 'content-type': 'application/json', ...(after != null ? { 'retry-after': String(after) } : {}) },
+    });
+  };
+  process.env.UNUSUAL_WHALES_API_KEY = 'proof-key';
+  const n = (p) => calls.get(p) ?? 0;
+
+  const ok = await call(proxyUw, '/api/uw/stock/AGE/info');
+  check('uw 200 carries the answer\'s age (x-hub-at, Age)', `${ok.status} ${Number(ok.headers['x-hub-at']) > Date.now() - 5_000} ${ok.headers.age}`, '200 true 0');
+
+  /* a vendor that keeps refusing with Retry-After 1: one retry after the breaker, not four calls */
+  plan.set('/stock/RL1/info', [[429, 1]]);
+  const t0 = Date.now();
+  const r1 = await call(proxyUw, '/api/uw/stock/RL1/info');
+  check('uw 429 (Retry-After 1) every time: two vendor calls for one ask', `${r1.status} ${n('/stock/RL1/info')}`, '429 2');
+  check('uw 429: the wait honoured Retry-After (about a second)', Date.now() - t0 >= 900, true);
+  await new Promise((r) => setTimeout(r, 1_200));
+
+  /* a long Retry-After (20 s, past what a viewer waits): one call, answered at once with the time left */
+  plan.set('/stock/RL2/info', [[429, 20]]);
+  const t1 = Date.now();
+  const r2 = await call(proxyUw, '/api/uw/stock/RL2/info');
+  check('uw 429 with Retry-After 20: one vendor call, no retries inside the 20 s', `${r2.status} ${n('/stock/RL2/info')}`, '429 1');
+  check('uw 429 with Retry-After 20: answered at once', Date.now() - t1 < 3_000, true);
+  check('uw 429 passes Retry-After on to the browser', Number(r2.headers['retry-after']) >= 15, true);
+
+  /* while the key is cooling, another path never reaches the vendor */
+  const r3 = await call(proxyUw, '/api/uw/stock/RL3/info');
+  check('uw: while the key cools, a different path makes no vendor call', `${r3.status} ${n('/stock/RL3/info')}`, '429 0');
+
+  globalThis.fetch = realFetch;
+  delete process.env.UNUSUAL_WHALES_API_KEY;
 }
 
 /* encoded dot segments never reach the allowlist */

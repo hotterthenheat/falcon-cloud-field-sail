@@ -166,8 +166,10 @@ async function runJob(key: string, job: Job): Promise<unknown> {
     data: clip(res.data),
     path: job.path,
     label: job.label,
-    okAt: Date.now(),
-    keptAt: null,
+    /* the vendor's instant as the server's hub took it; an answer the hub is holding past its life (the vendor
+       refusing) is shown "as of" that instant like a kept one */
+    okAt: res.at ?? Date.now(),
+    keptAt: res.held ? res.at ?? null : null,
     fault: null,
   });
   return res.data;
