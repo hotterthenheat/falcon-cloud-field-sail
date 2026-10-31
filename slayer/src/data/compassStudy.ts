@@ -44,17 +44,10 @@ export interface ScoredLine {
   p2: number;
 }
 
-export const INPUT_NAMES = [
-  't (minutes after 09:30)', 'return from the open', '5-minute return', '15-minute return', '60-minute return', 'place in the day range',
-  'day range / open', 'realised vol, 30 min', 'rv30 / prior rv', 'range compression', 'opening-range break', 'opening-range break size',
-  'vs prior high', 'vs prior low', 'open gap', 'minutes left', 'VWAP z', 'volume vs curve', 'last-5 volume vs curve',
-  'SPY 5-minute', 'SPY 15-minute', 'SPY from open', 'sector 15-minute', 'sector from open', 'ATM IV', 'skew',
-  'IV / RV', 'net gamma', 'call wall distance', 'put wall distance', 'moneyness', 'side', 'mid', 'spread / mid',
-  'mid 5-minute change', 'mid 15-minute change', 'contract IV', 'delta', 'gamma', 'theta / day', 'vega', 'gamma / |theta|',
-  'theta / mid', 'contract open interest', 'index class', 'high-beta class', 'signed return from open', 'signed 5-minute',
-  'signed 15-minute', 'signed 60-minute', 'signed VWAP z', 'signed OR break', 'signed SPY 15-minute', 'signed sector 15-minute',
-  'signed vs prior high', 'signed vs prior low',
-];
+/** The 56 inputs' names, in the trees' column order (compassFeatures.ts). */
+import { INPUT_NAMES } from './compassFeatures';
+
+export { INPUT_NAMES };
 
 const FLAT_MIN = 15 * 60 + 55;
 const two = (n: number) => String(n).padStart(2, '0');

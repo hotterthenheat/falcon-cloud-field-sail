@@ -1,10 +1,10 @@
 /* Compass scorer. Books A and B call Model 1 (entry) and Model 2 (runner). Book C calls neither. A hash or
    tree-count miss scores nothing. */
 
-import { nanUnsafeColumns, parseBoosters, predict, type Tree } from './lgbm';
+import { firstNaN, nanUnsafeColumns, parseBoosters, predict, type Tree } from './lgbm';
 import { compassHost } from './compassHost';
 import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
-import { nyYmd as ymd, sessionBefore } from '../core/calendar';
+import { nyYmd as ymd, sessionBefore, sessionCloseMinOn } from '../core/calendar';
 import {
   DO_NOT_REQUEST,
   ENTRY_SHA,
@@ -30,19 +30,23 @@ import {
   LOTTERY_CAP,
   SESSION_MIN,
   YEAR_SESSIONS,
-  FLAT_T,
   QUOTE_MAX_AGE_MS,
   inLottery,
   releaseBlocks,
   thetaBurns,
   lotteryEntry,
   P1_MIN,
+  MODEL_1_NAME,
+  MODEL_2_NAME,
+  entryTimeOk,
+  ENTRY_MIN_LEFT,
+  flatTOf,
 } from './compassParams';
 import { COMPASS_TICKERS } from './compassUniverse';
 import { optionScanOpen, sessionDayOpen, sessionYmd } from './compassSession';
 import type { OptionRight, Setup } from '../types/compass';
 import type { PathBar } from './compassOutcome';
-import { CORE, INDEX, NO_DAILY, SECTOR_OF, UNDER, atmPair, curveFrom, features, tapeOf, yearsLeft, type Bar, type Curve, type PinBook } from './compassFeatures';
+import { CORE, INDEX, INPUT_NAMES, NO_DAILY, SECTOR_OF, UNDER, atmPair, curveFrom, features, tapeOf, yearsLeft, type Bar, type Curve, type PinBook } from './compassFeatures';
 
 let ENTRY: Tree[] = [];
 let RUNNER: Tree[] = [];
@@ -139,6 +143,11 @@ function modelsLocked(): boolean {
 const seen = new Set<string>();
 const seenRootA = new Set<string>();
 const seenRootB = new Set<string>();
+/* When each official Book A/B seat and contract was taken (the mark, epoch ms): a late mark is judged on the seats and
+   contracts as they stood at its own mark, not on calls that fired after it. A pack from before these maps reads every
+   seat as taken from the start of the session (the old rule). */
+const rootAt = new Map<string, number>();
+const seenMark = new Map<string, number>();
 const seenRootC = new Set<string>();
 /* A mark scored late is never an official call and never takes a seat. What it would have called is kept apart, one
    per contract and one per root and book a session, for the review and the study. */
@@ -215,11 +224,22 @@ class InputFault extends Error {}
 /** A fault, as against an answer (rows, or ThetaData's "no data for this request"). */
 const faulted = (got: { error: string | null }) => !!got.error && got.error !== 'no_data';
 
-async function loadBars(symbol: string, day: string, strict = false): Promise<Bar[]> {
+/** The last bar's minute is at least `need` (a live score needs minute t-1's bar: its high and low are in the range
+    columns). A memo older than two seconds that ends earlier is read again once; a name that did not trade in t-1
+    has no bar there, so a second read that still ends earlier is taken as it is. */
+function barsReach(bars: readonly Bar[], day: string, need: number | undefined): boolean {
+  if (need == null) return true;
+  const last = bars[bars.length - 1];
+  return !!last && last.d === day && last.m >= need;
+}
+
+async function loadBars(symbol: string, day: string, strict = false, need?: number): Promise<Bar[]> {
   const key = `${symbol}|${day}`;
   const hit = barMemo.get(key);
-  /* a finished session's bars do not change; today's are read again after a minute */
-  if (hit && (Date.now() - hit.at < 60_000 || (hit.bars.length && day < ymd(Date.now())))) return hit.bars;
+  /* a finished session's bars do not change; today's are read again after a minute, or sooner when the memo does not
+     reach the minute the score needs */
+  const finished = !!hit?.bars.length && day < ymd(Date.now());
+  if (hit && (finished || (Date.now() - hit.at < 60_000 && (barsReach(hit.bars, day, need) || Date.now() - hit.at < 2_000)))) return hit.bars;
   const root = UNDER[symbol] ?? symbol;
   const index = INDEX.has(symbol) || INDEX.has(root);
   const path = index
@@ -234,6 +254,9 @@ async function loadBars(symbol: string, day: string, strict = false): Promise<Ba
   barMemo.set(key, { at: Date.now(), bars });
   return bars;
 }
+
+/** The scan's one-minute bar read (and memo), for the golden. */
+export const minuteBars = (symbol: string, day: string, need?: number): Promise<Bar[]> => loadBars(symbol, day, false, need);
 
 async function loadPrior(name: string, day: string, strict = false): Promise<{ h: number; l: number; c: number } | null> {
   const bars = await loadBars(name, priorSessionYmd(day), strict);
@@ -412,7 +435,7 @@ async function pinOf(ticker: string, expiry: string, spot: number, strict = fals
 }
 
 /** One scored row: the contract, the minute, the 56 inputs as the trees read them, and both models' answers. */
-export interface ScoredRow { setup: Setup; minute: number; x: number[]; p1: number; prun: number; late: boolean }
+export interface ScoredRow { setup: Setup; minute: number; x: number[]; p1: number; prun: number | null; late: boolean }
 const rowFns = new Set<(row: ScoredRow) => void>();
 
 /** Every row the scan scores (the server's input check, scripts/compass-validate.ts). */
@@ -645,7 +668,7 @@ function stampPassed(): void {
     const key = `${row.setup.sleeve}|${row.setup.contract}`;
     if (called.has(key)) continue;
     const had = passBook.get(key);
-    const foreign = !had || had.why.startsWith('Model 1') || had.why.startsWith('Short of the line') || had.why.startsWith('The line cleared') || /^[A-Z]{1,6}\s+\d/.test(had.why);
+    const foreign = !had || had.why.startsWith(MODEL_1_NAME) || had.why.startsWith('Short of the line') || had.why.startsWith('The line cleared') || /^[A-Z]{1,6}\s+\d/.test(had.why);
     const why = foreign
       ? (row.p1 + 1e-12 < P1_MIN ? `Short of the line. A call needs ${(P1_MIN * 100).toFixed(2)}%.` : 'The line cleared. No seat left.')
       : had.why;
@@ -678,6 +701,10 @@ export type ModelPack = {
   seen?: string[];
   rootA?: string[];
   rootB?: string[];
+  /** The mark each Book A/B root's seat was taken at (epoch ms) */
+  rootAt?: [string, number][];
+  /** The mark each contract was called at (epoch ms) */
+  seenMark?: [string, number][];
   rootC?: string[];
   scanned?: { odte?: number; weekly?: number };
   misses?: [string, { setup: Setup; p1: number; prun: number }][];
@@ -729,6 +756,8 @@ export function exportModelState(): ModelPack {
     seen: [...seen],
     rootA: [...seenRootA],
     rootB: [...seenRootB],
+    rootAt: [...rootAt],
+    seenMark: [...seenMark],
     rootC: [...seenRootC],
     scanned: { ...scannedAt },
     misses: [...misses.entries()],
@@ -742,7 +771,7 @@ export function exportModelState(): ModelPack {
 }
 
 function clearState(): void {
-  for (const m of [picks, wingPicks, lotteryPicks, kept, nearPicks, passBook, misses, left, passed, watched]) m.clear();
+  for (const m of [picks, wingPicks, lotteryPicks, kept, nearPicks, passBook, misses, left, passed, watched, rootAt, seenMark]) m.clear();
   for (const set of [seen, seenRootA, seenRootB, seenRootC, wouldSeen, wouldRoot.A, wouldRoot.B, wouldRoot.C]) set.clear();
   wouldPicks.clear();
   scannedAt.odte = 0;
@@ -790,6 +819,8 @@ export function importModelState(pack: ModelPack | null, earlierScanned: { day: 
   for (const id of pack.seen ?? []) seen.add(id);
   for (const t of pack.rootA ?? []) seenRootA.add(t);
   for (const t of pack.rootB ?? []) seenRootB.add(t);
+  for (const [t, at] of pack.rootAt ?? []) if (typeof t === 'string' && Number.isFinite(at)) rootAt.set(t, at);
+  for (const [id, at] of pack.seenMark ?? []) if (typeof id === 'string' && Number.isFinite(at)) seenMark.set(id, at);
   for (const t of pack.rootC ?? []) seenRootC.add(t);
   for (const [k, v] of pack.misses ?? []) if (v && v.setup) misses.set(k, v);
   for (const row of pack.left ?? []) if (row && row.id) left.set(row.id, row);
@@ -807,8 +838,12 @@ export function importModelState(pack: ModelPack | null, earlierScanned: { day: 
 export function demoteLate(calls: readonly { id: string; ticker: string; book: 'A' | 'B' | 'C' }[], liveRoots: { A: Set<string>; B: Set<string>; C: Set<string> }): void {
   for (const c of calls) {
     seen.delete(c.id);
+    seenMark.delete(c.id);
     const roots = c.book === 'A' ? seenRootA : c.book === 'B' ? seenRootB : seenRootC;
-    if (!liveRoots[c.book].has(c.ticker)) roots.delete(c.ticker);
+    if (!liveRoots[c.book].has(c.ticker)) {
+      roots.delete(c.ticker);
+      if (!liveRoots.A.has(c.ticker) && !liveRoots.B.has(c.ticker)) rootAt.delete(c.ticker);
+    }
     for (const m of [picks, wingPicks, lotteryPicks, nearPicks]) for (const [k, v] of m) if (v.id === c.id) m.delete(k);
     wouldSeen.add(c.id);
     wouldRoot[c.book].add(c.ticker);
@@ -878,12 +913,12 @@ export function bestByName(sleeve: 'odte' | 'weekly'): Map<string, { p1: number;
 }
 
 /** Best scored miss per name. A later slice does not erase a higher one. */
-function noteMiss(s: Setup, p1: number, prun: number): void {
+function noteMiss(s: Setup, p1: number, prun: number | null): void {
   if (!(p1 >= 0)) return;
   const key = `${s.sleeve}|${s.ticker}`;
   const had = misses.get(key);
   if (had && had.p1 >= p1) return;
-  misses.set(key, { setup: s, p1, prun });
+  misses.set(key, { setup: s, p1, prun: prun ?? 0 });
 }
 
 const CLOSEST_CAP = 8;
@@ -976,9 +1011,36 @@ function releaseShut(now: number): boolean {
   return false;
 }
 
+/** The session's early close (minute of the day) or null, for the entry gate and the theta burn's flat. The scan sets
+    it with the ledger's (compassScan readClose); unset, the core calendar's close for the day stands. */
+let scoreClose: { day: string; min: number | null } | null = null;
+
+export function setScoreClose(day: string, min: number | null): void {
+  scoreClose = { day, min };
+}
+
+function closeOn(day: string): number | null {
+  if (scoreClose && scoreClose.day === day) return scoreClose.min;
+  const m = sessionCloseMinOn(`${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}`);
+  return m < 16 * 60 ? m : null;
+}
+
 /** 'scored' (the rows went through the books; a release window or a shut tape is also a pass), 'fault' (an input
     the terminal did not answer: nothing was scored, the name is scored again), 'locked' (the model files failed). */
 export type ScoreResult = 'scored' | 'fault' | 'locked';
+
+/** Model 1 and Model 2 on one row. A model whose NaN-unsafe column (lgbm.ts nanUnsafeColumns) is NaN in the row is
+    not scored: LightGBM would read the NaN as 0, a value no training row had there (realised vol 0, range
+    compression 0, gamma/|theta| 0), and walk a branch no training row took. Model 1 unscored means no call; Model 2
+    unscored means prun is null and Book A does not ride. */
+export function scoreRow(x: readonly number[]): { p1: number | null; prun: number | null; why: string } {
+  const bad1 = firstNaN(x, ENTRY_UNSAFE);
+  if (bad1 >= 0) return { p1: null, prun: null, why: `${MODEL_1_NAME} not scored: ${INPUT_NAMES[bad1]} (input ${bad1}) is not defined yet.` };
+  const p1 = predict(ENTRY, x);
+  const bad2 = firstNaN(x, RUNNER_UNSAFE);
+  if (bad2 >= 0) return { p1, prun: null, why: `${MODEL_2_NAME} not scored: ${INPUT_NAMES[bad2]} (input ${bad2}) is not defined yet.` };
+  return { p1, prun: predict(RUNNER, x), why: '' };
+}
 
 async function scoreAll(setups: Setup[], now: number, merge = false, late = false): Promise<ScoreResult> {
   try {
@@ -1009,12 +1071,17 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
   });
   if (!rows.length) return 'scored';
   const names = [...new Set(rows.map(s => UNDER[s.ticker] ?? printOf(s.ticker)))];
+  /* a live score reads minute t-1's bar (the day range, the returns): a memo up to a minute old may not have it yet */
+  const need = !late && minute - 1 >= 9 * 60 + 30 && minute - 1 < 16 * 60 ? minute - 1 : undefined;
   const book = new Map<string, Bar[]>();
-  await Promise.all(names.map(async name => { book.set(name, await loadBars(name, day, true)); }));
-  const spy = await loadBars('SPY', day, true);
+  await Promise.all(names.map(async name => { book.set(name, await loadBars(name, day, true, need)); }));
+  const spy = await loadBars('SPY', day, true, need);
   const etfs = [...new Set(names.map(name => SECTOR_OF[name]).filter(Boolean))];
   const secBars = new Map<string, Bar[]>();
-  await Promise.all(etfs.map(async etf => { secBars.set(etf, await loadBars(etf, day, true)); }));
+  await Promise.all(etfs.map(async etf => { secBars.set(etf, await loadBars(etf, day, true, need)); }));
+  const flatT = flatTOf(closeOn(day));
+  /* a late mark is judged on the seats and contracts as they stood at its mark */
+  const calledBy = (id: string) => seen.has(id) && (!late || (seenMark.get(id) ?? 0) <= mark);
   /* a live scan reads SPY's and the sector ETFs' price at the mark: their minute bar is not in yet */
   const marks = new Map<string, number>();
   if (!late) {
@@ -1073,8 +1140,8 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
     for (const [key, pick] of picks) if (sleeves.has(pick.sleeve) && !seen.has(pick.id)) next.delete(key);
     for (const [key, pick] of wingPicks) if (sleeves.has(pick.sleeve) && !seen.has(key)) wingNext.delete(key);
   }
-  const aPool: { setup: Setup; p1: number; prun: number; gex: number; retOpen: number }[] = [];
-  const bPool: { setup: Setup; p1: number; prun: number; gex: number; retOpen: number }[] = [];
+  const aPool: { setup: Setup; p1: number; prun: number | null; gex: number; retOpen: number }[] = [];
+  const bPool: { setup: Setup; p1: number; prun: number | null; gex: number; retOpen: number }[] = [];
   for (const [, list] of bySlot) {
     const ticker = list[0].ticker;
     const under = UNDER[ticker] ?? ticker;
@@ -1123,24 +1190,33 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       const raw = features({ ...s, mid }, minute, book.get(under) ?? [], spy, pd.get(under) ?? null, iv, skew, sec, curve, pin, { m5: midBack(s, minute - 5), m15: midBack(s, minute - 15) }, { spy: marks.get('SPY'), sec: etf ? marks.get(etf) : undefined });
       if (!raw) continue;
       const x = f32(raw);
-      const p1 = predict(ENTRY, x);
-      const prun = predict(RUNNER, x);
+      const scored = scoreRow(x);
+      if (scored.p1 == null) {
+        notes.push(`${word} ${scored.why}`);
+        continue;
+      }
+      const p1 = scored.p1;
+      const prun = scored.prun;
       for (const fn of rowFns) fn({ setup: s, minute, x, p1, prun, late });
       report.scored += 1;
       if (p1 > report.best) {
         report.best = p1;
-        report.prun = prun;
+        report.prun = prun ?? 0;
         report.contract = word;
         report.ticker = s.ticker;
-        report.setup = { ...s, p1, prun, seenAt: undefined };
+        report.setup = { ...s, p1, prun: prun ?? undefined, seenAt: undefined };
       }
       noteMiss(s, p1, prun);
-      const dt = Math.max(0, FLAT_T - (tape.tt + 1)) / (SESSION_MIN * YEAR_SESSIONS);
+      if (!entryTimeOk(tape.tt, flatT)) {
+        notes.push(`${word} is outside the entry minutes (t 15 to 330 and ${ENTRY_MIN_LEFT} minutes before the flat)`);
+        continue;
+      }
+      const dt = Math.max(0, flatT - (tape.tt + 1)) / (SESSION_MIN * YEAR_SESSIONS);
       if (thetaBurns(x[39], x[38], s.ask, dt)) {
         notes.push(`${word} theta burns the stop before the flat`);
         continue;
       }
-      if (seen.has(s.id)) {
+      if (calledBy(s.id)) {
         notes.push(`${word} already called today`);
         continue;
       }
@@ -1149,10 +1225,10 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       const prior = seeded(s, minute - BOOK_B_LOOKBACK) ?? quoteAt(s.id, minute - BOOK_B_LOOKBACK);
       const retOpen = tape.op > 0 && tape.S > 0 ? tape.S / tape.op - 1 : NaN;
       const row = { setup: s, p1, prun, gex: x[27], retOpen };
-      if (bookAPass(tape.tt, dist, span, dte, s.bid, s.ask, p1)) aPool.push(row);
-      else if (prior && bookBPass(tape.tt, dist, span, dte, s.bid, s.ask, prior.bid, prior.ask, p1)) bPool.push(row);
+      if (bookAPass(tape.tt, dist, span, dte, s.bid, s.ask, p1, flatT)) aPool.push(row);
+      else if (prior && bookBPass(tape.tt, dist, span, dte, s.bid, s.ask, prior.bid, prior.ask, p1, flatT)) bPool.push(row);
       else if (!prior && dist > span) notes.push(`${word} has no quote from 30 minutes earlier`);
-      notes.push(`${word} ${lineWhy(p1)}`);
+      notes.push(`${word} ${lineWhy(p1)}${prun == null ? ` ${scored.why}` : ''}`);
       scoredP.set(word, p1);
     }
     passed.set(ticker, notes.slice(0, 6));
@@ -1166,8 +1242,8 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       rememberPass(hit, pct ?? 0, note.slice(cut + 1));
     }
   }
-  type Row = { setup: Setup; p1: number; prun: number; gex: number; retOpen: number; book: 'A' | 'B' };
-  const choose = (pool: { setup: Setup; p1: number; prun: number; gex: number; retOpen: number }[], book: 'A' | 'B'): Row[] => {
+  type Row = { setup: Setup; p1: number; prun: number | null; gex: number; retOpen: number; book: 'A' | 'B' };
+  const choose = (pool: { setup: Setup; p1: number; prun: number | null; gex: number; retOpen: number }[], book: 'A' | 'B'): Row[] => {
     const byRoot = new Map<string, typeof pool>();
     for (const row of pool) {
       const list = byRoot.get(row.setup.ticker) ?? [];
@@ -1203,7 +1279,9 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
     }
     return out;
   };
-  const heldRoots = new Set<string>([...seenRootA, ...seenRootB]);
+  /* the seats taken: live, every one so far; a late mark, only those taken at or before its mark (a seat a later call
+     took was free then). A seat with no recorded mark counts as taken from the start. */
+  const heldRoots = new Set<string>([...seenRootA, ...seenRootB].filter(t => !late || (rootAt.get(t) ?? 0) <= mark));
   let seats = heldRoots.size;
   const cands = [...choose(aPool, 'A'), ...choose(bPool, 'B')].sort((a, b) => {
     const ad = Number.isFinite(a.retOpen) && Math.abs(a.retOpen) >= DRIVE ? 1 : 0;
@@ -1214,14 +1292,14 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
   for (const row of cands) {
     const drive = Number.isFinite(row.retOpen) && Math.abs(row.retOpen) >= DRIVE;
     if (anyDrive && !drive) continue;
-    if (seats >= SEAT_CAP || heldRoots.has(row.setup.ticker) || seen.has(row.setup.id)) continue;
+    if (seats >= SEAT_CAP || heldRoots.has(row.setup.ticker) || calledBy(row.setup.id)) continue;
     if (late) {
       /* it clears every gate the official book stood at, but a late mark calls nothing and takes no seat */
-      const run = row.book === 'B' || runnerFlag(row.prun);
+      const run = row.book === 'B' || (row.prun != null && runnerFlag(row.prun));
       noteWould({
         ...row.setup,
         p1: row.p1,
-        prun: row.prun,
+        prun: row.prun ?? undefined,
         runner: run,
         band: row.book === 'A' ? 'top' : 'wing',
         seenAt: now,
@@ -1234,14 +1312,17 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
     }
     heldRoots.add(row.setup.ticker);
     seats += 1;
+    seenMark.set(row.setup.id, mark);
+    if (!rootAt.has(row.setup.ticker)) rootAt.set(row.setup.ticker, mark);
     if (row.book === 'A') {
-      const run = runnerFlag(row.prun);
+      /* no Model 2 (an input it never saw missing is missing): no runner */
+      const run = row.prun != null && runnerFlag(row.prun);
       seen.add(row.setup.id);
       seenRootA.add(row.setup.ticker);
       next.set(slotOf(row.setup), {
         ...row.setup,
         p1: row.p1,
-        prun: row.prun,
+        prun: row.prun ?? undefined,
         runner: run,
         modelAgree: false,
         better: run ? 'runner' : 'entry',
@@ -1256,7 +1337,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
         priceTargets: [],
         invalidationPrice: 0,
         invalidationReason: '',
-        whyText: 'The math passes.',
+        whyText: row.prun == null ? `The math passes. ${MODEL_2_NAME} not scored, so the exit does not ride.` : 'The math passes.',
       });
     } else {
       seen.add(row.setup.id);
@@ -1264,7 +1345,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       wingNext.set(row.setup.id, {
         ...row.setup,
         p1: row.p1,
-        prun: row.prun,
+        prun: row.prun ?? undefined,
         runner: true,
         modelAgree: false,
         better: 'runner',
@@ -1568,8 +1649,9 @@ export async function scoreLiveContract(input: {
       return { ...scored, ...seatsNow() };
     }
     const x = f32(raw);
-    const p1 = predict(ENTRY, x);
-    const prun = predict(RUNNER, x);
+    const both = scoreRow(x);
+    const p1 = both.p1 ?? NaN;
+    const prun = both.prun ?? NaN;
     const gex = Number.isFinite(x[27]) ? x[27] : null;
     const scored = {
       p1: Number.isFinite(p1) ? p1 : null,

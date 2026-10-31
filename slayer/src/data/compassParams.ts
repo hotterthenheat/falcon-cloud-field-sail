@@ -97,6 +97,24 @@ export function inModelWindow(t: number): boolean {
   return Number.isFinite(t) && t >= MODEL_T_MIN && t <= MODEL_T_MAX;
 }
 
+/** A Book A or B entry needs this many minutes between the mark and the flat: the trained minutes end at t = 330,
+    55 minutes before the 15:55 flat (t = 385), and an early close moves the flat, not the training. */
+export const ENTRY_MIN_LEFT = 55;
+
+/** The flat of a session as minutes after 09:30: 385 (15:55) on a full day, five minutes before an early close
+    (12:55 is 205 on a 13:00 close). `closeMin` is the close as a minute of the day, or null on a full day. */
+export function flatTOf(closeMin: number | null | undefined): number {
+  const close = closeMin != null && closeMin < 16 * 60 ? closeMin : 16 * 60;
+  return close - 5 - (9 * 60 + 30);
+}
+
+/** The time-of-day gate on a Book A or B entry: the mark is inside the trees' trained minutes (t 15 to 330) and at
+    least ENTRY_MIN_LEFT minutes before the session's flat. A 09:30 mark, a 15:55 mark, a curb mark to 16:55 and every
+    overnight mark fail it; on a 13:00 close the last entry is t = 150 (12:00). */
+export function entryTimeOk(t: number, flatT = FLAT_T): boolean {
+  return inModelWindow(t) && flatT - t >= ENTRY_MIN_LEFT;
+}
+
 /** Every 5 minutes while an option tape is open, plus the last minute before a 0 DTE stop.
  *  09:29 is VIX. 15:59 is a 16:00 stop. 16:14 is a 16:15 stop. The halt sends nothing else. */
 function scanMark(minuteOfDay: number): boolean {
@@ -227,17 +245,19 @@ export function bookBRange(span: number): { inner: number; outer: number } {
   return { inner, outer: inner + 4 };
 }
 
-export function bookAPass(t: number, dist: number, span: number, dte: number, bid: number, ask: number, p1: number): boolean {
+export function bookAPass(t: number, dist: number, span: number, dte: number, bid: number, ask: number, p1: number, flatT = FLAT_T): boolean {
   return onScanGrid(t)
+    && entryTimeOk(t, flatT)
     && dist <= span
     && dte >= DTE_MIN && dte <= DTE_MAX
     && spreadPass(bid, ask)
     && p1 >= P1_MIN;
 }
 
-export function bookBPass(t: number, dist: number, span: number, dte: number, bid: number, ask: number, priorBid: number, priorAsk: number, p1: number): boolean {
+export function bookBPass(t: number, dist: number, span: number, dte: number, bid: number, ask: number, priorBid: number, priorAsk: number, p1: number, flatT = FLAT_T): boolean {
   const band = bookBRange(span);
   return onScanGrid(t)
+    && entryTimeOk(t, flatT)
     && dte >= DTE_MIN && dte <= DTE_MAX
     && dist >= band.inner && dist <= band.outer
     && ask <= BOOK_B_ASK

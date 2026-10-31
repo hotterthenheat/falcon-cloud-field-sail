@@ -25,7 +25,7 @@ import { done, expectEqual, expectNear, freezeClock, installUwFixtures } from '.
 import { CHAIN, CONTRACT, DAY, MINUTE, PRIOR, curveBars, pinBook, sessionBars } from './compassScenario';
 import { atmPair, curveFrom, features, yearsLeft } from '../../src/data/compassFeatures';
 import { optionScanOpen } from '../../src/data/compassSession';
-import { f32, bookAPass, bookBPass, onScanGrid, sessionScanOpen, spreadPass, strikeDistance, strikeSpan, thetaBurns, P1_MIN } from '../../src/data/compassParams';
+import { f32, bookAPass, bookBPass, entryTimeOk, flatTOf, onScanGrid, sessionScanOpen, spreadPass, strikeDistance, strikeSpan, thetaBurns, P1_MIN } from '../../src/data/compassParams';
 import { parseBoosters, predict } from '../../src/data/lgbm';
 import { settleSignal, type PathQuote } from '../../src/data/compassOutcome';
 import { nyWallTime } from '../../src/core/nyTime';
@@ -171,6 +171,12 @@ expectEqual('Book A 5 strikes out', bookAPass(60, 5, 4, 0, 1.2, 1.24, 0.8), fals
 expectEqual('Book B 0.40 × 0.42 from 0.90', bookBPass(60, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), true);
 expectEqual('Book B not half (0.42 vs 0.80)', bookBPass(60, 9, 4, 0, 0.4, 0.42, 0.78, 0.8, 0.8), false);
 expectEqual('Book B too near (7 out)', bookBPass(60, 7, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), false);
+/* the time-of-day gate (was: any mark on the grid, so 15:55, the curb to 16:55 and the overnight could call): t 15 to
+   330, and 55 minutes before the flat (t 385 on a full day; 205 on a 13:00 close, so the last entry is t 150, 12:00) */
+expectEqual('Book A at 09:45 and 15:00, not 09:40, 15:05, 15:55, 16:55, 21:00', [15, 330, 10, 335, 385, 445, 690].map(t => bookAPass(t, 2, 4, 0, 1.2, 1.24, 0.8)), [true, true, false, false, false, false, false]);
+expectEqual('Book B gated the same: 15:00 yes, 15:05 no', [bookBPass(330, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), bookBPass(335, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8)], [true, false]);
+expectEqual('early close 13:00: flat t 205, last entry t 150', [flatTOf(780), flatTOf(null), bookAPass(150, 2, 4, 0, 1.2, 1.24, 0.8, flatTOf(780)), bookAPass(155, 2, 4, 0, 1.2, 1.24, 0.8, flatTOf(780))], [205, 385, true, false]);
+expectEqual('entry gate in words', [entryTimeOk(15), entryTimeOk(14), entryTimeOk(330, 385), entryTimeOk(331, 385)], [true, false, true, false]);
 /* Theta burn: |theta/day·365|·dt ≥ 0.5322·ask. -0.50/day over 40 minutes (40/(390·252) y): 182.5·0.000407 = 0.0743 < 0.5322·0.20 = 0.1064 holds; at ask 0.12 it burns (0.0639). */
 expectEqual('theta does not burn at ask 0.20', thetaBurns(-0.5, 0.01, 0.2, 40 / (390 * 252)), false);
 expectEqual('theta burns at ask 0.12', thetaBurns(-0.5, 0.01, 0.12, 40 / (390 * 252)), true);
@@ -274,10 +280,14 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
     econ: () => [],
   });
   const { atMark } = await import('../../src/data/compassScan');
-  const { scoreBook, onScoredRow, currentPicks } = await import('../../src/data/compassModel');
+  const { scoreBook, onScoredRow, currentPicks, importModelState } = await import('../../src/data/compassModel');
   const { recordPicks, contractPath, wouldSignals, signals } = await import('../../src/data/compassLedger');
   const { underCloses } = await import('../../src/data/compassModel');
   const mark = nyWallTime(2026, 10, 29, 10, 15);
+  /* every seat was taken by live calls, but at 11:00, after this mark: the late mark is judged on the seats as they
+     stood at 10:15, all free (was: seats full, nothing would have been called) */
+  const later = mark + 45 * 60_000;
+  importModelState({ day: '20261029', rootA: ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'META'], rootAt: ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'META'].map(t => [t, later] as [string, number]) }, null);
   const snap = await atMark('RUTW', mark, 'odte');
   const scored: { contract: string; p1: number; bid: number; ask: number; q: number }[] = [];
   const off = onScoredRow(r => scored.push({ contract: r.setup.contract, p1: r.p1, bid: r.setup.bid, ask: r.setup.ask, q: r.setup.quotedAt ?? 0 }));
@@ -290,7 +300,7 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   const row = scored.find(r => r.contract === 'RUTW 2845C') ?? null;
   const sig = wouldSignals().find(r => r.contract === 'RUTW 2845C') ?? null;
   const { seatsNow } = await import('../../src/data/compassModel');
-  expectEqual('late: no official call, no card, no seat', [signals().length, pick, seatsNow().seats], [0, null, 0]);
+  expectEqual('late: no official call, no card, no seat taken (the five later seats stay five)', [signals().length, pick, seatsNow().seats], [0, null, 5]);
   let outcome: ReturnType<typeof settleSignal> | null = null;
   if (sig) {
     const quotes = await contractPath(sig, null);
@@ -619,6 +629,65 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   const lost = role();
   eng.stop();
   expectEqual('engine lock: reader, takes over a stale lock, gives it up to a live holder (was: reader for life, scanner never stops)', [first, took, lost], [true, false, true]);
+}
+
+/* ---- 11. what the trees never saw -------------------------------------------------------------------------- */
+{
+  const { nanUnsafeColumns, trainingRanges } = await import('../../src/data/lgbm');
+  const { setCompassHost } = await import('../../src/data/compassHost');
+  const { scoreBook, scoreRow, minuteBars } = await import('../../src/data/compassModel');
+  const entryText = readFileSync(join(here, '..', '..', 'public', 'models', 'model_entry_all6months.txt'), 'utf8');
+  const runnerText = readFileSync(join(here, '..', '..', 'public', 'models', 'model_runner_all6months.txt'), 'utf8');
+  /* missing type none on a split, and 0 outside the column's training range: realised vol (min 1.63e-5 / 5.86e-5),
+     range compression (runner min 0.0637), gamma/|theta| (runner min 1.58e-6); the rest are never NaN live */
+  expectEqual('NaN-unsafe columns, Model 1', nanUnsafeColumns(entryText), [0, 6, 7, 15, 32]);
+  expectEqual('NaN-unsafe columns, Model 2', nanUnsafeColumns(runnerText), [0, 6, 7, 9, 15, 32, 38, 40, 41]);
+  expectEqual('training range of x5 is [0, 1]', trainingRanges(entryText)[5], [-4.4935507815787104e-14, 1]);
+  let reads = 0;
+  let lastMinute = 9 * 60 + 30 + 58;
+  const day11 = '20261030';
+  freezeClock('2026-10-30T14:30:10Z');
+  setCompassHost({
+    server: true,
+    theta: async () => {
+      reads += 1;
+      const rows = Array.from({ length: lastMinute - 570 + 1 }, (_, i) => {
+        const m = 570 + i;
+        return { timestamp: `2026-10-30T${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:00.000`, open: 100, high: 100.5, low: 99.5, close: 100, volume: 10 };
+      });
+      return { status: 200, data: rows, error: null };
+    },
+    asset: async p => {
+      const b = readFileSync(join(here, '..', '..', 'public', p.replace(/^\/+/, '')));
+      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+    },
+    econ: () => [],
+  });
+  await scoreBook([], Date.now(), true);
+  const row = ref.x.map(v => (v == null ? NaN : v));
+  const plain = scoreRow(row);
+  expectNear('scoreRow on the reference row = both models', plain.p1 ?? NaN, ref.entry, 1e-9);
+  expectNear('scoreRow on the reference row, Model 2', plain.prun ?? NaN, ref.runner, 1e-9);
+  const noCompress = scoreRow(row.map((v, i) => (i === 9 ? NaN : v)));
+  expectEqual('compression undefined: Model 1 scores (NaN is missing to it), Model 2 does not (was: read as 0)', [noCompress.p1 != null, noCompress.prun, /Model 2 not scored: range compression \(input 9\)/.test(noCompress.why)], [true, null, true]);
+  expectEqual('gamma/|theta| undefined: Model 2 not scored', scoreRow(row.map((v, i) => (i === 41 ? NaN : v))).prun, null);
+  const noVol = scoreRow(row.map((v, i) => (i === 7 ? NaN : v)));
+  expectEqual('realised vol undefined: neither model scores (Model 1 never saw it missing either)', [noVol.p1, noVol.prun, /Model 1 not scored: realised vol, 30 min \(input 7\)/.test(noVol.why)], [null, null, true]);
+  /* x5, place in the day range: the price at the mark above the high of minutes 0..t-1 was 2.0, now 1 (training max) */
+  const flat = Array.from({ length: 30 }, (_, k) => ({ d: '20261030', m: 570 + k, o: 100, h: 101, l: 99, c: 100, v: 10 }));
+  const x5 = features(stub(100, 'C', 1, 1.04, 103), 600, flat, flat, null, NaN, NaN, [], null, null, { m5: NaN, m15: NaN })?.[5];
+  expectEqual('x5 clipped to the training range [0, 1] (was (103 - 99)/(101 - 99) = 2)', x5, 1);
+  /* the live bar read: a memo that does not reach minute t-1 is read again (was: up to 60 s stale) */
+  reads = 0;
+  lastMinute = 628;
+  const a = await minuteBars('QQQ', day11, 629);
+  const b2 = await minuteBars('QQQ', day11, 629);
+  const inside = reads;
+  freezeClock('2026-10-30T14:30:13Z');
+  lastMinute = 629;
+  const c = await minuteBars('QQQ', day11, 629);
+  const d = await minuteBars('QQQ', day11, 629);
+  expectEqual('stale bars: read, memo inside 2 s, read again once it is older and short of t-1, then memo', [a.at(-1)?.m, b2.at(-1)?.m, inside, c.at(-1)?.m, d.at(-1)?.m, reads], [628, 628, 1, 629, 629, 2]);
 }
 
 done();
