@@ -287,8 +287,15 @@ export function geoFromItems(items: NewsItem[]): GeoNewsEvent[] {
   const seen = new Set<string>();
   const once = items.filter(item => (seen.has(item.id) ? false : (seen.add(item.id), true)));
   return once.map(item => {
-    const hq = item.ticker ? HQ[item.ticker] ?? null : null;
-    const macro = !hq ? MACRO_ORIGINS.find(m => m.re.test(item.headline)) : null;
+    /* the story's own name's home first, then any other name the headline is about; a place the headline names
+       before a company it only mentions in passing */
+    const homeOf = (list: readonly (string | null | undefined)[]) => {
+      for (const t of list) if (t && HQ[t]) return { ...HQ[t], ticker: t };
+      return null;
+    };
+    const named = homeOf([item.ticker, ...(item.tickers ?? [])]);
+    const macro = !named ? MACRO_ORIGINS.find(m => m.re.test(item.headline)) ?? null : null;
+    const hq = named ?? (!macro ? homeOf(item.mentions ?? []) : null);
     const o = hq ?? macro;
     const cluster: Cluster = hq ? hq.cluster : 'index';
     const severity = severityOf(item);
@@ -303,7 +310,7 @@ export function geoFromItems(items: NewsItem[]): GeoNewsEvent[] {
             lat: o.lat,
             lng: o.lng,
             city: o.city,
-            label: item.ticker ? `${o.city} · ${item.ticker} origin` : `${o.city} · macro origin`,
+            label: hq ? `${o.city} · ${hq.ticker} origin` : item.ticker ? `${o.city} · ${item.ticker} origin` : `${o.city} · macro origin`,
             w: severity,
           }
         : { lat: 0, lng: 0, city: '', label: '', w: 0 },
