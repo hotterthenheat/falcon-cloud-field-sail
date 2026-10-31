@@ -269,6 +269,27 @@ const { buildCatches } = await import('../../src/data/flowBook');
   ];
   expectEqual('one-minute bar volumes off a running total', parseTape(bars).map(c => c.volume), [0, 500, 0]);
 }
+{
+  /* every net figure says what it covers: the tide from 09:30 (the window's base) to its last minute, a name's pane from
+     its own 09:30 tick, the tape's net with what it leaves out */
+  expectEqual('market tide 09:30–16:15: covers', tideNet?.covers, { since: '09:30', until: '16:14', source: 'market tide', leaves: [] });
+  const spyTicks = (await uwCall('/stock/SPY/net-prem-ticks')).data as Record<string, unknown>[];
+  expectEqual("SPY pane: covers", T.paneCovers('SPY', T.paneFromTicks('SPY', spyTicks, [])), { since: '09:30', until: '16:14', source: 'net-prem-ticks', leaves: ['pre-market', 'after 16:15 ET'] });
+  expectEqual('market tape summary: covers', [mktSum.covers.source, mktSum.covers.leaves], ['the prints in hand', ['spread legs', 'crosses', 'compression', 'mid prints', 'after hours']]);
+  /* Compare's headline obeys the money cut: on OTM it is the cut's own contracts (≈ premium × (ask − bid) share) — an
+     OTM call of $1M at 600/200/200 is +$400K, an OTM put of $500K at 100/300/100 −$200K, net +$600K; the every-strike
+     expiry route's +$8M is not the cut's (it read +$8M on every cut) */
+  const { buildTraceSide } = await import('../../src/data/traceCompare');
+  const otm = (right: 'C' | 'P', premium: number, sv: { ask: number; bid: number; mid: number }) => ({ key: `SPY-${right}`, ticker: 'SPY', right, strike: right === 'C' ? 800 : 700, otmPct: 3, dte: 10, expiry: '11/07/2026', premium, volume: sv.ask + sv.bid + sv.mid, sideVol: sv, askPct: (100 * sv.ask) / (sv.ask + sv.bid), multiPct: 0, floorPct: 0, sweepPct: 0, iv: 20, oi: 1, volOverOI: 1, deltaOI: 0 }) as never;
+  const itm = { ...(otm('C', 9_000_000, { ask: 900, bid: 0, mid: 100 }) as object), key: 'SPY-ITM', otmPct: -5 } as never;
+  const fpe = [{ expiry: '2026-11-07', date: '2026-10-28', dte: 10, callNet: 9_000_000, putNet: 1_000_000, callVol: 1, putVol: 1, trades: 1 }];
+  const side = buildTraceSide([otm('C', 1_000_000, { ask: 600, bid: 200, mid: 200 }), otm('P', 500_000, { ask: 100, bid: 300, mid: 100 }), itm], [], [], 'SPY', 'all', 'otm', fpe, '2026-10-28');
+  const every = buildTraceSide([otm('C', 1_000_000, { ask: 600, bid: 200, mid: 200 })], [], [], 'SPY', 'all', 'all', fpe, '2026-10-28');
+  expectEqual('Compare net on OTM: the cut\'s contracts, ≈; on all strikes: the expiry route', [Math.round(side.net), side.netCovers.approx, every.net, every.netCovers.source], [600_000, true, 8_000_000, 'flow by expiry']);
+  /* no call premium is no P/C ratio (it read 0) */
+  const putsOnly = summarizeTape(spy.prints.filter(p => p.right === 'P' && !p.extended));
+  expectEqual('P/C with no calls: no ratio', Number.isNaN(putsOnly.pcRatio), true);
+}
 
 void stockClose;
 done();
