@@ -8,7 +8,7 @@ import { nyIsoDate, nyMinutes } from '../core/nyTime';
 import { ensureQuote, peekQuote } from './liveQuote';
 import { ensureBook, peekSpot } from './uwBook';
 import { uwCall, whalesOptionContractsPaged, type UwContract } from './whales';
-import { bsOnMark, yearFracLeft } from './weigherGate';
+import { atmIvAt, expectedMovePctOf, readContract } from './weigherGate';
 import { weekdayDte } from './compassParams';
 import type { DeskChain, DeskContract, ListedExpiry } from './weigherDesk';
 import type { OptionRight } from '../types/compass';
@@ -250,30 +250,33 @@ export function sheetChain(ticker: string, iso: string, range = 18, root?: strin
   const want = (root || WEEKLY_ROOT[name] || name).toUpperCase();
   const sheet = sheets.get(sheetKey(name, iso));
   const spot = liveSpotOf(name) ?? 0;
-  const tYears = yearFracLeft(iso);
+  const now = Date.now();
   const byStrike = new Map<number, { call?: DeskContract; put?: DeskContract }>();
   let quotedAt = 0;
-  const ivs: number[] = [];
   for (const [k, m] of sheet?.rows ?? []) {
     const [r, strikeText, right] = k.split('|');
     if (r !== want) continue;
     const strike = Number(strikeText);
     const side = right as OptionRight;
-    const solved = spot > 0 ? bsOnMark(spot, strike, side, m.bid, m.ask, tYears) : null;
-    const ivPct = m.iv > 0 ? m.iv * 100 : solved ? solved.iv : NaN;
-    if (ivPct > 0) ivs.push(ivPct);
+    /* every model number in the row off one vol on one clock: the vendor's calendar-year IV moved onto the trading
+       clock, else the mid's own (data/weigherGate readContract); the vendor's own greeks are on its clock and not shown */
+    const solved = spot > 0 ? readContract({ ticker: name, root: r, spot, strike, right: side, bid: m.bid, ask: m.ask, expiryIso: iso, vendorIv: m.iv, now }) : null;
+    const ivPct = solved ? solved.iv : NaN;
     quotedAt = Math.max(quotedAt, m.at);
     const intrinsic = spot > 0 ? Math.max(0, side === 'C' ? spot - strike : strike - spot) : NaN;
     const breakeven = m.ask > 0 ? (side === 'C' ? strike + m.ask : strike - m.ask) : NaN;
     const row: DeskContract = {
       ...blankContract(strike, side, spot),
       mark: fixed(m.mark, 2),
-      delta: Number.isFinite(m.delta) ? fixed(m.delta, 4) : solved ? fixed(solved.delta, 4) : NaN,
-      gamma: Number.isFinite(m.gamma) ? fixed(m.gamma, 4) : solved ? fixed(solved.gamma, 4) : NaN,
-      /* the vendor's theta is already per calendar day */
-      theta: Number.isFinite(m.theta) ? fixed(m.theta, 4) : solved ? fixed(solved.theta, 4) : NaN,
-      vega: Number.isFinite(m.vega) ? fixed(m.vega, 4) : solved ? fixed(solved.vega, 4) : NaN,
+      delta: solved ? fixed(solved.delta, 4) : Number.isFinite(m.delta) ? fixed(m.delta, 4) : NaN,
+      gamma: solved ? fixed(solved.gamma, 4) : Number.isFinite(m.gamma) ? fixed(m.gamma, 4) : NaN,
+      /* per trading session, the Weigher's theta (core/greeks thetaPerSession) */
+      theta: solved ? fixed(solved.theta, 4) : NaN,
+      thetaHour: solved ? fixed(solved.thetaHour, 4) : NaN,
+      vega: solved ? fixed(solved.vega, 4) : NaN,
       iv: fixed(ivPct, 2),
+      ivFrom: solved?.ivFrom,
+      europeanApprox: solved?.europeanApprox,
       itmOdds: solved ? fixed(solved.itm, 2) : NaN,
       rho: solved ? fixed(solved.rho, 4) : NaN,
       bid: m.bid,
@@ -307,14 +310,16 @@ export function sheetChain(ticker: string, iso: string, range = 18, root?: strin
     const slot = byStrike.get(strike)!;
     return { strike, call: slot.call ?? blankContract(strike, 'C', spot), put: slot.put ?? blankContract(strike, 'P', spot) };
   });
-  const atm = ivs.length ? [...ivs].sort((a, b) => a - b)[Math.floor(ivs.length / 2)] : 0;
+  /* ATM IV at spot from the strikes around it, then S·σ·√T on the expiry's calendar clock */
+  const atm = atmIvAt(rows, spot);
   return {
     ticker: name,
     spot,
     step,
     rows,
     expiry,
-    expectedMovePct: atm > 0 ? fixed(atm * Math.sqrt(Math.max(tYears, 1e-6)), 2) : 0,
+    atmIv: atm > 0 ? fixed(atm, 2) : 0,
+    expectedMovePct: fixed(expectedMovePctOf(spot, atm, iso, now), 2),
     source: 'live',
     quotedAt,
     expiryIso: iso,

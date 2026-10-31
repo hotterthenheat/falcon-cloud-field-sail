@@ -235,4 +235,61 @@ if (!(existsSync(thetaDir) && readdirSync(thetaDir).some(f => f.endsWith('.json.
   }
 }
 
+/* ---- the chain's ATM IV, expected move and greeks on the recorded snapshot's own clock ---- */
+if (existsSync(thetaDir) && readdirSync(thetaDir).some(f => f.endsWith('.json.gz')) && !RECORD) {
+  /* the snapshot's quotes are stamped 11:51:02 ET (S 769.35): read the chain at that instant */
+  freezeClock('2026-10-29T15:51:02.440Z');
+  const { loadLiveChain } = await import('../../src/data/weigherDesk');
+  const chain = await loadLiveChain('SPY', 0, 12, 'SPY');
+  const at = (k: number) => chain.rows.find(r => r.strike === k)!;
+  expectEqual('snapshot spot', chain.spot, 769.35);
+  /* ThetaData 769C/P 22.46/22.53, 770C/P 22.09/22.16: 22.495 + 0.35·(22.125 − 22.495) = 22.3655 (the old pick was
+     whichever row the answer listed in the middle) */
+  expectNear('chain ATM IV at spot, interpolated', chain.atmIv ?? NaN, 22.37, 1e-9);
+  /* S·σ·√T_calendar: 248.96 calendar minutes to 16:00 → 769.35 × 0.223655 × √(248.96/525600) = $3.745 = 0.49%
+     (σ·√(trading T) gave 1.12%) */
+  const tCal = (16 * 60 - (11 * 60 + 51 + 2.44 / 60)) / 525600;
+  expectNear('chain expected move = S·σ_ATM·√T_calendar, %', chain.expectedMovePct, Number((0.223655 * Math.sqrt(tCal) * 100).toFixed(2)), 1e-9);
+  /* the row's delta off the vendor's IV on the trading clock (calendar-accrued carry) agrees with ThetaData's own */
+  for (const [k, side, want] of [[769, 'call', 0.5395], [770, 'put', -0.567], [772, 'call', 0.2334]] as const) {
+    const c = at(k)[side];
+    expectNear(`chain ${k}${side === 'call' ? 'C' : 'P'} delta vs ThetaData ${want}`, c.delta, want, 0.0015 / Math.abs(want));
+    expectEqual(`chain ${k}${side === 'call' ? 'C' : 'P'} IV is the vendor's`, c.ivFrom, 'vendor');
+  }
+  /* theta per session inside the last session: minus the whole extrinsic (model price at the vendor IV, intrinsic 0) */
+  const c770 = at(770).call;
+  expectEqual('770C theta is minus its extrinsic, within a cent of the mid', Math.abs(c770.theta + c770.mark) < 0.01, true);
+  expectEqual('American put in the money is flagged (778P), not the 760P', [at(778).put.europeanApprox, at(760).put.europeanApprox], [true, false]);
+
+  /* ThetaData's implied_vol is a fraction, always: a 3.2 is 320%, not 3.2% (a synthetic next-day chain, rows out of order) */
+  const { expiryFor, isoDate } = await import('../../src/core/calendar');
+  const nextIso = isoDate(expiryFor(1).date);
+  const nextYmd = nextIso.replace(/-/g, '');
+  const leg = (strike: number, right: 'CALL' | 'PUT', iv: number, bid: number, ask: number) => ({
+    contract: { expiration: nextIso, symbol: 'SPY', strike, right },
+    data: [{ underlying_price: 601, implied_vol: iv, delta: 0, bid, ask, timestamp: '2026-10-29T11:51:02.000', underlying_timestamp: '2026-10-29T11:51:02.000' }],
+  });
+  const synthetic = [
+    leg(605, 'CALL', 0.19, 3.1, 3.2), leg(560, 'PUT', 3.2, 0.02, 0.03), leg(600, 'PUT', 0.21, 4.4, 4.5), leg(595, 'CALL', 0.215, 8.4, 8.5),
+    leg(600, 'CALL', 0.2, 5.3, 5.4), leg(610, 'CALL', 0.185, 1.5, 1.6), leg(605, 'PUT', 0.2, 7.2, 7.3), leg(595, 'PUT', 0.22, 2.9, 3.0),
+  ];
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (url.startsWith('/api/theta/option/snapshot/') && url.includes(`expiration=${nextYmd}`)) {
+      const body = url.includes('/greeks/') ? { response: synthetic } : { response: [] };
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    return real(input, init);
+  }) as typeof fetch;
+  const next = await loadLiveChain('SPY', 1, 12, 'SPY');
+  globalThis.fetch = real;
+  expectEqual('synthetic chain read', [next.expiryIso, next.spot, next.rows.length], [nextIso, 601, 5]);
+  expectNear('a vendor IV of 3.2 reads 320%', next.rows.find(r => r.strike === 560)!.put.iv, 320, 1e-9);
+  /* 600: (20 + 21)/2 = 20.5, 605: (19 + 20)/2 = 19.5, at 601: 20.5 − 0.2 = 20.3 (the old middle-of-the-list pick read 20) */
+  expectNear('synthetic ATM IV at 601 = 20.30', next.atmIv ?? NaN, 20.3, 1e-9);
+  const { sigmaToExpiry } = await import('../../src/core/volClock');
+  expectNear('synthetic expected move = sigmaToExpiry / S', next.expectedMovePct, Number((((sigmaToExpiry(601, 0.203, nextIso) ?? 0) / 601) * 100).toFixed(2)), 1e-9);
+}
+
 done();
