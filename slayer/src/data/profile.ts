@@ -34,11 +34,17 @@ export const SAMPLE_PROFILE: Profile = {
   email: 'johndoe@example.com',
   avatar: null,
   signIn: 'email',
-  devices: [
-    { id: 'this', name: 'Windows · Chrome', lastSeen: 'now', thisOne: true },
-    { id: 'phone', name: 'iPhone · Safari', lastSeen: '2 days ago', thisOne: false },
-  ],
+  /* no invented sessions: the preview knows only the browser it is open in (thisDevice) */
+  devices: [],
 };
+
+/** This browser, read off its own user agent ("macOS · Chrome") — the one session the preview can vouch for. */
+export function thisDevice(): Device {
+  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent;
+  const os = /iPhone|iPad|iPod/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /Windows/.test(ua) ? 'Windows' : /CrOS/.test(ua) ? 'ChromeOS' : /Linux/.test(ua) ? 'Linux' : 'This device';
+  const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\/|CriOS/.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+  return { id: 'this', name: `${os} · ${browser}`, lastSeen: 'now', thisOne: true };
+}
 
 let profile: Profile = (() => {
   try {
@@ -51,7 +57,7 @@ let profile: Profile = (() => {
       ...SAMPLE_PROFILE,
       ...p,
       ...(oldSample ? { name: SAMPLE_PROFILE.name, handle: SAMPLE_PROFILE.handle, email: p.email === 'noah@example.com' ? SAMPLE_PROFILE.email : p.email } : {}),
-      devices: Array.isArray(p.devices) && p.devices.length ? p.devices : SAMPLE_PROFILE.devices,
+      devices: [],
     };
   } catch {
     return SAMPLE_PROFILE;
