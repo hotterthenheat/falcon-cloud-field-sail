@@ -21,7 +21,7 @@ import { phaseAt, type ExtWord } from '../core/session';
 import type { OptionRight } from '../types/compass';
 import type { Candle } from '../types/market';
 
-const INDEX = new Set(['SPX', 'NDX', 'RUT', 'VIX', 'XSP', 'DJX']);
+import { isCashIndex } from './symbolDirectory';
 const WEEKLY_ROOT: Record<string, string> = { SPX: 'SPXW', NDX: 'NDXP', RUT: 'RUTW' };
 /** A weekly root quotes the index it tracks */
 const UNDERLYING: Record<string, string> = { SPXW: 'SPX', NDXP: 'NDX', RUTW: 'RUT' };
@@ -194,7 +194,7 @@ async function readCloseRows(sym: string): Promise<{ date: string; close: number
   if (hit && hit.day === day && (nyMinutes() < 960 || hit.closes.some(c => c.date === day) || !isTradingDay(nyToday()) || Date.now() - hit.at < AFTER_BELL_REASK_MS)) return hit.closes;
   /* a page that may not ask for daily rows keeps what an earlier page read */
   if (!closesHere()) return hit?.closes ?? null;
-  const root = INDEX.has(sym) ? 'index' : 'stock';
+  const root = isCashIndex(sym) ? 'index' : 'stock';
   const start = nyIsoDate(Date.now() - 12 * 86_400_000);
   const got = await thetaCall(`/${root}/history/eod?symbol=${encodeURIComponent(sym)}&start_date=${ymd(start)}&end_date=${ymd(day)}&format=json`);
   if (got.error) return hit?.closes ?? null;
@@ -233,7 +233,7 @@ function readPrice(sym: string): Promise<void> {
   const running = inflight.get(key);
   if (running) return running;
   if (failWait(key)) return Promise.resolve();
-  const root = INDEX.has(sym) ? 'index' : 'stock';
+  const root = isCashIndex(sym) ? 'index' : 'stock';
   const path = root === 'index' ? `/index/snapshot/price?symbol=${encodeURIComponent(sym)}&format=json` : `/stock/snapshot/trade?symbol=${encodeURIComponent(sym)}&format=json`;
   const job = (async () => {
     const got = await thetaCall(path, true);
@@ -254,7 +254,7 @@ function readPrice(sym: string): Promise<void> {
     let own = closes?.find(c => c.date === today);
     /* after the bell, before the terminal writes today's daily row (~17:15), today's close is the vendor's stock-state
        prev_close once its print is today's post-market — the same close the vendor-only pages read (data/dayChange.ts) */
-    if (!own && closes && !INDEX.has(sym) && isTradingDay(nyToday()) && nyMinutes() >= sessionCloseMinOn(today)) {
+    if (!own && closes && !isCashIndex(sym) && isTradingDay(nyToday()) && nyMinutes() >= sessionCloseMinOn(today)) {
       const hint = await todayCloseHint(sym, today);
       if (hint) own = { date: today, close: hint };
     }
@@ -360,7 +360,7 @@ export function ensureThetaCloseOn(ticker: string, iso: string): void {
     return;
   }
   closeAsked.add(key);
-  const root = INDEX.has(sym) ? 'index' : 'stock';
+  const root = isCashIndex(sym) ? 'index' : 'stock';
   void thetaCall(`/${root}/history/eod?symbol=${encodeURIComponent(sym)}&start_date=${ymd(iso)}&end_date=${ymd(iso)}&format=json`)
     .then(got => {
       if (got.error) return;
@@ -392,7 +392,7 @@ export function ensureThetaBars(ticker: string): void {
   if (hit && Date.now() - hit.read < 60_000) return;
   barsAsked.add(sym);
   const day = ymd(nyIsoDate());
-  const root = INDEX.has(sym) ? 'index' : 'stock';
+  const root = isCashIndex(sym) ? 'index' : 'stock';
   void thetaCall(`/${root}/history/ohlc?symbol=${encodeURIComponent(sym)}&start_date=${day}&end_date=${day}&interval=1m&start_time=09:30:00&end_time=16:00:59.999&format=json`)
     .then(got => {
       if (got.error) {

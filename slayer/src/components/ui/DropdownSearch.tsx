@@ -43,9 +43,11 @@ interface DropdownSearchProps<T extends string> {
   clearTo?: T;
   /** Runs each time the card opens, so a caller can fetch what the search needs only once someone looks */
   onOpen?: () => void;
+  /** The values that match a query, best first (a ticker list ranked by the symbol directory). Overrides `match`. */
+  search?: (query: string) => readonly T[];
 }
 
-const DropdownSearch = <T extends string>({ label, value, options, onChange, title, placeholder = 'Search…', icon: Icon, ink, align = 'start', testId, defaultOpen = false, match, clearTo, onOpen }: DropdownSearchProps<T>) => {
+const DropdownSearch = <T extends string>({ label, value, options, onChange, title, placeholder = 'Search…', icon: Icon, ink, align = 'start', testId, defaultOpen = false, match, clearTo, onOpen, search }: DropdownSearchProps<T>) => {
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
@@ -57,9 +59,18 @@ const DropdownSearch = <T extends string>({ label, value, options, onChange, tit
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return options;
+    if (search) {
+      const byValue = new Map(options.map(o => [o.value, o] as const));
+      const out: SearchOption<T>[] = [];
+      for (const v of search(query)) {
+        const o = byValue.get(v);
+        if (o) out.push(o);
+      }
+      return out;
+    }
     if (match) return options.filter(o => match(o, query));
     return options.filter(o => o.label.toLowerCase().includes(q) || (o.keywords ?? '').toLowerCase().includes(q) || (o.hint ?? '').toLowerCase().includes(q));
-  }, [options, query, match]);
+  }, [options, query, match, search]);
 
   /* A long book pins "all" above the scroller. The rest window so 456 logos do not mount at once. */
   const pinned = clearTo != null ? (matches.find(o => o.value === clearTo) ?? null) : null;

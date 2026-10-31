@@ -5,9 +5,11 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Keyboa
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, Search } from 'lucide-react';
 import CompanyLogo from '../ui/CompanyLogo';
+import { noOptionsLine } from '../ui/SymbolRowTag';
+import { isCashIndex } from '../../data/symbolDirectory';
 import { CARD } from '../ui/DropdownSelect';
 import type { PaperIndex } from '../../data/paper/products';
-import { ensureListed, isOptionRoot, optionSymbols, useListedRev } from '../../data/listedNames';
+import { ensureListed, isOptionRoot, optionSymbols, searchRoom, useListedRev } from '../../data/listedNames';
 import { askCompanyNames, companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
 
 const SILVER = 'rgb(var(--silver))';
@@ -49,7 +51,9 @@ const TickerPicker = ({ value, onChange, allowed, indexes, indexPrice }: Props) 
     /* the list's company names are asked for only once it is open: a closed picker asks for nothing */
     if (!open) return [];
     const roots = optionSymbols();
-    const skip = new Set(indexes.map(x => x.symbol));
+    /* the desk's own indexes have their group; any other cash index (OEX, DJX) is not a name the desk prices */
+    const own = new Set(indexes.map(x => x.symbol));
+    const skip = { has: (sym: string) => own.has(sym) || isCashIndex(sym) };
     const label = (ticker: string) => {
       const named = companyName(ticker);
       return named;
@@ -74,25 +78,21 @@ const TickerPicker = ({ value, onChange, allowed, indexes, indexPrice }: Props) 
       }
       return out.map(toRow);
     }
-    const prefix: string[] = [];
-    const contains: string[] = [];
-    for (const symbol of roots) {
-      if (skip.has(symbol)) continue;
-      const name = label(symbol);
-      if (symbol.startsWith(q) || name.toUpperCase().startsWith(q)) prefix.push(symbol);
-      else if (symbol.includes(q) || name.toUpperCase().includes(q)) contains.push(symbol);
-      if (prefix.length >= 80) break;
-    }
-    return [...prefix, ...contains].slice(0, 80).map(toRow);
+    /* the directory's ranking: the exact symbol, then symbols that start with it, then company names, most traded first */
+    return searchRoom('option', q, 80, [], label)
+      .filter(r => !skip.has(r.symbol))
+      .map(r => toRow(r.symbol));
   }, [open, query, listedRev, nameRev, stockWindow, indexes]);
   const q = query.trim().toLowerCase();
   const may = (r: Row) => !allowed || allowed.includes(r.value.toUpperCase());
   const hit = (r: Row) => may(r) && (!q || r.code.toLowerCase().includes(q) || r.value.toLowerCase().includes(q) || r.name.toLowerCase().includes(q) || r.keywords.toLowerCase().includes(q));
+  /* the stock rows come already searched (the directory matched symbol and name); only the plan's own list filters */
+  const stockHit = (r: Row) => may(r);
   /* a plan's own list: its names, whether or not the listing has loaded them yet */
   const planRows: Row[] = allowed ? allowed.filter(t => !indexes.some(x => x.symbol === t)).map(t => ({ value: t, code: t, name: companyName(t), keywords: t, price: null, decimals: 2 })) : [];
   const groups = [
     { key: 'indexes', title: 'Index options · the chain', rows: indexRows.filter(hit) },
-    { key: 'stocks', title: allowed ? 'The names this plan trades' : 'Stocks & funds · their options', rows: allowed ? planRows.filter(hit) : stocks.filter(hit) },
+    { key: 'stocks', title: allowed ? 'The names this plan trades' : 'Stocks & funds · their options', rows: allowed ? planRows.filter(hit) : stocks.filter(stockHit) },
   ];
   /** Every match in the order the card shows them — what the arrow keys walk */
   const flat = groups.flatMap(g => g.rows);
@@ -187,7 +187,7 @@ const TickerPicker = ({ value, onChange, allowed, indexes, indexPrice }: Props) 
           >
             {flat.length === 0 ? (
               <div className="px-4 py-6 text-center font-mono text-t10 text-textMuted" data-paper-ticker-none>
-                {allowed ? `This plan trades ${allowed.join(', ')} only` : 'Nothing matches — try a ticker or a company'}
+                {allowed ? `This plan trades ${allowed.join(', ')} only` : noOptionsLine(query) ?? 'Nothing matches — try a ticker or a company'}
               </div>
             ) : (
               groups.map(g =>

@@ -11,6 +11,7 @@ const MENU_W = 288;
 import { ChevronDown } from 'lucide-react';
 import TickerLookup from '../ui/TickerLookup';
 import useFocusTrap from '../ui/useFocusTrap';
+import { useCompanyName } from '../../data/tickers';
 
 interface TickerQuickPickProps {
   /* The slim cut for a strip of quiet chips: no fill, chip height, hover reveal. */
@@ -30,6 +31,8 @@ interface TickerQuickPickProps {
 
 const TickerQuickPick = ({ ticker, onPick, open: openProp, onOpenChange, slim, label, title = 'Switch ticker' }: TickerQuickPickProps) => {
   const [selfOpen, setSelfOpen] = useState(false);
+  /* the name on hover: a header that says "NVDA" says whose it is */
+  const name = useCompanyName(ticker);
   const open = openProp ?? selfOpen;
   const setOpen = (next: boolean) => {
     onOpenChange?.(next);
@@ -83,7 +86,8 @@ const TickerQuickPick = ({ ticker, onPick, open: openProp, onOpenChange, slim, l
       <button
         ref={anchorRef}
         onClick={() => setOpen(!open)}
-        title={title}
+        title={name ? `${ticker} · ${name} — ${title.charAt(0).toLowerCase()}${title.slice(1)}` : title}
+        data-ticker-name={name || undefined}
         className={
           slim
             ? 'hit-24 inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-t10 font-semibold text-textPrimary hover:bg-ink/[0.04] transition-colors'

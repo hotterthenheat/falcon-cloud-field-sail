@@ -5,13 +5,14 @@
   pressed renames the pane you are in.
 */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, X } from 'lucide-react';
 import { ensureBook } from '../../data/book/load';
 import { peekPrint, usePrintRev, wantPrint } from '../../data/thetaTape';
 import { etClock } from '../../data/thetaFeed';
 import CompanyLogo from '../ui/CompanyLogo';
+import { companyNamesRev, subscribeCompanyNames, symbolWithName } from '../../data/tickers';
 import TickerLookup from '../ui/TickerLookup';
 import useFocusTrap from '../ui/useFocusTrap';
 import { useAnchoredMenu } from '../ui/useAnchoredMenu';
@@ -40,6 +41,8 @@ const fmtPrice = (v: number) => v.toLocaleString('en-US', { minimumFractionDigit
 
 const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compact = false, max = TAB_MAX }: TickerTabStripProps) => {
   const [open, setOpen] = useState(false);
+  /* each tab's name on hover, re-read as names land */
+  useSyncExternalStore(subscribeCompanyNames, companyNamesRev, () => 0);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const { anchorRef, placed } = useAnchoredMenu<HTMLButtonElement>(open, 'bottom', MENU_W, 'start');
@@ -126,7 +129,7 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
           >
             {/* the tab in hand carries the silver at its top edge — where you are */}
             {on && <span aria-hidden className="absolute inset-x-0 top-0 h-px bg-silver/70" />}
-            <button type="button" onClick={() => onPick(t)} title={on ? `${t} — on the tape` : `Show ${t} on this pane`} className="pl-2.5 pr-1.5 inline-flex items-center gap-2 min-w-0">
+            <button type="button" onClick={() => onPick(t)} title={on ? `${symbolWithName(t)} — on the tape` : `Show ${symbolWithName(t)} on this pane`} className="pl-2.5 pr-1.5 inline-flex items-center gap-2 min-w-0">
               <CompanyLogo ticker={t} size={14} />
               <span className="text-t11 font-bold tracking-wide">{t}</span>
               {!compact && price != null && (

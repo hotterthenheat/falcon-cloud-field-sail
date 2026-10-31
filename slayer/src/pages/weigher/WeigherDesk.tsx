@@ -4,7 +4,10 @@
 import { extTag, optionProductOf, productHours, sessionAt, sessionBadge, useMarketSession } from '../../core/session';
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Maximize2, Minimize2, Plus, Scale } from 'lucide-react';
+import { ChevronDown, Maximize2, Minimize2, Plus, Scale, X } from 'lucide-react';
+import { listedOptionsKnown } from '../../data/listedNames';
+import { useDirectoryRev } from '../../data/symbolDirectory';
+import { companyName } from '../../data/tickers';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
@@ -956,8 +959,30 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     };
   }, [ticker, selected, chain.source, chain.expiryIso, chain.spot, chain.rows]);
 
+  /* The Weigher weighs an options chain: a name with no listed options is refused with a line, whether it came from
+     the picker, a link or the rail, and the desk stays where it was */
+  const [refused, setRefused] = useState<string | null>(null);
+  const admit = (t: string): boolean => {
+    if (listedOptionsKnown(t) === false) {
+      setRefused(t.toUpperCase());
+      return false;
+    }
+    setRefused(null);
+    return true;
+  };
+  /* a saved or linked name the directory had not yet judged: refused once it lands, the desk back on SPY */
+  const dirRev = useDirectoryRev();
+  useEffect(() => {
+    if (listedOptionsKnown(ticker) !== false) return;
+    setRefused(ticker.toUpperCase());
+    setSel(null);
+    setDesk(d => ({ ...d, ticker: 'SPY', lens: 'stock', optRoot: '' }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticker, dirRev]);
+
   const pickTicker = (t: string) => {
     if (t === ticker) return;
+    if (!admit(t)) return;
     setSel(null);
     setListSel(null);
     patch({ ticker: t, lens: 'stock', optRoot: '' });
@@ -978,6 +1003,10 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const pointTo = useCallback(
     (req: WeighRequest) => {
       const t = req.ticker;
+      if (listedOptionsKnown(t) === false) {
+        setRefused(t.toUpperCase());
+        return;
+      }
       setSel(null);
       /* the contract's OWN expiry, as the desk's horizon for that date — listed
          on the rail when the rail has it, added to the rail when it does not */
@@ -1714,6 +1743,10 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   );
 
   const onShellName = useCallback((t: string) => {
+    if (listedOptionsKnown(t) === false) {
+      setRefused(t.toUpperCase());
+      return;
+    }
     setSel(null);
     setListSel(null);
     setDesk(d => (d.ticker === t ? d : { ...d, ticker: t, lens: 'stock', optRoot: '' }));
@@ -1741,6 +1774,21 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the chain, the read and the chart mean" testId="weigher-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Chart, chain and watchlist on one desk — pick a name, pick a contract, watch it</p>
+          {refused && (
+            <p className="mt-1.5 inline-flex items-center gap-2 rounded-md border border-borderSubtle bg-ink/[0.03] px-2.5 py-1 text-[11px] text-textSecondary" role="status" data-weigher-refused={refused}>
+              <span>
+                No listed options for <span className="font-mono font-semibold text-textPrimary">{refused}</span>
+                {(() => {
+                  const n = companyName(refused);
+                  return n && n.toUpperCase() !== refused ? ` (${n})` : '';
+                })()}{' '}
+                — Weigher needs an options chain.
+              </span>
+              <button type="button" onClick={() => setRefused(null)} className="text-textMuted hover:text-textPrimary" aria-label="Dismiss">
+                <X className="w-3 h-3" />
+              </button>
+            </p>
+          )}
         </div>
         <dl
           className="flex flex-wrap gap-x-6 gap-y-2"

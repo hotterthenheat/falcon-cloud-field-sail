@@ -1,5 +1,5 @@
-/* The compact search body inside picker menus: filters the bundled universe (NASDAQ list plus the NYSE half of the
-   S&P 500), loaded lazily. An unlisted symbol still picks on Enter. */
+/* The compact search body inside picker menus: the symbol directory, by symbol or by name ("nvidia" finds NVDA), each
+   row the symbol and its name. On an option desk only names with listed options are offered. */
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Search } from 'lucide-react';
@@ -7,6 +7,7 @@ import type { TickerListing } from '../../data/tickers';
 import { askCompanyNames, companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
 import { ensureListed, roomCount, roomOf, searchRoom, useListedRev } from '../../data/listedNames';
 import CompanyLogo from './CompanyLogo';
+import SymbolRowTag, { noOptionsLine } from './SymbolRowTag';
 
 type TickerModule = typeof import('../../data/tickers');
 
@@ -88,7 +89,7 @@ const TickerLookup = ({ onPick, active, limit = 80 }: TickerLookupProps) => {
           ref={inputRef}
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder={room === 'equity' ? 'Search every listed stock…' : room === 'option' ? 'Search every name with options…' : room === 'compass' ? 'Search the 456…' : 'Search S&P 500 + more…'}
+          placeholder={room === 'equity' ? 'Symbol or company…' : room === 'option' ? 'Symbol or company, with listed options…' : room === 'compass' ? 'Search the 456…' : 'Symbol or company…'}
           className="w-full bg-transparent py-1.5 font-mono text-t11 text-textPrimary placeholder:text-textMuted focus:outline-none"
         />
       </div>
@@ -97,7 +98,7 @@ const TickerLookup = ({ onPick, active, limit = 80 }: TickerLookupProps) => {
           <div className="px-2.5 py-4 text-center font-mono text-t10 text-textMuted">Loading tickers…</div>
         ) : results.length === 0 ? (
           <div className="px-2.5 py-4 text-center font-mono text-t10 text-textMuted">
-            {room === 'option' ? 'No option root by that name.' : room === 'compass' ? 'Not one of the 456.' : room === 'equity' ? 'No listed stock by that name.' : `No listing — Enter picks “${query.trim().toUpperCase().slice(0, 6)}”`}
+            {room === 'option' ? noOptionsLine(query) ?? 'No name with listed options matches.' : room === 'compass' ? 'Not one of the 456.' : room === 'equity' ? 'No listing by that symbol or name.' : `No listing — Enter picks “${query.trim().toUpperCase().slice(0, 6)}”`}
           </div>
         ) : (
           results.map((t, i) => (
@@ -115,23 +116,32 @@ const TickerLookup = ({ onPick, active, limit = 80 }: TickerLookupProps) => {
             >
               <CompanyLogo ticker={t.symbol} size={16} />
               <span
-                className={`font-mono text-t11 font-semibold w-14 shrink-0 ${
+                className={`font-mono text-t11 font-semibold min-w-[3.5rem] shrink-0 ${
                   t.symbol === active ? 'text-silver' : 'text-textPrimary'
                 }`}
               >
                 {t.symbol}
               </span>
-              <span className="text-t10 text-textSecondary truncate">{(() => {
+              {(() => {
                 const label = companyName(t.symbol);
-                return label && label.toUpperCase() !== t.symbol ? label : '';
-              })()}</span>
+                const named = label && label.toUpperCase() !== t.symbol ? label : '';
+                return (
+                  <span className="text-t10 text-textSecondary truncate min-w-0 flex-1" title={named ? `${t.symbol} · ${named}` : undefined}>
+                    {named}
+                  </span>
+                );
+              })()}
+              <SymbolRowTag symbol={t.symbol} room={room} />
             </button>
           ))
+        )}
+        {room === 'option' && results.length > 0 && !results.some(r => r.symbol === query.trim().toUpperCase()) && noOptionsLine(query) && (
+          <div className="px-2.5 py-1.5 font-mono text-t9 text-textMuted border-t border-borderSubtle">{noOptionsLine(query)}</div>
         )}
       </div>
       {roomCount(room) > 0 && (
         <div className="px-2.5 py-1 border-t border-borderSubtle font-mono text-t9 text-textMuted" data-listed-count={roomCount(room)}>
-          {roomCount(room).toLocaleString()} {room === 'option' ? 'option roots' : room === 'compass' ? 'names' : 'listed stocks'}
+          {roomCount(room).toLocaleString()} {room === 'option' ? 'names with listed options' : room === 'compass' ? 'names' : 'listings'}
           {results.length < roomCount(room) ? ' · scroll for more' : ''}
         </div>
       )}

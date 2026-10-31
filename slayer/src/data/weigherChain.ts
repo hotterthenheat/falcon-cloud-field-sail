@@ -15,6 +15,7 @@ import type { DeskChain, DeskContract, ListedExpiry } from './weigherDesk';
 import type { OptionRight } from '../types/compass';
 
 const INDEX = new Set(['SPX', 'NDX', 'RUT', 'VIX', 'XSP']);
+import { isCashIndex } from './symbolDirectory';
 const WEEKLY_ROOT: Record<string, string> = { SPX: 'SPXW', NDX: 'NDXP', RUT: 'RUTW' };
 
 interface ContractMark {
@@ -53,7 +54,7 @@ function parseOcc(symbol: string): { root: string; expiry: string; right: Option
 export function liveSpotOf(ticker: string): number | null {
   const t = ticker.trim().toUpperCase();
   const name = t === 'SPXW' || t === 'XSP' ? 'SPX' : t === 'NDXP' ? 'NDX' : t === 'RUTW' ? 'RUT' : t;
-  if (INDEX.has(name)) {
+  if (isCashIndex(name)) {
     ensureBook(name);
     return peekSpot(name);
   }

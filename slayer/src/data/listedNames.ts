@@ -1,10 +1,10 @@
-/* The listed names each desk may offer: every stock on the equity desks (Terrain, Dossier, Weigher), option roots on
-   Pinpoint, Trace, Paper and Backtest, the 456 on Compass. Bundled lists stand; Theta refreshes them off Dossier and Pinpoint. */
+/* The listed names each desk may offer: every listing on the equity desks (Terrain, the Dossier), names with listed
+   options on the option desks (Weigher, Pinpoint, Trace, Paper, Backtest), the 456 on Compass. */
 
 import { useSyncExternalStore } from 'react';
 import { thetaCall, thetaUseHere } from './theta';
 import type { TickerListing } from './tickers';
-import { BUNDLED_OPTIONS, BUNDLED_STOCKS } from './listedBundle';
+import { directoryEntry, directoryOptionCount, directoryReady, directorySize, hasListedOptions, loadDirectory, normalSymbol, searchDirectory } from './symbolDirectory';
 import { COMPASS_TICKERS } from './compassUniverse';
 
 type NameRoom = 'equity' | 'option' | 'compass' | 'listed';
@@ -15,8 +15,6 @@ const FEATURED = [
   'SPX', 'SPXW', 'NDX', 'NDXP', 'RUT', 'RUTW', 'VIX', 'VIXW', 'XSP', 'DJX',
 ];
 
-/** Index underlyings the stock list does not carry. Offered on an equity desk. */
-const INDEXES = ['SPX', 'SPXW', 'NDX', 'NDXP', 'RUT', 'RUTW', 'VIX', 'VIXW', 'XSP', 'DJX', 'OEX', 'XEO', 'MRUT'];
 /** Cash indexes whose options are the chain. The weekly root is the same name, not a second ticker. */
 const OPTION_INDEXES = ['SPX', 'NDX', 'RUT', 'VIX', 'XSP'];
 const SAME_AS: Record<string, string> = { SPXW: 'SPX', RUTW: 'RUT', NDXP: 'NDX', VIXW: 'VIX' };
@@ -91,19 +89,21 @@ function hydrate(): void {
 
 hydrate();
 
-/* The house lists are in the client. Search does not wait on the terminal, and a
-   later Theta answer still replaces them. Done stays false so that refresh runs. */
-function seedBundle(): void {
-  if (stocks.length < 500 && BUNDLED_STOCKS.length >= 500) {
-    replace('equity', [...BUNDLED_STOCKS]);
-    stockDone = false;
-  }
-  if (options.length < 100 && BUNDLED_OPTIONS.length >= 100) {
-    replace('option', [...BUNDLED_OPTIONS]);
-    optionDone = false;
-  }
+/* The symbol directory (data/symbolDirectory.ts) is what every desk's search reads: each listing with its name,
+   kind and whether options are listed today. The terminal's own lists (pulled below, kept a visit in storage) only
+   add a symbol the directory is too old to carry — offered when typed in full. */
+let dirAsked = false;
+function askDirectory(): void {
+  if (dirAsked) return;
+  dirAsked = true;
+  void loadDirectory().then(() => {
+    if (!directoryReady()) {
+      dirAsked = false;
+      return;
+    }
+    emit();
+  });
 }
-seedBundle();
 
 async function pull(kind: 'equity' | 'option'): Promise<void> {
   const path = kind === 'equity' ? '/stock/list/symbols?format=json' : '/option/list/symbols?format=json';
@@ -132,6 +132,7 @@ const unusualWhalesOnly = (): boolean => thetaUseHere() !== 'all';
 
 /** Ask Theta once for both lists. Safe to call from every picker. A cached copy shows immediately. */
 export function ensureListed(): void {
+  askDirectory();
   if (loading || (stockDone && optionDone) || unusualWhalesOnly()) return;
   loading = true;
   void (async () => {
@@ -147,10 +148,11 @@ export function ensureListed(): void {
 export function roomOf(path = typeof location !== 'undefined' ? location.pathname : ''): NameRoom {
   if (path.startsWith('/pulse')) return 'listed';
   if (path.startsWith('/compass')) return 'compass';
-  /* Trade's other desk is the Weigher: every listed name, not the option book. Compass stays the 456. */
-  if (path.startsWith('/terrain') || path.startsWith('/dossier') || path.startsWith('/weigher')) return 'equity';
+  /* Terrain charts any listing. The Weigher weighs an options chain, so it offers only names with listed options. */
+  if (path.startsWith('/terrain') || path.startsWith('/dossier')) return 'equity';
   if (
-    path.startsWith('/pinpoint')
+    path.startsWith('/weigher')
+    || path.startsWith('/pinpoint')
     || path.startsWith('/trace')
     || path.startsWith('/practice/paper')
     || path.startsWith('/practice/backtest')
@@ -185,80 +187,93 @@ export function searchRoom(room: Exclude<NameRoom, 'listed'>, query: string, lim
   return searchListed(room, query, limit, fallback, nameOf);
 }
 
+const FOLDED = new Set(Object.keys(SAME_AS));
+
 export function searchListed(kind: 'equity' | 'option', query: string, limit: number, fallback: readonly TickerListing[], nameOf: (symbol: string) => string): TickerListing[] {
-  const set = kind === 'equity' ? stockSet : optionSet;
-  const list = kind === 'equity' ? stocks : options;
-  const ready = list.length > 0;
-  const extra = kind === 'equity' ? INDEXES : OPTION_INDEXES;
   const q = query.trim().toUpperCase();
-  /* An option desk must not offer equity names while Theta's option list is still out. The cash indexes are the only
-     roots that are options even before that list lands. */
-  if (!ready) {
+  const row = (symbol: string): TickerListing => ({ symbol, name: nameOf(symbol) });
+  if (!directoryReady()) {
+    askDirectory();
+    /* An option desk must not offer equity names before the directory lands. The cash indexes are the only roots that
+       are options for certain. */
     if (kind === 'option') {
       const indexes = OPTION_INDEXES.filter(s => !q || s.includes(q) || nameOf(s).toUpperCase().includes(q));
-      return indexes.slice(0, limit).map(symbol => ({ symbol, name: nameOf(symbol) }));
+      return indexes.slice(0, limit).map(row);
     }
     return fallback.slice(0, limit);
   }
-  const row = (symbol: string): TickerListing => {
-    const name = nameOf(symbol);
-    return { symbol, name };
-  };
+  const optionsOnly = kind === 'option';
   if (!q) {
-    const pinned = FEATURED.filter(s => !SAME_AS[s] && (set.has(s) || extra.includes(s)));
     const out: TickerListing[] = [];
-    const seenOut = new Set<string>();
-    const push = (symbol: string) => {
-      if (seenOut.has(symbol) || SAME_AS[symbol]) return;
-      seenOut.add(symbol);
+    const seen = new Set<string>();
+    for (const symbol of FEATURED) {
+      if (FOLDED.has(symbol) || seen.has(symbol)) continue;
+      const e = directoryEntry(symbol);
+      if (!e || (optionsOnly && !e.options)) continue;
+      seen.add(symbol);
       out.push(row(symbol));
-    };
-    for (const symbol of pinned) push(symbol);
-    for (const symbol of list) {
+    }
+    for (const e of searchDirectory('', { limit: limit + out.length, optionsOnly, exclude: FOLDED })) {
       if (out.length >= limit) break;
-      push(symbol);
+      if (!seen.has(e.symbol)) out.push(row(e.symbol));
     }
     return out;
   }
-  const prefix: string[] = [];
-  const contains: string[] = [];
-  const named: string[] = [];
-  const pool = [...extra.filter(s => !set.has(s)), ...list].filter(s => !SAME_AS[s]);
   const asked = SAME_AS[q] ?? q;
-  for (const symbol of pool) {
-    if (symbol.startsWith(asked)) prefix.push(symbol);
-    else if (symbol.includes(asked)) contains.push(symbol);
-    else {
-      const name = nameOf(symbol).toUpperCase();
-      if (name !== symbol && name.includes(q)) named.push(symbol);
-    }
-    if (prefix.length >= limit) break;
-  }
-  prefix.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
-  return [...prefix, ...contains, ...named].slice(0, limit).map(row);
+  const hits = searchDirectory(asked, { limit, optionsOnly, exclude: FOLDED }).map(e => row(e.symbol));
+  /* a listing newer than the directory: the terminal's live list carries it, offered when typed in full */
+  const typed = normalSymbol(asked);
+  if (!directoryEntry(typed) && (kind === 'equity' ? stockSet : optionSet).has(typed) && /^[A-Z][A-Z0-9.]{0,7}$/.test(typed)) hits.unshift(row(typed));
+  return hits.slice(0, limit);
 }
 
-function listedCount(kind: 'equity' | 'option'): number {
-  const set = kind === 'equity' ? stockSet : optionSet;
-  let n = 0;
-  for (const symbol of set) if (!SAME_AS[symbol]) n += 1;
-  return n;
-}
-
-/** How many names this desk's search is allowed to offer. Pulse has no floor. */
+/** How many names this desk's search may offer. Pulse has no floor. */
 export function roomCount(room: NameRoom): number {
   if (room === 'compass') return COMPASS_TICKERS.length;
   if (room === 'listed') return 0;
-  return listedCount(room);
+  if (!directoryReady()) return 0;
+  return (room === 'option' ? directoryOptionCount() : directorySize()) - FOLDED.size;
 }
 
+let optionRoots: string[] = [];
+let optionRootsAt = -1;
+/** Every name with listed options today, most traded first (the directory; the terminal's list before it lands) */
 export function optionSymbols(): readonly string[] {
-  return options;
+  if (!directoryReady()) {
+    askDirectory();
+    return options;
+  }
+  if (optionRootsAt !== directorySize()) {
+    optionRoots = searchDirectory('', { limit: Infinity, optionsOnly: true }).map(e => e.symbol);
+    optionRootsAt = directorySize();
+  }
+  return optionRoots;
 }
 
+/** Options are listed on the symbol today. Before the directory lands a symbol is given the benefit of the doubt
+    unless the terminal's option list (kept from an earlier visit) says otherwise. */
 export function isOptionRoot(symbol: string): boolean {
   const s = symbol.toUpperCase();
-  return optionSet.has(s) || OPTION_INDEXES.includes(s);
+  if (OPTION_INDEXES.includes(s) || SAME_AS[s]) return true;
+  const known = hasListedOptions(s);
+  if (known !== null) return known;
+  if (directoryReady()) return optionSet.has(s);
+  askDirectory();
+  return optionSet.size ? optionSet.has(s) : true;
+}
+
+/** Options are listed on the symbol: true or false once the directory is known, null before */
+export function listedOptionsKnown(symbol: string): boolean | null {
+  const s = symbol.toUpperCase();
+  if (OPTION_INDEXES.includes(s) || SAME_AS[s]) return true;
+  const known = hasListedOptions(s);
+  if (known !== null) return known;
+  if (!directoryReady()) {
+    askDirectory();
+    return null;
+  }
+  /* newer than the directory: the terminal's live option list decides */
+  return optionSet.size ? optionSet.has(s) : null;
 }
 
 export function useListedRev(): number {

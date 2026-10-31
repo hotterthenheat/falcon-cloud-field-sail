@@ -5,7 +5,7 @@ import type { DeskSession } from './deskSession';
 import { nyWallStamp } from '../core/nyTime';
 import { printIsCurrent } from '../core/session';
 
-const INDEX = new Set(['SPX', 'RUT', 'NDX', 'VIX', 'XSP']);
+import { isCashIndex } from './symbolDirectory';
 
 interface SessionQuote {
   bid: number;
@@ -28,7 +28,7 @@ export function useSessionQuote(ticker: string, session: DeskSession, needed: bo
     }
     const t = ticker.trim().toUpperCase();
     /* an index has a price, not a bid and an ask */
-    if (!t || INDEX.has(t)) return;
+    if (!t || isCashIndex(t)) return;
     let dead = false;
     const pull = () => {
       if (pageHidden() || thetaUseHere() === 'none') return;

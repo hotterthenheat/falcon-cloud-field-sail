@@ -81,6 +81,7 @@ import {
   SETUP_KEYS, applySetup, captureSetup, evict, readSetups, symKey, type SetupMap,
 } from './setups';
 import { flipRing, stepSymbol, stepTf } from './paneKeys';
+import { hasListedOptions, useDirectoryRev } from '../../data/symbolDirectory';
 
 /* The bottom bar's futures clock in plain words (core/calendar.ts has the long ones, on its hover) */
 const FUTURES_PHASE_SHORT: Record<ReturnType<typeof futuresPhaseAt>, string> = {
@@ -713,6 +714,22 @@ class PaneBoundary extends Component<{ children: ReactNode; name: string; resetK
   }
 }
 
+/* What on a pane needs an options book: off on a name with no listed options, kept in the pane's settings */
+const BOOK_OVERLAYS = ['trails', 'levels', 'flow', 'netDrift', 'volDrift', 'dexStrike', 'cone', 'nodeAlert'] as const;
+const BOOK_INDICATORS = ['flowVwap', 'sideVwap', 'gammaEma', 'gammaVwap'] as const;
+const withoutBookOverlays = (o: ChartOverlays): ChartOverlays => {
+  const next = { ...o };
+  for (const k of BOOK_OVERLAYS) if (k in next) (next as Record<string, unknown>)[k] = false;
+  return next;
+};
+const withoutBookIndicators = (i: ChartIndicators): ChartIndicators => {
+  const next = { ...i };
+  for (const k of BOOK_INDICATORS) next[k] = false;
+  return next;
+};
+const bookOverlaysOf = (o: ChartOverlays): Partial<ChartOverlays> => Object.fromEntries(BOOK_OVERLAYS.filter(k => k in o).map(k => [k, o[k]]));
+const bookIndicatorsOf = (i: ChartIndicators): Partial<ChartIndicators> => Object.fromEntries(BOOK_INDICATORS.map(k => [k, i[k]]));
+
 const Pane = ({
   cfg, onCfg, revision, expanded, onToggleExpand, index, tall,
   onCrosshair, registerSync, replay, onToggleReplay, onExitReplay,
@@ -728,15 +745,24 @@ const Pane = ({
   const chartExitDraw = useStable(onExitDraw);
   const chartEnterDraw = useStable(onToggleDrawing);
   const chartExitReplay = useStable(onExitReplay);
-  const { ticker, timeframe, overlays, indicators, chartStyle, clock, compares, priceScale, sessionOr, ladder } = cfg;
+  const { ticker, timeframe, overlays: cfgOverlays, indicators: cfgIndicators, chartStyle, clock, compares, priceScale, sessionOr } = cfg;
+  /* A name with no listed options (BRK.A, a cash index without a chain) is the chart, its price and the chart's own
+     tools: what needs an options book (the field, the walls, the cone, the flow, the strike rail) is simply not drawn
+     and asks for nothing. The pane's settings stay as set, for the next name that has a book. */
+  useDirectoryRev();
+  const optionable = hasListedOptions(ticker) !== false;
+  const overlays = useMemo(() => (optionable ? cfgOverlays : withoutBookOverlays(cfgOverlays)), [optionable, cfgOverlays]);
+  const indicators = useMemo(() => (optionable ? cfgIndicators : withoutBookIndicators(cfgIndicators)), [optionable, cfgIndicators]);
+  const ladder = cfg.ladder && optionable;
   /* The pane holds its own name's book, docked or expanded: the takeover hides the tab strip that was asking for it,
      and an expanded pane's rail and nodes went stale with nothing refreshing them. ensureBook is a no-op while the
      book is fresh. */
   useEffect(() => {
+    if (!optionable) return;
     ensureBook(ticker, 'board');
     const id = window.setInterval(() => ensureBook(ticker, 'board'), 30_000);
     return () => window.clearInterval(id);
-  }, [ticker, expanded]);
+  }, [ticker, expanded, optionable]);
   /* Its own theme, else the page's default — Glacier on the dark terminal, Stone on paper — re-read on a flip */
   const pageDefault = usePageDefaultCandleKey();
   const theme = cfg.theme ?? pageDefault;
@@ -1157,11 +1183,11 @@ const Pane = ({
       timeframe={timeframe}
       onTimeframe={tf => pick({ timeframe: tf })}
       trend={trendByTf}
-      overlays={overlays}
+      overlays={cfgOverlays}
       onOverlays={o => onCfg({ overlays: o })}
       /* The strike band docks under the tape when Exposure by strike is on. The chart mounts it; this menu only switches it. */
       overlayKeys={['trails', 'levels', 'darkpool', 'volume', 'flow', 'netDrift', 'volDrift', 'dexStrike', 'session', 'cone', 'events', 'alerts']}
-      indicators={indicators}
+      indicators={cfgIndicators}
       onIndicators={i => onCfg({ indicators: i })}
       paneId={`terrain:${index + 1}`}
       fullscreen={expanded}
@@ -1271,9 +1297,9 @@ const Pane = ({
               timeframe={timeframe}
               height={tall ? 260 : 200}
               overlays={overlays}
-              onOverlays={o => onCfg({ overlays: o })}
+              onOverlays={o => onCfg({ overlays: optionable ? o : { ...o, ...bookOverlaysOf(cfgOverlays) } })}
               indicators={indicators}
-              onIndicators={i => onCfg({ indicators: i })}
+              onIndicators={i => onCfg({ indicators: optionable ? i : { ...i, ...bookIndicatorsOf(cfgIndicators) } })}
               chartStyle={chartStyle}
               themeKey={theme}
               /* The field's key prints on the desk's own line, not under every pane */
