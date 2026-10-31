@@ -1,5 +1,6 @@
 /* The admin People room's data: every account as the database gives an owner, and one change call that carries its reason for the audit log.
-   The rules are the database's (supabase/migrations); without accounts it shows a sample. */
+   The rules are the database's (supabase/migrations). Without the account service there are no accounts: nothing is
+   listed, nothing is logged and nothing can change — never a made-up person, plan, ban or log line in their place. */
 
 import { supabase } from './supabase';
 import type { AccountPlan, GrantPlan, PlanStatus, Role } from './account';
@@ -46,6 +47,9 @@ export interface LogRow {
 }
 
 type Outcome = { ok: true } | { ok: false; why: string };
+
+/** What the People room says on a server without the account service */
+export const ACCOUNTS_OFF = 'Accounts are off on this server.';
 
 /** What a person's row amounts to, in one of four words */
 export const statusOf = (p: Person, now = Date.now()): PersonStatus => {
@@ -137,7 +141,7 @@ const personOf = (r: PeopleRow): Person => ({
 
 /** Every account, newest first (owners and the team; the database refuses anyone else) */
 export async function loadPeople(): Promise<{ people: Person[]; why: string | null }> {
-  if (!supabase) return { people: SAMPLE_PEOPLE, why: null };
+  if (!supabase) return { people: [], why: ACCOUNTS_OFF };
   const { data, error } = await supabase.rpc('admin_people');
   if (error) return { people: [], why: plainWhy(error.message) };
   return { people: ((data ?? []) as PeopleRow[]).map(personOf), why: null };
@@ -145,7 +149,7 @@ export async function loadPeople(): Promise<{ people: Person[]; why: string | nu
 
 /** The log, newest first — everyone's, or one person's */
 export async function loadLog(limit = 100, subject?: string): Promise<LogRow[]> {
-  if (!supabase) return subject ? SAMPLE_LOG.filter(l => l.subject === subject) : SAMPLE_LOG;
+  if (!supabase) return [];
   let q = supabase.from('audit_log').select('id,at,actor,subject,field,old,new,note').order('at', { ascending: false }).limit(limit);
   if (subject) q = q.eq('subject', subject);
   const { data, error } = await q;
@@ -168,7 +172,7 @@ export interface AdminPatch {
 
 /** The one change call: a patch and its reason together */
 export async function adminUpdate(subject: string, patch: AdminPatch, note: string): Promise<Outcome> {
-  if (!supabase) return { ok: true };
+  if (!supabase) return { ok: false, why: ACCOUNTS_OFF };
   const body: Record<string, string> = {};
   if (patch.plan !== undefined) body.plan = patch.plan;
   if (patch.role !== undefined) body.role = patch.role;
@@ -180,55 +184,3 @@ export async function adminUpdate(subject: string, patch: AdminPatch, note: stri
   const { error } = await supabase.rpc('admin_update', { subject, patch: body, note });
   return error ? { ok: false, why: plainWhy(error.message) } : { ok: true };
 }
-
-/* ---- sample, for a build without the account service ---- */
-
-const day = 24 * 3600 * 1000;
-const at = (daysAgo: number, hours = 0): string => new Date(Date.now() - daysAgo * day - hours * 3600 * 1000).toISOString();
-const sample = (n: number, p: Partial<Person> & { email: string; name: string }): Person => ({
-  id: `sample-${n}`,
-  handle: p.email.split('@')[0] ?? null,
-  avatar: null,
-  role: 'member',
-  plan: 'none',
-  bannedUntil: null,
-  createdAt: at(30 - n),
-  updatedAt: at(1),
-  lastSignInAt: at(0, n),
-  emailConfirmedAt: at(30 - n),
-  providers: ['email'],
-  planStatus: p.plan && p.plan !== 'none' ? 'active' : 'none',
-  planPeriod: p.plan && p.plan !== 'none' ? 'month' : null,
-  planRenewsOn: p.plan && p.plan !== 'none' ? at(-20) : null,
-  hasBilling: !!p.plan && p.plan !== 'none',
-  grantPlan: null,
-  grantUntil: null,
-  grantNote: null,
-  beta: false,
-  ...p,
-});
-
-const SAMPLE_PEOPLE: Person[] = [
-  sample(1, { email: 'noah@slayerterminal.com', name: 'Noah', role: 'owner', plan: 'desk', providers: ['email', 'google'], createdAt: at(31) }),
-  sample(2, { email: 'mo@slayerterminal.com', name: 'Mo', role: 'owner', plan: 'desk', createdAt: at(31) }),
-  sample(3, { email: 'r.okafor@gmail.com', name: 'Rina Okafor', plan: 'tape', providers: ['google'] }),
-  sample(4, { email: 'dstrand@proton.me', name: 'Daniel Strand', plan: 'book' }),
-  sample(5, { email: 'jmerrick@outlook.com', name: 'Jo Merrick', plan: 'desk', bannedUntil: at(-14), lastSignInAt: at(6) }),
-  sample(6, { email: 'ty.walsh@icloud.com', name: 'Ty Walsh', emailConfirmedAt: null, lastSignInAt: null, createdAt: at(0, 3) }),
-  sample(7, { email: 'priya.n@gmail.com', name: 'Priya N', plan: 'tape', providers: ['google'], createdAt: at(0, 9), beta: true }),
-  sample(8, { email: 'hal@fastmail.com', name: 'Hal', lastSignInAt: at(21) }),
-  sample(9, { email: 'k.aldana@gmail.com', name: 'Kai Aldana', providers: ['google'], grantPlan: 'desk', grantUntil: at(-3652), grantNote: 'Tested the book every morning for a month', beta: true }),
-  sample(10, { email: 'sam@slayerterminal.com', name: 'Sam', role: 'team', createdAt: at(12) }),
-];
-
-const SAMPLE_LOG: LogRow[] = [
-  { id: 9, at: at(0, 1), actor: 'sample-1', subject: 'sample-9', field: 'grant_until', old: null, new: at(-3652), note: 'Tested the book every morning for a month' },
-  { id: 8, at: at(0, 1), actor: 'sample-1', subject: 'sample-9', field: 'grant_plan', old: null, new: 'desk', note: 'Tested the book every morning for a month' },
-  { id: 5, at: at(0, 2), actor: 'sample-1', subject: 'sample-5', field: 'banned_until', old: null, new: at(-14), note: 'Shared screenshots of the book with the mark cropped out' },
-  { id: 4, at: at(1), actor: 'sample-2', subject: 'sample-3', field: 'plan', old: 'book', new: 'tape', note: 'Paid the difference by hand — Stripe is not up yet' },
-  { id: 7, at: at(2), actor: 'sample-2', subject: 'sample-10', field: 'role', old: 'member', new: 'team', note: 'Answers the support inbox' },
-  { id: 3, at: at(3), actor: 'sample-1', subject: 'sample-4', field: 'plan', old: 'none', new: 'book', note: 'First month on the house' },
-  { id: 6, at: at(4), actor: 'sample-1', subject: 'sample-7', field: 'beta', old: 'false', new: 'true', note: 'Asked to see the room early' },
-  { id: 2, at: at(30), actor: null, subject: 'sample-2', field: 'role', old: 'member', new: 'owner', note: null },
-  { id: 1, at: at(30), actor: null, subject: 'sample-1', field: 'role', old: 'member', new: 'owner', note: null },
-];

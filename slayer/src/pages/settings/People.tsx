@@ -1,5 +1,6 @@
 /* The admin People room (owners and the team): head and search, Plan/Status/Role/Sort cards, the grid, a row's card
-   (plan, role, ban, given plan, until, beta, with a reason), and the change log. Rules are the database's; without accounts it shows a sample. */
+   (plan, role, ban, given plan, until, beta, with a reason), and the change log. Rules are the database's; on a server
+   without accounts it says so and lists nobody (never a sample person, plan, ban or log line). */
 
 import { nyClock, nyDay, nyIsoDate } from '../../core/nyTime';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -16,7 +17,7 @@ import { ACCOUNTS_ON } from '../../data/supabase';
 import { useAccount, type AccountPlan, type GrantPlan, type Role } from '../../data/account';
 import { PLAN_RANK } from '../../data/access';
 import { planOf, STATUS_WORD as PLAN_STATUS_WORD } from '../../data/billing';
-import { adminUpdate, ago, loadLog, loadPeople, statusOf, STATUS_WORD, type AdminPatch, type LogRow, type Person, type PersonStatus } from '../../data/admin';
+import { ACCOUNTS_OFF, adminUpdate, ago, loadLog, loadPeople, statusOf, STATUS_WORD, type AdminPatch, type LogRow, type Person, type PersonStatus } from '../../data/admin';
 import { Door, Said, Section, Tag } from './pieces';
 
 /* ---- the words ------------------------------------------------------------------------------------------------------ */
@@ -410,8 +411,8 @@ const PeopleBox = () => {
   const a = useAccount();
   /* Owners and the team come in; owners alone change anything (the database holds both rules). */
   const myRole = a.status === 'in' ? a.profile?.role ?? null : null;
-  const team = !ACCOUNTS_ON || myRole === 'owner' || myRole === 'team';
-  const canEdit = !ACCOUNTS_ON || myRole === 'owner';
+  const team = ACCOUNTS_ON && (myRole === 'owner' || myRole === 'team');
+  const canEdit = ACCOUNTS_ON && myRole === 'owner';
   const [people, setPeople] = useState<Person[] | null>(null);
   const [why, setWhy] = useState<string | null>(null);
   const [log, setLog] = useState<LogRow[]>([]);
@@ -464,7 +465,15 @@ const PeopleBox = () => {
 
   const line = 'Every account — who they are, what they are on, and the log of every change';
 
-  if (ACCOUNTS_ON && a.status === 'loading')
+  if (!ACCOUNTS_ON)
+    return (
+      <Section id="people" title="People" line="The owners' room — every account, and the log of every change" aside={<Tag>accounts off</Tag>}>
+        <div className="px-5 py-4 border-t border-borderSubtle/60 text-t11 text-textMuted" data-people-off>
+          {ACCOUNTS_OFF} There are no accounts to list and no changes to log.
+        </div>
+      </Section>
+    );
+  if (a.status === 'loading')
     return (
       <Section id="people" title="People" line={line} aside={<Tag>signing in…</Tag>}>
         <div className="px-5 py-6 flex items-center gap-2 text-t11 text-textMuted border-t border-borderSubtle/60">
@@ -488,7 +497,7 @@ const PeopleBox = () => {
   const gridH = HEAD_H + Math.min(13, Math.max(3, rows.length)) * ROW_H + 6;
   return (
     <>
-      <Section id="people" title="People" line={line} aside={<Tag tone="silver">{!ACCOUNTS_ON ? 'preview · sample accounts' : canEdit ? 'owners change' : 'the team reads'}</Tag>}>
+      <Section id="people" title="People" line={line} aside={<Tag tone="silver">{canEdit ? 'owners change' : 'the team reads'}</Tag>}>
         {/* The head line, and the search. */}
         <div className="px-5 py-3 border-t border-borderSubtle/60 flex items-center gap-x-4 gap-y-2 flex-wrap">
           <p className="text-t11 text-textMuted whitespace-nowrap" data-people-line>
