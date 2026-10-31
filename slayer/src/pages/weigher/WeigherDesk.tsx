@@ -49,12 +49,11 @@ import {
   type ScanRow,
 } from '../../data/weigherDesk';
 import { scoreLiveContract, type LiveScore } from '../../data/compassModel';
-import { yearFracLeft, WEIGHER_Q, WEIGHER_R } from '../../data/weigherGate';
+import { pricerFor, yearFracLeft } from '../../data/weigherGate';
 import { printOf } from '../../data/compassParams';
 import { paintLive, useWeigherContract, useWeigherSpot, useWeigherTape } from '../../data/weigherTape';
 import { useDeskSession, sessionMeta, sessionOfMinute } from '../../data/deskSession';
 import { nyMinutes } from '../../core/nyTime';
-import { blackScholesPrice } from '../../core/greeks';
 import { expiryFor, isTradingDay, isoDate, today, MONTHS } from '../../core/calendar';
 import { addToWatchlist, closeWatched, hasOpenWatched, removeWatched, restampWatch, tickWatchlist, useWatchlist, watchedFor } from '../../data/watchlist';
 import type { WatchedContract } from '../../types/watchlist';
@@ -74,6 +73,7 @@ import { useIsBelowXl, useIsPhone, useIsPortraitDesk } from '../../components/ui
 import { DESK_TOP_DEFAULT, clampDeskTop, deskRows, readDeskTop, saveDeskTop } from './deskSplit';
 import { readDeskPrefs } from '../../data/deskPrefs';
 import StrikeChart, {
+  CHART_STYLES,
   DEFAULT_INDICATORS,
   DEFAULT_OVERLAYS,
   type ChartIndicators,
@@ -87,7 +87,7 @@ import SpotPrice from '../../components/gex/SpotPrice';
 import ContractPremiumPane from '../../components/gex/ContractPremiumPane';
 import { useFadeClose } from '../../components/ui/useFadeClose';
 import { fmtStrike, CHAIN_COLUMNS, DEFAULT_COLS, COLUMN_GROUPS, ChainCard } from '../../components/weigher/ChainGrid';
-import type { Timeframe } from '../../data/timeframe';
+import { TIMEFRAMES, type Timeframe } from '../../data/timeframe';
 import type { OptionRight } from '../../types/compass';
 const STAMP_FMT = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', second: '2-digit' });
 
@@ -147,6 +147,30 @@ interface DeskState {
   depth: number;
   /** Which catalog columns the chain shows, in catalog order */
   cols: string[];
+  /** The chart's own settings, kept with the desk: absent until the reader changes one */
+  chart?: DeskChart;
+}
+interface DeskChart {
+  timeframe?: Timeframe;
+  overlays?: Partial<ChartOverlays>;
+  style?: ChartStyle;
+  indicators?: Partial<ChartIndicators>;
+}
+/** A stored chart, kept to what the chart still knows: a known timeframe and style, and only the switches it has */
+function chartOf(raw: unknown): DeskChart | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const c = raw as Record<string, unknown>;
+  const flags = <T extends object>(v: unknown, keys: T): Partial<T> => {
+    const out: Record<string, boolean> = {};
+    if (v && typeof v === 'object') for (const k of Object.keys(keys)) if (typeof (v as Record<string, unknown>)[k] === 'boolean') out[k] = (v as Record<string, boolean>)[k];
+    return out as Partial<T>;
+  };
+  return {
+    timeframe: TIMEFRAMES.some(t => t.value === c.timeframe) ? (c.timeframe as Timeframe) : undefined,
+    style: CHART_STYLES.some(t => t.value === c.style) ? (c.style as ChartStyle) : undefined,
+    overlays: flags(c.overlays, DEFAULT_OVERLAYS),
+    indicators: flags(c.indicators, DEFAULT_INDICATORS),
+  };
 }
 
 /* An old record may still carry `layout`/`rowsV`/`colsV` from the movable
@@ -175,6 +199,7 @@ function loadDesk(): DeskState {
       preset: c.preset === 'losers' || c.preset === 'voliv' || c.preset === 'gainers' || c.preset === 'watchlist' ? c.preset : def.preset,
       depth: typeof c.depth === 'number' && (DESK_DEPTHS as readonly number[]).includes(c.depth) ? c.depth : 20,
       cols: cols.length ? cols : [...def.cols],
+      chart: chartOf(c.chart),
     });
   } catch {
     return def;
@@ -538,10 +563,20 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const isPhone = useIsPhone();
   const [sel, setSel] = useState<number | null>(null);
   /* opens on the desk's timeframe when the reader set one (Settings › The desk) */
-  const [timeframe, setTimeframe] = useState<Timeframe>(() => readDeskPrefs().opensOn.timeframe ?? '1m');
-  const [overlays, setOverlays] = useState<ChartOverlays>(DEFAULT_OVERLAYS);
-  const [chartStyle, setChartStyle] = useState<ChartStyle>('candles');
-  const [indicators, setIndicators] = useState<ChartIndicators>(DEFAULT_INDICATORS);
+  /* the chart's settings, as the reader left them on this desk (DESK_KEY) */
+  const [timeframe, setTimeframe] = useState<Timeframe>(() => desk.chart?.timeframe ?? readDeskPrefs().opensOn.timeframe ?? '1m');
+  const [overlays, setOverlays] = useState<ChartOverlays>(() => ({ ...DEFAULT_OVERLAYS, ...desk.chart?.overlays }));
+  const [chartStyle, setChartStyle] = useState<ChartStyle>(() => desk.chart?.style ?? 'candles');
+  const [indicators, setIndicators] = useState<ChartIndicators>(() => ({ ...DEFAULT_INDICATORS, ...desk.chart?.indicators }));
+  /* what the chart opened on is not a choice: a desk that never changed its chart keeps following Settings › The desk */
+  const chartOpened = useRef<string | null>(null);
+  useEffect(() => {
+    const chart: DeskChart = { timeframe, overlays, style: chartStyle, indicators };
+    const key = JSON.stringify(chart);
+    chartOpened.current ??= key;
+    if (key === chartOpened.current && !desk.chart) return;
+    setDesk(d => (JSON.stringify(d.chart) === key ? d : { ...d, chart }));
+  }, [timeframe, overlays, chartStyle, indicators]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     try {
@@ -1023,15 +1058,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   }, []);
 
   const tYears = yearFracLeft(chain.expiryIso || isoDate(chain.expiry.date));
-  const priceAt = useMemo(() => {
-    if (!selected || !(selected.iv > 0)) return undefined;
-    const v = selected.iv > 3 ? selected.iv / 100 : selected.iv;
-    if (!(v >= 0.01 && v <= 8)) return undefined;
-    const strike = selected.strike;
-    const leg = selected.right;
-    const years = tYears;
-    return (s: number) => blackScholesPrice(s, strike, years, v, leg, WEIGHER_R, WEIGHER_Q);
-  }, [selected, tYears]);
+  /* the payoff curve prices on the clock and carry the row was read on (its quoted IV moved onto the trading clock) */
+  const priceAt = useMemo(() => (selected ? pricerFor(chain, selected) : undefined), [selected, chain.ticker, chain.expiryIso]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Floating identity, defined once and rendered inside EACH lens's chart
      box — over the plot, below the toolbar (it was landing on the Tools
@@ -1248,7 +1276,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
           ±{chain.expectedMovePct.toFixed(1)}%
         </span>
       )}
-      <span className={`font-mono text-t9 uppercase tracking-widest whitespace-nowrap ${chain.offline ? 'text-bear' : 'text-textMuted'}`} data-chain-feed={chain.offline ? 'offline' : chain.kept ? 'kept' : 'live'} title={chain.offline ? 'The ThetaData terminal is not answering. The chain is the last one it gave.' : undefined}>
+      <span className={`font-mono text-t9 uppercase tracking-widest whitespace-nowrap ${chain.offline ? 'text-bear' : 'text-textMuted'}`} data-chain-feed={chain.offline ? 'offline' : chain.kept ? 'kept' : 'live'} title={chain.offline ? 'Live data is not answering. The chain is the last one it gave.' : undefined}>
         {chainFeedWords}
       </span>
     </span>
@@ -1572,18 +1600,26 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const portraitDesk = useIsPortraitDesk();
   const [top, setTop] = useState<number>(readDeskTop);
   const frameRef = useRef<HTMLDivElement | null>(null);
+  /* a drag's window listeners, taken down on release — or when the desk unmounts mid-drag */
+  const sashOff = useRef<(() => void) | null>(null);
+  useEffect(() => () => sashOff.current?.(), []);
   const onSashDown = useCallback((e: React.PointerEvent) => {
     const frame = frameRef.current;
     if (!frame) return;
     e.preventDefault();
+    sashOff.current?.();
     const move = (ev: PointerEvent) => {
       const r = frame.getBoundingClientRect();
       setTop(clampDeskTop(ev.clientY - r.top));
     };
-    const up = () => {
+    const off = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
+      if (sashOff.current === off) sashOff.current = null;
+    };
+    const up = () => {
+      off();
       setTop(v => {
         saveDeskTop(v);
         return v;
@@ -1592,6 +1628,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
+    sashOff.current = off;
   }, []);
   const resetSash = useCallback(() => {
     setTop(DESK_TOP_DEFAULT);
@@ -1621,7 +1658,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       onWatch={watchFromChain}
       book={bookAt}
       drillExtra={drillBook}
-      emptyText={chain.offline ? 'ThetaData offline — reconnecting' : listed === null || chainWait ? 'Reading the chain' : 'No listed contracts'}
+      emptyText={chain.offline ? 'Live data offline — reconnecting' : listed === null || chainWait ? 'Reading the chain' : 'No listed contracts'}
     />
   );
 
@@ -1722,7 +1759,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
           {arrived && full !== 'chart' && <div key={arrived.n} className="absolute inset-0 z-30 pointer-events-none rounded-md animate-focus-flash" data-weigher-flash />}
         </div>
 
-        <div ref={chainBoxRef} className="min-h-0 min-w-0 max-xl:h-[100vh]" data-chain-head={chainHead}>
+        <div ref={chainBoxRef} className="min-h-0 min-w-0 max-xl:h-[70dvh]" data-chain-head={chainHead}>
           <DeskCard
             title="Chain"
             actions={
@@ -1814,7 +1851,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
                 <span className="font-mono text-t10 font-semibold tnum text-textSecondary whitespace-nowrap" data-position-head>
                   {(() => {
                     const c = cardRow ? (cardRow.kind === 'watch' ? cardRow.w : cardRow.p) : null;
-                    return c ? `${c.ticker} ${fmtStrike(c.strike)}${c.right} · ${monthDay(c.expiry)}` : `${ticker} ${fmtStrike(sel!)}${right} · ${chain.expiry.dte}d`;
+                    return c ? `${c.ticker} ${fmtStrike(c.strike)}${c.right} · ${monthDay(c.expiry)}` : `${ticker} ${fmtStrike(sel!)}${right}${chain.expiryIso ? ` · ${monthDay(chain.expiryIso)}` : ''}`;
                   })()}
                 </span>
               ) : undefined
