@@ -816,7 +816,7 @@ const StockName = () => {
               {news.nextEarnings ? (
                 <span className="text-textSecondary truncate min-w-0">
                   reports <span className="text-textPrimary">{news.nextEarnings.label}</span> · {untilWords(news.nextEarnings.daysOut)} {news.nextEarnings.impliedMovePct > 0 ? <> · the options price <span className="text-textPrimary">±{news.nextEarnings.impliedMovePct.toFixed(1)}%</span></> : <> · not priced yet</>}
-                  {!news.nextEarnings.confirmed && <span className="text-warn" title="The company has not announced this date yet — it is Unusual Whales' estimate and can move"> · date estimated</span>}
+                  {!news.nextEarnings.confirmed && <span className="text-warn" title="The company has not announced this date yet — it is our data provider's estimate and can move"> · date estimated</span>}
                   {news.nextEarnings.timeKnown === false && <span className="text-textMuted"> · time not set</span>}
                   {news.reaction && (
                     <span className="text-textMuted">
