@@ -246,6 +246,9 @@ export interface PaperAccount {
   ledger: Record<string, PaperDay>;
   /** The high mark a trailing floor follows */
   peak: number;
+  /** The account's equity, tick by tick, as one running figure: its highest, and its worst fall from a high — the report's
+      drawdown (a list of trades cannot see two down at once). Kept from 2026-10-31; an older account starts it then. */
+  curve?: { peak: number; maxDd: number };
   /** The day's loss limit was reached: no way in until the day rolls */
   dayOver?: { day: string; why: string };
   /** Options' fee, a contract each way */
@@ -1787,18 +1790,47 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
   }
   next = keepHeld(next, m);
   next = keepClosed(before, next, m);
-  /* the day's high and low of what the account is worth */
+  /* the day's high and low of what the account is worth, and its running drawdown */
   const d = next.ledger[next.day];
-  if (d && optBookOf(next).positions.length) {
-    const eq = viewOf(next, m).equity;
-    if (Number.isFinite(eq) && (eq > d.hi || eq < d.lo)) next = { ...next, ledger: { ...next.ledger, [next.day]: { ...d, hi: Math.max(d.hi, eq), lo: Math.min(d.lo, eq) } } };
-  }
+  const holding = optBookOf(next).positions.length > 0;
+  const eq = holding || !next.curve || next.opt.fills.length !== before.opt.fills.length ? viewOf(next, m).equity : NaN;
+  if (d && holding && Number.isFinite(eq) && (eq > d.hi || eq < d.lo)) next = { ...next, ledger: { ...next.ledger, [next.day]: { ...d, hi: Math.max(d.hi, eq), lo: Math.min(d.lo, eq) } } };
+  if (Number.isFinite(eq)) next = keepCurve(next, eq);
   fillEvents(before, next, events);
   return { account: next, events };
 }
 
+/** The running drawdown, moved by one reading of equity */
+function keepCurve(a: PaperAccount, eq: number): PaperAccount {
+  const c = a.curve ?? { peak: Math.max(a.startCash, eq), maxDd: 0 };
+  const peak = Math.max(c.peak, eq);
+  const maxDd = Math.max(c.maxDd, cents(peak - eq));
+  return a.curve && peak === c.peak && maxDd === c.maxDd ? a : { ...a, curve: { peak, maxDd } };
+}
+/** The report's figures for a paper account, off its own equity: the drawdown off its ticks (`curve`; the days' highs and
+    lows, worst order first, for an account from before it was kept), Sharpe and Sortino off its days' closes */
+export function paperCurveOf(a: PaperAccount): { maxDrawdown: number; daily: number[] } {
+  const days = Object.keys(a.ledger).sort();
+  let peak = a.startCash;
+  let dd = 0;
+  for (const day of days) {
+    const x = a.ledger[day];
+    peak = Math.max(peak, x.open, x.hi);
+    dd = Math.max(dd, peak - x.lo);
+    if (x.close != null) {
+      peak = Math.max(peak, x.close);
+      dd = Math.max(dd, peak - x.close);
+    }
+  }
+  const maxDrawdown = a.curve ? Math.max(a.curve.maxDd, 0) : cents(dd);
+  return { maxDrawdown, daily: [a.startCash, ...days.filter(d => a.ledger[d].close != null).map(d => a.ledger[d].close!)] };
+}
+
 /** A change the reader made (an order, a close): the trades it closed are written down the way a tick's are */
 export function afterHand(before: PaperAccount, after: PaperAccount, m: PaperMarket): PaperAccount {
-  return keepClosed(before, keepHeld(after, m), m);
+  const next = keepClosed(before, keepHeld(after, m), m);
+  if (next.opt.fills.length === before.opt.fills.length) return next;
+  const eq = viewOf(next, m).equity;
+  return Number.isFinite(eq) ? keepCurve(next, eq) : next;
 }
 

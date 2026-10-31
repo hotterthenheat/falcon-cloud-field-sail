@@ -9,7 +9,7 @@
 
 import { addDays, bellOf, dayBeginsAt, dayEndsAt, nyAt, nyInstant, sessionTimeOn, tradingDayOf, yearsToExpiry } from '../src/data/paper/clock';
 import { isFresh } from '../src/data/paper/thetaFeed';
-import { bankedOf, closeStale, comboNatural, comboRefusal, endAccount, flattenAll, futBookOf, newAccount, optBookOf, optCancel, optClose, optPlace, optPlaceCombo, optRefusal, retireFutures, tick, viewOf, type PaperAccount, type PaperMarket } from '../src/data/paper/engine';
+import { bankedOf, paperCurveOf, closeStale, comboNatural, comboRefusal, endAccount, flattenAll, futBookOf, newAccount, optBookOf, optCancel, optClose, optPlace, optPlaceCombo, optRefusal, retireFutures, tick, viewOf, type PaperAccount, type PaperMarket } from '../src/data/paper/engine';
 import { NO_RULES, flatTimeOf, floorOf, readRules, ruleRefusal, type PaperPlan, type PropRules } from '../src/data/paper/rules';
 import { CUSTOM_DEFAULTS, PROP_FIRMS, customPlan, planById } from '../src/data/paper/propFirms';
 import { marginOf } from '../src/data/paper/margin';
@@ -889,6 +889,23 @@ const fixed = (price: () => number, t = now): PaperMarket => ({
   x = optPlace(x, fixed(() => 5, T0), { contract: { ticker: 'SPY', strike: 500, right: 'C', expiry: E }, side: 'buy', qty: 2, kind: 'market' });
   const w = viewOf(x, fixed(() => 5, T0));
   ok('excess is what is free: a long option has no loan value (Reg T) — 9,000 cash, 1,000 of calls, nothing short → excess 9,000', w.excess === 9_000 && w.free === 9_000, `${w.excess}`);
+}
+
+{
+  /* 4. a paper account's drawdown is its equity's, tick by tick: buy 1 @ 2.00 (sandbox), then 1.50, 3.00, 2.50, 1.00 */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  let p = 2;
+  let x = newAccount({ id: 'dd', kind: 'practice', name: 'dd', startCash: 10_000, now: T0, sandbox: true });
+  const c: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: '2026-10-16' };
+  x = optPlace(x, fixed(() => p, T0), { contract: c, side: 'buy', qty: 1, kind: 'market' });
+  let t = T0;
+  for (const v of [1.5, 3, 2.5, 1]) {
+    p = v;
+    t += 2000;
+    x = tick(x, fixed(() => p, t)).account;
+  }
+  ok('the paper drawdown follows the ticks: peak 10,100 (at 3.00), down to 9,900 (at 1.00) — 200', x.curve?.maxDd === 200 && x.curve.peak === 10_100, JSON.stringify(x.curve));
+  ok('…and the report reads it from there', paperCurveOf(x).maxDrawdown === 200);
 }
 
 console.log(`\n${passed} held · ${failed} missed`);

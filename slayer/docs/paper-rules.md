@@ -443,3 +443,15 @@ Every rule below has a known-number check in `scripts/paper-proof.ts` (paper) an
   nothing. **A plan's times** written against the 16:00 bell keep their distance from the real close: flat by 15:55 →
   12:55, 15:59 → 12:59, the 16:10 close → 13:10; a time between 13:00 and 15:00 is 12:59; a time before 13:00 stands.
   The words on the page still say the plan's own time (a UI follow-up).
+- **The drawdown is the equity curve's** — its worst fall from a high, open trades in. A backtest reads it off its
+  minute curve (`review/engine.ts equityCurveOf`: cash and every contract held at its mid, each minute from the first
+  fill to the clock; `sessionStatsOf`); a paper account off its ticks (`PaperAccount.curve`, kept from 2026-10-31; an
+  older account reads its days' highs and lows, worst order first: `paperCurveOf`). Two trades down $300 each in the
+  same minute and closed +$50 each: **$600**, where the closed trades and each trade's own low said $300. Given no curve
+  (an imported journal) `statsOf` still reads the trades, and says so (`drawdownFrom: 'trades'`).
+- **A $0 trade is a scratch** — not a win, not a loss, out of the win rate (wins ÷ wins and losses), and it neither
+  starts nor breaks a losing run.
+- **Sharpe and Sortino** are on the daily equity returns (the start, then each day's close: a backtest's bells, a paper
+  account's ledger), annualised by √252, no risk-free rate taken off: mean ÷ sample standard deviation; mean ÷ downside
+  deviation (√ of the mean squared negative return over every day). +1%, −1%, +1%: Sharpe 4.58, Sortino 9.17. Fewer
+  than three points: none said.

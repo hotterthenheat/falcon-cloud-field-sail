@@ -3,7 +3,7 @@
   The rules page (docs/review-backtest-rules.md), checked against the engine on a hand-made market
   (scripts/review-market-fixture.ts), where every fill can be worked out from its formula. Exits 1 on a miss.
 */
-import { accountOf, advance, amend, attach, bankedOf, bookOf, cancel, cashOf, cutsOf, dayStateOf, dayStopOf, equityAtOpen, floorOf, ladderRoom, namesOf, newSession, nextOpen, pendingSettlement, place, playStep, rebase, refusal, setBreakeven, setTrail, spokenFor, stampOf, statsOf, MULT, type Session } from '../src/data/review/engine';
+import { accountOf, advance, amend, attach, bankedOf, bookOf, equityCurveOf, sessionStatsOf, cancel, cashOf, cutsOf, dayStateOf, dayStopOf, equityAtOpen, floorOf, ladderRoom, namesOf, newSession, nextOpen, pendingSettlement, place, playStep, rebase, refusal, setBreakeven, setTrail, spokenFor, stampOf, statsOf, MULT, type Session } from '../src/data/review/engine';
 import { TRADE_COLUMNS, dayRowsOf, reportDaysCsv, reportTradesCsv, tradeFees } from '../src/data/review/reportCsv';
 import { csvCells } from '../src/data/review/journalManual';
 import { splitQty } from '../src/data/review/ladder';
@@ -460,6 +460,33 @@ ok('the report adds up', sum.n === 2 && near(sum.net, trades[0].pnl + bt.pnl, 0.
   const sx: Session = { ...base, fills: [fill('f1', 10, 'buy', 2, 1), fill('f2', 11, 'sell', 1, 2), fill('f3', 12, 'buy', 1, 3)] };
   const p = bookOf(sx).positions[0];
   ok('running average cost: buy 2 @ 1, sell 1 @ 2, buy 1 @ 3 — avg 2.00, the sale banked 100, what is held cost 400', p?.avg === 2 && p.banked === 100 && p.cost === 400, `avg ${p?.avg} · banked ${p?.banked} · cost ${p?.cost}`);
+}
+
+{
+  /* 4. the drawdown is read off the equity curve: two trades each down 300 at the same minute, each closed +50 */
+  const t2 = (id: string) => ({ pnl: 50, r: 0.1, closed: { day: D1, minute: 200 }, heldMin: 100, lowOpen: -300 });
+  ok('two trades down 300 at once: the trades alone say 300 (each its own low)', statsOf([t2('a'), t2('b')]).maxDrawdown === 300);
+  ok('…the account’s curve (10,000 → 9,400 → 10,100) says 600', statsOf([t2('a'), t2('b')], { equity: [10_000, 9_400, 10_100] }).maxDrawdown === 600 && statsOf([t2('a')], { equity: [1] }).drawdownFrom === 'curve');
+  /* the minute curve of a backtest: buy 2 of the 500 call at D1 minute 30 (ask 3.15): 9,368.70 cash; marked at its mid it
+     peaks at minute 100 (SPY 502: mid 4.50 → 10,268.70) and falls to the bell (SPY 499.11: mid 2.50 → 9,868.70) */
+  let ec = advance(newSession({ id: 'ec', name: 'curve', ticker: 'SPY', startCash: 10000, startDay: D1, now: 0 }), { day: D1, minute: 30 }, 0);
+  ec = place(ec, { contract: call500, side: 'buy', qty: 2, kind: 'market' }, 0);
+  ec = advance(ec, { day: D1, minute: LAST_MIN }, 0);
+  const curve = equityCurveOf(ec);
+  ok('a backtest’s minute equity curve: 10,000 at the start, 9,988.70 at minute 30, 10,268.70 at the peak, 9,868.70 at the bell', curve[0] === 10000 && curve[1] === 9988.7 && Math.max(...curve) === 10268.7 && curve[curve.length - 1] === 9868.7, `${curve[1]} · ${Math.max(...curve)} · ${curve[curve.length - 1]}`);
+  ok('…its drawdown is the fall from that peak, 400 — with nothing closed, the trades say 0', sessionStatsOf(ec).maxDrawdown === 400 && statsOf(bookOf(ec).trades).maxDrawdown === 0, `${sessionStatsOf(ec).maxDrawdown}`);
+}
+{
+  /* 11. a $0 trade is a scratch; Sharpe and Sortino on daily equity returns */
+  const tr = (pnl: number, minute: number) => ({ pnl, r: 0, closed: { day: D1, minute }, heldMin: 1 });
+  const st = statsOf([tr(100, 1), tr(0, 2), tr(-50, 3)]);
+  ok('a trade closed at $0 is a scratch: 1 win, 1 loss, 1 scratch, a 50% win rate', st.wins === 1 && st.scratches === 1 && st.winRate === 0.5 && st.avgLoss === -50, `${st.wins} · ${st.scratches} · ${st.winRate} · ${st.avgLoss}`);
+  ok('…it neither starts nor breaks a losing run: −50, 0, −50 is a run of 2', statsOf([tr(-50, 1), tr(0, 2), tr(-50, 3)]).losingRun === 2);
+  /* returns +1%, −1%, +1%: mean 0.3333%, sample sd 1.1547% → Sharpe 0.2887 × √252 = 4.583; downside dev √(0.0001 / 3) → Sortino 9.165 */
+  const rs = statsOf([], { daily: [100, 101, 99.99, 100.9899] });
+  ok('Sharpe on daily equity returns, annualised: +1%, −1%, +1% → 4.583', rs.sharpe != null && near(rs.sharpe, 4.5826, 0.001), `${rs.sharpe}`);
+  ok('…Sortino on the downside deviation → 9.165', rs.sortino != null && near(rs.sortino, 9.1652, 0.001), `${rs.sortino}`);
+  ok('…too few days: none said', statsOf([], { daily: [100, 101] }).sharpe === null);
 }
 
 console.log(misses ? `\n${misses} MISSED` : '\nall rules hold');

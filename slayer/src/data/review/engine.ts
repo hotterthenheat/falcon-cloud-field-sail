@@ -939,10 +939,52 @@ interface Stats {
   expectancy: number;
   expectancyR: number;
   maxDrawdown: number;
+  /** Where the drawdown was read from: the account's equity curve, or (none given) the closed trades and each one's own low */
+  drawdownFrom: 'curve' | 'trades';
   losingRun: number;
   avgHeldMin: number;
   best: number;
   worst: number;
+  /** Trades that closed at exactly $0 — neither a win nor a loss */
+  scratches: number;
+  /** Annualised (√252) Sharpe and Sortino of the daily equity returns, where a daily curve of 3 points or more is given:
+      mean ÷ sample standard deviation; mean ÷ downside deviation (√ of the mean squared negative return, over every day).
+      Null where it cannot be said (too few days, or no spread). No risk-free rate is taken off. */
+  sharpe: number | null;
+  sortino: number | null;
+}
+/** The account's own curve, for the figures a list of trades cannot give */
+export interface StatsCurve {
+  /** The account's equity in time order (a backtest's every minute, from the start) — the drawdown is its worst fall
+      from a high */
+  equity?: number[];
+  /** …or the drawdown, already read off a curve kept elsewhere (a paper account's ticks) */
+  maxDrawdown?: number;
+  /** The account's equity at the start and at each day's close, in order — Sharpe and Sortino are on its returns */
+  daily?: number[];
+}
+/** The worst fall from a high of a curve, in dollars */
+export function drawdownOfCurve(curve: number[]): number {
+  let peak = -Infinity;
+  let dd = 0;
+  for (const v of curve) {
+    if (!Number.isFinite(v)) continue;
+    peak = Math.max(peak, v);
+    dd = Math.max(dd, peak - v);
+  }
+  return cents(dd);
+}
+/** Annualised Sharpe and Sortino of the returns of a daily equity curve (start, then each close) — see Stats */
+export function ratiosOfDaily(daily: number[]): { sharpe: number | null; sortino: number | null } {
+  const eq = daily.filter(v => Number.isFinite(v) && v > 0);
+  const r: number[] = [];
+  for (let i = 1; i < eq.length; i++) r.push(eq[i] / eq[i - 1] - 1);
+  if (r.length < 2) return { sharpe: null, sortino: null };
+  const mean = r.reduce((x, v) => x + v, 0) / r.length;
+  const sd = Math.sqrt(r.reduce((x, v) => x + (v - mean) ** 2, 0) / (r.length - 1));
+  const down = Math.sqrt(r.reduce((x, v) => x + Math.min(0, v) ** 2, 0) / r.length);
+  const k = Math.sqrt(252);
+  return { sharpe: sd > 1e-12 ? (mean / sd) * k : null, sortino: down > 1e-12 ? (mean / down) * k : null };
 }
 /** What the report's figures need of a closed trade — a backtest's or a paper account's. A trade with no R (a paper future
     entered without a stop) is left out of the R figures. */
@@ -958,10 +1000,14 @@ interface Scored {
 /** A close, as one number for order: the instant where there is one, the replayed stamp where not (a journal is one kind or
     the other, so the two are never compared) */
 const closedStamp = (m: Scored['closed']): number => ('at' in m ? m.at : stampOf(m));
-export function statsOf(trades: Scored[]): Stats {
+/** The report's figures. `curve`: the account's own equity — the drawdown is read off it (a list of trades alone cannot
+    see two trades down at once), and Sharpe / Sortino off its daily closes. A trade that closed at exactly $0 is a
+    scratch: not a win, not a loss, and it neither starts nor breaks a losing run. */
+export function statsOf(trades: Scored[], curve?: StatsCurve): Stats {
   const n = trades.length;
   const wins = trades.filter(t => t.pnl > 0);
-  const losses = trades.filter(t => t.pnl <= 0);
+  const losses = trades.filter(t => t.pnl < 0);
+  const scratches = trades.filter(t => t.pnl === 0).length;
   const sum = (a: Scored[]) => a.reduce((x, t) => x + t.pnl, 0);
   const withR = trades.filter(t => t.r != null);
   let peak = 0;
@@ -974,15 +1020,19 @@ export function statsOf(trades: Scored[]): Stats {
     run += t.pnl;
     peak = Math.max(peak, run);
     dd = Math.max(dd, peak - run);
-    cur = t.pnl <= 0 ? cur + 1 : 0;
+    if (t.pnl < 0) cur++;
+    else if (t.pnl > 0) cur = 0;
     lr = Math.max(lr, cur);
   }
+  const fromCurve = curve?.maxDrawdown != null && Number.isFinite(curve.maxDrawdown) ? curve.maxDrawdown : curve?.equity?.length ? drawdownOfCurve(curve.equity) : null;
+  if (fromCurve != null) dd = fromCurve;
+  const ratios = curve?.daily ? ratiosOfDaily(curve.daily) : { sharpe: null, sortino: null };
   const gw = sum(wins);
   const gl = Math.abs(sum(losses));
   return {
     n,
     wins: wins.length,
-    winRate: n ? wins.length / n : 0,
+    winRate: wins.length + losses.length ? wins.length / (wins.length + losses.length) : 0,
     net: cents(sum(trades)),
     avgWin: wins.length ? cents(gw / wins.length) : 0,
     avgLoss: losses.length ? cents(-gl / losses.length) : 0,
@@ -990,11 +1040,58 @@ export function statsOf(trades: Scored[]): Stats {
     expectancy: n ? cents(sum(trades) / n) : 0,
     expectancyR: withR.length ? withR.reduce((x, t) => x + (t.r ?? 0), 0) / withR.length : 0,
     maxDrawdown: cents(dd),
+    drawdownFrom: fromCurve != null ? 'curve' : 'trades',
     losingRun: lr,
     avgHeldMin: n ? trades.reduce((x, t) => x + t.heldMin, 0) / n : 0,
     best: n ? Math.max(...trades.map(t => t.pnl)) : 0,
     worst: n ? Math.min(...trades.map(t => t.pnl)) : 0,
+    scratches,
+    ...ratios,
   };
+}
+
+/** A backtest's equity at the end of every minute from its start to its clock: cash, and every contract held at its mark
+    (the account's own mid — a minute that is no market keeps the last mid it had). The report's drawdown is read off it. */
+export function equityCurveOf(s: Session): number[] {
+  const fills = [...s.fills].sort((a, b) => stampOf(a.at) - stampOf(b.at));
+  const out: number[] = [s.startCash];
+  if (!fills.length) return out;
+  const held = new Map<string, { c: ContractId; qty: number; last: number }>();
+  let cash = s.startCash;
+  let k = 0;
+  const end = s.cursor;
+  for (let day: string | null = fills[0].at.day, guard = 0; day && day <= end.day && guard < 2000; day = sessionAfter(day), guard++) {
+    const m0 = day === fills[0].at.day ? fills[0].at.minute : 0;
+    const m1 = day === end.day ? Math.min(LAST_MIN, end.minute) : LAST_MIN;
+    for (let m = m0; m <= m1; m++) {
+      while (k < fills.length && (fills[k].at.day < day || (fills[k].at.day === day && fills[k].at.minute <= m))) {
+        const f = fills[k++];
+        const key = contractKey(f.contract);
+        const h = held.get(key) ?? { c: f.contract, qty: 0, last: f.price };
+        const way = f.side === 'buy' ? 1 : -1;
+        h.qty += way * f.qty;
+        h.last = f.price;
+        cash += -way * f.price * MULT * f.qty - f.fee;
+        if (h.qty === 0) held.delete(key);
+        else held.set(key, h);
+      }
+      let v = cash;
+      for (const h of held.values()) {
+        const mk = markAt(h.c, day, m).mark;
+        if (Number.isFinite(mk)) h.last = mk;
+        v += h.qty * h.last * MULT;
+      }
+      out.push(cents(v));
+    }
+  }
+  return out;
+}
+/** The report's figures for a backtest, read off its own equity: the drawdown off its minute curve, Sharpe and Sortino
+    off its bells (`closes`) */
+export function sessionStatsOf(s: Session): Stats {
+  const { trades } = bookOf(s);
+  const days = Object.keys(s.closes ?? {}).sort();
+  return statsOf(trades, { equity: equityCurveOf(s), daily: [s.startCash, ...days.map(d => s.closes![d].equity)] });
 }
 
 interface Cut {
