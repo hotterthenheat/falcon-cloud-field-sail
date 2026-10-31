@@ -877,7 +877,8 @@ const LiveTape = () => {
         header: 'Vol/OI',
         align: 'right',
         sortValue: r => r.p.volOverOI,
-        render: r => <span className={`font-mono tnum ${r.p.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={r.p.oi > 0 ? undefined : 'No open interest before the session — a new contract'}>{volOiText(r.p)}<OpeningTag volume={r.p.volume} oi={r.p.oi} /></span>,
+        /* the opening flag under the ratio, not beside it: beside, it widened the column past a 1440 box and the pinned premium hid Kind */
+        render: r => <span className={`inline-flex flex-col items-end gap-[2px] leading-none align-middle [&>[data-likely-opening]]:ml-0 font-mono tnum ${r.p.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={r.p.oi > 0 ? undefined : 'No open interest before the session — a new contract'}>{volOiText(r.p)}<OpeningTag volume={r.p.volume} oi={r.p.oi} /></span>,
       },
       { key: 'iv', label: 'IV', group: 'Activity', header: 'IV', align: 'right', sortValue: r => r.p.iv, render: r => <span className="font-mono tnum text-textPrimary">{r.p.iv.toFixed(0)}%</span> },
       {

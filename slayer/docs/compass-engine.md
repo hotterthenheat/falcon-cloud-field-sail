@@ -29,15 +29,26 @@ Compass scans, calls and settles on the server, once for every viewer. Browsers 
 
 ## What it does
 
-- At every mark (every five minutes while a root's options trade, plus 09:29 VIX, 15:59 and 16:14) it reads a
-  snapshot of every name on the sleeve (0DTE: the roots with a same-day contract; 1–7 DTE: the twenty roots with the
-  full feature row) and scores Books A and B. Book C sweeps once from 15:20 ET.
+- **24/7, every session a root trades.** At every mark (every five minutes while a root's options trade, plus 09:29
+  VIX, 15:59 and 16:14) it reads a snapshot of every name on the sleeve (0DTE: the roots with a same-day contract;
+  1–7 DTE: the twenty roots with the full feature row) and scores Books A and B: the overnight index session
+  (SPX/SPXW, XSP, VIX, RUT/RUTW, 20:15–09:25 ET; from 20:15 the 0DTE sleeve is the next session's contract), the
+  options pre-market of SPY, QQQ, IWM, GLD and the large single names (07:30–09:25), the regular session, and the
+  curb to 17:00 where a root still trades. Friday 17:00 to Sunday 20:15 and market holidays (with the overnight before
+  them) are shut. Book C sweeps once from 15:20 ET.
+- **Viewer names.** Pages never say "Model 1/2" or "Book A/B/C": `compassParams` holds `MODEL_1_NAME` ("Hit score"),
+  `MODEL_2_NAME` ("Runner score") and `BOOK_NAME` (A "Core", B "Wing", C "Late sweep"), the one place to rename them,
+  and `userWords` rewrites every Compass answer the browser reads (records and reviews written before the rename,
+  too). No data vendor is named on a page.
 - A name the terminal does not answer inside the mark's minute (the terminal down, the session lost, the previous
   pass still running) is scored afterwards from the quotes that stood at that exact instant (`option/at_time/quote`).
   **Live calls only:** a late mark is never an official call and never takes a seat. What it would have called is
   kept as a "would have called" entry (`would` in the record), settled by the same rules, for the review and the
-  study. A name ThetaData has no quotes for at that mark is recorded as not scored. When the engine starts after the
-  open, it fills the session's marks from 09:30 ET the same way, oldest first, and always behind the live pass.
+  study. A name ThetaData has no quotes for at that mark (its 472) is recorded as not scored; an answer that is not
+  one (an empty 200, a busy terminal, a 5xx) leaves the name pending to be asked again. When the engine starts after
+  the session began, it fills the session's marks from its first minute (20:15 ET the evening before) the same way,
+  oldest first, and always behind the live pass. A would-have-called entry holds a would-seat for the later late
+  marks: the would list keeps the live book's five seats and one book a root.
   A record written before this rule, with a late call in `calls`, is read with that call moved to `would` and its
   seat given back.
 - After the close (from 16:20 ET, once every call has settled and no mark is pending) it builds the session's review
@@ -54,11 +65,17 @@ Compass scans, calls and settles on the server, once for every viewer. Browsers 
 
 ## The rules the scan applies
 
-- **Entry time (Books A and B).** A mark can call only if `t` (minutes after 09:30) is inside the trees' trained
-  minutes, 15 to 330 (09:45 to 15:00), **and** at least 55 minutes before the session's flat: `flatT − t ≥ 55`, with
-  `flatT = 385` (15:55) on a full day and `close − 5 − 570` on an early close (205 on a 13:00 close, so the last
-  entry is 12:00). `entryTimeOk` in `compassParams.ts`. 09:30–09:40, 15:05 on, the curb and every overnight mark are
-  scored and logged, but call nothing. The theta-burn check reads the same flat.
+- **Entry time (Books A and B), session by session** (owner, 2026-10-31). A mark can call only if it is at least
+  15 minutes into its own session and at least 55 minutes before that session's flat. Every session flats five
+  minutes before it ends: the regular session at 15:55 (or five before an early close), the overnight index session
+  and the equity pre-market at 09:20 (before the 09:25 halt), the curb at 16:55. So: regular 09:45–15:00 (12:00 on a
+  13:00 close), overnight 20:30–08:25, pre-market 07:45–08:25, and the curb never. `tapeSession`, `entryTimeOk`,
+  `minutesToFlat` in `compassParams.ts`. A call outside the trees' trained minutes (t 15 to 330, 09:45 to 15:00) is
+  allowed and marked `outsideTrained` ("Outside trained hours" on every page; counted apart in the track record and
+  the replay). The call carries its session (`tapeSession`) and its own flat (`flatAt`); the theta-burn check reads
+  the minutes to that flat. **What this does today:** the Hit score is not scored without the regular session's own
+  minutes (realised vol over 30 minutes needs ten one-minute returns after 09:30; the day range needs a bar), so no
+  overnight or pre-market row is scored and none calls; the gate is ready for inputs that are.
 - **Inputs the trees never saw missing.** A LightGBM split with missing type *none* reads a NaN as 0. Where 0 is
   outside the column's training range, that row walks a branch no training row took, so the model is not scored
   (`lgbm.ts nanUnsafeColumns`): Model 1 on columns 0, 6, 7, 15, 32; Model 2 on 0, 6, 7, 9, 15, 32, 38, 40, 41. Live
@@ -67,18 +84,36 @@ Compass scans, calls and settles on the server, once for every viewer. Browsers 
   so. Model 1 unscored: no call. Column 5 (place in the day range) is clipped to its training [0, 1]; to the trees
   that changes nothing (every split on it lies in 0.0118–0.9857).
 - **Fresh bars.** A live score needs minute t−1's bar; a memo that does not reach it is read again.
-- **Late marks** are judged on the seats and contracts as they stood at their own mark.
+- **Late marks** are judged on the seats and contracts as they stood at their own mark, official and would.
+- **Open interest** is read once per published count (the clearing count is stamped 06:30 ET; a book read overnight
+  is read again from 07:00), whatever the spot of the mark that asked.
 - **The weekly read** is each name's nearest expiry 1 to 7 sessions out, 17 strikes either side of the money (Book
   B's outer strike at the widest span); the same-day read is 16.
 - **Exits.** Books A and B settle on the contract's one-minute NBBO, and on its 1-second quotes in every minute
   whose range crosses the stop, the 1.50× target or a ratchet rung (at most 12 such minutes a call). The 1.25×
-  break-even stop is the ask plus the round trip's fees. Fees: $0.50 commission and $0.04 exchange a side, the SEC
-  fee (0.0000278 of the sale) and FINRA's TAF ($0.00279 a contract sold).
+  break-even stop is the fill ask itself (once the bid has reached 1.25× it). **No fees** (owner, 2026-10-31): Compass
+  publishes entries and exits and places no trades, so a call's P&L is (exit − fill ask) × 100 a contract and nothing
+  else (until then a $1.08 round trip, the SEC fee and FINRA's TAF came off every P&L and onto the break-even stop;
+  records settled then are read without them). The fill is the ask of the first one-minute
+  quote stamped at or after the minute after the mark (the quote standing at that instant; ThetaData's 1-minute bars
+  and quote points are stamped at the start of their minute, checked against the trades of SPY and SPX on
+  2026-10-29). An overnight or pre-market call flats at its `flatAt` (09:20), reading its path through that date.
 - **Sessions to expiry** (`weekdayDte`) skip market holidays. `yearFrac` for a 1–7 DTE contract still counts only
   today's minutes, as the training rows did; it is a retrain item, not a live fix.
 - **The study.** Pooled rates carry cluster-robust Wilson intervals (by session; by name and session in a pool of one
   session) and an effective row count; the rows bar reads effective rows. Each label follows its own book's exit.
   The threshold sweep is advisory: it tries seven cuts on the same rows.
+
+## The replay
+
+`npx tsx scripts/compass-replay.ts 2026-10-26 2026-10-27 …` drives the engine's own late path over recorded sessions:
+every mark's recorded quotes (`atMark`), the scorer and its gates and seats (`scoreBook`, late), the ledger
+(`recordPicks`, `settleOpen`), Book C's 15:20 sweep. It refuses every live snapshot (only the open interest snapshot is
+answered, from that day's history). It writes `.cache/compass/replay/<day>.json` (every mark, the gate funnel, every
+contract at or over the line, every call settled) and prints the track record by book and by session, the funnel by
+session and its checks (fills, exits, entry minutes, labels, seats, NaN). `--verify` re-derives each call from the raw
+REST rows with no app code. `REPLAY_FROM=07:30` starts a day at the pre-market; the default starts at 20:15 the
+evening before.
 
 ## The record
 
@@ -102,7 +137,7 @@ One file per session date, `.cache/compass/YYYY-MM-DD.json` (git-ignored):
 
 A `Signal` (`src/data/compassLedger.ts`) is the call: contract, book, the bid and ask it fired on and their stamp,
 Model 1 and Model 2, `how` (`live` or `late`), `mark`, and `outcome` (fill, exit, peak, stop, return, P&L per
-contract after fees). Every scored row's 56 inputs are also logged to `.cache/compass/rows/YYYY-MM-DD.jsonl` for
+contract, (exit − fill) × 100). Every scored row's 56 inputs are also logged to `.cache/compass/rows/YYYY-MM-DD.jsonl` for
 `scripts/compass-validate.ts` and `scripts/compass-validate.py`.
 
 After the session: `.cache/compass/review/YYYY-MM-DD.json` (every trade: the entry snapshot with the inputs that

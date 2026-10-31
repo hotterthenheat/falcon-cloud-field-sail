@@ -67,7 +67,7 @@ export function putWallWordsAt(place: WallPlace, net?: number | null): string {
         : 'the most put gamma, below price, but its calls outweigh it — dealers are long gamma there, so a dip into it tends to be absorbed rather than accelerate';
   if (place === 'at') return 'the most put hedging, right at price — dealers are short gamma there, so a break below can accelerate';
   return place === 'above'
-    ? 'the most put hedging, sitting above price — overhead put hedging, not a floor: if price rallies into it, dealers short gamma there can speed up selling, or it can act as a magnet'
+    ? 'the most put hedging, sitting above price — overhead put hedging, not a floor: if price rallies into it, dealers short gamma there can speed up selling'
     : 'the most put hedging, below price — support while it holds; dealers are short gamma there, so a break below can accelerate';
 }
 export function callWallWordsAt(place: WallPlace, net?: number | null): string {

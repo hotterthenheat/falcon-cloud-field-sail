@@ -61,7 +61,8 @@ export function buildExposureProfile(
     }
   }
 
-  /* A pin is a long-gamma strike near price: dealers long gamma there pull price back to it, only within reach. */
+  /* The largest-OI strike, marked only where dealers are long gamma there and it is near price (a heavy strike, not a
+     magnet: research/physics found no pinning) */
   const pinNode = chain.find(n => n.strike === pinStrike);
   const pinFound = pinOI > 0 && !!pinNode && pinNode.netGex < 0 && Math.abs(pinStrike - spot) <= spot * PIN_NEAR;
 
@@ -146,7 +147,7 @@ export function buildExposureProfile(
      the levels and the flip read; a volatility read, not a direction. Neutral only on an exact zero. */
   const regime = regimeOfNet(flipRead.netAtSpot);
   const bias: GammaBias = regime === 'SHORT' ? 'SHORT_GAMMA' : regime === 'LONG' ? 'LONG_GAMMA' : 'NEUTRAL';
-  const biasNote = regime === 'SHORT' ? 'Net short gamma — moves amplified' : regime === 'LONG' ? 'Net long gamma — dips absorbed' : 'Balanced positioning';
+  const biasNote = regime === 'SHORT' ? 'Net short gamma — moves tend to extend' : regime === 'LONG' ? 'Net long gamma — moves tend to be damped' : 'Balanced positioning';
 
   // Insight narrative — levels translated to English
   const fmtK = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
@@ -155,13 +156,13 @@ export function buildExposureProfile(
   const retailNet = flipRead.netAtSpot === 0 ? 0 : -flipRead.netAtSpot;
   const insights = [
     /* the regime is the SIGN of net gamma, printed in the retail sign; the flip is where that sign changes */
-    `Net GEX is ${retailNet > 0 ? '+' : retailNet < 0 ? '−' : ''}${fmtUsd(Math.abs(retailNet))} — dealers are ${retailNet > 0 ? 'long gamma, so their hedging absorbs moves' : 'short gamma, so their hedging amplifies moves'}. ${flipRead.flip != null ? `The flip is ${fmtK(flipRead.flip)}, where that changes.` : 'There is no flip within ±10%.'}`,
+    `Net GEX is ${retailNet > 0 ? '+' : retailNet < 0 ? '−' : ''}${fmtUsd(Math.abs(retailNet))} — dealers are ${retailNet > 0 ? 'long gamma: moves tend to be damped' : 'short gamma: moves tend to extend'}. ${flipRead.flip != null ? `The flip is ${fmtK(flipRead.flip)}, where that changes.` : 'There is no flip within ±10%.'}`,
     !hasCall || !hasPut
       ? `No ${!hasCall && !hasPut ? 'call or put' : !hasCall ? 'call' : 'put'} gamma on these contracts, so no ${!hasCall && !hasPut ? 'walls' : !hasCall ? 'call wall' : 'put wall'}.`
       : inFriction
         ? `Price sits between key levels (${fmtK(putWall)} – ${fmtK(callWall)}) inside the friction zone.`
         : `Price is ${spot >= callWall ? 'above the call wall' : 'below the put wall'} — outside the friction zone.`,
-    pinFound ? `Price is pinned toward ${fmtK(pinStrike)}: the most open interest, with dealers long gamma there.` : pinOI > 0 ? `The most open interest in the window sits at ${fmtK(pinStrike)}.` : 'No open interest in the window, so no pin.',
+    pinFound ? `The most open interest in the window sits at ${fmtK(pinStrike)}, with dealers long gamma there — a heavy strike, not a level price is drawn to.` : pinOI > 0 ? `The most open interest in the window sits at ${fmtK(pinStrike)}.` : 'No open interest in the window.',
     ...(hasPut ? [`A break below ${fmtK(putWall)} shifts pressure toward ${fmtK(putWall - step * 2)}.`] : []),
     ...(hasCall ? [`A break above ${fmtK(callWall)} opens quick supply up to ${fmtK(callWall + step * 2)}.`] : []),
   ];

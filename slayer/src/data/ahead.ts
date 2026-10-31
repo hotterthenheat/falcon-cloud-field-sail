@@ -267,7 +267,7 @@ interface CloseReads {
   likely: string;
   /** "the model puts 50% of the close between 343 and 346 · 80% between 340 and 348" */
   bands: string;
-  /** "the supreme at 345 draws the close toward it · the odds tighten as the close nears" */
+  /** "the supreme at 345 carries the most model weight · the odds tighten as the close nears" */
   pull: string;
 }
 
@@ -375,10 +375,10 @@ export function buildCloseOdds(profile: ExposureProfileData, spot: number, sigma
     const record = caught != null ? ` · from their open, a 50% run this wide would have caught the close in ${ofLast(caught, past.length)}` : '';
     const bands = `the model puts 50% of the close between ${fmtStrike(half.low)} and ${fmtStrike(half.high)} · 80% between ${fmtStrike(most.low)} and ${fmtStrike(most.high)}${record}`;
     const who = lead.role
-      ? `the ${lead.role} at ${fmtStrike(lead.strike)} draws the close toward it`
+      ? `the ${lead.role} at ${fmtStrike(lead.strike)} carries the most model weight`
       : lead.pull > 1.02
-        ? `the strikes around ${fmtStrike(lead.strike)} draw the close toward it`
-        : `1σ alone puts it at ${fmtStrike(lead.strike)} — no strike is pulling`;
+        ? `the strikes around ${fmtStrike(lead.strike)} carry the most model weight`
+        : `1σ alone puts it at ${fmtStrike(lead.strike)} — the book adds no weight`;
     const last = lastSessionSupreme(profile.ticker, clock.inSession);
     const lastWords = last ? ` · the last session closed ${last.away < step / 2 ? 'on' : `${fmtStrike(Number(last.away.toFixed(2)))} from`} its own heaviest strike, ${fmtStrike(last.strike)}` : '';
     const when = clock.inSession ? 'the odds tighten as the close nears' : "a whole day's range is in play until the open";

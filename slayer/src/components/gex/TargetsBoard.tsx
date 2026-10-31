@@ -87,7 +87,7 @@ const Tags = ({ t, yours }: { t: Target; yours?: string }) => {
         {t.isShelf ? 'shelf' : 'trapdoor'}
       </span>
     )}
-    {t.pin && <span className="text-t8 uppercase tracking-widest text-textMuted">pin</span>}
+    {t.pin && <span className="text-t8 uppercase tracking-widest text-textMuted" title="The most open interest near price">max OI</span>}
     {yours && (
       <span className="text-t8 uppercase tracking-widest whitespace-nowrap" style={{ color: SILVER }} title={yours} data-yours>
         you
@@ -166,7 +166,7 @@ const RowCard = ({ t, at, inSession, onClose }: { t: Target; at: CardAt; inSessi
           {t.closes > 0 && (
             <span className="text-textMuted">
               {' '}
-              · <span title="Model weight for the close at this strike: a normal on 1σ to the close, pulled by the book — not a measured chance">close weight</span> <span className="text-textPrimary">{t.closes.toFixed(0)}%</span>
+              · <span title="Model weight for the close at this strike: a normal on 1σ to the close, weighted by the book — a heuristic, not a measured chance">close weight</span> <span className="text-textPrimary">{t.closes.toFixed(0)}%</span>
             </span>
           )}
         </CardLine>
@@ -364,7 +364,7 @@ const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick
         <span className={material ? 'text-textPrimary' : 'text-textMuted'}>{buildWords(t, inSession)}</span>
         {/* the session's tests on their own line-piece */}
         {t.today?.tests ? <span className="text-textSecondary whitespace-nowrap">held {t.today.held}, broke {t.today.broke} today</span> : null}
-        {t.closes > 0 && <span className="text-textSecondary" title="Model weight for the close at this strike: a normal on 1σ to the close, pulled by the book — not a measured chance">close weight {t.closes.toFixed(0)}%</span>}
+        {t.closes > 0 && <span className="text-textSecondary" title="Model weight for the close at this strike: a normal on 1σ to the close, weighted by the book — a heuristic, not a measured chance">close weight {t.closes.toFixed(0)}%</span>}
         <span className="text-textSecondary cursor-help" title={stakeTip(t.stake, marketPer1Pct)}>
           {fmtDollars(t.stake)} at stake{marketPer1Pct > 1 && t.stake / marketPer1Pct >= 0.05 ? ` · ${(t.stake / marketPer1Pct).toFixed(1)}× the 1% move` : ''}
         </span>
@@ -559,7 +559,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
             </dd>
           </div>
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`The strike the model weights most for the close (a normal on 1σ to the close, pulled by the book — not a measured chance) — named only when one strike reaches 15%; under that the close is spread too thin to lean anywhere${agenda.closeTop ? ` (the likeliest, ${fmtStrike(agenda.closeTop.strike)}, is ${agenda.closeTop.odds.toFixed(0)}%)` : ''}`}>{/* the label says what the figure is; after the bell it is the next session's close */}{clock.inSession || agenda.horizon ? 'Likeliest close' : aheadWord() === 'today' ? 'Likeliest close today' : 'Likeliest next close'}</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title={`The strike the model weights most for the close (a normal on 1σ to the close, weighted by the book — a heuristic, not a measured chance) — named only when one strike reaches 15%; under that the close is spread too thin to lean anywhere${agenda.closeTop ? ` (the likeliest, ${fmtStrike(agenda.closeTop.strike)}, is ${agenda.closeTop.odds.toFixed(0)}%)` : ''}`}>{/* the label says what the figure is; after the bell it is the next session's close */}{clock.inSession || agenda.horizon ? 'Likeliest close' : aheadWord() === 'today' ? 'Likeliest close today' : 'Likeliest next close'}</dt>
             <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-nowrap ${agenda.closesNear ? 'text-textPrimary' : 'text-textMuted'}`} data-close-lean>{closeLeanWords(agenda)}</dd>
           </div>
         </dl>
@@ -600,7 +600,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
       <div className={`${pad} pb-2 overflow-x-auto`} data-targets-rows onPointerLeave={() => setHover(null)}>
         <div className={`grid items-center gap-x-3 gap-y-0 ${AGENDA_ACT}`} style={{ gridTemplateColumns: cols.template, minWidth: cols.min }}>
           {wide && headCell('#', false, '', 'Its place in the order: how likely price gets there times how much happens if it does')}
-          {headCell('Strike', false, '', 'The option strike price, with its role: call wall (the most call hedging), put wall (the most put hedging — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet), supreme (the most hedging of all), shelf (dealers long gamma: their hedging slows price, above or below) or trapdoor (dealers short gamma: their hedging speeds a move through it, above or below) — the Map\'s colours')}
+          {headCell('Strike', false, '', 'The option strike price, with its role: call wall (the most call hedging), put wall (the most put hedging — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling), supreme (the most hedging of all), shelf (dealers long gamma: their hedging slows price, above or below) or trapdoor (dealers short gamma: their hedging speeds a move through it, above or below) — the Map\'s colours')}
           {wide && headCell('From spot', true, '', 'How far the strike is from the current price, in the Ruler at the top of the page ($, %, ATR or σ)')}
           {headCell(agenda.horizon ? `Reached ${agenda.horizon}` : clock.inSession ? 'Reached' : aheadWord() === 'today' ? 'Reached today' : 'Reached next', true, '', agenda.horizon ? `The chance price touches this strike ${agenda.horizon} — the Levels card reads that expiry, so the odds run on the implied move into it` : clock.inSession ? 'The chance price touches this strike before the close' : `The chance price touches this strike ${aheadWord() === 'today' ? "in today's session" : 'next session'}`)}
           {full && headCell('Today', false, '', recordDay().isToday && !recordDay().done ? "What today's session has already done at the strike: traded through it, and how often it held or broke (the Map's \"How the levels held\" count) — a dash where the session has not reached it" : recordDay().isToday ? `Today's session has closed — these targets are the next session's (${longDay(sessionDay().next)}); how today's levels held is on the Map` : 'The session has not opened yet — nothing has been reached today')}

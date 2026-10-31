@@ -50,7 +50,7 @@ const MONEY_OPTIONS: DropdownOption<'ALL' | 'DEBIT' | 'CREDIT'>[] = [
 /* the set at rest fits a 1440 box beside the pinned risk columns */
 /* the strategy is words and the strikes a ladder: both wrap to two lines with their hover, giving way to the figures first */
 const PROSE = ['kind', 'strikes'];
-const WIDTHS: Record<string, number> = { time: 100, ticker: 84, strikes: 136, exp: 104, size: 56, net: 124, prem: 124, legs: 56, kind: 160, maxloss: 88, maxprofit: 88 };
+const WIDTHS: Record<string, number> = { time: 100, ticker: 84, strikes: 168, exp: 104, size: 56, net: 112, prem: 112, legs: 56, kind: 208, maxloss: 88, maxprofit: 88 };
 /* who on the left, the risk at the right, both always on screen */
 const PIN_LEFT = ['time', 'ticker'];
 const PIN_RIGHT = ['maxloss', 'maxprofit'];

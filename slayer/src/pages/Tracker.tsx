@@ -9,7 +9,7 @@ import { useTracker } from '../context/TrackerContext';
 import type { TrackedSetup } from '../types/tracker';
 import { nyClock, nyIsoDate } from '../core/nyTime';
 import { activeStop, useSignals, type Signal } from '../data/compassLedger';
-import { daySummary, optionFees } from '../data/compassOutcome';
+import { daySummary } from '../data/compassOutcome';
 import { backlogLine, holdCompassFeed, useCompassFeed } from '../data/compassFeed';
 import { EmptyBox, ErrorBox, asOfText } from '../components/ui/states';
 import { useThetaStatus } from '../data/thetaQuote';
@@ -17,6 +17,7 @@ import TraceBox, { Fact } from '../components/trace/traceFrame';
 import ContractLabel from '../components/ui/ContractLabel';
 import SessionSpark from '../components/compass/SessionSpark';
 import { usd2 as money } from '../core/format';
+import { BOOK_NAME } from '../data/compassParams';
 
 const pct = (v: number | null) => (v == null ? '—' : `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`);
 const ink = (v: number | null) => (v == null || Math.abs(v) < 0.05 ? 'text-textPrimary' : v > 0 ? 'text-bull' : 'text-bear');
@@ -49,8 +50,8 @@ const SignalCard = ({ s, tracked, onOpen }: { s: Signal; tracked: boolean; onOpe
   const lottery = s.book === 'C';
   const runner = s.book === 'B' || s.runner;
   const closed = o?.status === 'closed';
-  /* per contract after the round trip: the exit's, or the last bid's while it is open */
-  const pnl = closed ? o?.pnl ?? null : paid > 0 && o?.last ? (o.last.bid - paid) * 100 - optionFees(o.last.bid) : null;
+  /* per contract, (exit - fill) x 100: the exit's, or the last bid's while it is open */
+  const pnl = closed ? o?.pnl ?? null : paid > 0 && o?.last ? (o.last.bid - paid) * 100 : null;
   const standing = paid > 0 && o && !lottery ? activeStop(paid, o.peak, runner) : null;
   const target = paid > 0 ? (lottery ? paid * 2 : runner ? 0 : paid * 1.5) : 0;
   const away = (px: number) => (now != null && now > 0 && px > 0 && !closed ? `${px >= now ? '+' : '−'}${Math.abs((px / now - 1) * 100).toFixed(0)}% from the bid` : undefined);
@@ -58,8 +59,8 @@ const SignalCard = ({ s, tracked, onOpen }: { s: Signal; tracked: boolean; onOpe
     <button type="button" onClick={onOpen} className="text-left border border-borderSubtle bg-panel rounded-md overflow-hidden flex flex-col hover:border-borderMuted transition-colors" data-tracker-signal={s.key}>
       <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-borderSubtle">
         <ContractLabel contract={s.contract} right={s.right} logo={s.ticker} size="sm" />
-        <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">Book {s.book}</span>
-        {s.how === 'late' && <span className="font-mono text-t10 text-warn border border-warn/40 rounded px-1.5 py-0.5" title="Scored after its mark from the quotes ThetaData recorded at the mark">Late</span>}
+        <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">{BOOK_NAME[s.book]}</span>
+        {s.how === 'late' && <span className="font-mono text-t10 text-warn border border-warn/40 rounded px-1.5 py-0.5" title="Scored after its mark from the recorded quotes at the mark">Late</span>}
         {tracked && <Bookmark className="w-3.5 h-3.5 text-textSecondary" aria-label="Tracked" />}
         <span className={`ml-auto font-mono text-t10 uppercase tracking-wider ${state.tone}`}>{state.word}</span>
       </div>
@@ -100,7 +101,7 @@ const TrackedCard = ({ t, onOpen }: { t: TrackedSetup; onOpen: () => void }) => 
         <Cell label="Saved" value={nyClock(t.trackedAt, { zone: true })} />
       </div>
       <div className="px-3.5 py-2">
-        <p className="font-mono text-t10 text-textSecondary whitespace-normal">Saved from its page. Not a Book A, B or C call.</p>
+        <p className="font-mono text-t10 text-textSecondary whitespace-normal">Saved from its page. Not a Compass call.</p>
       </div>
     </button>
   );
@@ -133,7 +134,7 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
     : feed.status === 'kept' && feed.at
       ? `The record ${asOfText(feed.at)}. ${feed.error || 'Reconnecting to the Compass server.'}`
       : theta === 'down' && rows.live.length
-    ? `ThetaData offline — reconnecting. Paths as of ${readAt ? nyClock(readAt, { zone: true }) : 'the call'}.`
+    ? `Live data offline — reconnecting. Paths as of ${readAt ? nyClock(readAt, { zone: true }) : 'the call'}.`
     : rows.live.length
       ? `Paths read once a minute from the contract's own quotes${readAt ? `. Last read ${nyClock(readAt, { zone: true })}` : ''}.`
       : false;
@@ -148,10 +149,10 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
       facts={
         <>
           <Fact label="Calls today" testId="calls">{day.calls}</Fact>
-          <Fact label="Won · lost · open" testId="open" title="Today's calls: closed with a gain after fees, closed at or under the fill, and still held.">
+          <Fact label="Won · lost · open" testId="open" title="Today's calls: closed with a gain, closed at or under the fill, and still held.">
             <span className="text-bull">{day.won}</span> · <span className="text-bear">{day.lost}</span> · {day.open}
           </Fact>
-          <Fact label="Net today" testId="net" title="Per contract: today's closed calls after an estimated $1.08 round trip plus the SEC fee.">{day.won + day.lost ? <span className={ink(day.net)}>{dollars(day.net)}</span> : '—'}</Fact>
+          <Fact label="Net today" testId="net" title="Per contract: today's closed calls, (exit − fill) × 100.">{day.won + day.lost ? <span className={ink(day.net)}>{dollars(day.net)}</span> : '—'}</Fact>
           <Fact label="Open at bid" testId="open-mark" title="Today's open calls marked at their last bid, after the same round-trip cost.">{day.open ? <span className={ink(day.openMark)}>{dollars(day.openMark)}</span> : '—'}</Fact>
           <Fact label="Tracked" testId="tracked" title="Signals you bookmarked from their page.">{tracked}</Fact>
         </>
@@ -170,7 +171,7 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
           ) : (
           <EmptyBox
             title="Nothing in play"
-            reason={backlogLine(feed.marks) || 'When the scan fires a Book A, B or C call it shows here with the quote it fired on, its fill and its path, until it closes.'}
+            reason={backlogLine(feed.marks) || 'When the scan fires a call it shows here with the quote it fired on, its fill and its path, until it closes.'}
             action={record.length > 0 ? (
               <button type="button" onClick={() => navigate('/compass/blotter')} className="slayer-chip uppercase tracking-wider tap-40">
                 Every earlier call is on the blotter

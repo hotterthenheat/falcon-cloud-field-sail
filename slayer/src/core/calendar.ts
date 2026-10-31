@@ -61,11 +61,12 @@ export function today(): Date {
   return new Date(p.year, p.month - 1, p.day);
 }
 
-/** The day the book is on: New York's date until 16:00, the next day after, because today's contracts stop at 4:00
-    (the 16:15 close is for index and ETF options not expiring that day). */
+/** The day the book is on: New York's date until the cash close (16:00; 13:00 on an early close), the next day after,
+    because today's contracts stop then (the 16:15 close is for index and ETF options not expiring that day). */
 export function bookToday(): Date {
   const p = nyParts(now());
-  const after = p.hour * 60 + p.minute >= 16 * 60;
+  const iso = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+  const after = p.hour * 60 + p.minute >= sessionCloseMinOn(iso);
   return new Date(p.year, p.month - 1, p.day + (after ? 1 : 0));
 }
 

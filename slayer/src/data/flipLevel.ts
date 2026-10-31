@@ -466,7 +466,7 @@ export const BELL_NONE_TITLE = (ticker: string): string => `Nothing on ${ticker}
 /* ---- the book in one sentence, on the one regime rule ----------------------------------------------------------- */
 
 interface RegimeRead {
-  key: 'ON THE FLIP' | 'PINNED' | 'ABSORBING' | 'WHIPSAW' | 'AMPLIFYING';
+  key: 'ON THE FLIP' | 'RANGED' | 'ABSORBING' | 'WHIPSAW' | 'AMPLIFYING';
   read: string;
 }
 
@@ -498,14 +498,14 @@ export function readRegime(levels: { spot: number; flip: number; flipFound?: boo
   if (flip != null && (Math.abs(spot - flip) / Math.max(spot, 1)) * 100 < 0.05)
     return { key: 'ON THE FLIP', read: `Sitting on the ${px(flip)} flip — net gamma is near zero, so the hedging can tip either way; ${cw} and ${pw} are the levels that decide it.` };
   if (long && between && cwPct <= 1.2 && pwPct <= 1.2)
-    return { key: 'PINNED', read: `Dealers are long gamma, so their hedging absorbs moves between the ${px(callWall)} call wall and the ${px(putWall)} put wall — dips get bought, rallies get sold, drift beats trend until one side gives.${flipClause}` };
+    return { key: 'RANGED', read: `Long gamma: moves tend to be damped — dealers' hedging buys dips and sells rallies between the ${px(callWall)} call wall and the ${px(putWall)} put wall, until one side gives.${flipClause}` };
   if (long)
-    return { key: 'ABSORBING', read: `Dealers are long gamma, so their hedging absorbs moves. ${cap(cw)}: ${callWallWords(callWall, spot, netAt?.(callWall))}; ${pw}: ${putWallWords(putWall, spot, netAt?.(putWall))}.${flipClause}` };
+    return { key: 'ABSORBING', read: `Long gamma: moves tend to be damped — dealers' hedging absorbs them. ${cap(cw)}: ${callWallWords(callWall, spot, netAt?.(callWall))}; ${pw}: ${putWallWords(putWall, spot, netAt?.(putWall))}.${flipClause}` };
   if (putWall < spot && pwPct >= 2.6)
-    return { key: 'WHIPSAW', read: `Dealers are short gamma, so their hedging speeds a move up whichever way it goes, and the put wall is all the way down at ${px(putWall)}.${flipClause}` };
+    return { key: 'WHIPSAW', read: `Short gamma: moves tend to extend — dealers' hedging speeds a move up whichever way it goes, and the put wall is all the way down at ${px(putWall)}.${flipClause}` };
   return {
     key: 'AMPLIFYING',
     /* the one order (core/walls.ts LEVEL_ORDER): the call wall, then the put wall */
-    read: `Dealers are short gamma, so their hedging amplifies moves. ${cap(cw)}: ${callWallWords(callWall, spot, netAt?.(callWall))}; ${pw}: ${putWallWords(putWall, spot, netAt?.(putWall))}.${flipClause}`,
+    read: `Short gamma: moves tend to extend — dealers' hedging amplifies them. ${cap(cw)}: ${callWallWords(callWall, spot, netAt?.(callWall))}; ${pw}: ${putWallWords(putWall, spot, netAt?.(putWall))}.${flipClause}`,
   };
 }

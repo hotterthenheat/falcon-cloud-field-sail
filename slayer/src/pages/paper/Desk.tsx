@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { X } from 'lucide-react';
+import { extTag, optionProductOf, productHours, sessionAt, whenWords } from '../../core/session';
 import type { KeyLevels } from '../../types/gex';
 import type { ChartOverlays } from '../../components/gex/StrikeChart';
 import { TraceGrid } from '../../components/trace/TraceBox';
@@ -587,10 +588,33 @@ const PaperDesk = () => {
       )}
       {headMove?.ext != null && (
         <span className="text-t10 text-textMuted" title={closeMoveTitle(headMove)} data-paper-ext>
-          {headMove.extWord === 'pre-market' ? 'PM' : 'AH'} {signedPct(headMove.ext)}
+          {extTag(headMove.extWord)} {signedPct(headMove.ext)}
         </span>
       )}
       {nameRead?.kept && <AsOf at={nameRead.takenAt} />}
+      {/* the name's options session (core/session.ts): an equity option's quote outside 09:30–16:00 is not live, so the
+          desk says when they trade rather than show a stale quote as live; index options say they are in global hours */}
+      {(() => {
+        const os = sessionAt(Date.now(), optionProductOf(name));
+        if (os.window?.kind === 'pre')
+          return (
+            <span className="text-t10 text-textMuted" title="This name's options trade a 7:30–9:25 AM ET pre-market. Orders fill in the regular session." data-paper-options-hours="pre">
+              Options · pre-market
+            </span>
+          );
+        if (os.window?.kind === 'gth' || os.window?.kind === 'curb')
+          return (
+            <span className="text-t10 text-textMuted" title="Index options trade Cboe's global trading hours 8:15 PM–9:25 AM ET and the 4:15–5:00 PM curb. Orders fill in the regular session." data-paper-options-hours={os.window.kind}>
+              {os.window.kind === 'gth' ? 'Index options · global hours' : 'Index options · curb'}
+            </span>
+          );
+        if (os.open) return null;
+        return (
+          <span className="text-t10 text-textMuted" title={`${productHours(os.product, os.isEarlyClose)}. Quotes shown are the last of the regular session; nothing fills until it opens${os.next ? ` (${whenWords(os.next.at)})` : ''}.`} data-paper-options-hours="shut">
+            {productHours(os.product)}
+          </span>
+        );
+      })()}
     </span>
   );
   const floorRule = rules.find(r => r.id === 'drawdown');

@@ -1,6 +1,7 @@
 /* The Weigher desk: the chart, the live chain, the name lists and the weigh-up of one contract on one static desk,
    with the positions and watchlist under them marked at live quotes. */
 
+import { extTag, optionProductOf, productHours, sessionAt, sessionBadge, useMarketSession } from '../../core/session';
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Maximize2, Minimize2, Plus, Scale } from 'lucide-react';
@@ -28,6 +29,7 @@ import { closeMoveTitle, signedPct } from '../../data/dayChange';
 import { buildPrints, fmtUsd } from '../../data/gex';
 import { useLevelsFor } from '../../data/levelsFor';
 import { paneLevels } from '../terrain/paneLevels';
+import ExpiryDensity from '../../components/weigher/ExpiryDensity';
 import { useLevelsScope } from '../../data/levelsScope';
 import { etClock, keepTheta, keptTheta, offlineWords, useThetaDown } from '../../data/thetaFeed';
 import { thetaUseHere } from '../../data/theta';
@@ -57,6 +59,7 @@ import { printOf } from '../../data/compassParams';
 import { paintLive, useWeigherContract, useWeigherSpot, useWeigherTape } from '../../data/weigherTape';
 import { useDeskSession, sessionMeta, sessionOfMinute } from '../../data/deskSession';
 import { nyMinutes } from '../../core/nyTime';
+import { sessionLive } from '../../data/thetaTape';
 import { expiryFor, isTradingDay, isoDate, today, MONTHS } from '../../core/calendar';
 import { addToWatchlist, closeWatched, hasOpenWatched, removeWatched, restampWatch, tickWatchlist, useWatchlist, watchedFor } from '../../data/watchlist';
 import type { WatchedContract } from '../../types/watchlist';
@@ -476,9 +479,11 @@ const TickPump = memo(function TickPump({ onTick }: { onTick: () => void }) {
   return null;
 });
 
-/* The rail's subject is the app's name. This leaf pushes the desk's name out
-   and follows a palette pick back in, without the desk itself subscribing to
-   the market tick (that would repaint the chain every snapshot). */
+/* The rail's subject is the app's name. This leaf follows it in — on arrival
+   the desk takes the rail's name over its own saved one, and a rail or palette
+   pick moves it after — and pushes a name picked on the desk itself out, without
+   the desk subscribing to the market tick (that would repaint the chain every
+   snapshot). */
 const ShellFollow = memo(function ShellFollow({ ticker, onExternal }: { ticker: string; onExternal: (t: string) => void }) {
   const { activeTicker, changeTicker } = useTicker();
   const echo = useRef(false);
@@ -486,7 +491,11 @@ const ShellFollow = memo(function ShellFollow({ ticker, onExternal }: { ticker: 
   activeRef.current = activeTicker;
   const externalRef = useRef(onExternal);
   externalRef.current = onExternal;
+  /* the desk's name as last seen: only a name the desk moved to goes out — the saved one it opened on does not */
+  const seenRef = useRef(ticker);
   useEffect(() => {
+    if (seenRef.current === ticker) return;
+    seenRef.current = ticker;
     if (activeRef.current === ticker) return;
     echo.current = true;
     changeTicker(ticker);
@@ -593,7 +602,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const patch = (p: Partial<DeskState>) => setDesk(d => ({ ...d, ...p }));
 
   /* The market's own session now: closed on a weekend or holiday, else the clock's window */
-  const session = useMemo(() => (marketClosedToday() ? 'closed' : sessionOfMinute(nyMinutes())), [tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* the one session (core/session.ts): Sunday 20:00 is the overnight, not "closed today" */
+  const marketPhaseNow = useMarketSession().phase;
+  const session = marketPhaseNow === 'closed' ? 'closed' : marketPhaseNow === 'regular' ? 'rth' : marketPhaseNow;
   const [chain, setChain] = useState<DeskChain>(() => blankChain(ticker, dte));
   const [listed, setListed] = useState<{ rows: ListedExpiry[]; down: boolean; takenAt?: number } | null>(null);
   const [chainWait, setChainWait] = useState(true);
@@ -756,7 +767,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       if (dead || busy.current || cur.source !== 'live' || !cur.rows.length || document.visibilityState === 'hidden' || thetaUseHere() !== 'all') return;
       if (cur.ticker !== ticker || cur.expiryIso !== wantIso) return;
       if (cur.optRoot && cur.optRoot !== wantRoot) return;
-      if (Date.now() - lastAt < (optionsOpen() ? 1000 : 60_000)) return;
+      if (Date.now() - lastAt < (optionsOpen(wantRoot) ? 1000 : 60_000)) return;
       lastAt = Date.now();
       busy.current = true;
       n += 1;
@@ -835,7 +846,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       .map(v => (v > 3 ? v / 100 : v))
       .filter(v => v >= 0.01 && v <= 8)
       .sort((a, b) => a - b);
-    const bars = weighed.ready && weighed.note == null && sessionOfMinute(nyMinutes()) === bookSession && liveSpot > 0 ? paintLive(weighed.bars, liveSpot, Math.floor(Date.now() / 1000), timeframe, bookSession) : weighed.bars;
+    const bars = weighed.ready && weighed.note == null && sessionLive(bookSession) && liveSpot > 0 ? paintLive(weighed.bars, liveSpot, Math.floor(Date.now() / 1000), timeframe, bookSession) : weighed.bars;
     return {
       bars,
       iv: ivs.length ? ivs[Math.floor(ivs.length / 2)] : 0.2,
@@ -915,7 +926,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     if (!contractTape.bars) return null;
     /* The last candle is the last trade. A mid is not a trade, and a missing trade does not paint one. */
     if (contractTape.note || !selected || !Number.isFinite(selected.last) || !(selected.last > 0)) return contractTape.bars;
-    if (sessionOfMinute(nyMinutes()) !== bookSession) return contractTape.bars;
+    if (!sessionLive(bookSession)) return contractTape.bars;
     return paintLive(contractTape.bars, selected.last, Math.floor(Date.now() / 1000), timeframe, bookSession);
   }, [contractTape, selected, bookSession, timeframe]);
   useEffect(() => {
@@ -1087,7 +1098,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       )}
       {headMove && headMove.ext != null && (
         <span className="font-mono text-[10px] tnum text-textMuted" title={closeMoveTitle(headMove)} data-weigher-ext>
-          {headMove.extWord === 'pre-market' ? 'PM' : 'AH'} {signedPct(headMove.ext)}
+          {extTag(headMove.extWord)} {signedPct(headMove.ext)}
         </span>
       )}
     </span>
@@ -1279,7 +1290,11 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     if (!listed.rows.length || !chain.rows.length) return 'No listed options';
     const at = chain.quotedAt || chain.takenAt || 0;
     if (!at) return fmtDay(chain.expiry.date);
-    return optionsOpen() ? `Live · ${fmtDay(chain.expiry.date)} · ${stamp(at)} ET` : `${fmtDay(chain.expiry.date)} · quotes as of ${etClock(at)}`;
+    /* live only while this root's options trade (index options through GTH) and the quote is fresh; otherwise the quote's
+       own time and the hours its options trade (core/session.ts) */
+    const root = chain.optRoot || ticker;
+    if (optionsOpen(root) && Date.now() - at < 120_000) return `Live · ${fmtDay(chain.expiry.date)} · ${stamp(at)} ET`;
+    return `${fmtDay(chain.expiry.date)} · quotes as of ${etClock(at)}${optionsOpen(root) ? '' : ` · ${productHours(optionProductOf(root), sessionAt(Date.now()).isEarlyClose)}`}`;
   })();
   const chainMove = (
     <span className="inline-flex items-center gap-2">
@@ -1730,7 +1745,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
         <dl
           className="flex flex-wrap gap-x-6 gap-y-2"
           data-shell-facts
-          title={session === 'rth' ? 'New York is open, 9:30 AM to 4:00 PM ET' : session === 'closed' ? 'New York is closed today' : 'Outside the regular session, 9:30 AM to 4:00 PM ET'}
+          title={session === 'rth' ? 'New York is open, 9:30 AM to 4:00 PM ET' : session === 'closed' ? sessionBadge() : `${sessionMeta(session).label}: outside the regular session, 9:30 AM to 4:00 PM ET`}
         >
           <Fact label="Session" testId="session">
             {session === 'rth' ? 'Regular session' : <span className="text-moon">{session === 'closed' ? 'Closed' : sessionMeta(session).label}</span>}
@@ -1904,6 +1919,14 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
             data-weigher-sash
           />
         )}
+      </div>
+
+      {/* WHERE IT MAY FINISH: the chain's own risk-neutral distribution of the close, the walls' touch odds and the
+          implied vol against the realised-vol forecast — under the desk, the width of both columns */}
+      <div className="shrink-0 mt-2.5" data-finish-card>
+        <DeskCard title="Where it may finish">
+          <ExpiryDensity chain={chain} levels={levels} ticker={ticker} />
+        </DeskCard>
       </div>
 
       {/* Portal, not a plain fixed div: the cards' backdrop-blur creates a containing block for position:fixed, so

@@ -1,6 +1,7 @@
 /* Pulse, the desk you land on: tiles on a grid the reader arranges, on named desks that save as they go, each tile
    built from the live vendor book of its name. */
 
+import { SessionTag } from '../../components/ui/SessionTag';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -380,6 +381,8 @@ const Pulse = () => {
           one */}
       <div className="flex items-center gap-x-3 gap-y-2 flex-wrap min-h-9" data-desk-bar>
         <h1 className="text-t15 font-semibold leading-tight text-textPrimary">Pulse</h1>
+        {/* the session the desk's books belong to (core/session.ts) */}
+        <SessionTag className="max-sm:hidden" what="Books" />
         <span className="w-px h-4 bg-borderSubtle" aria-hidden />
         <span className="flex items-center gap-0.5 flex-wrap" data-desk-presets>
           {PRESET_NAMES.map(n => deskTab(n, false))}

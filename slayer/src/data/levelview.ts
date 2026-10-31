@@ -1,6 +1,7 @@
 /* What a focused strike is doing today: how far price is, whether it was tested this session, and whether its gamma is building since the open. */
 
 import { SESSION_OPEN_MIN, nyClock, nyCloseMin, nyIsoDate, nyMinutes } from '../core/nyTime';
+import { inRegular } from '../core/session';
 import { recordDay } from './bookWindow';
 import { bookCandles, bookHistory } from './book/levels';
 import { peekEntry } from './book/store';
@@ -56,11 +57,9 @@ export function sessionBars(ticker: string) {
   return null;
 }
 
-/** True when a bar's minute is inside the cash session */
-export const inCashSession = (t: number): boolean => {
-  const m = nyMinutes(t * 1000);
-  return m >= SESSION_OPEN_MIN && m < nyCloseMin(t * 1000);
-};
+/** True when a bar's minute is inside the cash session (core/session.ts: 09:30–16:00, 13:00 on an early close, on a
+    session day) */
+export const inCashSession = (t: number): boolean => inRegular(t * 1000);
 
 /** Per strike, net gamma at the open over net gamma now: under 1 built, over 1 bled, negative flipped. Null until two snapshots exist. */
 export function netSinceOpenRatio(ticker: string): Map<number, number> | null {

@@ -160,7 +160,7 @@ const byRecency = (a: number, b: number, na: IRowNode<InsiderTrade>, nb: IRowNod
   b - a || String(na.data?.filedOn ?? '').localeCompare(String(nb.data?.filedOn ?? '')) || String(nb.data?.id ?? '').localeCompare(String(na.data?.id ?? ''));
 const StakeCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
   data ? (
-    <span className="font-mono text-t11 tnum text-textSecondary cursor-help" title={stakeTip(data)}>
+    <span className="inline-block whitespace-normal text-right leading-tight font-mono text-t11 tnum text-textSecondary cursor-help" title={stakeTip(data)}>
       {/* one format: the share of the holding as a percent, the plain word at the ends, the account mark beside it */}
       {data.stakePct < 0 ? '—' : data.stakePct >= 99.95 ? '100%' : data.stakePct < 0.1 ? '<0.1%' : `${data.stakePct.toFixed(1)}%`}
       {data.stakePct >= 99.95 ? <span className="text-t8 uppercase tracking-widest text-textMuted"> · {data.kind === 'BUY' ? 'first buy' : 'all sold'}</span> : null}
@@ -288,7 +288,7 @@ const CoverageLine = ({ coverage, window }: { coverage: InsiderCoverage; window:
             : `every ${what} filed since ${shortDay(from)}`;
   const setAside = coverage.notShares + coverage.implausible;
   return (
-    <p className="text-t11 leading-relaxed text-textMuted" data-insiders-coverage title="The vendor sends at most 500 filings a request, newest filed first">
+    <span className="block text-t11 leading-relaxed text-textMuted" data-insiders-coverage title="The vendor sends at most 500 filings a request, newest filed first">
       <span className="text-textSecondary">Purchases:</span> {paged(coverage.buysSince, coverage.buysRanOut, coverage.buysReading, coverage.buysCapped, 'open-market buy')}
       {' · '}
       <span className="text-textSecondary">Sales:</span> {paged(coverage.bigSalesSince, coverage.bigSalesRanOut, coverage.bigSalesReading, coverage.bigSalesCapped, `open-market sale of ${big} or more`)}
@@ -305,7 +305,7 @@ const CoverageLine = ({ coverage, window }: { coverage: InsiderCoverage; window:
           {setAside.toLocaleString()} {setAside === 1 ? 'row' : 'rows'} set aside ({coverage.notShares} not common shares, {coverage.implausible} whose price or size no trade can have — a price ten times off the stock's own, or one trade worth over a quarter of the company)
         </span>
       ) : null}
-    </p>
+    </span>
   );
 };
 
@@ -417,11 +417,11 @@ const Insiders = () => {
       { headerName: 'Shares', field: 'shares', width: 100, cellRenderer: SharesCell, type: 'rightAligned', headerTooltip: 'Shares in the transaction' },
       { headerName: 'Price', field: 'price', width: 96, cellRenderer: PriceCell, type: 'rightAligned', headerTooltip: 'The filed price per share' },
       { headerName: 'Value', field: 'value', width: 104, cellRenderer: ValueCell, type: 'rightAligned', headerTooltip: 'Shares times the filed price' },
-      { headerName: 'Of holding', field: 'stakePct', width: 176, cellRenderer: StakeCell, type: 'rightAligned', headerTooltip: "The share of the insider's holding this trade was; 'of account' marks a trust or fund line, that account alone" },
+      { headerName: 'Of holding', field: 'stakePct', width: 132, cellRenderer: StakeCell, type: 'rightAligned', headerTooltip: "The share of the insider's holding this trade was; 'of account' marks a trust or fund line, that account alone" },
       {
         headerName: 'Chose to?',
         field: 'plan',
-        width: 104,
+        width: 148,
         cellRenderer: PlanCell,
         comparator: (a: InsiderTrade['plan'], b: InsiderTrade['plan']) => ['discretionary', 'unknown', 'plan'].indexOf(a) - ['discretionary', 'unknown', 'plan'].indexOf(b),
         headerTooltip: 'Chosen: the insider decided. Planned: a 10b5-1 schedule set months earlier. Unstated: no box ticked',
@@ -564,7 +564,7 @@ export const InsiderFile = () => {
       { headerName: 'Shares', field: 'shares', width: 100, cellRenderer: SharesCell, type: 'rightAligned', headerTooltip: 'Shares in the transaction' },
       { headerName: 'Price', field: 'price', width: 96, cellRenderer: PriceCell, type: 'rightAligned', headerTooltip: 'The price per share on the filing' },
       { headerName: 'Value', field: 'value', width: 110, cellRenderer: ValueCell, type: 'rightAligned', headerTooltip: 'Shares times the filed price' },
-      { headerName: 'Chose to?', field: 'plan', width: 104, cellRenderer: PlanCell, headerTooltip: 'Chosen: the insider decided to trade. Planned: it ran off a 10b5-1 schedule set months earlier. Unstated: the filing ticked neither box' },
+      { headerName: 'Chose to?', field: 'plan', width: 148, cellRenderer: PlanCell, headerTooltip: 'Chosen: the insider decided to trade. Planned: it ran off a 10b5-1 schedule set months earlier. Unstated: the filing ticked neither box' },
     ],
     [],
   );

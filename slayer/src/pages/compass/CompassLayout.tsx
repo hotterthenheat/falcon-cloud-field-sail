@@ -18,8 +18,9 @@ import { holdCompassFeed } from '../../data/compassFeed';
 import { useCompassPings } from '../../data/compassAlerts';
 import { chime } from '../../core/sound';
 import { nyClock } from '../../core/nyTime';
+import { BOOK_NAME } from '../../data/compassParams';
 
-export const COMPASS_LINE = 'Book A and Book B, 0 to 7 days. Book C is same-day only.';
+export const COMPASS_LINE = `${BOOK_NAME.A} and ${BOOK_NAME.B}, 0 to 7 days. ${BOOK_NAME.C} is same-day only.`;
 /** The Tracker's line under the same head. Last page of Compass. */
 export const TRACKER_LINE = 'The signals in play, each on its own quotes since the call.';
 export const BLOTTER_LINE = 'The official record: every call the scan fired, the quote it fired on, the fill, the exit.';

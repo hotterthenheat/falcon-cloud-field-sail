@@ -16,13 +16,14 @@ import { useSignals, type Signal } from '../../data/compassLedger';
 import { watchedPasses, type WatchedPass } from '../../data/compassModel';
 import { daySummary } from '../../data/compassOutcome';
 import { backlogLine, useCompassFeed } from '../../data/compassFeed';
-import { useCompassDoc } from '../../data/compassReviewFeed';
+import { useAllCalls, useCompassDoc } from '../../data/compassReviewFeed';
 import TradeReviewCard from '../../components/compass/TradeReviewCard';
+import TrackRecord from '../../components/compass/TrackRecord';
 import { Link } from 'react-router-dom';
 import { EmptyBox, ErrorBox, LoadingBox, asOfText } from '../../components/ui/states';
 import { useThetaStatus } from '../../data/thetaQuote';
 import { Tip } from '../../components/ui/Tooltip';
-import { P1_MIN } from '../../data/compassParams';
+import { BOOK_NAME, P1_MIN } from '../../data/compassParams';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -84,7 +85,7 @@ const lineOf = (s: Signal): Line => {
   const o = s.outcome;
   const status = o?.status ?? 'waiting';
   const paid = o?.fill?.ask ?? 0;
-  /* a win is a gain after the round trip's fees, the same rule as the day's count */
+  /* a win is a gain, the same rule as the day's count */
   const result: Result = status === 'closed' ? (o?.pnl != null && o.pnl > 0 ? 'win' : 'loss') : status;
   return {
     key: s.key,
@@ -123,7 +124,7 @@ const COLUMNS: Column<Line>[] = [
     ? <Tip label={`Scored late from recorded quotes (${nyClock(r.mark)} ET mark): the live scan missed it.`}><span className="tnum text-warn">{nyClock(r.mark)} late</span></Tip>
     : <span className="tnum text-textPrimary">{nyClock(r.fired)}</span>) },
   { key: 'contract', header: 'Contract', sortValue: r => r.label, render: r => <ContractLabel contract={r.label} right={r.right} logo={r.ticker} size="sm" /> },
-  { key: 'book', header: 'Book', sortValue: r => r.book, render: r => <span className="text-textPrimary">{r.book}</span> },
+  { key: 'book', header: 'Book', sortValue: r => r.book, render: r => <span className="text-textPrimary">{BOOK_NAME[r.book]}</span> },
   { key: 'p1', header: 'Line', align: 'right', sortValue: r => r.p1 ?? -1, render: r => (r.p1 == null ? blank : <span className={r.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'}>{r.p1 + 1e-12 >= P1_MIN ? 'Cleared' : 'Short'}</span>) },
   { key: 'quote', header: 'Quote at call', align: 'right', sortValue: r => r.ask, render: r => <span className="tnum text-textSecondary">{r.bid.toFixed(2)} × {r.ask.toFixed(2)}</span> },
   { key: 'paid', header: 'Filled', align: 'right', sortValue: r => r.paid, render: r => (r.paid > 0 ? <span className="tnum text-textPrimary">{usd(r.paid)}</span> : blank) },
@@ -134,16 +135,16 @@ const COLUMNS: Column<Line>[] = [
   { key: 'pnl', header: 'P&L', align: 'right', sortValue: r => r.pnl ?? -1e9, render: r => (r.pnl == null ? blank : <span className={`tnum ${dirInk(r.pnl)}`}>{`${r.pnl < 0 ? '−' : '+'}${usd(Math.abs(r.pnl))}`}</span>) },
   { key: 'result', header: 'Result', align: 'right', sortValue: r => r.result, render: r => <Tip label={r.why || undefined}><span className={RESULT_INK[r.result]}>{RESULT_WORD[r.result]}</span></Tip> },
 ];
-const WIDTHS: Record<string, number> = { day: 62, fired: 88, contract: 156, book: 52, p1: 74, quote: 124, paid: 78, exitPx: 78, out: 62, held: 70, ret: 74, pnl: 86, result: 82 };
+const WIDTHS: Record<string, number> = { day: 62, fired: 88, contract: 156, book: 96, p1: 74, quote: 124, paid: 78, exitPx: 78, out: 62, held: 70, ret: 74, pnl: 86, result: 82 };
 const TOOLTIPS: Record<string, string> = {
   fired: 'When the scan sent the call, New York time.',
-  p1: 'Whether the call cleared the line. Book C has no score.',
+  p1: `Whether the call cleared the line. ${BOOK_NAME.C} has no score.`,
   quote: 'The bid and ask the model read when it called.',
   paid: 'The ask of the first quote a full minute after the call.',
   exitPx: 'The bid it left on, or the take-profit price.',
   out: 'When it left, New York time.',
   ret: 'Exit against the fill. An open signal shows its last bid against the fill.',
-  pnl: 'Per contract, after an estimated $1.08 round trip plus the SEC fee.',
+  pnl: 'Per contract: (exit − fill) × 100.',
   result: 'Win or loss once it closed. Hover for why.',
 };
 
@@ -201,6 +202,8 @@ const Blotter = () => {
   const cut = useMemo(() => resultOf(rows), [rows]);
   const day = useMemo(() => daySummary(rows.map(r => r.sig)), [rows]);
   const feed = useCompassFeed();
+  const today = feed.day || new Date().toISOString().slice(0, 10);
+  const allCalls = useAllCalls(today, record.length);
   const watched = watchedPasses();
   const open = record.filter(s => !s.outcome || s.outcome.status === 'open' || s.outcome.status === 'waiting');
   const readAt = open.reduce((m, s) => Math.max(m, s.pathAt), 0);
@@ -209,7 +212,7 @@ const Blotter = () => {
     : feed.status === 'kept' && feed.at
       ? `The record ${asOfText(feed.at)}. ${feed.error || 'Reconnecting to the Compass server.'}`
       : theta === 'down' && open.length
-        ? `ThetaData offline — reconnecting. Open signals as of ${readAt ? nyClock(readAt, { zone: true }) : 'their call'}.`
+        ? `Live data offline — reconnecting. Open signals as of ${readAt ? nyClock(readAt, { zone: true }) : 'their call'}.`
         : '';
   const signed = (v: number) => `${v < 0 ? '−' : '+'}${usd(Math.abs(v))}`;
 
@@ -222,7 +225,7 @@ const Blotter = () => {
       facts={
         <>
           <Fact label="Calls" testId="n">{day.calls.toLocaleString('en-US')}</Fact>
-          <Fact label="Won · lost · open" testId="won" title="Closed with a gain after fees, closed at or under the fill after fees, and still held. Filling and unavailable calls are in neither.">
+          <Fact label="Won · lost · open" testId="won" title="Closed with a gain, closed at or under the fill, and still held. Filling and unavailable calls are in neither.">
             <span className="text-bull">{day.won}</span> · <span className="text-bear">{day.lost}</span> · {day.open}
           </Fact>
           <Fact label="Avg win · loss" testId="avg-win" title="Average return of the closed calls that won, and of those that lost.">{cut.avgWin == null && cut.avgLoss == null ? '—' : `${cut.avgWin == null ? '—' : pctWords(cut.avgWin, 1)} · ${cut.avgLoss == null ? '—' : pctWords(cut.avgLoss, 1)}`}</Fact>
@@ -246,6 +249,7 @@ const Blotter = () => {
       sentence={offlineLine || backlogLine(feed.marks) ? <span data-blotter-offline>{offlineLine || backlogLine(feed.marks)}</span> : false}
     >
       <>
+      {lines.length > 0 && <TrackRecord today={today} recent={record} all={allCalls} />}
       {rows.length === 0 ? (
         <div className="border-t border-borderSubtle" data-blotter-empty>
           {feed.status === 'loading' && !lines.length ? (
@@ -259,7 +263,7 @@ const Blotter = () => {
                 ? `No call matches “${q.trim()}”.`
                 : lines.length
                   ? 'No call on this day and side.'
-                  : backlogLine(feed.marks) || 'Each Book A, B or C call is written here the moment the scan fires it, with the quote it fired on, then filled and closed on the contract’s one-minute quotes from ThetaData.'}
+                  : backlogLine(feed.marks) || `Each ${BOOK_NAME.A}, ${BOOK_NAME.B} or ${BOOK_NAME.C} call is written here the moment the scan fires it, with the quote it fired on, then filled and closed on the contract’s one-minute quotes. Compass calls from 09:45 ET.`}
             />
           )}
         </div>
@@ -283,7 +287,7 @@ const Blotter = () => {
               title={<ContractLabel contract={r.label} right={r.right} logo={r.ticker} size="sm" />}
               aside={<span className={r.ret == null ? RESULT_INK[r.result] : dirInk(r.ret)}>{r.ret == null ? RESULT_WORD[r.result] : pctWords(r.ret, 1)}</span>}
               figures={[
-                <span key="i">{dayCell(r.date)} · {r.late ? `${nyClock(r.mark)} ET mark, scored late` : `${nyClock(r.fired)} ET`} · Book {r.book}{r.p1 != null ? ` · ${(r.p1 * 100).toFixed(1)}%` : ''}</span>,
+                <span key="i">{dayCell(r.date)} · {r.late ? `${nyClock(r.mark)} ET mark, scored late` : `${nyClock(r.fired)} ET`} · {BOOK_NAME[r.book]}{r.p1 != null ? ` · ${(r.p1 * 100).toFixed(1)}%` : ''}</span>,
                 <span key="p">{r.paid > 0 ? `Filled ${usd(r.paid)}` : `Quote ${r.bid.toFixed(2)} × ${r.ask.toFixed(2)}`}{r.exitPx != null ? ` · exit ${usd(r.exitPx)}${r.out ? ` ${nyClock(r.out)}` : ''}` : ''}</span>,
                 <span key="h">{RESULT_WORD[r.result]}{r.held != null ? ` · ${heldWords(r.held)}` : ''}{r.pnl != null ? ` · ${signed(r.pnl)}` : ''}</span>,
               ]}

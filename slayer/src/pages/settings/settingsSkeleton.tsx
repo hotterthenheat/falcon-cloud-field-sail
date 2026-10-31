@@ -224,7 +224,7 @@ const SectionBox = ({ section }: { section: string }) => {
 export const SettingsPageSkeleton = ({ section = 'account' }: { section?: string }) => (
   <>
     <Head />
-    <div className="grid grid-cols-1 xl:grid-cols-[168px_minmax(0,1fr)] gap-4 items-start w-full max-w-[1072px] mx-auto" aria-hidden data-skeleton="settings">
+    <div className="grid grid-cols-1 xl:grid-cols-[168px_minmax(0,1fr)] gap-4 items-start w-full max-w-[1072px]" aria-hidden data-skeleton="settings">
       {/* The rail in the page's order: Account · Billing · Data | Appearance · The desk · Keyboard | About. */}
       <div className="flex flex-col gap-0.5">
         {[0, 1, 2, 3, 4, 5, 6].map(i => (

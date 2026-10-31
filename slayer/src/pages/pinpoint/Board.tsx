@@ -590,7 +590,7 @@ const Board = () => {
         minWidth: 132,
         cellRenderer: WallCell,
         cellDataType: false,
-        headerTooltip: 'The nearer of the two walls and how far it is. The call wall is the strike with the most call gamma: while dealers are long gamma there it tends to slow a rise (above price it is a lid; once price is through it, it can act as support). The put wall is the strike with the most put gamma: below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet',
+        headerTooltip: 'The nearer of the two walls and how far it is. The call wall is the strike with the most call gamma: while dealers are long gamma there it tends to slow a rise (above price it is a lid; once price is through it, it can act as support). The put wall is the strike with the most put gamma: below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling',
         comparator: (a: BoardRow['nearest'], b: BoardRow['nearest']) => Math.abs(a.distPct) - Math.abs(b.distPct),
       },
       { headerName: 'Supreme', field: 'supreme', flex: 0.5, minWidth: 84, cellRenderer: SupremeCell, headerTooltip: "The strike with the most hedging on this name, on that name's own levels." },

@@ -170,14 +170,14 @@ const NameDesks = ({ ticker, sleeve }: { ticker: string; sleeve: 'odte' | 'weekl
               {lastAt > 0 && <span className="text-textMuted"> · {nyClock(lastAt, { zone: true })}</span>}
             </p>
           ) : (
-            <p className="mt-1 text-t12 text-textSecondary">{offline ? 'ThetaData offline — reconnecting.' : 'No print in hand yet.'}</p>
+            <p className="mt-1 text-t12 text-textSecondary">{offline ? 'Live data offline — reconnecting.' : 'No print in hand yet.'}</p>
           )}
           {range && (
             <p className="mt-1 font-mono text-t11 text-textSecondary tnum">
               {range.day === nyIsoDate().replace(/-/g, '') ? 'Regular session' : rangeDay} · {px(range.low)} – {px(range.high)}
             </p>
           )}
-          {offline && lastPx > 0 && <p className="mt-1 font-mono text-t11 text-warn">ThetaData offline — reconnecting. As kept.</p>}
+          {offline && lastPx > 0 && <p className="mt-1 font-mono text-t11 text-warn">Live data offline — reconnecting. As kept.</p>}
         </Desk>
         <Desk to="/trace/live-tape" glyph="trace" name="Trace" note="The name" className="border-b sm:border-b-0 sm:border-r border-borderSubtle/60">
           {tape.waiting && !prints.length ? (

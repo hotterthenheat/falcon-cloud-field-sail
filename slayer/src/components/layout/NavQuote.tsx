@@ -13,6 +13,7 @@ import { extendedLine, sessionPrice, useLiveQuote } from '../../data/liveQuote';
 import { changeInk } from '../../data/book/day';
 import { uwKept } from '../../data/whales';
 import { sessionWhen } from '../../data/dayChange';
+import { extTag, printIsCurrent, type ExtWord } from '../../core/session';
 
 /** The page in view may not ask the terminal for prices: it reads Unusual Whales (re-read on every navigation) */
 export function useUwOnlyRoute(): boolean {
@@ -35,7 +36,7 @@ export interface NavQuoteRead {
   /** The extended-hours move of the last trade from the last regular close, labelled ("after hours +0.19%") */
   extText: string | null;
   /** The headline price is an extended-hours print: which */
-  priceWord: 'after hours' | 'pre-market' | null;
+  priceWord: ExtWord | null;
   /** The session the day's change belongs to when it is not today's ("Fri Oct 30"), else null */
   dayWhen: string | null;
   /** The regular close the extended move is measured from, when outside the session */
@@ -95,14 +96,17 @@ export function useNavQuote(ticker: string): NavQuoteRead {
       priceWord: uw && uw.extPrice != null && uw.phase !== 'regular' ? (uw.phase === 'pre' ? 'pre-market' : 'after hours') : null,
       dayWhen: uw && uw.phase !== 'regular' ? sessionWhen(uw.regDate) : null,
       regClose: uw?.regClose ?? null,
-      live: !!uw,
+      /* the vendor's last print belongs to the session trading now, or it is shown with its time (the weekend's
+         Friday, the after-hours print overnight — the vendor's tape has no overnight prints) */
+      live: !!uw && printIsCurrent(uw.tapeAt),
       offline: false,
-      asOf: null,
+      asOf: uw && !printIsCurrent(uw.tapeAt) ? uw.tapeAt : null,
       source: 'uw',
     };
   }
   const v = held?.value ?? null;
   const move = thetaMove(v);
+  const current = !!v && printIsCurrent(v.at);
   const pct = move?.pct ?? null;
   return {
     priceText: v ? money(v.price) : '—',
@@ -112,9 +116,11 @@ export function useNavQuote(ticker: string): NavQuoteRead {
     priceWord: move?.ext != null ? move.extWord : null,
     dayWhen: sessionWhen(move?.regDate),
     regClose: move?.regClose ?? null,
-    live: !!held?.live,
+    /* live: read just now AND printed in the session trading now (core/session.ts); a print from an earlier session —
+       the weekend's Friday, the after-hours last trade overnight — is shown with its time */
+    live: !!held?.live && current,
     offline: status === 'down',
-    asOf: held && !held.live ? held.value.at : null,
+    asOf: held && (!held.live || !current) ? held.value.at : null,
     source: 'theta',
   };
 }
@@ -133,7 +139,7 @@ OfflineLine.displayName = 'OfflineLine';
 export const NavPrice = memo(({ ticker, compact = false }: { ticker: string; compact?: boolean }) => {
   const q = useNavQuote(ticker);
   const priceTitle = q.asOf
-    ? quoteStamp(asOfText(q.asOf))
+    ? `Last trade${q.priceWord ? `, ${q.priceWord}` : ''} · ${asOfText(q.asOf)}${q.regClose != null ? ` · regular close ${q.regClose.toFixed(2)}` : ''}`
     : q.priceWord
       ? `Last trade, ${q.priceWord}${q.regClose != null ? ` · regular close ${q.regClose.toFixed(2)}` : ''}`
       : q.source === 'uw'
@@ -142,8 +148,8 @@ export const NavPrice = memo(({ ticker, compact = false }: { ticker: string; com
           ? `Last trade · ${q.dayWhen}`
           : quoteStamp('last trade');
   const changeTitle = `${q.dayWhen ? `${q.dayWhen}’s regular-session change` : 'The day’s change'} (the regular close, or the live price in the session, against the regular close before it)${q.extText ? ` · ${q.extText} since the close` : ''}`;
-  const tag = q.priceWord === 'pre-market' ? 'PM' : q.priceWord ? 'AH' : null;
-  const extShort = q.extText ? q.extText.replace('after hours ', 'AH ').replace('pre-market ', 'PM ') : null;
+  const tag = q.priceWord ? extTag(q.priceWord) : null;
+  const extShort = q.extText ? q.extText.replace('after hours ', 'AH ').replace('pre-market ', 'PM ').replace('overnight ', 'ON ') : null;
   return (
     <>
       <span className={`shrink-0 font-mono text-t11 tnum ${q.live ? 'text-textPrimary' : 'text-textSecondary'}`} data-subject-price title={priceTitle}>
@@ -171,7 +177,8 @@ NavPrice.displayName = 'NavPrice';
 export const NavOffline = memo(({ ticker }: { ticker: string }) => {
   const q = useNavQuote(ticker);
   if (q.offline) return <OfflineLine asOf={q.asOf} className="px-1 h-4" />;
-  if (q.source === 'uw' && q.asOf) return <AsOf at={q.asOf} className="px-1 h-4" title="Kept from the last visit. The fresh quote replaces it when it lands." />;
+  if (q.source === 'uw' && q.asOf) return <AsOf at={q.asOf} className="px-1 h-4" title={q.live ? 'Kept from the last visit. The fresh quote replaces it when it lands.' : 'The last print, from an earlier session: nothing has printed in the session trading now.'} />;
+  if (q.source === 'theta' && q.asOf) return <AsOf at={q.asOf} className="px-1 h-4" title="The last trade on this feed, from an earlier session: nothing has printed in the session trading now." />;
   return null;
 });
 NavOffline.displayName = 'NavOffline';

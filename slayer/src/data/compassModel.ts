@@ -39,9 +39,15 @@ import {
   WEEKLY_STRIKES,
   MODEL_1_NAME,
   MODEL_2_NAME,
+  BOOK_NAME,
   entryTimeOk,
   ENTRY_MIN_LEFT,
   flatTOf,
+  inModelWindow,
+  minutesToFlat,
+  sessionKindOf,
+  OVERNIGHT_ROOTS,
+  OUTSIDE_TRAINED_WORD,
 } from './compassParams';
 import { COMPASS_TICKERS } from './compassUniverse';
 import { optionScanOpen, sessionDayOpen, sessionIso, sessionYmd } from './compassSession';
@@ -154,6 +160,11 @@ const seenRootC = new Set<string>();
    per contract and one per root and book a session, for the review and the study. */
 const wouldSeen = new Set<string>();
 const wouldRoot = { A: new Set<string>(), B: new Set<string>(), C: new Set<string>() };
+/* The mark each "would have called" Book A/B root was noted at: a late mark counts them as seats taken at or before
+   it, beside the official ones, so the would list is what the live book would have called (five seats, one book a
+   root). It used to count official seats only, so a session the scan missed could list more than five would-calls
+   and one root under Book A and Book B at the same mark. */
+const wouldRootAt = new Map<string, number>();
 const wouldPicks = new Map<string, Setup>();
 
 /** The calls late marks would have made (never official), not yet taken by the ledger. */
@@ -163,10 +174,22 @@ export function takeWouldPicks(): Setup[] {
   return out;
 }
 
-function noteWould(setup: Setup, book: 'A' | 'B' | 'C'): boolean {
+/** The Book A/B seats taken at a mark: live, every official one so far; a late mark, the official ones taken at or
+    before it and the would-have-called ones noted at or before it. */
+export function heldSeatsAt(mark: number, late: boolean): Set<string> {
+  const held = new Set<string>([...seenRootA, ...seenRootB].filter(t => !late || (rootAt.get(t) ?? 0) <= mark));
+  if (late) for (const [t, at] of wouldRootAt) if (at <= mark) held.add(t);
+  return held;
+}
+
+/** Notes what a late mark would have called (exported for the golden): one per contract, one book a root, a session. */
+export function noteWould(setup: Setup, book: 'A' | 'B' | 'C'): boolean {
   if (wouldSeen.has(setup.id) || wouldRoot[book].has(setup.ticker)) return false;
+  /* Books A and B share a root's seat */
+  if (book !== 'C' && (wouldRoot.A.has(setup.ticker) || wouldRoot.B.has(setup.ticker))) return false;
   wouldSeen.add(setup.id);
   wouldRoot[book].add(setup.ticker);
+  if (book !== 'C' && !wouldRootAt.has(setup.ticker)) wouldRootAt.set(setup.ticker, setup.mark ?? 0);
   wouldPicks.set(setup.id, setup);
   return true;
 }
@@ -439,9 +462,13 @@ export async function warmSession(names: readonly string[], now = Date.now()): P
 /** Open interest per strike of one expiry, from ThetaData's open-interest snapshot (one ask per name and expiry). */
 async function pinOf(ticker: string, expiry: string, spot: number, strict = false): Promise<PinBook | null> {
   if (!CORE.has(ticker)) return null;
-  /* open interest is the clearing house's overnight count: it does not change inside a session, so one read a
-     session (an empty answer is asked again after five minutes) */
-  const key = `${ticker}|${expiry}|${sessionYmd(Date.now())}`;
+  /* open interest is the clearing house's overnight count, published early each morning (stamped 06:30 ET): one read
+     per published count (an empty answer is asked again after five minutes). The key was the session, and a session
+     starts at 20:15 the evening before, so a book read overnight was kept through the next regular session, one
+     count stale; it is now the count's own day (from 07:00 ET, today's count). */
+  const clock = nyParts(Date.now());
+  const countDay = ymd(Date.now() - (clock.hour * 60 + clock.minute < 7 * 60 ? 86_400_000 : 0));
+  const key = `${ticker}|${expiry}|${countDay}`;
   const hit = pinCache.get(key);
   if (hit && (hit.book || Date.now() - hit.at < 5 * 60_000)) return hit.book;
   const got = await compassHost().theta(`/option/snapshot/open_interest?symbol=${encodeURIComponent(ticker)}&expiration=${expiry.replace(/-/g, '').slice(0, 8)}&format=json`);
@@ -463,7 +490,10 @@ async function pinOf(ticker: string, expiry: string, spot: number, strict = fals
       byStrike.set(strike, node);
     }
   }
-  if (!byStrike.size || !(spot > 0)) {
+  /* the open interest does not depend on the spot: an empty answer is kept five minutes, a filled one for the session.
+     A read with no spot (an overnight or pre-market mark, where the cash price is not in) used to keep "no book" for
+     five minutes, so the marks read after it in those minutes scored with no open interest, gamma or walls */
+  if (!byStrike.size) {
     if (!got.error) pinCache.set(key, { at: Date.now(), book: null });
     return null;
   }
@@ -767,6 +797,8 @@ export type ModelPack = {
   reports?: { odte?: ScanReport; weekly?: ScanReport };
   wouldSeen?: string[];
   wouldRoot?: { A?: string[]; B?: string[]; C?: string[] };
+  /** The mark each would-have-called Book A/B root was noted at (epoch ms) */
+  wouldRootAt?: [string, number][];
 };
 
 /** The session the engine's state belongs to: after 20:15 ET it is the next trading day's. */
@@ -819,11 +851,12 @@ export function exportModelState(): ModelPack {
     reports: { odte: reports.odte, weekly: reports.weekly },
     wouldSeen: [...wouldSeen],
     wouldRoot: { A: [...wouldRoot.A], B: [...wouldRoot.B], C: [...wouldRoot.C] },
+    wouldRootAt: [...wouldRootAt],
   };
 }
 
 function clearState(): void {
-  for (const m of [picks, wingPicks, lotteryPicks, kept, nearPicks, passBook, misses, left, passed, watched, rootAt, seenMark]) m.clear();
+  for (const m of [picks, wingPicks, lotteryPicks, kept, nearPicks, passBook, misses, left, passed, watched, rootAt, seenMark, wouldRootAt]) m.clear();
   for (const set of [seen, seenRootA, seenRootB, seenRootC, wouldSeen, wouldRoot.A, wouldRoot.B, wouldRoot.C]) set.clear();
   wouldPicks.clear();
   scannedAt.odte = 0;
@@ -883,11 +916,12 @@ export function importModelState(pack: ModelPack | null, earlierScanned: { day: 
   scannedAt.weekly = pack.scanned?.weekly ?? 0;
   for (const id of pack.wouldSeen ?? []) wouldSeen.add(id);
   for (const b of ['A', 'B', 'C'] as const) for (const t of pack.wouldRoot?.[b] ?? []) wouldRoot[b].add(t);
+  for (const [t, at] of pack.wouldRootAt ?? []) if (typeof t === 'string' && Number.isFinite(at)) wouldRootAt.set(t, at);
 }
 
 /** Calls once made from a late mark (before late marks stopped calling): they are what a late mark would have
     called. Their seats and contracts go back to the official book. */
-export function demoteLate(calls: readonly { id: string; ticker: string; book: 'A' | 'B' | 'C' }[], liveRoots: { A: Set<string>; B: Set<string>; C: Set<string> }): void {
+export function demoteLate(calls: readonly { id: string; ticker: string; book: 'A' | 'B' | 'C'; mark?: number }[], liveRoots: { A: Set<string>; B: Set<string>; C: Set<string> }): void {
   for (const c of calls) {
     seen.delete(c.id);
     seenMark.delete(c.id);
@@ -899,6 +933,7 @@ export function demoteLate(calls: readonly { id: string; ticker: string; book: '
     for (const m of [picks, wingPicks, lotteryPicks, nearPicks]) for (const [k, v] of m) if (v.id === c.id) m.delete(k);
     wouldSeen.add(c.id);
     wouldRoot[c.book].add(c.ticker);
+    if (c.book !== 'C' && !wouldRootAt.has(c.ticker)) wouldRootAt.set(c.ticker, c.mark ?? 0);
   }
   persistCalls();
 }
@@ -913,7 +948,21 @@ export function rollModelDay(day: string): void {
   stateDay = day;
   seenAsks.clear();
   seenMids.clear();
+  pruneMemos(day);
   persistCalls();
+}
+
+/** The session memos the engine no longer needs, dropped at the roll: they used to grow for the life of the process
+    (every name's minute bars of every day read, a volume curve and an open-interest book per name and day). Kept: the
+    bars of the last 40 days (the volume curve reads three weeks back), today's curves, the last two counts' books. */
+function pruneMemos(day: string): void {
+  const oldest = ymd(Date.parse(`${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}T12:00:00Z`) - 40 * 86_400_000);
+  for (const key of [...barMemo.keys()]) if ((key.split('|')[1] ?? '') < oldest) barMemo.delete(key);
+  for (const key of [...curves.keys()]) if (key.split('|')[1] !== day) curves.delete(key);
+  const twoBack = ymd(Date.now() - 2 * 86_400_000);
+  for (const key of [...pinCache.keys()]) if ((key.split('|')[2] ?? '') < twoBack) pinCache.delete(key);
+  liveScoreMemo.clear();
+  priceMemo.clear();
 }
 
 /** The card and the contract read this. A pick's quote follows the live book; its signal keeps the one it fired on. */
@@ -1210,6 +1259,12 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
     const etf = ticker === 'SPXW' ? '' : (SECTOR_OF[ticker] ?? SECTOR_OF[under] ?? '');
     const sec = etf ? secBars.get(etf) ?? [] : [];
     const curve = await curveFor(under, now);
+    /* the session the mark is in (overnight for the index roots, pre-market for the equity options, regular, curb):
+       the entry gate and the call's flat are that session's */
+    const overnightRoot = OVERNIGHT_ROOTS.includes(ticker);
+    const left = minutesToFlat(tape.tt, flatT, overnightRoot);
+    const session = sessionKindOf(tape.tt, flatT, overnightRoot) ?? undefined;
+    const trained = inModelWindow(tape.tt);
     const notes: string[] = [];
     const scoredP = new Map<string, number>();
     const lineWhy = (p: number) => (p + 1e-12 < P1_MIN
@@ -1259,11 +1314,12 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
         report.setup = { ...s, p1, prun: prun ?? undefined, seenAt: undefined };
       }
       noteMiss(s, p1, prun);
-      if (!entryTimeOk(tape.tt, flatT)) {
-        notes.push(`${word} is outside the entry minutes (t 15 to 330 and ${ENTRY_MIN_LEFT} minutes before the flat)`);
+      if (!entryTimeOk(tape.tt, flatT, overnightRoot)) {
+        notes.push(`${word} is outside the entry minutes (15 minutes after its session opens to ${ENTRY_MIN_LEFT} minutes before its flat)`);
         continue;
       }
-      const dt = Math.max(0, flatT - (tape.tt + 1)) / (SESSION_MIN * YEAR_SESSIONS);
+      /* the decay to this session's flat (was the regular flat for every mark) */
+      const dt = Math.max(0, left - 1) / (SESSION_MIN * YEAR_SESSIONS);
       if (thetaBurns(x[39], x[38], s.ask, dt)) {
         notes.push(`${word} theta burns the stop before the flat`);
         continue;
@@ -1276,9 +1332,10 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       const span = strikeSpan(tape.S, list.map(row => row.strike), SPAN_INDEX.includes(s.ticker as typeof SPAN_INDEX[number]));
       const prior = seeded(s, minute - BOOK_B_LOOKBACK) ?? quoteAt(s.id, minute - BOOK_B_LOOKBACK);
       const retOpen = tape.op > 0 && tape.S > 0 ? tape.S / tape.op - 1 : NaN;
-      const row = { setup: s, p1, prun, gex: x[27], retOpen };
-      if (bookAPass(tape.tt, dist, span, dte, s.bid, s.ask, p1, flatT)) aPool.push(row);
-      else if (prior && bookBPass(tape.tt, dist, span, dte, s.bid, s.ask, prior.bid, prior.ask, p1, flatT)) bPool.push(row);
+      const flatAt = mark + left * 60_000;
+      const row = { setup: { ...s, tapeSession: session, outsideTrained: !trained || undefined, flatAt }, p1, prun, gex: x[27], retOpen };
+      if (bookAPass(tape.tt, dist, span, dte, s.bid, s.ask, p1, flatT, overnightRoot)) aPool.push(row);
+      else if (prior && bookBPass(tape.tt, dist, span, dte, s.bid, s.ask, prior.bid, prior.ask, p1, flatT, overnightRoot)) bPool.push(row);
       else if (!prior && dist > span) notes.push(`${word} has no quote from 30 minutes earlier`);
       notes.push(`${word} ${lineWhy(p1)}${prun == null ? ` ${scored.why}` : ''}`);
       scoredP.set(word, p1);
@@ -1333,7 +1390,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
   };
   /* the seats taken: live, every one so far; a late mark, only those taken at or before its mark (a seat a later call
      took was free then). A seat with no recorded mark counts as taken from the start. */
-  const heldRoots = new Set<string>([...seenRootA, ...seenRootB].filter(t => !late || (rootAt.get(t) ?? 0) <= mark));
+  const heldRoots = heldSeatsAt(mark, late);
   let seats = heldRoots.size;
   const cands = [...choose(aPool, 'A'), ...choose(bPool, 'B')].sort((a, b) => {
     const ad = Number.isFinite(a.retOpen) && Math.abs(a.retOpen) >= DRIVE ? 1 : 0;
@@ -1346,9 +1403,10 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
     if (anyDrive && !drive) continue;
     if (seats >= SEAT_CAP || heldRoots.has(row.setup.ticker) || calledBy(row.setup.id)) continue;
     if (late) {
-      /* it clears every gate the official book stood at, but a late mark calls nothing and takes no seat */
+      /* it clears every gate the official book stood at, but a late mark calls nothing and takes no official seat:
+         its would-seat is counted here and at the later late marks (wouldRootAt) */
       const run = row.book === 'B' || (row.prun != null && runnerFlag(row.prun));
-      noteWould({
+      const noted = noteWould({
         ...row.setup,
         p1: row.p1,
         prun: row.prun ?? undefined,
@@ -1358,8 +1416,12 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
         mark,
         late: true,
         verdict: 'WATCH',
-        whyText: `Would have called (Book ${row.book}), scored late from recorded quotes. Not a call.`,
+        whyText: `Would have called (${BOOK_NAME[row.book]}), scored late from recorded quotes. Not a call.${row.setup.outsideTrained ? ` ${OUTSIDE_TRAINED_WORD}.` : ''}`,
       }, row.book);
+      if (noted) {
+        heldRoots.add(row.setup.ticker);
+        seats += 1;
+      }
       continue;
     }
     heldRoots.add(row.setup.ticker);
@@ -1389,7 +1451,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
         priceTargets: [],
         invalidationPrice: 0,
         invalidationReason: '',
-        whyText: row.prun == null ? `The math passes. ${MODEL_2_NAME} not scored, so the exit does not ride.` : 'The math passes.',
+        whyText: `${row.prun == null ? `The math passes. ${MODEL_2_NAME} not scored, so the exit does not ride.` : 'The math passes.'}${row.setup.outsideTrained ? ` ${OUTSIDE_TRAINED_WORD}.` : ''}`,
       });
     } else {
       seen.add(row.setup.id);
@@ -1412,7 +1474,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
         priceTargets: [],
         invalidationPrice: 0,
         invalidationReason: '',
-        whyText: 'The math passes. The exit rides.',
+        whyText: `The math passes. The exit rides.${row.setup.outsideTrained ? ` ${OUTSIDE_TRAINED_WORD}.` : ''}`,
       });
     }
   }
@@ -1511,11 +1573,12 @@ export async function scoreLottery(setups: Setup[], now = Date.now(), late = fal
     if (win) ranked.push(win);
     void ticker;
   }
-  let open = lotteryPicks.size;
+  /* a late sweep counts its own would-calls against the five (it used to note every root's pick) */
+  let open = late ? lotteryPicks.size + wouldRoot.C.size : lotteryPicks.size;
   for (const setup of ranked) {
     if (open >= LOTTERY_CAP || seenRootC.has(setup.ticker)) continue;
     if (late) {
-      noteWould({ ...setup, runner: false, band: 'lottery', seenAt: now, mark: Math.floor(now / 60_000) * 60_000, late: true, verdict: 'WATCH', whyText: 'Would have called (Book C), scored late from recorded quotes. Not a call.' }, 'C');
+      if (noteWould({ ...setup, runner: false, band: 'lottery', seenAt: now, mark: Math.floor(now / 60_000) * 60_000, late: true, verdict: 'WATCH', whyText: `Would have called (${BOOK_NAME.C}), scored late from recorded quotes. Not a call.` }, 'C')) open += 1;
       continue;
     }
     seen.add(setup.id);

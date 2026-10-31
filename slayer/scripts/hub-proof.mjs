@@ -142,6 +142,17 @@ check('500 viewers cost about what 1 does (within three calls)', counts[500] <= 
   check('the day after Thanksgiving, 17:30 ET: closed (after-hours end at 17:00)', at('2026-11-27T22:30:00Z') === false);
   check('an ordinary Monday, 17:30 ET: open (after hours run to 20:00)', at('2026-11-30T22:30:00Z') === true);
   check('Good Friday 2029 (projected): closed', at('2029-03-30T15:00:00Z') === false);
+  /* the overnight (shared/marketSession.mjs): an index's books move through Cboe's GTH, a stock's do not (neither vendor
+     carries the overnight venues) */
+  const on = (iso, p) => marketHours(Date.parse(iso), p);
+  check('Sunday 21:00 ET: SPX options move (GTH opened 20:15)', on('2026-11-02T02:00:00Z', '/option/snapshot/quote?symbol=SPXW&expiration=20261102') === true);
+  check('Sunday 21:00 ET: a stock path keeps the closed pace', on('2026-11-02T02:00:00Z', '/stock/SPY/stock-state') === false);
+  check('Sunday 20:05 ET: GTH has not opened', on('2026-11-02T01:05:00Z', '/stock/SPX/spot-exposures') === false);
+  check('Saturday noon: nothing moves', at('2026-10-31T16:00:00Z') === false);
+  check('Friday 21:00 ET: no GTH into a Saturday', on('2026-10-31T01:00:00Z', '/stock/SPX/flow-alerts') === false);
+  check('Thanksgiving 10:00 ET: the holiday GTH runs to 11:30', on('2026-11-26T15:00:00Z', '/stock/SPX/flow-alerts') === true);
+  check('Thanksgiving 12:00 ET: closed', on('2026-11-26T17:00:00Z', '/stock/SPX/flow-alerts') === false);
+  check('a Monday 16:30 ET: the SPX curb moves; a stock after hours too', on('2026-11-02T21:30:00Z', '/stock/SPX/flow-alerts') === true && on('2026-11-02T21:30:00Z', '/stock/NVDA/stock-state') === true);
 }
 
 /* ---- the popular-paths file: what is over is let go, and the file is always rewritten ---- */
