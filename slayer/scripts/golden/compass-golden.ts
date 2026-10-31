@@ -520,7 +520,9 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
    on these. The trained minutes are t = 585..900 (15 to 330 after 09:30); P1_MIN = 0.7067.
      10-27: .20 F, .25 T, .72 T, .74 F (t 600/700), .80 T at t 580 (outside), .85 F, .45 unsettled
      10-28: .71 F, .73 F, .10 F, .30 T at t 905 (outside), .76 T
-   Wilson 95% (z 1.96): 1/3 → .0615–.7923, 1/4 → .0456–.6994, 1/1 → .2065–1, 0/1 → 0–.7935, 2/6 → .0968–.7000. */
+   Wilson 95% (z 1.96): 1/3 → .0615–.7923, 1/4 → .0456–.6994, 1/1 → .2065–1, 0/1 → 0–.7935, 2/6 → .0968–.7000.
+   The pooled rates are clustered by session (clusterRate): V = C/(C-1)·Σ(k_c - p·n_c)²/n², nEff = p(1-p)/V capped
+   at n, Wilson at nEff; one cluster gives 0–1. */
 {
   const { poolStudies, wilson, POOL_BAR } = await import('../../src/data/compassStudy');
   const { pooledStudy, compassRoute, startCompassEngine } = await import('../../src/data/compassServer');
@@ -533,20 +535,25 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   expectEqual('wilson: nothing is nothing', wilson(0, 0), { n: 0, k: 0, rate: 0, lo95: 0, hi95: 0 });
   const p = pooledStudy(POOL);
   expectEqual('pool: sessions oldest first; 12 rows, 11 settled; 3 movers (10-28 has no study)', [p.days, p.labels, p.settled, p.movers], [['2026-10-27', '2026-10-28'], 12, 11, 3]);
-  expectEqual('pool: a session without a study says so', p.notes, ['2026-10-28: labels without a study; its movers are not counted.']);
+  expectEqual('pool: a session without a study says so; the sweep carries its multiple-comparisons note', p.notes, ['2026-10-28: labels without a study; its movers are not counted.', 'The threshold sweep tries 7 cuts on the same rows: the best of them is biased up by the choice (multiple comparisons). It is advisory; a new threshold needs sessions it was not chosen on.']);
   const b = (name: string) => p.calibration.find(c => c.bucket === name)!;
   /* 0–30%, in the window: .20 F, .25 T, .10 F → 1 of 3; mean (.20 + .25 + .10)/3 = .1833; gap 33.33 - 18.33 = +15.00 */
-  expectEqual('pool: 0–30% bucket', [b('0–30%').win, b('0–30%').meanP1, b('0–30%').gapPoints, b('0–30%').sessions], [{ n: 3, k: 1, rate: 0.3333, lo95: 0.0615, hi95: 0.7923 }, 0.1833, 15, 2]);
+  /* clustered: 10-27 (2 rows, 1 won), 10-28 (1, 0): Σ = (1 - 2/3)² + (0 - 1/3)² = 2/9, V = 2·(2/9)/9 = 0.0494,
+     nEff = (2/9)/0.0494 = 4.5 → capped at 3: the plain Wilson */
+  expectEqual('pool: 0–30% bucket', [b('0–30%').win, b('0–30%').meanP1, b('0–30%').gapPoints, b('0–30%').sessions], [{ n: 3, k: 1, rate: 0.3333, lo95: 0.0615, hi95: 0.7923, by: 'session', clusters: 2, nEff: 3 }, 0.1833, 15, 2]);
   /* 30–40%: only .30 at 15:05, outside the window: none in the window, 1 of 1 over every minute */
   expectEqual('pool: 30–40% bucket, outside the window only', [b('30–40%').win.n, b('30–40%').all.n, b('30–40%').all.k, b('30–40%').meanP1], [0, 1, 1, null]);
   /* the unsettled .45 row is not counted */
   expectEqual('pool: an unsettled row is no row', b('40–50%').all.n, 0);
   /* 70.67–75%: .72 T, .74 F, .71 F, .73 F → 1 of 4; mean 2.90/4 = .725; gap 25 - 72.5 = -47.5; both sessions */
-  expectEqual('pool: 70.67–75% bucket', [b('70.67–75%').win, b('70.67–75%').meanP1, b('70.67–75%').gapPoints, b('70.67–75%').sessions], [{ n: 4, k: 1, rate: 0.25, lo95: 0.0456, hi95: 0.6994 }, 0.725, -47.5, 2]);
+  /* clustered: 10-27 (2, 1), 10-28 (2, 0): Σ = 0.25 + 0.25, V = 2·0.5/16 = 0.0625, nEff = 0.1875/0.0625 = 3; Wilson at
+     p .25, n 3: .0368–.7439 (was .0456–.6994, the four rows read as independent) */
+  expectEqual('pool: 70.67–75% bucket', [b('70.67–75%').win, b('70.67–75%').meanP1, b('70.67–75%').gapPoints, b('70.67–75%').sessions], [{ n: 4, k: 1, rate: 0.25, lo95: 0.0368, hi95: 0.7439, by: 'session', clusters: 2, nEff: 3 }, 0.725, -47.5, 2]);
   /* 75–80%: .76 T → 1 of 1, gap +24.  80–100%: .85 F in the window (0 of 1, gap -85); .80 T at 09:40 outside;
      every minute 1 of 2, bid hit 1.50× 1 of 2 */
   expectEqual('pool: 75–80% bucket', [b('75–80%').win.k, b('75–80%').win.n, b('75–80%').gapPoints], [1, 1, 24]);
-  expectEqual('pool: 80–100% bucket', [b('80–100%').win, b('80–100%').gapPoints, b('80–100%').all.n, b('80–100%').all.k, b('80–100%').hit50], [{ n: 1, k: 0, rate: 0, lo95: 0, hi95: 0.7935 }, -85, 2, 1, 0.5]);
+  /* one row in one session: one cluster cannot bound a rate, 0–1 (was 0–.7935) */
+  expectEqual('pool: 80–100% bucket', [b('80–100%').win, b('80–100%').gapPoints, b('80–100%').all.n, b('80–100%').all.k, b('80–100%').hit50], [{ n: 1, k: 0, rate: 0, lo95: 0, hi95: 1, by: 'session', clusters: 1, nEff: 1 }, -85, 2, 1, 0.5]);
   expectEqual('pool: every settled row in one bucket', p.calibration.reduce((a, c) => a + c.all.n, 0), 11);
   /* the sweep, in the window: at 60% and at 70.67% the same six rows (.72 .74 .85 | .71 .73 .76), 2 took;
      mean return (50 - 40 - 50 - 35 - 45 + 50)/6 = -11.67; per session -13.33 and -10.00, neither up.
@@ -564,7 +571,7 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   expectEqual('pool: inputs over time', p.inputsOverTime, { cols: [{ col: 26, name: 'IV / RV' }, { col: 24, name: 'ATM IV' }], rows: [{ day: '2026-10-27', under: 2, n: [2, 1] }] });
   /* the verdict: two sessions, no full bucket; over the bar 2 of 6 (.0968–.7000), mean (.72+.74+.85+.71+.73+.76)/6 = .7517 */
   expectEqual('pool: verdict is not yet, every bar unmet', [p.verdict.ready, p.verdict.needs.map(n => n.met)], [false, [false, false, false, false]]);
-  expectEqual('pool: verdict line', p.verdict.line, 'No: the evidence does not support reading Model 1 as a probability yet (4 of 4 bars unmet). Rows scored at or over 70.67% (mean 75.2%) took the 1.50× profit 33.3% of the time (95%: 9.7–70.0%, 6 rows, 2 sessions).');
+  expectEqual('pool: verdict line', p.verdict.line, 'No: the evidence does not support reading Model 1 as a probability yet (4 of 4 bars unmet). Rows scored at or over 70.67% (mean 75.2%) took the 1.50× profit 33.3% of the time (95%: 9.7–70.0%, clustered by session; 6 rows, about 6 effective, 2 sessions).');
   /* a calibrated pool meets the bars: 20 sessions, 25 rows a bucket a session (500 each) at the bucket's middle,
      round(25·mid) of them taking profit (16%, 36%, 44%, 56%, 64%, 68%, 72%, 76%, 92%: every gap within 2 points) */
   const MIDS = [0.15, 0.35, 0.45, 0.55, 0.625, 0.678, 0.728, 0.775, 0.9];
@@ -579,7 +586,20 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   expectEqual('pool: meeting the bars never lifts the label', /“Unvalidated” label stays until the owner lifts it/.test(good.verdict.line), true);
   /* the same with the 50–60% bucket never taking profit: its gap (-55) fails, and it reverses against 40–50% */
   const bad = poolStudies(synth(3), 0);
-  expectEqual('pool: one bucket off fails the gap and the order', [bad.verdict.ready, bad.verdict.needs.map(n => n.met), bad.calibration[3].gapPoints], [false, [true, true, false, false], -55]);
+  /* a bucket at 0 of 500 has no within-session variance to read a design effect from: its effective rows are its 20
+     sessions, so it is short of the 400 and fails the rows and the gap bars (was: full, failing the gap and order) */
+  expectEqual('pool: one bucket off fails the rows and the gap', [bad.verdict.ready, bad.verdict.needs.map(n => n.met), bad.calibration[3].gapPoints, bad.calibration[3].win.nEff], [false, [true, false, false, true], -55, 20]);
+  /* the pool of one session clusters by name and session */
+  const { clusterRate } = await import('../../src/data/compassStudy');
+  /* 3 names × 10 overlapping rows, all-or-nothing per name (1 won, 2 lost): p = 1/3, Σ = (20/3)² + 2·(10/3)² = 66.67,
+     V = (3/2)·66.67/900 = 0.1111, nEff = (2/9)/0.1111 = 2 (three paths, less the C/(C-1) correction); plain Wilson
+     reads 30 rows: .1923–.5122 */
+  const one = clusterRate(['A', 'B', 'C'].flatMap((nm, i) => Array.from({ length: 10 }, () => ({ won: i === 0, cluster: nm }))), 'name-session');
+  /* each label by its own book (was: Book A's non-runner rules for every row) */
+  const { bookOfRow } = await import('../../src/data/compassStudy');
+  const mates = Array.from({ length: 21 }, (_, i) => ({ k: `SPY ${500 + i}C` }));
+  expectEqual('label book: 2 out is A; 9 out at 0.50 is B; 9 out at 1.50 and 14 out are neither', [bookOfRow({ k: 'SPY 512C', s: 510, a: 2 }, mates, 'SPY'), bookOfRow({ k: 'SPY 519C', s: 510, a: 0.5 }, mates, 'SPY'), bookOfRow({ k: 'SPY 519C', s: 510, a: 1.5 }, mates, 'SPY'), bookOfRow({ k: 'SPY 520C', s: 506, a: 0.2 }, mates, 'SPY')], ['A', 'B', null, null]);
+  expectEqual('clustered: 30 rows that are 3 paths count as 2 effective rows', [one.nEff, one.lo95, one.hi95, wilson(10, 30).lo95, wilson(10, 30).hi95], [2, 0.0453, 0.8406, 0.1923, 0.5122]);
   expectEqual('pool: the bars', [POOL_BAR.sessions, POOL_BAR.rowsPerBucket, POOL_BAR.gapPoints], [20, 400, 5]);
   /* served at /api/compass/study?day=all from the record folder */
   const dir9 = mkdtempSync(join(tmpdir(), 'compass-pool-'));
