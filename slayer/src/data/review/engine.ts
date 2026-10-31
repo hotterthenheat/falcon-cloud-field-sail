@@ -5,8 +5,8 @@
 
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from './ladder';
 import { contractKey, dteAt, fillableQty, legsOf, markAt, quoteAt, quoteWith, settlementAt, spotForBid, type ContractId, type Quote, type SettleStyle } from './quotes';
-import { LAST_MIN, dateOf, dayNumber, sessionAfter } from './history';
-import { sessionsBetween } from '../../core/calendar';
+import { LAST_MIN, barTime, dayNumber, sessionAfter } from './history';
+import { tradingMinutesBetween } from '../../core/tradingYear';
 import type { DayNote, JournalEntry } from './journal';
 import { usd2 as money } from '../../core/format';
 
@@ -259,8 +259,9 @@ export function lowOpenOf(contract: ContractId, legs: Pick<TradeLeg, 'at' | 'sid
   }
   return cents(low);
 }
-/** Session minutes between two moments: whole sessions between the days, and the minutes inside them */
-const heldMinutes = (a: Moment, b: Moment) => Math.max(0, (a.day === b.day ? 0 : sessionsBetween(dateOf(a.day), dateOf(b.day))) * (LAST_MIN + 1) + (b.minute - a.minute));
+/** Session minutes between two moments, on the trading clock (core/tradingYear): only the minutes the market was open —
+    an early close counts its 210 — the measure a paper trade's hold is read in too */
+const heldMinutes = (a: Moment, b: Moment) => tradingMinutesBetween(barTime(a.day, a.minute) * 1000, barTime(b.day, b.minute) * 1000);
 /** Every fill, in order, folded into the positions still open and the trades that closed */
 export function bookOf(s: Session): Book {
   interface Open {

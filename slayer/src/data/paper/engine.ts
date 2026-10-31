@@ -11,6 +11,7 @@ import type { DayNote, JournalEntry } from '../review/journal';
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from '../review/ladder';
 import { contractKey, contractWords, dteAt, fillableQty, legsOf, type ContractId, type Quote } from '../review/quotes';
 import { closeBasisOf } from '../review/history';
+import { tradingMinutesBetween } from '../../core/tradingYear';
 import type { Candle } from '../../types/market';
 import { dayBeginsAt, dayEndsAt, isVixRoot, nyAt, tradingDayOf, tradingEndsAt, vixSchedule } from './clock';
 import { paperFut } from './products';
@@ -414,7 +415,7 @@ export interface OptTrade {
   thetaIn: number;
   spotIn: number;
   spotOut: number;
-  /** Real minutes it was on */
+  /** Session minutes it was on (the market's open minutes, as a backtest counts them) */
   heldMin: number;
   plannedStop?: number;
   tag?: string;
@@ -519,7 +520,8 @@ export function optBookOf(a: PaperAccount): { positions: OptPosition[]; trades: 
       thetaIn: o.first.theta,
       spotIn: o.first.spot,
       spotOut: f.spot,
-      heldMin: Math.max(0, Math.round((f.at.at - o.first.at.at) / 60_000)),
+      /* session minutes, as a backtest's: the minutes the market was open while it was held (core/tradingYear) */
+      heldMin: tradingMinutesBetween(o.first.at.at, f.at.at),
       plannedStop: o.first.plannedStop,
       tag: o.first.tag,
       note: f.note,
@@ -1798,28 +1800,7 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
       }
     }
     next = optTickOrders(next, m);
-    /* the plan's floor and its day's limit, as it happens — judged only on fresh quotes in the session, or with nothing open */
-    const plan = next.plan;
-    if (plan && !plan.legacy && next.status === 'open') {
-      const v = viewOf(next, m);
-      const fresh = v.opt.every(p => m.fresh?.(p.contract) ?? true);
-      if (!v.opt.length || (fresh && m.open())) {
-        next = { ...next, peak: peakAfterTick(next, v) };
-        const verdict = judgeTick(next, v);
-        const label = planName(plan);
-        if (verdict?.kind === 'fail') {
-          next = flattenAll(next, m, 'rule', verdict.why);
-          next = logged({ ...next, status: 'failed', statusAt: m.now, statusRule: verdict.rule, statusWhy: `Failed — ${verdict.why}` }, m.now, `Failed — ${verdict.why}`, 'fail');
-          events.push({ kind: 'failed', at: m.now, words: `${label} failed — ${verdict.why}` });
-        } else if (verdict?.kind === 'pause') {
-          next = flattenAll(next, m, 'rule', 'the day’s loss limit was reached');
-          next = logged({ ...next, dayOver: { day: next.day, why: verdict.why } }, m.now, `The day is over — ${verdict.why}`, 'rule');
-          events.push({ kind: 'day-over', at: m.now, words: `The day is over — ${verdict.why}. No new positions until the next trading day` });
-        }
-      }
-      /* the target, met with all it waits on (it reads the balance, which no quote moves) */
-      if (next.status === 'open') next = passIf(next, viewOf(next, m), m, events);
-    }
+    next = judgeRulesNow(next, m, events);
   }
   next = keepHeld(next, m);
   next = keepClosed(before, next, m);
@@ -1831,6 +1812,36 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
   if (Number.isFinite(eq)) next = keepCurve(next, eq);
   fillEvents(before, next, events);
   return { account: next, events };
+}
+
+/** The plan's floor and its day's limit, as it happens — judged only on fresh quotes in the session, or with nothing
+    open — and the target. The live tick asks it every tick; the catch-up asks it on every replayed minute whose quotes
+    mark everything held (catchUp.ts). */
+export function judgeRulesNow(a: PaperAccount, m: PaperMarket, events: PaperEvent[]): PaperAccount {
+  let next = a;
+  /* the plan's floor and its day's limit, as it happens — judged only on fresh quotes in the session, or with nothing open */
+  const plan = next.plan;
+  if (plan && !plan.legacy && next.status === 'open') {
+    const v = viewOf(next, m);
+    const fresh = v.opt.every(p => m.fresh?.(p.contract) ?? true);
+    if (!v.opt.length || (fresh && m.open())) {
+      next = { ...next, peak: peakAfterTick(next, v) };
+      const verdict = judgeTick(next, v);
+      const label = planName(plan);
+      if (verdict?.kind === 'fail') {
+        next = flattenAll(next, m, 'rule', verdict.why);
+        next = logged({ ...next, status: 'failed', statusAt: m.now, statusRule: verdict.rule, statusWhy: `Failed — ${verdict.why}` }, m.now, `Failed — ${verdict.why}`, 'fail');
+        events.push({ kind: 'failed', at: m.now, words: `${label} failed — ${verdict.why}` });
+      } else if (verdict?.kind === 'pause') {
+        next = flattenAll(next, m, 'rule', 'the day’s loss limit was reached');
+        next = logged({ ...next, dayOver: { day: next.day, why: verdict.why } }, m.now, `The day is over — ${verdict.why}`, 'rule');
+        events.push({ kind: 'day-over', at: m.now, words: `The day is over — ${verdict.why}. No new positions until the next trading day` });
+      }
+    }
+    /* the target, met with all it waits on (it reads the balance, which no quote moves) */
+    if (next.status === 'open') next = passIf(next, viewOf(next, m), m, events);
+  }
+  return next;
 }
 
 /** The running drawdown, moved by one reading of equity */

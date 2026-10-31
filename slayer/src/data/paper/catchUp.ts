@@ -10,7 +10,8 @@ import { thetaAllowedHere, thetaCall } from '../theta';
 import { barTime, flatRows, legKey, parseBars, parseQuotes, rowAt, standingAt } from '../review/history';
 import { bookMark, contractKey, longLeg, spreadBook, spreadSizes, type ContractId, type Quote } from '../review/quotes';
 import { dateAt, lastTradeDayOf, nyAt, nyInstant, yearsToExpiry, OPEN_MIN } from './clock';
-import { gapOf, judgeOrders, type OptOrder, type PaperAccount, type PaperMarket } from './engine';
+import { gapOf, judgeOrders, judgeRulesNow, optBookOf, type OptOrder, type PaperAccount, type PaperMarket } from './engine';
+import { tradingDayOf } from './clock';
 import { optionRootOf } from './thetaFeed';
 
 /** At most this many sessions back are replayed; an order unjudged for longer says so */
@@ -112,6 +113,30 @@ export async function fetchGaps(a: PaperAccount, now: number): Promise<Fetched> 
     const answers = await Promise.all(jobs);
     const bad = answers.find(x => x != null);
     if (bad) got.failed.set(g.order.id, bad === 'offline' ? { why: 'ThetaData was offline', again: true } : bad === 'not here' ? { why: 'this page does not read option history', again: true } : { why: 'ThetaData has no history for those minutes', again: false });
+  }
+  /* a plan's rules are judged on the replayed minutes too: every position held is marked on them, so its minutes are
+     asked for as well (best effort — a minute that cannot mark everything held is not judged) */
+  if (a.plan && !a.plan.legacy) {
+    const days = new Set(gapsOf(a, now).filter(g => g.days.length <= MAX_DAYS).flatMap(g => g.days));
+    const extra: Promise<string | null>[] = [];
+    for (const p of optBookOf(a).positions)
+      for (const day of days) {
+        const t = p.contract.ticker.toUpperCase();
+        const root = INDEXES.has(t) ? 'index' : 'stock';
+        extra.push(once(`bars|${t}|${day}`, `/${root}/history/ohlc?symbol=${encodeURIComponent(t)}&start_date=${ymd(day)}&end_date=${ymd(day)}&interval=1m&format=json`, rows => {
+          const b = parseBars(day, rows);
+          if (b) got.bars.set(`${t}|${day}`, b.bars.filter(x => x.close > 0 && (x.volume > 0 || x.high !== x.low || x.open !== x.close)).map(x => ({ time: x.time, close: x.close })));
+        }));
+        for (const leg of legsOf(p.contract)) {
+          if (leg.expiry < day) continue;
+          const path = `/option/history/quote?symbol=${encodeURIComponent(optionRootOf(leg.ticker))}&expiration=${ymd(leg.expiry)}&strike=${leg.strike.toFixed(2)}&right=${leg.right === 'C' ? 'call' : 'put'}&date=${ymd(day)}&interval=1m&format=json`;
+          extra.push(once(`leg|${legKey(leg)}|${day}`, path, rows => {
+            const d = parseQuotes(leg.ticker, rows, leg).get(legKey(leg));
+            if (d) got.quotes.set(`${legKey(leg)}|${day}`, d);
+          }));
+        }
+      }
+    await Promise.all(extra);
   }
   return got;
 }
@@ -218,6 +243,13 @@ export function replayGaps(a: PaperAccount, f: Fetched, now: number, life: strin
       open: () => true,
     };
     next = judgeOrders(next, market);
+    /* the plan's floor, its day's limit and its target on the replayed minute — on that minute's quotes for everything
+       held (ungated by the orders' gaps), only where they mark all of it, and only on the account's own trading day (the
+       day's limit is measured from its open) */
+    if (next.plan && !next.plan.legacy && next.status === 'open' && tradingDayOf(end) === next.day) {
+      const all = (c: ContractId): Quote => recorded(c, e.day, e.m, f, end);
+      next = judgeRulesNow(next, { ...market, optQuote: all, fresh: c => !all(c).dead }, []);
+    }
   }
   /* what was replayed is judged up to the last minute that had a quote (a late minute with none is left unjudged while
      that name still trades); a day order still working past its session ends there — 16:15 where it traded the late

@@ -1012,5 +1012,37 @@ const fixed = (price: () => number, t = now): PaperMarket => ({
   ok('a spread’s target at 4.00 is (4 − 2) × 100 − 0.65 × 2 legs × 2 = 197.40 — every leg’s fee', es.targets.length === 1 && near(es.targets[0].pnl ?? NaN, 197.4), JSON.stringify(es.targets));
 }
 
+{
+  /* 11. a paper trade's hold is in session minutes, as a backtest's: in Tuesday 15:50, out Wednesday 09:40 → 10 + 10 = 20 */
+  const T0 = nyInstant('2026-09-22', 15 * 60 + 50);
+  const T1 = nyInstant('2026-09-23', 9 * 60 + 40);
+  const c: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: '2026-10-16' };
+  let x = newAccount({ id: 'hm', kind: 'practice', name: 'hm', startCash: 10_000, now: T0, sandbox: true });
+  x = optPlace(x, fixed(() => 2, T0), { contract: c, side: 'buy', qty: 1, kind: 'market' });
+  x = optPlace(x, fixed(() => 2.5, T1), { contract: c, side: 'sell', qty: 1, kind: 'market' });
+  ok('held overnight 15:50 → 09:40: 20 session minutes, not 1,070 on the wall clock', optBookOf(x).trades[0]?.heldMin === 20, `${optBookOf(x).trades[0]?.heldMin}`);
+}
+
+{
+  /* 11. the catch-up runs the plan's rules on the minutes it replays: a $500 static floor, 10 bought at 2.00, a target that
+     waits at 9.00; away 10:00–11:00, the history has the contract bidding 1.40 / 1.50 from 10:10 */
+  const DAY = '2026-09-24';
+  const T0 = nyInstant(DAY, 10 * 60);
+  const c: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: '2026-10-16' };
+  let x = newAccount({ id: 'cu', kind: 'evaluation', name: 'cu', startCash: 0, plan: customPlan({ ...CUSTOM_DEFAULTS, size: 10_000, drawdown: 500, drawdownMode: 'static' }), now: T0 });
+  x = optPlace(x, fixed(() => 2, T0), { contract: c, side: 'buy', qty: 10, kind: 'market' });
+  x = optPlace(x, fixed(() => 2, T0 + 1000), { contract: c, side: 'sell', qty: 10, kind: 'limit', price: 9 });
+  const bid = new Array(390).fill(NaN);
+  const ask = new Array(390).fill(NaN);
+  for (let m = 30; m < 390; m++) {
+    bid[m] = m < 40 ? 1.95 : 1.4;
+    ask[m] = m < 40 ? 2.05 : 1.5;
+  }
+  const f: Fetched = { quotes: new Map([[`${legKey(c)}|${DAY}`, { bid, ask }]]), bars: new Map([[`SPY|${DAY}`, [{ time: Math.floor(nyInstant(DAY, 9 * 60 + 30) / 1000), close: 500 }]]]), failed: new Map() };
+  x = replayGaps(x, f, nyInstant(DAY, 11 * 60), 'L1');
+  /* at 10:11 (minute 40) the mark is 1.45: 10,000 − 20.00 + 1.45 × 1,000 − 6.50 fees = 9,443.50, under the 9,500 floor */
+  ok('replayed: the floor is judged on the minute it was crossed — failed at 10:11, everything closed at that minute’s bid', x.status === 'failed' && x.statusAt === nyInstant(DAY, 10 * 60 + 11) && optBookOf(x).positions.length === 0 && x.opt.fills[x.opt.fills.length - 1].price === 1.4, `${x.status} · ${x.statusAt ? nyAt(x.statusAt).minutes : '-'} · ${x.opt.fills.map(q => q.price).join(',')}`);
+}
+
 console.log(`\n${passed} held · ${failed} missed`);
 if (failed) process.exit(1);
