@@ -4,9 +4,9 @@ import { nySession } from '../../core/nyTime';
 import { dealerOf } from '../../core/dealerSign';
 
 /*
-  The exposure field: one band per strike, centered on the strike, with black between it and the next.
-  A timeframe that compresses the book keeps the louder strike and drops the one that would touch it.
-  A cell with no reading is left empty.
+  The exposure field: one filled band per strike, from the midpoint of the strike below to the midpoint of the
+  strike above. A coordinate the scale cannot see is skipped. A row shorter than one device pixel is drawn at one
+  pixel. No strike is dropped because a neighbor is louder. A cell with no reading is left empty.
 
   The colour is a perceptual ramp on the cell's size against the field's own scale (the 98th percentile of every cell,
   so one freak print does not flatten the rest): dim navy for the quiet cells, rising through teal and green to yellow
@@ -164,7 +164,7 @@ class FieldRenderer {
     src.chips = [];
     const cols = src.cols;
     /* hard bail: never draw a field that can blow the page (too many columns, no strikes, or disabled) */
-    if (!src.enabled || !src.chart || !src.series || cols.length === 0 || cols.length > 2000 || src.strikes.length === 0 || src.strikes.length > 200 || !(src.ref > 0)) return;
+    if (!src.enabled || !src.chart || !src.series || cols.length === 0 || cols.length > 2000 || src.strikes.length === 0 || !(src.ref > 0)) return;
     const series = src.series;
     const ts = src.chart.timeScale();
     const vis = ts.getVisibleRange();
@@ -196,7 +196,7 @@ class FieldRenderer {
     const ink = INK_RGB[src.focusInk];
     const strikes = src.strikes;
     const R = strikes.length;
-    if (R > 200 || cols.length > 2000) return;
+    if (cols.length > 2000) return;
     /* Rows are prices. A strike the scale cannot see is not drawn, and nothing is spaced across the pane in its place. */
     const paneH = src.chart.paneSize(0).height;
     const pTop = series.coordinateToPrice(0);
@@ -295,53 +295,16 @@ class FieldRenderer {
         }
         const vals = src.values;
         const ref = src.ref;
-        /* A band sits on its strike. It does not run to the next strike — that fill is the stack. Quiet bands
-           stay thin. The loudest get thicker, and still stop short of the neighbour, on every timeframe. */
-        const yOf = (price: number): number => {
-          const y = series.priceToCoordinate(price);
-          return y == null ? NaN : y * vr;
-        };
-        const cand: { r: number; yTop: number; yBot: number; yMid: number; mag: number }[] = [];
+        /* A row runs from the midpoint below the strike to the midpoint above it. A coordinate the scale
+           cannot see is skipped. A row shorter than one device pixel is drawn at one pixel. None is dropped. */
         for (let r = rLo; r < rHi; r++) {
-          const yC = yOf(strikes[r]);
-          if (!Number.isFinite(yC)) continue;
-          const prevPx = r > 0 ? strikes[r - 1] : strikes[r] - (r + 1 < R ? strikes[r + 1] - strikes[r] : 1);
-          const nextPx = r + 1 < R ? strikes[r + 1] : strikes[r] + (r > 0 ? strikes[r] - strikes[r - 1] : 1);
-          const yP = yOf((strikes[r] + prevPx) / 2);
-          const yN = yOf((strikes[r] + nextPx) / 2);
-          const gap = Math.min(Number.isFinite(yP) ? Math.abs(yC - yP) : Infinity, Number.isFinite(yN) ? Math.abs(yC - yN) : Infinity);
-          if (!(gap > 0)) continue;
-          let mag = 0;
-          for (let c = cFrom; c < cTo; c++) {
-            const v = vals[c * R + r];
-            if (!Number.isNaN(v)) mag = Math.max(mag, Math.abs(v));
-          }
-          if (!(mag > 0) && strikes[r] !== focus) continue;
-          const t = ref > 0 ? Math.min(1, mag / ref) : 0;
-          const half = Math.max(Math.round(0.7 * vr), Math.min(gap - 0.5, gap * (0.32 + 0.5 * t)));
-          const yTop = Math.round(yC - half);
-          const yBot = Math.round(yC + half);
-          if (yBot < -myPx || yTop > hBmp + myPx || yBot - yTop < 1) continue;
-          cand.push({ r, yTop, yBot, yMid: yC, mag });
-        }
-        const draw: { r: number; yTop: number; yBot: number; mag: number }[] = [];
-        const gapPx = Math.max(1, Math.round(vr));
-        for (const row of cand) {
-          const prev = draw[draw.length - 1];
-          if (prev && row.yTop < prev.yBot + gapPx) {
-            if (row.mag <= prev.mag) continue;
-            const earlier = draw[draw.length - 2];
-            if (earlier && row.yTop < earlier.yBot + gapPx) continue;
-            draw[draw.length - 1] = { r: row.r, yTop: row.yTop, yBot: row.yBot, mag: row.mag };
-            continue;
-          }
-          draw.push({ r: row.r, yTop: row.yTop, yBot: row.yBot, mag: row.mag });
-        }
-        for (const row of draw) {
-          const r = row.r;
-          const yTop = row.yTop;
-          const yBot = row.yBot;
-          if (yBot - yTop < 1 || yBot < -myPx || yTop > hBmp + myPx) continue;
+          const ya = edgeY[r];
+          const yb = edgeY[r + 1];
+          if (!Number.isFinite(ya) || !Number.isFinite(yb)) continue;
+          let yTop = Math.round(Math.min(ya, yb));
+          let yBot = Math.round(Math.max(ya, yb));
+          if (yBot < -myPx || yTop > hBmp + myPx) continue;
+          if (yBot - yTop < 1) yBot = yTop + 1;
           const dim = focus != null && strikes[r] !== focus;
           let runKey = -1;
           let runL = 0;
@@ -737,15 +700,12 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     this.snapshots = folded;
     const strikeSet = new Set<number>();
     for (const s of folded) for (const l of s.levels) strikeSet.add(l.strike);
-    const strikes = [...strikeSet].sort((a, b) => a - b);
+    let strikes = [...strikeSet].sort((a, b) => a - b);
+    /* More than 200 strikes: keep the 200 nearest the last close. Do not blank the field. */
     if (strikes.length > 200) {
-      this.cols = [];
-      this.strikes = [];
-      this.values = new Float64Array(0);
-      this.enabled = false;
-      this.requestUpdate?.();
-      this.onData?.(0);
-      return;
+      const anchor = prices.length && prices[prices.length - 1].close > 0 ? prices[prices.length - 1].close : strikes[strikes.length >> 1];
+      const keep = new Set(strikes.slice().sort((a, b) => Math.abs(a - anchor) - Math.abs(b - anchor) || a - b).slice(0, 200));
+      strikes = strikes.filter(s => keep.has(s));
     }
     const index = new Map(strikes.map((k, i) => [k, i]));
     const R = strikes.length;
@@ -753,8 +713,10 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     const sizes: number[] = [];
     for (let c = 0; c < folded.length; c++) {
       for (const l of folded[c].levels) {
+        const at = index.get(l.strike);
+        if (at == null) continue;
         const v = dealerOf(levelValue(l, greek));
-        values[c * R + index.get(l.strike)!] = v;
+        values[c * R + at] = v;
         if (v !== 0) sizes.push(Math.abs(v));
       }
     }

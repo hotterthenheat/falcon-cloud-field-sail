@@ -5,7 +5,8 @@ import FilterTabs from '../ui/FilterTabs';
 import { FIELD_RAMP_CSS } from './gexNodesPrimitive';
 import { fmtUsd } from '../../data/gex';
 import { FIELD_MODE_WORDS, setFieldMode, useFieldMode } from '../../data/fieldMode';
-import { exposureNet, exposureTodayFrom, useExposureLogRev, useFieldPoll, useServerExposure, type FieldMode, type ServerExposure } from '../../data/book/exposureLog';
+import { exposureTodayFrom, ledgerFlowNet, priorSessionWords, useExposureLogRev, useFieldPoll, useServerExposure, type FieldMode, type ServerExposure } from '../../data/book/exposureLog';
+import { useBookRev } from '../../data/uwBook';
 import { nyClock, nyIsoDate, nyWallTime } from '../../core/nyTime';
 
 /** Where the field's day starts, in words: the server's record from the open, a recorder that started late, or (no
@@ -59,15 +60,17 @@ interface FieldKeyProps {
 function FieldKey({ ticker, cut, cutWords, scale, oiNet, compact = false }: FieldKeyProps) {
   const mode = useFieldMode();
   useExposureLogRev(ticker);
+  useBookRev();
   useFieldPoll(ticker, cut);
-  const net = cut ? exposureNet(ticker, cut) : null;
   const server = useServerExposure(ticker);
   const first = exposureTodayFrom(ticker);
   const since = sinceWords(first, server);
   const words = FIELD_MODE_WORDS[mode];
-  const netValue = mode === 'oi' ? oiNet : net ? net.flow : null;
+  const flowNet = mode === 'flow' && cut ? ledgerFlowNet(ticker, cut) : null;
+  const netValue = mode === 'oi' ? oiNet : flowNet;
   const netWords = netValue == null ? '—' : `${netValue >= 0 ? '+' : ''}${fmtUsd(netValue)}`;
   const netInk = netValue == null ? '' : netValue >= 0 ? 'text-goldline' : 'text-steelline';
+  const yesterday = cut ? priorSessionWords(ticker, cut) : null;
   const empty = 'No reading in this session yet';
   const scaleRow = (
     <div className="flex items-center gap-1.5 whitespace-nowrap" aria-label="Colour scale">
@@ -86,7 +89,7 @@ function FieldKey({ ticker, cut, cutWords, scale, oiNet, compact = false }: Fiel
       /* no backdrop blur: the tape repaints under it on every pointer move, and a blur would be re-rendered each time */
       data-field-key
       data-chart-chrome
-      title={`${words.name}: ${words.line}.${scale > 0 ? '' : ` ${empty}.`}`}
+      title={`${words.name}: ${words.line}.${scale > 0 ? '' : ` ${empty}.`}${yesterday ? ` ${yesterday}` : ''}`}
     >
       <div className="flex items-center gap-2">
         {!compact && <span className="text-textSecondary font-semibold uppercase tracking-wider whitespace-nowrap">Net GEX</span>}
@@ -111,6 +114,11 @@ function FieldKey({ ticker, cut, cutWords, scale, oiNet, compact = false }: Fiel
           <span title={since.title || undefined} data-field-since={server.state}>
             {mode === 'flow' ? "today's flow" : 'net GEX'} · {cutWords} · {since.text}
           </span>
+        </div>
+      )}
+      {!compact && yesterday && (
+        <div className="mt-0.5 whitespace-nowrap" data-field-yesterday>
+          {yesterday}
         </div>
       )}
     </div>

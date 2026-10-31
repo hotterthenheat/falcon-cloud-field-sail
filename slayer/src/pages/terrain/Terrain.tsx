@@ -236,8 +236,8 @@ const SCALES = new Set<string>(PRICE_SCALES.map(o => o.value));
 /* Same rule: derived from the engine's own list rather than typed twice. */
 const OR_VALUES = new Set<number>(OPENING_RANGES);
 
-/** A Terrain pane opens with the field, the forward cone and the key levels */
-const TERRAIN_OVERLAYS = { ...DEFAULT_OVERLAYS, cone: true, levels: true };
+/** A Terrain pane opens with the field, the forward cone and the key levels. trails is on here only — a saved desk that turned it off stays off. */
+const TERRAIN_OVERLAYS = { ...DEFAULT_OVERLAYS, trails: true, cone: true, levels: true };
 const LOOK = 2;
 /** A desk stored before LOOK, moved once: every pane's and every setup's cone and key levels on */
 const lookUp = (cfg: TerrainCfg, stored: unknown): TerrainCfg => {

@@ -26,7 +26,7 @@ import {
   type Time,
 } from 'lightweight-charts';
 import { chainForDate, deskTape, ensureBook, peekDaySigma, peekEntry, peekIv, snapshotFor, useBookMinutes, useBookRev } from '../../data/uwBook';
-import { ensureFieldCloses, ensureFieldCut, exposureGrid, gridColumns, useExposureLogRev } from '../../data/book/exposureLog';
+import { alignLatestColumn, ensureFieldCloses, ensureFieldCut, exposureGrid, gridColumns, heldStrikes, useExposureLogRev } from '../../data/book/exposureLog';
 import { useFieldMode } from '../../data/fieldMode';
 import { useSessionQuote } from '../../data/sessionQuote';
 import { getDeskSession, minuteInSession, sessionMeta, sessionOccurrence, sessionOfMinute, useDeskSession, type DeskSession } from '../../data/deskSession';
@@ -902,7 +902,7 @@ const StrikeChart = ({
        every session locks the page (and is what "This page stopped" was). */
     const drawn = dayBar && times.length > 60 ? times.slice(-60) : times.length > 2000 ? times.slice(-2000) : times;
     ensureFieldCut(name, cut);
-    if (dayBar) ensureFieldCloses(name, cut);
+    ensureFieldCloses(name, cut);
     const series = candleSeriesRef.current;
     const paneH = chartRef.current?.paneSize(0).height ?? 0;
     let price: { lo: number; hi: number } | null = null;
@@ -921,9 +921,12 @@ const StrikeChart = ({
       }
       if (hi > lo) price = { lo, hi };
     }
-    const grid = exposureGrid(name, cut, drawn, mins * 60, fieldMode, Date.now(), price);
-    if (!grid || grid.strikes.length > 200 || grid.times.length > 2000) return [];
-    return gridColumns(grid);
+    const spot = bars.length ? bars[bars.length - 1].close : null;
+    const grid = exposureGrid(name, cut, drawn, mins * 60, fieldMode, Date.now(), price, spot, fieldMode === 'flow' ? heldStrikes(name, cut) : null);
+    if (!grid) return [];
+    const cols = gridColumns(grid);
+    alignLatestColumn(cols, name, cut, fieldMode);
+    return cols;
   };
   const nameIv = (): number | undefined => (tapeRef.current ? tapeRef.current.iv : peekIv(ticker) ?? undefined);
   const drawKey = tape?.key ?? ticker;
@@ -1568,10 +1571,9 @@ const StrikeChart = ({
     []
   );
 
-  // Keep the last price and the gamma strikes near it on screen. A wall or a wick far from the price does not stretch the scale.
+  // The candles set the scale. A level just outside that range can stay. The field's strikes do not —
+  // stretching the axis to every strike near the price is what crushed the tape into a line.
   const autoscaleProvider = useCallback(
-    /* `priceRange` is nullable in the library and the annotation the partner tree still carries says it is not, so
-       tsc blesses `base?.priceRange.minValue` — which throws the moment the view holds no candles at all. */
     (original: () => { priceRange: { minValue: number; maxValue: number } | null } | null) => {
       let base: { priceRange: { minValue: number; maxValue: number } | null } | null = null;
       try {
@@ -1579,54 +1581,20 @@ const StrikeChart = ({
       } catch {
         base = null;
       }
-      const lv = levelsRef.current;
-      const lastPx = lastCloseRef.current;
-      /* The same 6% the field keeps (exposureSegs WINDOW is 5%). Outside it, a low wick or a far wall pulls the
-         minimum down and every strike near the price lands on one band at the top. */
-      const band = lastPx != null && lastPx > 0 ? { lo: lastPx * 0.94, hi: lastPx * 1.06 } : null;
-      const near = (v: number): boolean => band == null || (v > band.lo && v < band.hi);
       const range = base?.priceRange ?? null;
-      const strikes = trailsRef.current?.strikes;
-      let lo = Infinity;
-      let hi = -Infinity;
-      let n = 0;
-      if (band && strikes && strikes.length) {
-        for (const s of strikes) {
-          if (!(s > band.lo) || !(s < band.hi)) continue;
-          if (s < lo) lo = s;
-          if (s > hi) hi = s;
-          n += 1;
-        }
-      }
-      const protect = band != null && n >= 3 && range != null && range.maxValue > band.lo && range.minValue < band.hi;
-      /* Scrolled off the last price: the field's strikes are not this window. Leave the candles alone. */
-      if (band && range && !protect && !(range.maxValue > band.lo && range.minValue < band.hi)) {
-        const pad = Math.max((range.maxValue - range.minValue) * 0.08, 0.01);
-        return { priceRange: { minValue: range.minValue - pad, maxValue: range.maxValue + pad } };
-      }
-      const extras: number[] = [];
-      for (const v of [lv.spot, lastPx ?? NaN, focusPriceRef.current ?? NaN, lv.putWall, lv.callWall, lv.supreme, ...roomRef.current]) {
-        if (Number.isFinite(v) && v > 0 && near(v)) extras.push(v);
-      }
-      if (n >= 3) extras.push(lo, hi);
-      if (range === null && extras.length === 0) return base;
-      let min = range ? range.minValue : Math.min(...extras);
-      let max = range ? range.maxValue : Math.max(...extras);
-      if (protect && band) {
-        min = Math.min(Math.max(min, band.lo), band.hi);
-        max = Math.max(Math.min(max, band.hi), band.lo);
-      }
-      for (const v of extras) {
+      if (!range || !(range.maxValue > range.minValue)) return base;
+      const span = range.maxValue - range.minValue;
+      const room = Math.max(span * 0.35, 0.01);
+      let min = range.minValue;
+      let max = range.maxValue;
+      const lv = levelsRef.current;
+      for (const v of [lv.spot, lv.putWall, lv.callWall, lv.flip, lv.supreme, focusPriceRef.current ?? NaN]) {
+        if (!(v > 0) || !Number.isFinite(v)) continue;
+        if (v < min - room || v > max + room) continue;
         if (v < min) min = v;
         if (v > max) max = v;
       }
-      if (!(max > min)) {
-        min -= 0.01;
-        max += 0.01;
-      }
-      const pad = Math.max((max - min) * 0.08, 0.01);
-      /* No pixel margin for the chrome here: the scale's own 20% top margin already lands the highest wall ~130px
-         under a 36px strip at rest; a hand-scaled tape is handled by the strike chips' clamp. */
+      const pad = Math.max((max - min) * 0.08, span * 0.02);
       return { priceRange: { minValue: min - pad, maxValue: max + pad } };
     },
     []
@@ -5017,10 +4985,12 @@ const StrikeChart = ({
             const aside = shared.length ? `on the ${shared.map(k => KEY_LEVEL_WORDS[k].name.toLowerCase()).join(' and the ')}` : w.aside;
             const spot = lastCloseRef.current ?? levels.spot;
             const dist = Number.isFinite(spot) && spot > 0 ? ((levelCard.price - spot) / spot) * 100 : null;
+            const oiBook = levelCard.key === 'callWall' || levelCard.key === 'putWall' || levelCard.key === 'flip' || levelCard.key === 'supreme';
             return (
               <PointerFollowCard start={{ x: levelCard.x, y: levelCard.y }} width={204} testId="data-key-level-card" testValue={levelCard.key} title={w.name} aside={aside}>
                 <CardRow k="Price" v={levelCard.price.toFixed(2)} ink={ink} />
                 {dist != null && <CardRow k="From spot" v={`${dist >= 0 ? '+' : '−'}${Math.abs(dist).toFixed(2)}%`} sub={dist >= 0 ? 'above' : 'below'} />}
+                {oiBook && <span className="col-span-2 text-textSecondary leading-snug">Open interest.</span>}
                 <span className="col-span-2 mt-0.5 text-textSecondary leading-snug">{w.line}</span>
               </PointerFollowCard>
             );
@@ -5035,8 +5005,8 @@ const StrikeChart = ({
             const b = pinnedBead?.hit ?? beadCard!;
             const kept = !!pinnedBead;
             const tr = trailsRef.current;
-            /* the cell is the open-interest book's last reading in the bar, or the change in today's flow gamma across it */
-            const greekWord = fieldMode === 'flow' ? 'Flow in bar' : trailsGreek === 'gex' ? 'Gamma' : trailsGreek === 'dex' ? 'Delta' : 'Vega $';
+            /* the cell is the book's level at this strike, carried across the session — not the change across the bar */
+            const greekWord = fieldMode === 'flow' ? 'Dealer flow' : trailsGreek === 'gex' ? 'Gamma' : trailsGreek === 'dex' ? 'Delta' : 'Vega $';
             /* The side as the figure's sub, what it does as a line of its own — on the value's line the words ran
                past the card's edge and dragged every figure with them */
             const side = b.value >= 0 ? 'positive' : 'negative';

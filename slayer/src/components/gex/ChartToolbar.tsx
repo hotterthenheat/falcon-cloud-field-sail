@@ -433,12 +433,12 @@ const STYLE_GLYPHS: Record<ChartStyle, ReactNode> = {
 /* The rows themselves live in indicatorItems.ts, shared with the script library. */
 
 const OVERLAY_ITEMS: { key: keyof ChartOverlays; label: string; hint: string }[] = [
-  { key: 'trails', label: 'Exposure trails', hint: 'LED strike bands — strength & fade' },
+  { key: 'trails', label: 'Exposure trails', hint: 'Dealer-flow gamma by strike, held across the session. Open interest is the other book.' },
   { key: 'levels', label: 'Key levels', hint: "Call & put walls, flip and supreme — a ladder at the tape's right edge" },
   { key: 'darkpool', label: 'Dark pool', hint: 'Off-exchange print lines' },
   { key: 'volume', label: 'Volume', hint: 'Session bars along the floor' },
-  { key: 'flow', label: 'Flow', hint: 'SPXW prints on this chart’s own minutes. Off unless that tape is here — Trace and the practice book are not this history, and they are not labelled live.' },
-  { key: 'netDrift', label: 'Net drift', hint: 'Running call and put premium from those same SPXW prints. Off without them.' },
+  { key: 'flow', label: 'Flow', hint: 'Prints for the name on this chart, on its own minutes. SPX, NDX, and RUT also read the weekly root. Off unless that tape is here — Trace and the practice book are not this history, and they are not labelled live.' },
+  { key: 'netDrift', label: 'Net drift', hint: 'Running call and put premium from those same prints. SPX, NDX, and RUT also read the weekly root. Off without them.' },
   { key: 'volDrift', label: 'Vol drift', hint: 'Realised vol of these bars against the morning at-the-money IV. One number, not a made-up path.' },
   { key: 'dexStrike', label: 'Exposure by strike', hint: 'Delta, gamma or vega across the chain — docked under the tape' },
   { key: 'session', label: 'Session levels', hint: "Yesterday's high, low & close, the opening range and the first hour" },

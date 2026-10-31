@@ -18,12 +18,15 @@
    JOIN_MS only joins two raw answers into one segment. It does not punch a hole between them. */
 
 import { useEffect, useSyncExternalStore } from 'react';
-import { nyIsoDate, nyMinutes, nyWallTime } from '../../core/nyTime';
+import { nyIsoDate, nyMinutes, nyParts, nyWallTime } from '../../core/nyTime';
 import { isTradingDay } from '../../core/calendar';
-import { keptOf } from '../../core/dealerSign';
+import { keptOf, dealerOf } from '../../core/dealerSign';
 import { uwCall } from '../whales';
 import { sameName } from '../spotGexBook';
 import { feedHeaders } from '../feedGate';
+import { sessionOccurrence, sessionOfMinute } from '../deskSession';
+import { peekEntry } from './store';
+import { expiryOpen } from '../../core/tradingYear';
 import type { GexSnapshot } from '../../types/market';
 import { ALL, JOIN_MS, closeOf, dayStartOf, placeSeg, readAnswer, rowMeasures, spanOf, type KeptSeries } from './exposureSegs';
 
@@ -226,11 +229,27 @@ export interface ExposureGrid {
 
 const gridMemo = new Map<string, { key: string; grid: ExposureGrid }>();
 
-/** The New York session a reading belongs to, or null on a weekend or a holiday. */
-const sessionIso = (ms: number): string | null => {
-  const iso = nyIsoDate(ms);
-  const [y, m, d] = iso.split('-').map(Number);
-  return isTradingDay(new Date(y, m - 1, d)) ? iso : null;
+/** The desk session a reading belongs to, or null on a weekend or a holiday.
+    Overnight is 8:00 PM to 4:00 AM New York, one session through midnight and from Sunday 8:00 PM.
+    Saturday after 4:00 AM, and Sunday before 8:00 PM, are empty. */
+const fieldSession = (ms: number): string | null => {
+  const p = nyParts(ms);
+  const min = p.hour * 60 + p.minute;
+  const session = sessionOfMinute(min);
+  if (session === 'overnight') {
+    if (p.weekday === 6 && min >= 4 * 60) return null;
+    if (p.weekday === 0 && min < 20 * 60) return null;
+    const occ = sessionOccurrence(Math.floor(ms / 1000), 'overnight');
+    const [y, m, d] = occ.split('-').map(Number);
+    const day = new Date(y, m - 1, d);
+    if (day.getDay() === 6) return null;
+    if (day.getDay() !== 0 && !isTradingDay(day)) return null;
+    return `overnight|${occ}`;
+  }
+  if (p.weekday === 0 || p.weekday === 6) return null;
+  const [y, m, d] = nyIsoDate(ms).split('-').map(Number);
+  if (!isTradingDay(new Date(y, m - 1, d))) return null;
+  return `${session}|${nyIsoDate(ms)}`;
 };
 
 /**
@@ -240,14 +259,16 @@ const sessionIso = (ms: number): string | null => {
  * A day bar is that session's last reading. A week bar is that week's last session's last reading.
  * A forming bar uses the newest reading so far (`now`). A reading after a bar's end does not rewrite it.
  */
-export function exposureGrid(ticker: string, cut: FieldCut, timesIn: readonly number[], barSec: number, mode: FieldMode, now: number = Date.now(), price: { lo: number; hi: number } | null = null): ExposureGrid | null {
-  const times = timesIn.length > 2000 ? timesIn.slice(-2000) : timesIn;
+export function exposureGrid(ticker: string, cut: FieldCut, timesIn: readonly number[], barSec: number, mode: FieldMode, now: number = Date.now(), price: { lo: number; hi: number } | null = null, spot: number | null = null, held: ReadonlySet<number> | null = null): ExposureGrid | null {
+  if (timesIn.length > 2000) return null;
+  const times = timesIn;
   const t = rootOf(ticker);
   restoreExposureLog(t);
   const log = logs.get(t);
   if (!log || !times.length || !Number.isFinite(log.from)) return null;
   const memoKey = `${t}|${cut}|${mode}|${barSec}`;
-  const key = `${log.rev}|${times.length}|${times[0]}|${times[times.length - 1]}|${Math.floor(now / 30_000)}|${price ? Math.round(price.lo) : 'x'}|${price ? Math.round(price.hi) : 'x'}`;
+  const heldKey = held == null ? 'x' : [...held].sort((a, b) => a - b).join(',');
+  const key = `${log.rev}|${times.length}|${times[0]}|${times[times.length - 1]}|${Math.floor(now / 30_000)}|${price ? Math.round(price.lo) : 'x'}|${price ? Math.round(price.hi) : 'x'}|${spot ?? 's'}|${heldKey}`;
   const hit = gridMemo.get(memoKey);
   if (hit && hit.key === key) return hit.grid;
   const weekBars = barSec >= 7 * 86_400;
@@ -262,12 +283,12 @@ export function exposureGrid(ticker: string, cut: FieldCut, timesIn: readonly nu
       const span = Math.max(1, Math.round(barSec / 86_400));
       a[i] = nyWallTime(y, m, d, 0, 0);
       b[i] = Math.min(now, nyWallTime(y, m, d + span, 0, 0));
-      sess[i] = weekBars ? null : sessionIso(a[i] + 12 * 3_600_000);
+      sess[i] = weekBars ? null : fieldSession(nyWallTime(y, m, d, 12, 0));
     } else {
       a[i] = times[i] * 1000;
       const next = i + 1 < n ? times[i + 1] * 1000 : (times[i] + barSec) * 1000;
       b[i] = Math.min(now, next);
-      sess[i] = sessionIso(a[i]);
+      sess[i] = fieldSession(a[i]);
     }
   }
   /* the first bar that can hold a reading */
@@ -291,16 +312,18 @@ export function exposureGrid(ticker: string, cut: FieldCut, timesIn: readonly nu
     while (j < strikesAll.length && strikesAll[j] <= price.hi) j++;
     strikes = strikesAll.slice(Math.max(0, i - 1), Math.min(strikesAll.length, j + 1));
   }
-  /* A book this wide is not a field. Drawing it locks the tab. */
-  if (strikes.length > 200 || times.length > 2000) return null;
+  /* More than 200 strikes in view: keep the 200 nearest the last close. Do not blank the field. */
+  if (strikes.length > 200) {
+    const anchor = spot != null && spot > 0 ? spot : price && price.hi > price.lo ? (price.lo + price.hi) / 2 : strikes[strikes.length >> 1];
+    strikes = [...strikes].sort((a, b) => Math.abs(a - anchor) - Math.abs(b - anchor) || a - b).slice(0, 200).sort((a, b) => a - b);
+  }
   const R = strikes.length;
   const values = new Float64Array(n * R).fill(NaN);
   const sum = new Float64Array(n);
   const any = new Uint8Array(n);
-  const field = mode === 'oi' ? 2 : 3;
-  /* The last reading at or before the bar's end. Intraday: only a reading from that bar's own session, so a
-     missing minute keeps the earlier one and a new session starts empty. A day or a week: only inside its window. */
-  const levelAt = (segs: number[], end: number, lo: number, session: string | null): number => {
+  /* The last reading at or before the bar's end, from that bar's own session. A new session stays empty.
+     A strike that failed the flow gate uses the open-interest gamma, the same rule as the ledger. */
+  const levelAt = (segs: number[], end: number, lo: number, session: string | null, field: number): number => {
     let loI = 0;
     let hi = segs.length / 4;
     while (loI < hi) {
@@ -312,14 +335,19 @@ export function exposureGrid(ticker: string, cut: FieldCut, timesIn: readonly nu
     if (j < 0) return NaN;
     if (weekBars || dayBars) return segs[j * 4] >= lo ? segs[j * 4 + field] : NaN;
     for (let i = j; i >= 0; i--) {
-      const s = sessionIso(segs[i * 4]);
+      const s = fieldSession(segs[i * 4]);
       if (s == null) continue;
-      if (s !== session) return NaN;
+      /* A reading from the next session can start before this bar's end (the 15:45 bar ends at 16:00).
+         Skip it and keep this session's last reading. A previous session does not carry in. */
+      if (s !== session) {
+        if (segs[i * 4] < lo) return NaN;
+        continue;
+      }
       return segs[i * 4 + field];
     }
     return NaN;
   };
-  const walk = (s: Series, into: (c: number, v: number) => void) => {
+  const walk = (s: Series, field: number, into: (c: number, v: number) => void) => {
     const segs = s.segs;
     if (!segs.length) return;
     for (let c = c0; c < n; c++) {
@@ -328,14 +356,15 @@ export function exposureGrid(ticker: string, cut: FieldCut, timesIn: readonly nu
         into(c, NaN);
         continue;
       }
-      into(c, levelAt(segs, b[c], a[c], sess[c]));
+      into(c, levelAt(segs, b[c], a[c], sess[c], field));
     }
   };
   for (let r = 0; r < R; r++) {
     sum.fill(0);
     any.fill(0);
+    const field = mode === 'oi' || (held != null && held.has(strikes[r])) ? 2 : 3;
     for (const s of byStrike.get(strikes[r])!) {
-      walk(s, (c, v) => {
+      walk(s, field, (c, v) => {
         if (Number.isNaN(v)) return;
         sum[c] += v;
         any[c] = 1;
@@ -347,6 +376,74 @@ export function exposureGrid(ticker: string, cut: FieldCut, timesIn: readonly nu
   gridMemo.set(memoKey, { key, grid });
   if (gridMemo.size > 24) gridMemo.delete(gridMemo.keys().next().value!);
   return grid;
+}
+
+/** Strikes whose flow gate failed. The field draws their open-interest gamma, the same rule as the ledger.
+    Null until that chain is in. The whole book keeps a strike on open interest only when every live expiry there failed. */
+export function heldStrikes(ticker: string, cut: FieldCut): ReadonlySet<number> | null {
+  const entry = peekEntry(rootOf(ticker));
+  if (!entry || entry.status !== 'live') return null;
+  const dates = cut === 'book'
+    ? Object.keys(entry.byDate).filter(d => expiryOpen(d) && entry.byDate[d]?.length)
+    : entry.byDate[cut]?.length ? [cut] : [];
+  if (!dates.length) return null;
+  const seen = new Map<number, number>();
+  for (const d of dates) {
+    for (const n of entry.byDate[d]) {
+      const pass = n.flow && !n.flow.held ? 1 : 0;
+      seen.set(n.strike, (seen.get(n.strike) ?? 0) + pass);
+    }
+  }
+  if (!seen.size) return null;
+  const held = new Set<number>();
+  for (const [strike, pass] of seen) if (pass === 0) held.add(strike);
+  return held;
+}
+
+/** The ledger's net GEX for this cut, dealer sign. A failed gate is already open-interest gamma on `flow.gex`. */
+export function ledgerFlowNet(ticker: string, cut: FieldCut): number | null {
+  const entry = peekEntry(rootOf(ticker));
+  if (!entry || entry.status !== 'live') return null;
+  const dates = cut === 'book'
+    ? Object.keys(entry.byDate).filter(d => expiryOpen(d) && entry.byDate[d]?.length)
+    : entry.byDate[cut]?.length ? [cut] : [];
+  if (!dates.length) return null;
+  let sum = 0;
+  let any = false;
+  for (const d of dates) {
+    for (const n of entry.byDate[d]) {
+      any = true;
+      const g = n.flow?.gex;
+      sum += g ? g.call + g.put : n.netGex;
+    }
+  }
+  return any ? dealerOf(sum) : null;
+}
+
+/** The newest column of the current session is the ledger's figure at that strike, house sign.
+    A column from an earlier session is left as that session's carried close. */
+export function alignLatestColumn(cols: GexSnapshot[], ticker: string, cut: FieldCut, mode: FieldMode, now = Date.now()): void {
+  if (!cols.length) return;
+  const last = cols[cols.length - 1];
+  const sess = fieldSession(last.time * 1000);
+  if (!sess || sess !== fieldSession(now)) return;
+  const entry = peekEntry(rootOf(ticker));
+  if (!entry || entry.status !== 'live') return;
+  const dates = cut === 'book'
+    ? Object.keys(entry.byDate).filter(d => expiryOpen(d) && entry.byDate[d]?.length)
+    : entry.byDate[cut]?.length ? [cut] : [];
+  if (!dates.length) return;
+  const by = new Map<number, number>();
+  for (const d of dates) {
+    for (const n of entry.byDate[d]) {
+      const kept = mode === 'oi' ? n.netGex : n.flow ? n.flow.gex.call + n.flow.gex.put : n.netGex;
+      by.set(n.strike, (by.get(n.strike) ?? 0) + kept);
+    }
+  }
+  for (const level of last.levels) {
+    const kept = by.get(level.strike);
+    if (kept != null) level.value = kept;
+  }
 }
 
 /** The grid as the field's columns (GexSnapshot, house sign as every book figure is kept) — only bars with a cell */
@@ -547,6 +644,8 @@ export function useServerExposure(ticker: string): ServerExposure {
 /* ---- past sessions: each one's book as of its close ---------------------------------------------------------- */
 
 const closesAsked = new Set<string>();
+/** A past session's close has been answered (rows or an empty book). Until then the key does not claim yesterday. */
+const closesSettled = new Set<string>();
 
 /** The sessions before today, newest first */
 function priorSessions(count: number, now: number = Date.now()): string[] {
@@ -560,6 +659,41 @@ function priorSessions(count: number, now: number = Date.now()): string[] {
   return out;
 }
 
+/** What the field key says about the session before this one. Null until that close has been answered. */
+export function priorSessionWords(ticker: string, cut: FieldCut): string | null {
+  const t = rootOf(ticker);
+  const prev = priorSessions(1)[0];
+  if (!t || !prev || !cut) return null;
+  const want = seriesOf(cut);
+  const tag = `rth|${prev}`;
+  const log = logs.get(t);
+  if (log) {
+    for (const s of log.series.values()) {
+      if (s.expiry !== want) continue;
+      for (let i = 0; i < s.segs.length; i += 4) {
+        if (fieldSession(s.segs[i]) === tag) return "Yesterday is that session's close, carried across its bars.";
+      }
+    }
+  }
+  if (!closesSettled.has(`${t}|${cut}|${prev}`)) return null;
+  return 'Yesterday is empty.';
+}
+
+/** A past session's book is one close. Stamp it at 09:30 New York so the band runs that cash session.
+    A live poll is not rewritten — a bar before the first reading of today stays empty. */
+function asSessionBook(rows: unknown, day: string): unknown {
+  if (!Array.isArray(rows)) return rows;
+  const [y, m, d] = day.split('-').map(Number);
+  const open = nyWallTime(y, m, d, 9, 30);
+  return rows.map(row => {
+    if (!row || typeof row !== 'object') return row;
+    const rec = row as Record<string, unknown>;
+    const at = Date.parse(String(rec.time ?? ''));
+    if (!Number.isFinite(at) || nyIsoDate(at) !== day || at <= open) return row;
+    return { ...rec, time: new Date(open).toISOString() };
+  });
+}
+
 /** Read the cut's book as of each of the last `count` sessions' closes, once each (a past date never changes): one
     expiry's rows off spot-exposures/expiry-strike, or the whole book off spot-exposures/strike. One call at a time. */
 export function ensureFieldCloses(ticker: string, cut: FieldCut, count = 8): void {
@@ -570,22 +704,30 @@ export function ensureFieldCloses(ticker: string, cut: FieldCut, count = 8): voi
   for (const d of todo) closesAsked.add(`${t}|${cut}|${d}`);
   void (async () => {
     for (const d of todo) {
+      let answered = false;
       try {
         if (cut === 'book') {
           for (let page = 0; page < 4; page++) {
             const res = await uwCall(`/stock/${encodeURIComponent(t)}/spot-exposures/strike?date=${d}&limit=500&page=${page}`);
             if (res.error || !Array.isArray(res.data)) break;
-            noteExposureRows(t, res.data, true);
+            answered = true;
+            noteExposureRows(t, asSessionBook(res.data, d), true);
             if (res.data.length < 500) break;
           }
         } else {
           const res = await uwCall(`/stock/${encodeURIComponent(t)}/spot-exposures/expiry-strike?expirations[]=${encodeURIComponent(cut)}&date=${d}&limit=500`);
-          if (!res.error) noteExposureRows(t, res.data);
+          if (!res.error && Array.isArray(res.data)) {
+            answered = true;
+            noteExposureRows(t, asSessionBook(res.data, d));
+          }
         }
       } catch {
-        closesAsked.delete(`${t}|${cut}|${d}`);
+        answered = false;
       }
+      if (answered) closesSettled.add(`${t}|${cut}|${d}`);
+      else closesAsked.delete(`${t}|${cut}|${d}`);
     }
+    emit();
   })();
 }
 
