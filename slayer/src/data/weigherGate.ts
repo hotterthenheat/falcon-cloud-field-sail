@@ -11,8 +11,8 @@
 
 import { blackScholesGreeks, blackScholesPrice, decayOver, impliedVolFromPrice, thetaPerSession } from '../core/greeks';
 import { carryFor, getCarry, DEFAULT_R } from '../core/carry';
-import { tradingYears } from '../core/tradingYear';
-import { quotedVolPoint, sigmaToExpiry } from '../core/volClock';
+import { tradingMinutes, tradingYears } from '../core/tradingYear';
+import { quotedVolPoint, sigmaMoveOfQuotedIv } from '../core/volClock';
 import { weekdayDte, SPAN_INDEX, strikeSpan, bookBRange, P1_MIN, BID_MIN, SPREAD_MAX, DRIVE, onScanGrid, inLottery, releaseBlocks, QUOTE_MAX_AGE_MS, SEAT_CAP, LOTTERY_ASK_MAX } from './compassParams';
 import { optionScanOpen, scanShutWhy } from './compassSession';
 import { econReleases } from './monthCalendar';
@@ -39,6 +39,14 @@ const MINUTE_YEARS = 1 / (SESSION_MIN * 252);
 /** Weigher theta is per trading session (core/greeks thetaPerSession). Its hourly rate over a full 6.5-hour session.
     Inside the last session prefer the contract's own `thetaHour`, the decay over the next trading hour. */
 export const thetaPerSessionHour = (thetaPerSession: number): number => thetaPerSession / (SESSION_MIN / 60);
+
+/** The instant a quoted vol was solved at, when it is a usable one: in the past, with the expiry still open then. Else `now`.
+    A calendar-year vol carries the variance of the calendar span it was solved over; moving it onto the trading clock at
+    its own instant keeps a Friday-close vol from shrinking over a weekend with no session traded. */
+function volInstant(iso: string, now: number, at?: number | null): number {
+  if (at == null || !(at > 0) || at > now) return now;
+  return tradingMinutes(iso, at, false) != null ? at : now;
+}
 
 const isoOf = (expiry: string): string => {
   const d = expiry.replace(/\D/g, '').slice(0, 8);
@@ -175,6 +183,8 @@ export function readContract(input: {
   expiryIso: string;
   /** The vendor's IV, a fraction on the calendar year. Absent, 0 or NaN: solve off the mid. */
   vendorIv?: number | null;
+  /** When the vendor solved that IV (the quote's stamp), epoch ms. Absent: `now`. */
+  ivAt?: number | null;
   now?: number;
 }): ContractRead | null {
   const now = input.now ?? Date.now();
@@ -182,7 +192,7 @@ export function readContract(input: {
   const { spot, strike, right, bid, ask } = input;
   if (!(spot > 0) || !(strike > 0)) return null;
   const t = tradingYears(iso, now);
-  const volPt = quotedVolPoint(iso, now);
+  const volPt = quotedVolPoint(iso, volInstant(iso, now, input.ivAt));
   const carry = clockCarry(input.ticker, iso, now);
   let vol: number | null = null;
   let from: 'vendor' | 'mark' = 'vendor';
@@ -249,10 +259,13 @@ export function atmIvAt(rows: readonly { strike: number; call: { iv: number }; p
 }
 
 /** The move the options price to the expiry's close, ± percent of spot, from an ATM IV quoted in percent on the calendar
-    year: core/volClock sigmaToExpiry (S·σ·√T_calendar). 0 once the expiry has closed or without a spot or vol. */
-export function expectedMovePctOf(spot: number, atmIvPct: number, expiryIso: string, now = Date.now()): number {
+    year: core/volClock sigmaToExpiry (S·σ·√T_calendar), the vol taken at `ivAt` (its quote's instant). 0 once the expiry has closed or without a spot or vol. */
+export function expectedMovePctOf(spot: number, atmIvPct: number, expiryIso: string, now = Date.now(), ivAt?: number | null): number {
   if (!(spot > 0) || !(atmIvPct > 0)) return 0;
-  const move = sigmaToExpiry(spot, atmIvPct / 100, isoOf(expiryIso), now);
+  const iso = isoOf(expiryIso);
+  /* core/volClock sigmaToExpiry, with the vol moved onto the trading clock at the instant it was quoted */
+  const left = tradingMinutes(iso, now, false);
+  const move = left == null ? null : sigmaMoveOfQuotedIv(spot, atmIvPct / 100, iso, left, volInstant(iso, now, ivAt));
   return move != null && move > 0 ? (move / spot) * 100 : 0;
 }
 
