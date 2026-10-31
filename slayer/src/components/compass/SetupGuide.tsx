@@ -139,7 +139,7 @@ export const SetupGuide = ({ odte = true }: { odte?: boolean }) => (
       </Section>
     )}
     <Section title="The two sides">
-      <p>The contract's premium chart is on one side. On the other: the underlying's minutes with the call and its exit marked on them, then the trade card. Its first tab is why the call is on the board and which model made it — Model 1, Model 2 when it rides the call, or Model 3, the late sweep; never a score. The trade tab is what it costs, what it pays and what kills it. The contract tab is its greeks and the contract in dollars.</p>
+      <p>The contract's premium chart is on one side: the house chart, with its intervals, styles, indicators and drawing tools, the call and its exit marked on the candles. On the other: the trade card, with Track at its foot. Its first tab is why the call is on the board and which model made it — Model 1, Model 2 when it rides the call, or Model 3, the late sweep; never a score. The trade tab is what it costs, what it pays and what kills it. The contract tab is its greeks and the contract in dollars.</p>
     </Section>
     <Section title="The stages">
       <p>Under the head: called, filled, each rung the stop climbed (to the entry at 1.25×, then behind each target on a call Model 2 rides), and out — or holding. Each is stamped with its New York minute, read off the contract's recorded quotes.</p>

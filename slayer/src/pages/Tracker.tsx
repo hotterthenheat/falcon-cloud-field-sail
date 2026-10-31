@@ -128,6 +128,18 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
     () => trackedSetups.filter(t => !record.some(s => s.id === t.id)),
     [trackedSetups, record],
   );
+  /* a call tracked from its page after its session ("Keep the close"): on the record, but neither in play nor closed
+     today — its newest session's row, kept here so the Tracker shows what was tracked */
+  const kept = useMemo(() => {
+    const shown = new Set([...rows.live, ...rows.done].map(s => s.id));
+    const out: Signal[] = [];
+    for (const t of trackedSetups) {
+      if (shown.has(t.id)) continue;
+      const mine = record.filter(s => s.id === t.id).sort((a, b) => b.firedAt - a.firedAt);
+      if (mine[0]) out.push(mine[0]);
+    }
+    return out;
+  }, [trackedSetups, record, rows]);
   const readAt = rows.live.reduce((m, s) => Math.max(m, s.pathAt), 0);
   const tracked = record.filter(s => isTracked(s.id)).length;
   const sentence = feed.status === 'offline'
@@ -165,7 +177,7 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
       }
       sentence={sentence ? <span data-tracker-line>{sentence}</span> : false}
     >
-      {rows.live.length + rows.done.length + bookmarks.length === 0 ? (
+      {rows.live.length + rows.done.length + bookmarks.length + kept.length === 0 ? (
         <div className="border-t border-borderSubtle" data-tracker-empty>
           {feed.status === 'offline' && !record.length ? (
             <ErrorBox what="The record did not load" detail={feed.error || 'The Compass server did not answer.'} />
@@ -198,6 +210,14 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
               <p className="font-mono text-t9 uppercase tracking-widest text-textMuted">Closed today</p>
               <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3" data-tracker-done>
                 {rows.done.map(s => <SignalCard key={s.key} s={s} tracked={isTracked(s.id)} onOpen={() => open(s)} />)}
+              </div>
+            </>
+          )}
+          {kept.length > 0 && (
+            <>
+              <p className="font-mono text-t9 uppercase tracking-widest text-textMuted">Kept from earlier sessions</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3" data-tracker-kept>
+                {kept.map(s => <SignalCard key={s.key} s={s} tracked onOpen={() => open(s)} />)}
               </div>
             </>
           )}

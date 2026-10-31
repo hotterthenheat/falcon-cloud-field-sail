@@ -1,7 +1,7 @@
-/* A Compass contract's own page, as the owner had it: the contract's premium chart on one side with the entry, the stop
-   and the exits on it; on the other the underlying with the call marked on it, the trade card (why it is on the board,
-   what it costs, pays and what kills it, the contract in dollars and its greeks), the strikes' flow; the call's stages
-   under its head and the contracts around it at the foot. A live call reads the live quote; a past call is read off
+/* A Compass contract's own page, as the owner had it: the contract's premium on the house chart (Terrain's) on one side,
+   with the entry, the stop, the exits and the call and its exit marked on it; on the other the trade card (why it is on
+   the board, what it costs, pays and what kills it, the contract in dollars and its greeks) with Track at its foot; the
+   strikes' flow under both, the call's stages under its head and the contracts around it at the foot. A live call reads the live quote; a past call is read off
    its record (the quote it fired on, the fill, the exit, the contract's own bars and greeks of that session). States,
    never orders. No model score is shown: the model's name is. */
 
@@ -22,7 +22,6 @@ import ContractFlow from './ContractFlow';
 import GreeksRow from './GreeksRow';
 import ContractFacts from './ContractFacts';
 import SetupDrivers, { neighborRows } from './SetupDrivers';
-import UnderlyingTrack from './UnderlyingTrack';
 import { PROCESS_META, processState, stagesOf, type Stage } from './setupProcess';
 import { choiceRight } from '../../data/compass';
 import { activeStop, contractPath, signalOf, signals, useSignals, type Signal } from '../../data/compassLedger';
@@ -387,6 +386,12 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
   const intrinsic = spotPx > 0 ? (setup.right === 'C' ? Math.max(spotPx - setup.strike, 0) : Math.max(setup.strike - spotPx, 0)) : NaN;
   const breakeven = line > 0 ? (setup.right === 'C' ? setup.strike + line : setup.strike - line) : NaN;
   const [guideOpen, setGuideOpen] = useState(false);
+  /* Track sits at the page's foot: the Tracker opens at its top, where the kept contract is, not at the foot the page
+     was scrolled to (the scroller held the old position through the route change) */
+  const toTracker = () => {
+    navigate('/compass/tracker', { state: { focus: setup.id } });
+    requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>('main')?.scrollTo({ top: 0 })));
+  };
 
   const left = leftOf(setup.id);
   return (
@@ -492,11 +497,10 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
       {/* THE STAGES — called, filled, the stop's rungs, out (or holding) */}
       {stages.length > 0 && <StageStrip stages={stages} />}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
-        {/* ONE SIDE: the contract's premium chart, and under it the strikes' flow; the chart grows to the other side's
-            height so the two columns end together */}
-        <div className="min-w-0 flex flex-col gap-3" data-setup-side="option">
-          <div className="min-w-0 h-[440px] lg:h-auto lg:min-h-[560px] lg:flex-1" data-theme="dark">
+      {/* THE CHART AND THE CARD — the contract's premium on the house chart, the trade card beside it; the chart is as
+          tall as the card, so the two end together. The strikes' flow runs under both. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-3 items-stretch" data-setup-row>
+        <div className="min-w-0 h-[460px] sm:h-[520px] lg:h-auto lg:min-h-[560px]" data-setup-side="option">
           <ContractTrack
             setup={setup}
             revision={revision}
@@ -505,7 +509,6 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
             quotedAt={quoteAt}
             loadPickRows={isPast ? undefined : loadTickerCons}
             onOpenContract={isPast ? undefined : onOpenContract}
-            part="chart"
             timeframe={chartTf}
             onTimeframe={setChartTf}
             quote={chartQuote}
@@ -515,23 +518,14 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
             pathNote={traded == null ? (thetaDown ? 'Live data offline. No bars.' : 'Reading the bars.') : ''}
             multiples={setup.band === 'lottery' ? [2, 3] : undefined}
             entryWord={lineWord}
-          />
-          </div>
-          {!isPast && <ContractFlow ticker={setup.ticker} strike={setup.strike} right={setup.right} expiryDate={setup.expiryDate} step={atmStep} session={desk} allSessions={setup.expiry === '0DTE'} />}
-        </div>
-        {/* THE OTHER SIDE: the underlying and the trade card */}
-        <div className="min-w-0 flex flex-col gap-3" data-setup-side="rest">
-          <UnderlyingTrack
-            ticker={setup.ticker}
-            right={setup.right}
-            day={signal?.day ?? `${sessionYmd().slice(0, 4)}-${sessionYmd().slice(4, 6)}-${sessionYmd().slice(6, 8)}`}
-            live={!isPast}
             calledAt={calledAt}
-            calledSpot={signal?.spot ?? setup.spot ?? null}
-            exitAt={outcome?.exit?.at ?? null}
-            spot={isPast ? 0 : spotPx}
+            exit={outcome?.exit ? { at: outcome.exit.at, result: closed?.result === 'win' ? 'win' : closed?.result === 'loss' ? 'loss' : 'flat' } : null}
+            live={!isPast}
           />
-          <div className="rounded-md border border-silver/40 bg-ink/[0.015] overflow-hidden flex flex-col lg:flex-1" data-setup-card data-card-tab={cardTab}>
+        </div>
+        {/* THE OTHER SIDE: the trade card, Track at its foot */}
+        <div className="min-w-0 flex flex-col" data-setup-side="rest">
+          <div className="rounded-md border border-silver/40 bg-ink/[0.015] overflow-hidden flex flex-col flex-1" data-setup-card data-card-tab={cardTab}>
             <div className="px-3.5 pt-3 pb-2 flex items-center gap-2 flex-wrap">
               <ContractLabel contract={setup.contract} right={setup.right} logo={setup.ticker} />
               <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">{setup.expiry}</span>
@@ -714,57 +708,64 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
               <span>Ultima <span className="tnum text-textSecondary">{!isPast && Number.isFinite(setup.ultima ?? NaN) ? (setup.ultima as number).toFixed(4) : '—'}</span></span>
               <span className="ml-auto">{isPast ? 'At the call' : setup.expiry === '0DTE' ? '' : tape.word}</span>
             </div>
-            <div className="border-t border-borderSubtle p-2" data-setup-action={verdict.word}>
-              {closed || isPast ? (
+            <div className="border-t border-borderSubtle p-2 flex items-stretch gap-2" data-setup-action={verdict.word}>
+              {/* Track on every contract, a past call's too ("Keep the close"): a bookmark, not a ticket */}
+              <div className="flex-1 min-w-0 flex h-8 rounded-md overflow-hidden" data-setup-track={tracked ? 'on' : 'off'}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (tracked) {
+                      untrackSetup(setup.id);
+                      setTrackNo(null);
+                      return;
+                    }
+                    const ans = trackSetup(setup, scanner, { mark: q.mark, stop: shownStop, ask: q.entryPremium });
+                    if (!ans.ok) {
+                      setTrackNo(ans.why === 'full' ? '5 open. Untrack one first.' : ans.why === 'closed' ? 'Could not save this track.' : `Already tracking ${ans.contract}.`);
+                      return;
+                    }
+                    setTrackNo(null);
+                    toTracker();
+                  }}
+                  className="relative foil-glide flex-1 min-w-0 inline-flex items-center justify-center gap-2 px-2 holo-bg text-onfoil hover:brightness-105 font-mono text-t11 font-semibold uppercase tracking-wider whitespace-nowrap"
+                  data-setup-track-word={tracked ? (expired ? 'kept' : 'tracking') : expired ? 'keep' : 'track'}
+                >
+                  <Bookmark className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{trackNo ?? (tracked ? (expired ? 'Kept' : 'Tracking') : expired ? 'Keep the close' : 'Track')}</span>
+                </button>
+                <Tip label="Open in Tracker">
+                  <button
+                    type="button"
+                    disabled={!tracked}
+                    onClick={() => tracked && toTracker()}
+                    className={`relative foil-glide w-9 shrink-0 inline-flex items-center justify-center border-l border-black/25 holo-bg text-onfoil ${tracked ? 'hover:brightness-105' : 'opacity-40'}`}
+                    aria-label="Open in Tracker"
+                    data-setup-track="open"
+                  >
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </button>
+                </Tip>
+              </div>
+              {/* a call that has left, or a past one, keeps its line on the blotter beside it */}
+              {(closed || isPast) && (
                 <button
                   type="button"
                   onClick={() => navigate('/compass/blotter')}
-                  className="w-full h-8 inline-flex items-center justify-center rounded-md border border-borderSubtle text-textPrimary font-mono text-t11 font-semibold uppercase tracking-wider"
-                  data-setup-track="closed"
+                  className={`shrink-0 h-8 px-3 inline-flex items-center justify-center gap-1.5 rounded-md border border-borderSubtle hover:border-borderMuted font-mono text-t10 font-semibold uppercase tracking-wider whitespace-nowrap transition-colors ${closed?.result === 'win' ? 'text-bull' : closed?.result === 'loss' ? 'text-bear' : 'text-textPrimary'}`}
+                  data-setup-blotter={closed?.result ?? 'record'}
                 >
-                  {closed?.result === 'unavailable' ? 'Unavailable · on the blotter' : closed?.result === 'win' ? 'Win · on the blotter' : closed?.result === 'loss' ? 'Loss · on the blotter' : 'On the blotter'}
+                  {closed?.result === 'unavailable' ? 'Unavailable' : closed?.result === 'win' ? 'Win' : closed?.result === 'loss' ? 'Loss' : 'On the record'}
+                  <span className="text-textSecondary">· Blotter</span>
+                  <ArrowUpRight className="w-3 h-3 text-textSecondary" />
                 </button>
-              ) : (
-                <div className="flex h-8 rounded-md overflow-hidden" data-setup-track={tracked ? 'on' : 'off'}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (tracked) {
-                        untrackSetup(setup.id);
-                        setTrackNo(null);
-                        return;
-                      }
-                      const ans = trackSetup(setup, scanner, { mark: q.mark, stop: shownStop, ask: q.entryPremium });
-                      if (!ans.ok) {
-                        setTrackNo(ans.why === 'full' ? '5 open. Untrack one first.' : ans.why === 'closed' ? 'Could not save this track.' : `Already tracking ${ans.contract}.`);
-                        return;
-                      }
-                      setTrackNo(null);
-                      navigate('/compass/tracker', { state: { focus: setup.id } });
-                    }}
-                    className="relative foil-glide flex-1 min-w-0 inline-flex items-center justify-center gap-2 px-2 holo-bg text-onfoil hover:brightness-105 font-mono text-t11 font-semibold uppercase tracking-wider whitespace-nowrap"
-                  >
-                    <Bookmark className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">{trackNo ?? (tracked ? (expired ? 'Kept' : 'Tracking') : expired ? 'Keep the close' : 'Track')}</span>
-                  </button>
-                  <Tip label="Open in Tracker">
-                    <button
-                      type="button"
-                      disabled={!tracked}
-                      onClick={() => tracked && navigate('/compass/tracker', { state: { focus: setup.id } })}
-                      className={`relative foil-glide w-9 shrink-0 inline-flex items-center justify-center border-l border-black/25 holo-bg text-onfoil ${tracked ? 'hover:brightness-105' : 'opacity-40'}`}
-                      aria-label="Open in Tracker"
-                      data-setup-track="open"
-                    >
-                      <ArrowUpRight className="w-3.5 h-3.5" />
-                    </button>
-                  </Tip>
-                </div>
               )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* THE STRIKES' FLOW — under the chart and the card: the session's prints on the strikes round this one */}
+      {!isPast && <ContractFlow ticker={setup.ticker} strike={setup.strike} right={setup.right} expiryDate={setup.expiryDate} step={atmStep} session={desk} allSessions={setup.expiry === '0DTE'} />}
 
       {/* THE CONTRACTS AROUND IT — the live book on the same expiration; a row opens that contract */}
       {!isPast && around.length > 0 && (
