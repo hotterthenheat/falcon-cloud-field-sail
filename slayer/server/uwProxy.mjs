@@ -298,6 +298,10 @@ const tooMany = () => ({
   type: 'application/json',
 });
 const COOLING = Symbol('cooling');
+/* UW_PROXY_DEBUG=1 logs every vendor call: its lane, status, time and path */
+const DEBUG = process.env.UW_PROXY_DEBUG === '1';
+/* the longest one vendor call may hold a slot, answer and body together */
+const CALL_MS = 15_000;
 
 async function load(path, key, lane) {
   const ticket = { entry: null, dead: false };
@@ -325,14 +329,39 @@ async function load(path, key, lane) {
         /* the breaker tripped while this ask waited for its slot: give the slot back without a call */
         if (coolLeft() > 0) return COOLING;
         const t0 = Date.now();
-        const r = await fetch(`https://api.unusualwhales.com/api${path}`, {
-          headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
-          signal: AbortSignal.timeout(12_000),
-        });
-        const body = Buffer.from(await r.arrayBuffer());
+        if (DEBUG) console.log(`[uw] ${lane} asks ${path.slice(0, 80)}`);
+        /* A call that never settles must not hold its slot for ever: one was seen hanging past its abort signal and
+           kept the only refresh slot for minutes. The slot is given back after CALL_MS whatever the fetch does. */
+        const ctl = new AbortController();
+        let hard;
+        const call = (async () => {
+          const r = await fetch(`https://api.unusualwhales.com/api${path}`, {
+            headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
+            signal: AbortSignal.any([ctl.signal, AbortSignal.timeout(12_000)]),
+          });
+          return [r, Buffer.from(await r.arrayBuffer())];
+        })();
+        let r;
+        let body;
+        try {
+          [r, body] = await Promise.race([
+            call,
+            new Promise((_, reject) => {
+              hard = setTimeout(() => {
+                ctl.abort();
+                reject(Object.assign(new Error('unusual whales did not answer'), { name: 'TimeoutError' }));
+              }, CALL_MS);
+            }),
+          ]);
+        } finally {
+          clearTimeout(hard);
+          call.catch(() => {});
+        }
         noteTook(path, Date.now() - t0);
+        if (DEBUG) console.log(`[uw] ${lane} ${r.status} ${Date.now() - t0}ms ${path.slice(0, 80)}`);
         return [r, body];
       }, lane, path, ticket).catch((e) => {
+        if (DEBUG) console.log(`[uw] ${lane} ${e?.name || "error"} ${path.slice(0, 80)}`);
         if (!ticket.dead) recent.push(`${e?.name || 'error'} ${path.slice(0, 60)}`);
         throw e;
       });
