@@ -12,7 +12,7 @@ import type { ExposureProfileData, StrikeExposure } from '../types/gex';
 import type { Candle, MarketSnapshot } from '../types/market';
 import { putWallWords } from '../core/walls';
 import { dealerOf } from '../core/dealerSign';
-import { monDayOf, peekDaySigma, peekMoveToClose, peekScopeMove } from './uwBook';
+import { monDayOf, peekDaySigma, peekMoveToClose, peekScopeMove } from './book/move';
 import { datesOf, levelNetPath } from './flipLevel';
 import { levelTests } from './levelRecord';
 import { pctWhole as pct } from '../core/format';

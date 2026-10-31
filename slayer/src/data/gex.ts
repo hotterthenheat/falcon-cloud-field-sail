@@ -1,7 +1,9 @@
 /* Dealer-gamma helpers off the live vendor book (uwBook): money formatting, the heat pattern's read, a name's key levels, the book as an alert reads it. */
 
 import { keptOf } from '../core/dealerSign';
-import { bookOfLevels, peekChange, snapshotFor } from './uwBook';
+import { bookOfLevels } from './book/levels';
+import { peekChange } from './book/day';
+import { snapshotFor } from './book/feed';
 import { levelsFor } from './levelsFor';
 import { levelsForName } from './levelsScope';
 import type { DarkPoolPrint, KeyLevels } from '../types/gex';

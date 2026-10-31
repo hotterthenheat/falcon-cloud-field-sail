@@ -14,7 +14,7 @@ import DropdownMulti from '../../components/ui/DropdownMulti';
 import CardTabs from '../../components/ui/CardTabs';
 import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import CompanyLogo from '../../components/ui/CompanyLogo';
-import { Fact } from '../../components/trace/TraceBox';
+import { Fact } from '../../components/trace/traceFrame';
 import { WeigherGuide } from '../../components/weigher/WeigherGuide';
 import { TimeframeStrip } from '../../components/gex/ChartToolbar';
 import SessionBook from '../../components/ui/SessionBook';
@@ -22,7 +22,8 @@ import { chartGround, useCandleThemeKey } from '../../components/gex/candleTheme
 import { onGlide } from '../../core/glide';
 import { DOCK_ROOM } from '../../data/editorDock';
 import { useTicker } from '../../context/MarketDataContext';
-import { snapshotOf, useBookRev } from '../../data/uwBook';
+import { snapshotOf } from '../../data/book/feed';
+import { useBookRev } from '../../data/book/store';
 import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
 import { closeMoveTitle, signedPct } from '../../data/dayChange';
 import { buildPrints, fmtUsd } from '../../data/gex';

@@ -182,13 +182,16 @@ function ttl(): number {
 const hidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
 const inflight = new Map<string, Promise<void>>();
-const closesFor = new BoundedMap<string, { day: string; closes: { date: string; close: number }[] }>(200);
+const closesFor = new BoundedMap<string, { day: string; at: number; closes: { date: string; close: number }[] }>(200);
+/** After the bell a name's daily rows are asked again for today's own row — at most this often (every price poll asked) */
+const AFTER_BELL_REASK_MS = 60_000;
 
 async function readCloseRows(sym: string): Promise<{ date: string; close: number }[] | null> {
   const day = nyIsoDate();
   const hit = closesFor.get(sym);
-  /* once a New York day, and again after the bell for today's own row */
-  if (hit && hit.day === day && (nyMinutes() < 960 || hit.closes.some(c => c.date === day))) return hit.closes;
+  /* once a New York day, and again after the bell for today's own row — a minute apart at most, and never on a day with
+     no session (a weekend or a holiday writes no row: every price poll asked again, all evening) */
+  if (hit && hit.day === day && (nyMinutes() < 960 || hit.closes.some(c => c.date === day) || !isTradingDay(nyToday()) || Date.now() - hit.at < AFTER_BELL_REASK_MS)) return hit.closes;
   /* a page that may not ask for daily rows keeps what an earlier page read */
   if (!closesHere()) return hit?.closes ?? null;
   const root = INDEX.has(sym) ? 'index' : 'stock';
@@ -196,7 +199,7 @@ async function readCloseRows(sym: string): Promise<{ date: string; close: number
   const got = await thetaCall(`/${root}/history/eod?symbol=${encodeURIComponent(sym)}&start_date=${ymd(start)}&end_date=${ymd(day)}&format=json`);
   if (got.error) return hit?.closes ?? null;
   const closes = readCloses(got.data);
-  closesFor.set(sym, { day, closes });
+  closesFor.set(sym, { day, at: Date.now(), closes });
   return closes;
 }
 

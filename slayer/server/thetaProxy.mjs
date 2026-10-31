@@ -13,7 +13,7 @@ import { sessionLost, thetaAllowed, thetaTtl } from '../shared/thetaPaths.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHub } from './hub.mjs';
+import { createHub, HOT_NAMES, nameOfPath } from './hub.mjs';
 
 const RELAY = (process.env.THETA_RELAY_URL || '').replace(/\/+$/, '');
 const RELAY_SECRET = process.env.THETA_RELAY_SECRET || '';
@@ -155,6 +155,11 @@ const hub = createHub({
   keepable: thetaKeepable,
   ttl: (p) => Math.max(thetaTtl(p), /\/snapshot\//.test(p) ? 900 : 0),
   refreshPerSec: Number(process.env.THETA_HUB_REFRESH_PER_SEC) || 25,
+  /* the hot names' and today's names' first-paint reads stay warm (quotes, bars, the newest history chunk, the nearest
+     chain): 150 paths within a minute is ~2.5 calls a second of the terminal's eight slots, only while the feed moves */
+  nameOf: nameOfPath,
+  hotNames: HOT_NAMES,
+  maxDayPins: Number(process.env.THETA_HUB_DAY_PINS) || 150,
 });
 /** The hub's counts, for the load check (scripts/load-proof.mjs). */
 export const thetaHubStats = () => hub.stats();

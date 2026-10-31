@@ -4,7 +4,7 @@ import { PinpointPageSkeleton } from './pinpointSkeletons';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowUpRight, X } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
-import { usePinpointFeed, useResolvedSession } from '../../data/uwBook';
+import { usePinpointFeed, useResolvedSession } from '../../data/book/feed';
 import { useFocus } from '../../context/FocusContext';
 import { AGENDA_LINES, agendaFaceOf } from './Agenda';
 import ScrollHome from '../../components/layout/ScrollHome';

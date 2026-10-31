@@ -4,7 +4,10 @@
 
 import { daySigmaOfIv, sigmaOverMinutes } from './expectedMove';
 import { wallPlace } from '../core/walls';
-import { bookCandles, monDayOf, peekBellShare, peekDaySigma, peekIv, peekMoveToClose, peekScopeMove, peekSpot, scopeDatesPending } from './uwBook';
+import { bookCandles, peekBellShare } from './book/levels';
+import { monDayOf, peekDaySigma, peekIv, peekMoveToClose, peekScopeMove } from './book/move';
+import { peekSpot } from './book/day';
+import { scopeDatesPending } from './book/load';
 import { scopeDateOf } from './wall';
 import { UNIVERSE } from './universe';
 import type { AheadClock } from './ahead';

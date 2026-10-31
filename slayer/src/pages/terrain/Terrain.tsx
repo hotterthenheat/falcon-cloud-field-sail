@@ -4,7 +4,11 @@ import { ChevronUp, Code2, Link2, Maximize2, Minimize2, Rows3, SlidersHorizontal
 import { AnimatePresence, motion } from 'framer-motion';
 import { DOCK_ROOM, openEditor } from '../../data/editorDock';
 import { useDeskSession, sessionMeta, type DeskSession } from '../../data/deskSession';
-import { chainForDate, ensureBook, expiryLabel, peekSpot, snapshotFor, useBookRev } from '../../data/uwBook';
+import { chainForDate, expiryLabel } from '../../data/book/levels';
+import { ensureBook } from '../../data/book/load';
+import { peekSpot } from '../../data/book/day';
+import { snapshotFor } from '../../data/book/feed';
+import { useBookRev } from '../../data/book/store';
 import { levelNetPath } from '../../data/flipLevel';
 import { rootTradesSession } from '../../data/compassSession';
 import { useSessionQuote } from '../../data/sessionQuote';
@@ -916,6 +920,11 @@ const Pane = ({
   /* What a move to each strike forces dealers to trade — the panel's second lane, off the same rows the size lane
      draws (the cut's own chain, `fieldNodes`), integrated over that book re-priced along the walk: the ladder Pinpoint's
      walls print (wall.ts). A book that cannot be re-priced draws no rungs. */
+  /* Re-priced when what it reads moves — the rows' strikes, spot, the cut's chain, the book — not on every tape tick:
+     `revision` also counts ThetaData's bars, which bumped this ~14 times a second on a first load (each a ~4 ms re-price
+     of the whole book at ~320 prices) without changing any input. */
+  const bookRev = useBookRev();
+  const flowStrikes = rail.rows.map(r => r.strike).join(',');
   const flow = useMemo(() => {
     if (!rail.rows.length) return null;
     const snap = snapshotFor(ticker, '0DTE');
@@ -923,7 +932,7 @@ const Pane = ({
     const repriced = snap?.liveBook && chain?.length ? (prices: readonly number[]) => levelNetPath(snap, chain, prices)?.path.map(v => -v) ?? null : undefined;
     return buildFlowFromRows(rail.rows, levels.spot, repriced);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rail, levels.spot, fieldNodes, ticker, revision]);
+  }, [flowStrikes, levels.spot, fieldNodes, ticker, bookRev]);
   /* The ladder's two legs: the put and call hedging behind every strike's net, off the live chain, and the net at
      the open as a ratio of now for the spine's ghost — the size lane draws the strike ladder's rows */
   const legs = railData.legs;

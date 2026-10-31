@@ -3,9 +3,11 @@
    it is on its way. Links elsewhere move at once (their page's skeleton has the page's shape). */
 
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAccount } from '../../data/account';
 import { loadRoute, routeReady, warmIdle, warmPath } from '../../data/warmRooms';
+import { stopRoomData, warmRoomData } from '../../data/warmData';
+import { useTicker } from '../../context/MarketDataContext';
 
 const HELD = '[data-sidenav] a[href], [data-mobile-menu] a[href], [data-route-hold] a[href]';
 /** Past this the move happens anyway and the page's skeleton takes over */
@@ -20,6 +22,13 @@ export default function RouteHold() {
   useEffect(() => {
     if (account.status === 'in' || account.status === 'off') warmIdle();
   }, [account.status]);
+  /* and the other rooms' first-paint data for the name in view, once this page has had its own (data/warmData.ts) */
+  const { activeTicker } = useTicker();
+  const { pathname } = useLocation();
+  useEffect(() => {
+    if (account.status === 'in' || account.status === 'off') warmRoomData(activeTicker, pathname);
+  }, [activeTicker, pathname, account.status]);
+  useEffect(() => stopRoomData, []);
   /* any link in the shell: its page's code on pointer or focus, ahead of the click */
   useEffect(() => {
     const onIntent = (e: Event) => {

@@ -356,7 +356,9 @@ export function listedOpen(rows: readonly ListedExpiry[], at: number = Date.now(
 /** Every expiration the feed lists for this name. A standard index includes its weekly root, so SPX has a today. `down` means the feed did not answer. An empty list with down false means the name has no options. */
 export async function listLiveExpiries(ticker: string): Promise<{ rows: ListedExpiry[]; down: boolean; takenAt?: number }> {
   const roots = optionRoots(ticker);
-  const got = await Promise.all(roots.map(root => thetaGet(`/option/list/expirations?symbol=${encodeURIComponent(root)}&format=json`)));
+  /* ahead of the queue (data/theta.ts take): the chain waits on this small list, and behind a chart's history reads it
+     waited 15–20 s on a first Weigher visit after Terrain */
+  const got = await Promise.all(roots.map(root => thetaGet(`/option/list/expirations?symbol=${encodeURIComponent(root)}&format=json`, true)));
   const up = got.map(g => !g.error);
   if (up.some(Boolean)) {
     got.forEach((g, i) => up[i] && keepTheta(`expirations:${roots[i]}`, g.data));

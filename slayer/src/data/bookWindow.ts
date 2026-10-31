@@ -2,7 +2,9 @@ import type { MarketSnapshot, StrikeNode } from '../types/market';
 import { bookToday, isoDate, isTradingDay, nextSession, today as nyToday, MONTHS } from '../core/calendar';
 import { nyIsoDate, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { registerChainDates } from './chainDates';
-import { bookCandles, bookFixed, bookRevision, fixedAsOfWords, peekEntry, peekSessionAll } from './uwBook';
+import { bookCandles, peekSessionAll } from './book/levels';
+import { bookFixed, fixedAsOfWords } from './book/load';
+import { bookRevision, peekEntry } from './book/store';
 
 /* Folds the expiry dates the reader picked into one chain, so the clock, the level report and the tape read the book the matrix shows. */
 

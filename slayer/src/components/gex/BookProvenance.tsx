@@ -4,7 +4,8 @@
 import { FLIP_RULE } from '../../data/flipLevel';
 import { ASSUMPTION_WORDS, freshnessOf } from '../../data/levelSureness';
 import { GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
-import { peekEntry, peekGammaPriced, peekOiChange } from '../../data/uwBook';
+import { peekEntry, peekGammaPriced } from '../../data/book/store';
+import { peekOiChange } from '../../data/book/oiChange';
 import { levelsForName } from '../../data/levelsScope';
 import { nyClock, nyDay, nyIsoDate, nySessionPhase } from '../../core/nyTime';
 import { LEVEL_ORDER } from '../../core/walls';

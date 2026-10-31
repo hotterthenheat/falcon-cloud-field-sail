@@ -7,7 +7,7 @@ import { LEVELS_OPTIONS, setLevelsForName, useNameLevels, type LevelsScope } fro
 import { setUnitForName, useNameUnit } from '../../data/distanceUnits';
 import { todayScopeLabel } from '../../data/bookWindow';
 import { fmtGexUsd } from '../../data/gex';
-import { peekEntry, useBookRev } from '../../data/uwBook';
+import { peekEntry, useBookRev } from '../../data/book/store';
 import { LivePrice } from './LivePrice';
 import { AsOf } from '../ui/states';
 import type { DistanceUnit } from '../../data/atr';

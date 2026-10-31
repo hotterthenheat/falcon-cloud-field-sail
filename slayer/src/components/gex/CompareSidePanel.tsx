@@ -5,7 +5,7 @@
 import { bellDay, longDay, recordDay, todayScopeLabel } from '../../data/bookWindow';
 import { GLOSSARY, kindTip } from './glossary';
 import { bellNone, BELL_NONE_TITLE } from '../../data/flipLevel';
-import { bookDatesIn } from '../../data/uwBook';
+import { bookDatesIn } from '../../data/book/levels';
 import { holdLabel } from '../../data/wall';
 import { LEAN_MIN, strikeTag, thinWords } from '../../data/agenda';
 import { useMemo, useState, type ReactNode } from 'react';

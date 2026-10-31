@@ -107,7 +107,24 @@ export function canonical(p) {
  * @param {number} [o.pinIdleDays]      a remembered path nobody asked for in this many days is let go (default 3,
  *   HUB_PIN_IDLE_DAYS)
  * @param {() => string} [o.today]      New York's date, YYYY-MM-DD (the proof pins it)
+ * @param {(path: string) => string | null} [o.nameOf]  the name a path is about (SPY in /stock/SPY/…, symbol=SPY): with it,
+ *   the paths a viewer opened for a WARM name are kept warm for the rest of the day after the viewer leaves (a "day pin")
+ * @param {readonly string[]} [o.hotNames]  names always warm (SPY, QQQ …); any other name is warm the day a viewer opens it
+ * @param {number} [o.maxDayPins]       day pins at most (default 120): the background budget they may take is bounded
  */
+/** The names whose first-paint answers are kept warm all day (HUB_HOT_NAMES overrides): the index ETFs, the cash index
+    and the most-watched names. Any other name is warm from the moment a viewer opens it, for the rest of that day. */
+export const HOT_NAMES = (process.env.HUB_HOT_NAMES || 'SPY,QQQ,IWM,SPX,NVDA,AAPL,TSLA').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
+
+/** The name a vendor path is about: /stock/SPY/…, ticker_symbol=SPY, ticker=SPY, symbol=SPY (SPXW reads as SPX) */
+export function nameOfPath(p) {
+  /* the query's name first (ThetaData's /stock/history/… carries it there); Unusual Whales puts it in the path, upper case */
+  const m = /[?&](?:ticker_symbol|ticker|symbol)=([A-Za-z0-9.]{1,10})(?:&|$)/.exec(p) || /\/stock\/([A-Z0-9.]{1,10})(?:\/|$|\?)/.exec(p);
+  if (!m) return null;
+  const n = m[1].toUpperCase();
+  return n === 'SPXW' ? 'SPX' : n;
+}
+
 export function createHub(o) {
   const MAX_BYTES = o.maxBytes ?? 300 * 1024 * 1024;
   const POPULAR = 200;
@@ -117,6 +134,27 @@ export function createHub(o) {
   const PIN_WARM_MS = 60_000;
   const PIN_COOL_MS = 5 * 60_000;
   const today = o.today ?? (() => nyNow().day);
+  /* DAY PINS (2026-10-31): "does all the data load even if I'm not on the page?" A path a viewer asked for on a warm name
+     (a hot name, or one any viewer opened today) is not dropped when the viewer leaves: it stays wanted as a pin for the
+     rest of the New York day, refreshed at the pinned pace (within a minute) only while its feed moves (feedMoving), so
+     the next viewer of that room — this browser's next room, or another viewer — is answered from memory. Paging and
+     older-than reads are one viewer's scroll, never pinned. */
+  const HOT = new Set((o.hotNames ?? []).map((n) => String(n).toUpperCase()));
+  const MAX_DAY_PINS = o.maxDayPins ?? 120;
+  const openedOn = new Map();
+  let dayPins = 0;
+  const warmName = (name, day) => !!name && (HOT.has(name) || openedOn.get(name) === day);
+  const dayPinnable = (key) => !/[?&](older_than|newer_than)=|[?&]page=[1-9]/.test(key);
+  /** Keep a path a viewer has left as a day pin, when its name is warm and the budget allows */
+  const toDayPin = (key, w, day) => {
+    if (!o.nameOf || w.pinned || dayPins >= MAX_DAY_PINS || !dayPinnable(key) || pastDated(key, day)) return false;
+    if (!warmName(o.nameOf(key), day)) return false;
+    w.pinned = true;
+    w.dayPin = day;
+    w.asks = 0;
+    dayPins += 1;
+    return true;
+  };
   const cache = new Map();
   let bytes = 0;
   const inflight = new Map();
@@ -224,6 +262,10 @@ export function createHub(o) {
     }
     stats.asks += 1;
     const now = Date.now();
+    if (o.nameOf) {
+      const name = o.nameOf(key);
+      if (name) openedOn.set(name, today());
+    }
     const w = wanted.get(key);
     if (w) {
       /* how often viewers come back for this path: refreshes follow it, never faster than the answer goes stale */
@@ -267,15 +309,23 @@ export function createHub(o) {
     if (day !== pruneDay || now - pruneAt > 60_000) {
       pruneDay = day;
       pruneAt = now;
-      for (const [key, w] of wanted) if (w.pinned && !w.asks && pinGone(key, w, now, day)) wanted.delete(key);
+      for (const [key, w] of wanted) {
+        /* a day pin ends with its day, unless its name is always warm */
+        const dayOver = w.dayPin && w.dayPin !== day && !HOT.has(o.nameOf?.(key) ?? '');
+        if (w.pinned && !w.asks && (dayOver || pinGone(key, w, now, day))) {
+          if (w.dayPin) dayPins -= 1;
+          wanted.delete(key);
+        }
+      }
+      for (const [name, d] of openedOn) if (d !== day) openedOn.delete(name);
     }
     for (const [key, w] of wanted) {
       const ttl = ttlNow(key);
       const hit = cache.get(key);
       if (inflight.has(key) || (w.retryAt && now < w.retryAt)) continue;
       if (w.asks && !w.gap) {
-        /* asked once: nothing says it will be asked again, so it is not refreshed */
-        if (!w.pinned && now - w.last > 30_000) wanted.delete(key);
+        /* asked once: nothing says it will be asked again, so it is not refreshed (a warm name's path becomes a day pin) */
+        if (!w.pinned && now - w.last > 30_000 && !toDayPin(key, w, day)) wanted.delete(key);
         continue;
       }
       if (w.asks) {
@@ -283,7 +333,7 @@ export function createHub(o) {
         /* nobody has come back for three of their usual gaps: stop (a popular path goes back to its slow warmth) */
         if (now - w.last > Math.max(3 * gap, 30_000)) {
           if (w.pinned) w.asks = 0;
-          else wanted.delete(key);
+          else if (!toDayPin(key, w, day)) wanted.delete(key);
           continue;
         }
         /* refresh just before the next expected ask, and only if the copy would be stale by then */
@@ -368,7 +418,9 @@ export function createHub(o) {
     },
     /** The paths kept warm with nobody watching (the popular list), for the load check */
     pinned: () => [...wanted.entries()].filter(([, w]) => w.pinned).map(([k]) => k),
+    /** The day pins held now (paths kept warm for a warm name after its viewers left) */
+    dayPinned: () => [...wanted.entries()].filter(([, w]) => w.dayPin).map(([k]) => k),
     /** Counts for the load check: asks served fresh, served stale, waited on, and the vendor calls behind them. */
-    stats: () => ({ ...stats, refreshing, watching: wanted.size, cached: cache.size, megabytes: Math.round(bytes / 1e5) / 10 }),
+    stats: () => ({ ...stats, refreshing, watching: wanted.size, dayPins, cached: cache.size, megabytes: Math.round(bytes / 1e5) / 10 }),
   };
 }

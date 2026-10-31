@@ -2,7 +2,7 @@
    the net, and the name, risk and read the settled legs give. */
 
 import type { SpreadKind, SpreadLeg, SpreadTrade } from './flowBook';
-import { clock, COMPRESSION_CODES, dteFrom, dteOf, expiryLabel, indexLevel, num, SESSION_OPEN, sessionEndMin, tapeSessionIso, usd } from './traceRows';
+import { clock, COMPRESSION_CODES, dteFrom, dteOf, expiryLabel, indexLevel, num, nyDateOf, SESSION_OPEN, sessionEndMin, tapeSessionIso, usd } from './traceRows';
 
 /* No exchange breakdown: /option-trades/exchange-breakdown is not on this key (docs/DATA_SOURCES.md). */
 
@@ -460,7 +460,7 @@ export function spreadOf(row: Record<string, unknown>): SpreadTrade {
   /* no legs on the row (txns is a count) — the legs come from the legs route; the row carries its strikes and its near
      expiry, the trade's own New York day plus its days to run */
   const dteAtTrade = num(row.min_dte);
-  const tradeDay = when.epoch > 0 ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(when.epoch * 1000)) : '';
+  const tradeDay = when.epoch > 0 ? nyDateOf(when.epoch * 1000) : '';
   const expiryIso = tradeDay ? new Date(Date.parse(`${tradeDay}T00:00:00Z`) + dteAtTrade * 86_400_000).toISOString().slice(0, 10) : '';
   const code = String(row.code || '').toLowerCase();
   const dir = String(row.direction || '');

@@ -3,7 +3,7 @@
    and the session's words and clock the Map, Targets, Compare and the desk tiles share. */
 
 import { daySigmaOfIv, normCdf, sigmaOverMinutes } from './expectedMove';
-import { peekDaySigma, peekMoveToClose } from './uwBook';
+import { peekDaySigma, peekMoveToClose } from './book/move';
 import { datesOf } from './flipLevel';
 import { lastSessionSupreme, ofLast, rangeFrom, recentSessions, sessionSoFar } from './aheadHistory';
 import { inCashSession, sessionBars } from './levelview';

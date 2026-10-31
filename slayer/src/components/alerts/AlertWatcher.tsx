@@ -6,7 +6,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { readExposureNow, type ExposureNow } from '../../data/gex';
-import { bookCandles, bookHistory, ensureBook } from '../../data/uwBook';
+import { bookCandles, bookHistory } from '../../data/book/levels';
+import { ensureBook } from '../../data/book/load';
 import { ensureThetaBars, peekThetaBars, peekThetaPrice, useThetaPrices } from '../../data/thetaQuote';
 import { ensureQuote, peekQuote, useDayMoves } from '../../data/liveQuote';
 import { useUwOnlyRoute } from '../layout/NavQuote';

@@ -10,7 +10,13 @@ import { buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exp
 import { buildFlipGauge, sessionFlipCrossings } from './flipGauge';
 import { sessionLive } from './flipLevel';
 import { nySessionPhase } from '../core/nyTime';
-import { peekDayMove, type DayMove, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange, peekBellShare, peekPriceAt, ensureScopeDates, scopeDatesPending, peekRecordAsked } from './uwBook';
+import { peekDayMove, type DayMove, peekPriceAt } from './book/day';
+import { bookCandles, bookHistory, peekBellShare } from './book/levels';
+import { peekIv } from './book/move';
+import { snapshotOf } from './book/feed';
+import { ensureOiChange, peekOiChange } from './book/oiChange';
+import { ensureScopeDates, scopeDatesPending } from './book/load';
+import { peekRecordAsked } from './book/store';
 import { levelsForName, type LevelsScope } from './levelsScope';
 import { levelsBook, recordDay } from './bookWindow';
 import { LEVELS_WINDOW } from './roomLevels';

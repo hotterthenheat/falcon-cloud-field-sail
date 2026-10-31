@@ -74,12 +74,16 @@ export const usd = (v: number): string => {
 /** "1 contract", "2 contracts" */
 export const plural = (n: number, one: string, many = `${one}s`) => `${fmtCount(n)} ${n === 1 ? one : many}`;
 
+const pad2 = (n: number) => (n < 10 ? `0${n}` : String(n));
+
 export function nyIsoToday(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+  return nyDateOf(Date.now());
 }
-/** The New York calendar day of an instant, YYYY-MM-DD */
+/** The New York calendar day of an instant, YYYY-MM-DD (core/nyTime's parts: one formatter, cached by the minute — a
+    new Intl.DateTimeFormat per tape row was the page's hottest function) */
 export function nyDateOf(ms: number): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(ms));
+  const p = nyParts(ms);
+  return `${p.year}-${pad2(p.month)}-${pad2(p.day)}`;
 }
 /** Newest first by the full instant, never by the time of day alone (two days' prints can share a clock) */
 export const byNewest = (a: { epochMs?: number; time: string }, b: { epochMs?: number; time: string }) => (b.epochMs ?? 0) - (a.epochMs ?? 0) || b.time.localeCompare(a.time);
@@ -88,16 +92,10 @@ export function clock(iso: unknown): { time: string; minute: number; epoch: numb
   const raw = typeof iso === 'number' ? iso : typeof iso === 'string' ? Date.parse(iso) : NaN;
   const d = Number.isFinite(raw) ? new Date(raw > 1e12 ? raw : raw * 1000) : null;
   if (!d || Number.isNaN(d.getTime())) return { time: '—', minute: 0, epoch: 0, ms: 0 };
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(d);
-  const pick = (t: string) => parts.find(p => p.type === t)?.value ?? '00';
-  const time = `${pick('hour')}:${pick('minute')}:${pick('second')}`;
-  const minute = Number(pick('hour')) * 60 + Number(pick('minute'));
+  /* New York's wall clock from core/nyTime (one formatter, cached by the minute), not a formatter built per print */
+  const p = nyParts(d.getTime());
+  const time = `${pad2(p.hour)}:${pad2(p.minute)}:${pad2(p.second)}`;
+  const minute = p.hour * 60 + p.minute;
   return { time, minute, epoch: Math.floor(d.getTime() / 1000), ms: d.getTime() };
 }
 

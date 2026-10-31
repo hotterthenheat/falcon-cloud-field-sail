@@ -8,7 +8,7 @@
 
 import { gate, sendDenied } from './auth.mjs';
 import { forwardPath } from './paths.mjs';
-import { createHub } from './hub.mjs';
+import { createHub, HOT_NAMES, nameOfPath } from './hub.mjs';
 
 const T = '[A-Za-z0-9.%$_-]{1,32}';
 const NAME = '[^/?]{1,80}';
@@ -414,6 +414,12 @@ const hub = createHub({
   /* the vendor refusing for a moment (429, a gateway error) keeps the last answer up to a minute old on screen */
   keepOnFail: (path, age) => age < Math.max(60_000, 4 * ttlFor(path)),
   promote,
+  /* the first-paint answers of the hot names and of every name opened today stay warm after their viewers leave, in the
+     one background refresh slot: 60 paths at the pinned pace (within a minute, only while the feed moves) is at most
+     one vendor call a second of the hub's 3/s budget */
+  nameOf: nameOfPath,
+  hotNames: HOT_NAMES,
+  maxDayPins: Number(process.env.UW_HUB_DAY_PINS) || 60,
 });
 /** The hub's counts, for the load check (scripts/load-proof.mjs). */
 export const uwHubStats = () => hub.stats();

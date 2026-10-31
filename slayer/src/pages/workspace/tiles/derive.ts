@@ -10,7 +10,8 @@ import { buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from '../..
 import { sessionBars } from '../../../data/levelview';
 import { readSessionClock } from '../../../data/moc';
 import { buildKeyLevels } from '../../../data/pulse';
-import { bookCandles, bookHistory, peekIv } from '../../../data/uwBook';
+import { bookCandles, bookHistory } from '../../../data/book/levels';
+import { peekIv } from '../../../data/book/move';
 import type { ExposureProfileData, KeyLevelRow, KeyLevels } from '../../../types/gex';
 import type { MarketSnapshot } from '../../../types/market';
 

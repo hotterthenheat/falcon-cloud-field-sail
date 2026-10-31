@@ -6,7 +6,7 @@ import { SayPage } from '../../components/layout/PageMeta';
 import type { UTCTimestamp } from 'lightweight-charts';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Fact } from '../../components/trace/TraceBox';
+import { Fact } from '../../components/trace/traceFrame';
 import FactRow from '../../components/ui/Fact';
 import TradeShapeFigure from '../../components/review/TradeShape';
 import { againstUsual, shapeOf, usualShape, SHAPE_LABEL } from '../../data/review/shape';

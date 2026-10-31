@@ -63,7 +63,7 @@ import { sinceOpenRead } from '../../data/levelview';
 import PointerCard, { CardRow, PointerFollowCard, letGoWords } from '../ui/PointerCard';
 import { BOOK_TTL_MS, StaleMark, useTickFlash } from '../ui/liveRead';
 import { nearestStrikes, strikeGap } from '../../data/chartMoves';
-import { peekEntry } from '../../data/uwBook';
+import { peekEntry } from '../../data/book/store';
 
 const letGo = letGoWords();
 import { CARD_W } from './ExposureMatrix';

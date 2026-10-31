@@ -55,7 +55,8 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type MutableRefObject, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Info, X } from 'lucide-react';
-import { snapshotOf, useBookRev } from '../../data/uwBook';
+import { snapshotOf } from '../../data/book/feed';
+import { useBookRev } from '../../data/book/store';
 import { useDeskSession } from '../../data/deskSession';
 import { thetaChartBars } from '../../data/thetaCandles';
 import { useTapeRev } from '../../data/thetaTape';

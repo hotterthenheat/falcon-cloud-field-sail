@@ -3,7 +3,9 @@
 
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ensureBook, useBookRev, usePinpointFeed } from '../../data/uwBook';
+import { ensureBook } from '../../data/book/load';
+import { useBookRev } from '../../data/book/store';
+import { usePinpointFeed } from '../../data/book/feed';
 import { levelsFor } from '../../data/levelsFor';
 import { levelsForName } from '../../data/levelsScope';
 import { useNameTape } from '../../data/traceLive';

@@ -8,7 +8,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, X } from 'lucide-react';
-import { ensureBook } from '../../data/uwBook';
+import { ensureBook } from '../../data/book/load';
 import { peekPrint, usePrintRev, wantPrint } from '../../data/thetaTape';
 import { etClock } from '../../data/thetaFeed';
 import CompanyLogo from '../ui/CompanyLogo';

@@ -1,7 +1,8 @@
 /* A name's book asked for in the background: ready when the live book lands or the ask fails; gives up after 8 s. */
 
 import { useEffect, useState } from 'react';
-import { ensureBook, peekEntry, useBookRev } from '../../data/uwBook';
+import { ensureBook } from '../../data/book/load';
+import { peekEntry, useBookRev } from '../../data/book/store';
 
 const settled = (ticker: string) => {
   const e = peekEntry(ticker);

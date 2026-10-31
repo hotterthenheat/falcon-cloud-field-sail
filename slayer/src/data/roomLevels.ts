@@ -2,7 +2,7 @@ import { buildExposureProfile, type StrikeWindow } from './exposure';
 import type { LevelsScope } from './levelsScope';
 import type { ExposureLevels } from '../types/gex';
 import type { MarketSnapshot } from '../types/market';
-import { bookRevision } from './uwBook';
+import { bookRevision } from './book/store';
 
 /* One reading of the room's levels for every box (band tags, tape, profile rules, report, export): the band's snapshot, scope and window,
    computed once per snapshot and scope. A box that cannot read a book gets null. */

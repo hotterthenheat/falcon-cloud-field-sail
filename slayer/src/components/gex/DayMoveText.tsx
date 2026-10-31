@@ -1,6 +1,7 @@
 /* The day's change, one way: after the close the feed's prev_close is today's close, so the after-hours move read as the day's.
    This prints the regular session's change, the extended move beside it in words, and a zero in the neutral ink. */
-import { changeInk, dayMoveWords, peekDayMove, useBookRev, type DayMove } from '../../data/uwBook';
+import { changeInk, dayMoveWords, peekDayMove, type DayMove } from '../../data/book/day';
+import { useBookRev } from '../../data/book/store';
 import type { MarketSnapshot } from '../../types/market';
 
 /** The day's move off a live snapshot (its regular change and the move outside the session) */

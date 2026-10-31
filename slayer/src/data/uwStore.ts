@@ -34,6 +34,9 @@ function db(): Promise<IDBDatabase | null> {
 
 /** The saved answer for a path, or null. Never throws. */
 export async function readSaved(path: string): Promise<SavedAnswer | null> {
+  /* an answer still waiting for its idle write is the newest kept one */
+  const waiting = pending.get(path);
+  if (waiting) return waiting;
   const d = await db();
   if (!d) return null;
   return new Promise(resolve => {
@@ -48,20 +51,45 @@ export async function readSaved(path: string): Promise<SavedAnswer | null> {
 }
 
 let writes = 0;
-/** Keep a good answer (fire and forget; storage that is full or blocked just skips it). `at` is when the server took it
-    from the vendor (x-hub-at), else now. */
-export function save(path: string, status: number, data: unknown, at?: number | null): void {
-  if (status !== 200 || data == null) return;
-  void db().then(d => {
-    if (!d) return;
+/* The writes wait for an idle moment, newest answer per path: sizing an answer (JSON.stringify) and cloning it into
+   IndexedDB ran on the tick the answer landed, ~260 ms of Pinpoint's first 10 s, while the page drew that answer. */
+const pending = new Map<string, SavedAnswer>();
+let flushing = false;
+const whenIdle = (fn: (deadline?: IdleDeadline) => void) =>
+  typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 200);
+
+function flush(d: IDBDatabase, deadline?: IdleDeadline): void {
+  for (const [path, answer] of pending) {
+    if (deadline && deadline.timeRemaining() < 4 && !deadline.didTimeout) break;
+    pending.delete(path);
     try {
-      if (JSON.stringify(data).length > MAX_CHARS) return;
+      if (JSON.stringify(answer.data).length > MAX_CHARS) continue;
       const tx = d.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).put({ at: at ?? Date.now(), status, data } satisfies SavedAnswer, path);
+      tx.objectStore(STORE).put(answer, path);
       if (++writes % 50 === 0) trim(d);
     } catch {
       /* quota or a structured-clone failure: the answer is simply not kept */
     }
+  }
+  if (pending.size) whenIdle(dl => flush(d, dl));
+  else flushing = false;
+}
+
+/** Keep a good answer (fire and forget; storage that is full or blocked just skips it). `at` is when the server took it
+    from the vendor (x-hub-at), else now. */
+export function save(path: string, status: number, data: unknown, at?: number | null): void {
+  if (status !== 200 || data == null) return;
+  pending.delete(path);
+  pending.set(path, { at: at ?? Date.now(), status, data });
+  if (flushing) return;
+  flushing = true;
+  void db().then(d => {
+    if (!d) {
+      pending.clear();
+      flushing = false;
+      return;
+    }
+    whenIdle(dl => flush(d, dl));
   });
 }
 

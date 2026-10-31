@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BaselineSeries, createChart, LineSeries, LineStyle, LineType, type IChartApi, type ISeriesApi, type LineData, type Time, type UTCTimestamp } from 'lightweight-charts';
-import { useResolvedSession } from '../../data/uwBook';
+import { useResolvedSession } from '../../data/book/feed';
 import type { DeskSession } from '../../data/deskSession';
 import { currentSessionBars, minuteInSession, sessionMeta } from '../../data/deskSession';
 import { thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
