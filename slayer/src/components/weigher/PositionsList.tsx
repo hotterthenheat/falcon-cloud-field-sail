@@ -127,7 +127,8 @@ export const ListGrid = memo(function ListGrid({
       },
       {
         colId: 'mark',
-        headerName: 'Live',
+        headerName: 'Mark',
+        headerTooltip: 'The contract\'s mark now: its quote mid in the session, the last one quoted outside it',
         width: 68,
         type: 'rightAligned',
         cellRenderer: ({ data }: ICellRendererParams<ListRow>) => {

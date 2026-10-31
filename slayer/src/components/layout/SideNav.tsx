@@ -34,7 +34,7 @@ import SlayerMark from '../../brand/SlayerMark';
 import PageGlyph from '../ui/PageGlyph';
 import Wordmark from '../../brand/Wordmark';
 import Signature, { SignatureDot } from '../../brand/Signature';
-import { readMarketState } from '../../data/marketState';
+import { nextOpenWords, readMarketState } from '../../data/marketState';
 import { useMediaQuery } from '../ui/useMediaQuery';
 
 const SILVER = 'rgb(var(--silver))';
@@ -222,7 +222,11 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   };
 
   /* the signature's word, read on the clock's own tick so the dot and the session line never disagree */
-  const marketWord = readMarketState().word;
+  const marketState = readMarketState();
+  const marketWord = marketState.word;
+  /* shut, the session line says when the next session opens (New York time, as the clock beside it) */
+  const nextOpen = nextOpenWords();
+  const shutWord = marketState.kind === 'pre-market' || marketState.kind === 'after-hours' ? 'extended' : 'closed';
 
   /* The mark and wordmark, the door home: the S| with its foil and cursor and ">slayer_terminal" beside it; folded, the S| alone
      with its cursor held lit. The S brightens as the pointer nears. */
@@ -589,9 +593,9 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
             <>
               <Signature state={marketWord} rule={false} className="text-t105" />
               <span className="mt-1.5 flex items-center gap-2 font-mono text-t10 tnum">
-                <span className="min-w-0 truncate text-textSecondary" title={clock.label} data-session-line>
+                <span className="min-w-0 truncate text-textSecondary" title={!open && nextOpen ? `${clock.label} · the next session opens ${nextOpen.long}` : clock.label} data-session-line>
                   {/* 16:00–16:15 on Trace: stock options are shut, index and ETF options still trade. */}
-                  {pathname.startsWith('/trace') && marketPhase() === 'late' ? 'stocks closed · index & ETF options trade to 3:15 PM CT' : open ? clock.label : clock.label.toLowerCase()}
+                  {pathname.startsWith('/trace') && marketPhase() === 'late' ? 'stocks closed · index & ETF options trade to 16:15 ET' : open ? clock.label : nextOpen && shutWord === 'closed' ? nextOpen.short : clock.label.toLowerCase()}
                 </span>
                 <NavClock />
               </span>

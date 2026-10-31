@@ -34,6 +34,8 @@ import type { TradeMark } from '../../components/gex/StrikeChart';
 import { chartMenu, planOfMark, positionLines, type Hands } from './deskHands';
 import { buildExposureProfile } from '../../data/exposure';
 import { peekChange, snapshotOf, useBookRev } from '../../data/uwBook';
+import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
+import { closeMoveTitle, signedPct } from '../../data/dayChange';
 import { nameGoesUp } from '../../data/review/engine';
 import { contractKey, contractWords, type ContractId, type Right } from '../../data/review/quotes';
 import { companyName } from '../../data/tickers';
@@ -563,14 +565,29 @@ const PaperDesk = () => {
   ];
 
   const nameRead = spotRead(name);
+  const headHeld = useThetaPrice(name).held;
+  const headMove = thetaMove(headHeld?.value);
+  const headPx = headHeld && headHeld.value.price > 0 ? headHeld.value.price : null;
+  const headPct = headMove ? headMove.pct : peekChange(name);
   const picker = (
     <span className="inline-flex items-center gap-2 font-mono text-t12 tnum min-w-0" data-paper-picker={name}>
       <TickerPicker value={name} onChange={n => setName(n)} allowed={allowed} indexPrice={s => spotOf(s)} indexes={allowed ? PAPER_INDEXES.filter(x => allowed.includes(x.symbol)) : PAPER_INDEXES} />
-      <span className="text-textPrimary">{deskName.priceWords}</span>
-      <span className={`text-t11 font-semibold ${deskName.dayPct >= 0 ? 'text-bull' : 'text-bear'}`}>
-        {deskName.dayPct >= 0 ? '▲ +' : '▼ '}
-        {deskName.dayPct.toFixed(2)}%
+      {/* the app's one convention (data/dayChange.ts moveOffCloses), as the rail: the last trade, the regular session's
+          day change, the extended move apart. The desk's own working price (the name's NBBO mid) is in the hover. */}
+      <span className="text-textPrimary" title={`Last trade${headMove?.ext != null ? `, ${headMove.extWord}` : ''}. The desk prices the name at its quote mid, ${deskName.priceWords}.`} data-paper-price>
+        {headPx != null ? headPx.toFixed(2) : deskName.priceWords}
       </span>
+      {headPct != null && (
+        <span className={`text-t11 font-semibold ${headPct >= 0 ? 'text-bull' : 'text-bear'}`} title={headMove ? closeMoveTitle(headMove) : 'The day’s change'} data-paper-day>
+          {headPct >= 0 ? '▲ ' : '▼ '}
+          {signedPct(headPct)}
+        </span>
+      )}
+      {headMove?.ext != null && (
+        <span className="text-t10 text-textMuted" title={closeMoveTitle(headMove)} data-paper-ext>
+          {headMove.extWord === 'pre-market' ? 'PM' : 'AH'} {signedPct(headMove.ext)}
+        </span>
+      )}
       {nameRead?.kept && <AsOf at={nameRead.takenAt} />}
     </span>
   );
