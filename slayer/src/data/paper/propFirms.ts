@@ -143,7 +143,9 @@ const TRADEFUNDRR: PropFirm = {
   asOf: AS_OF,
   about: 'A $25K options program, intraday only (09:30–15:55 ET). Rules from its current help-center articles; some details are not published for these programs, and are marked.',
   plans: [
-    ...program({ firm: 'TradeFundrr', slug: 'tf-preprop', name: 'Pre-Prop', source: 'https://tradefundrr.freshdesk.com/support/solutions/articles/202000125619-what-is-the-profit-target-', phases: ['Pre-Prop step', 'Prop step'], rows: [[25_000, [1_250, 1_250], 3_000]], rules: TF_RULES, notModelled: TF_NOTES }),
+    /* each step is its own $3,000 drawdown from the balance it starts at (the audit of 2026-10-31: the Prop step is a
+       fresh step, not the Pre-Prop step's floor carried on) */
+    ...program({ firm: 'TradeFundrr', slug: 'tf-preprop', name: 'Pre-Prop', source: 'https://tradefundrr.freshdesk.com/support/solutions/articles/202000125619-what-is-the-profit-target-', phases: ['Pre-Prop step', 'Prop step'], rows: [[25_000, [1_250, 1_250], 3_000]], rules: { ...TF_RULES, drawdown: { ...ddOf('eod', 0, 'balance'), perPhase: true } }, notModelled: TF_NOTES }),
     ...program({ firm: 'TradeFundrr', slug: 'tf-prop', name: 'Prop', source: 'https://tradefundrr.freshdesk.com/support/solutions/articles/202000125619-what-is-the-profit-target-', phases: ['Payout qualification'], rows: [[25_000, [1_250], 3_000]], rules: TF_RULES, notModelled: TF_NOTES }),
   ],
 };

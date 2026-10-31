@@ -468,3 +468,11 @@ Every rule below has a known-number check in `scripts/paper-proof.ts` (paper) an
   opening print of the settlement day** (the first real bar's open) — the best stand-in for the special opening quotation
   (SOQ), which the feed does not carry, and the trade says so. Never on the 16:00 close. Held into Wednesday: it waits
   for that print (asked from 09:32:30).
+- **Consistency and profitable days count closed P&L** — each session's balance at its end less its balance at its
+  start (`PaperDay.closeBal`, kept at the roll), the same measure the profit target reads. A trade still open does not
+  make a day: closed +$299.40 with +$499.70 still open is a $299.40 day, not $799.10.
+- **A phase may start its own drawdown** (`drawdown.perPhase`): its floor is measured from the balance the phase began
+  at, its high mark starts again there, and the floor stops trailing at that balance (`lockAt` 0). Set for TradeFundrr
+  Pre-Prop, whose Prop step is a step of its own: begun at 26,300 and closed as high as 29,500, its floor is 26,300 —
+  not the first step's 25,000. Every other plan keeps one floor across its phases. An account saved before this keeps
+  the plan it was saved with.
