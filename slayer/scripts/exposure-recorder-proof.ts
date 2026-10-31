@@ -275,6 +275,80 @@ function vendor(clock: () => number, opt: { status?: (p: string) => number; onCa
   check('stopping lets go of the lock', !fs.existsSync(path.join(dir, 'recorder.lock')) || JSON.parse(fs.readFileSync(path.join(dir, 'recorder.lock'), 'utf8')).pid !== process.pid);
 }
 
+/* ---- 5b. the lock is atomic: six processes taking it at the same instant, one wins ----
+   Each child is its own process (the lock names a pid), waits at a barrier file, calls takeLock at once with the
+   others, and stays alive until all have answered (a winner that exited would look like a dead holder). Three
+   races: an empty folder, a lock left by a dead process, a lock not refreshed for three minutes. A read-then-write
+   lock lets several through in each. */
+{
+  const { spawn } = await import('node:child_process');
+  const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
+  const recorder = path.join(here, '..', 'src', 'data', 'exposureRecorder.ts');
+  const race = async (seed: (dir: string) => void, n = 6): Promise<{ wins: number; answers: number }> => {
+    const dir = folder();
+    seed(dir);
+    const child = path.join(dir, 'child.mts');
+    fs.writeFileSync(
+      child,
+      [
+        `import fs from 'node:fs';`,
+        `import { takeLock } from ${JSON.stringify(recorder)};`,
+        `const [dir, me] = process.argv.slice(2);`,
+        `fs.writeFileSync(dir + '/ready.' + me, '');`,
+        `while (!fs.existsSync(dir + '/go')) {}`,
+        `const got = takeLock(dir);`,
+        `fs.writeFileSync(dir + '/answer.' + me, JSON.stringify(got));`,
+        `const t0 = Date.now();`,
+        `while (!fs.existsSync(dir + '/done') && Date.now() - t0 < 120000) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);`,
+      ].join('\n'),
+    );
+    const kids = Array.from({ length: n }, (_, i) => spawn(process.execPath, ['--import', 'tsx', child, dir, String(i)], { cwd: path.join(here, '..'), stdio: 'ignore' }));
+    const exited = kids.map(k => new Promise(r => k.on('exit', r)));
+    const count = (prefix: string) => fs.readdirSync(dir).filter(f => f.startsWith(prefix)).length;
+    const until = async (ok: () => boolean, ms: number) => {
+      const t0 = Date.now();
+      while (!ok() && Date.now() - t0 < ms) await sleep(25);
+    };
+    await until(() => count('ready.') === n, 120_000);
+    fs.writeFileSync(path.join(dir, 'go'), '');
+    await until(() => count('answer.') === n, 60_000);
+    const answers = fs.readdirSync(dir).filter(f => f.startsWith('answer.')).map(f => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) as { ok: boolean });
+    fs.writeFileSync(path.join(dir, 'done'), '');
+    await Promise.all(exited);
+    return { wins: answers.filter(a => a.ok).length, answers: answers.length };
+  };
+  const empty = await race(() => undefined);
+  check('six processes, an empty folder: exactly one takes the lock', empty.answers === 6 && empty.wins === 1, `${empty.wins} of ${empty.answers}`);
+  const dead = await race(dir => fs.writeFileSync(path.join(dir, 'recorder.lock'), JSON.stringify({ pid: 2 ** 22 + 12345, at: Date.now() })));
+  check('six processes, a lock left by a dead process: exactly one takes it over', dead.answers === 6 && dead.wins === 1, `${dead.wins} of ${dead.answers}`);
+  const old = await race(dir => fs.writeFileSync(path.join(dir, 'recorder.lock'), JSON.stringify({ pid: process.pid, at: Date.now() - 180_000 })));
+  check('six processes, a lock three minutes old: exactly one takes it over', old.answers === 6 && old.wins === 1, `${old.wins} of ${old.answers}`);
+  /* a lock another process is mid-way through writing (empty, just created) is not stolen */
+  const half = folder();
+  fs.writeFileSync(path.join(half, 'recorder.lock'), '');
+  const got = takeLock(half);
+  check('a lock still being written (empty, a moment old) counts as held', !got.ok);
+  /* the race itself, made to happen: this process reads a dead process's lock; before it acts, another live process
+     (the parent's pid) takes the stale lock over by rename, as a holder writes it. A read-then-write lock would now write
+     over that live lock and both would record. This one moves aside what it finds, sees it is not the stale lock it
+     judged, puts it back, and loses the round. */
+  const raced = folder();
+  const lockFile = path.join(raced, 'recorder.lock');
+  fs.writeFileSync(lockFile, JSON.stringify({ pid: 2 ** 22 + 12345, at: Date.now() }));
+  let fired = false;
+  const lost = takeLock(raced, Date.now(), {
+    afterRead: () => {
+      if (fired) return;
+      fired = true;
+      fs.writeFileSync(`${lockFile}.rival`, JSON.stringify({ pid: process.ppid, at: Date.now() }));
+      fs.renameSync(`${lockFile}.rival`, lockFile);
+    },
+  });
+  const after = JSON.parse(fs.readFileSync(lockFile, 'utf8')) as { pid: number };
+  check('a rival taking a stale lock between the read and the write keeps it; this process loses', fired && !lost.ok && lost.pid === process.ppid && after.pid === process.ppid, `${JSON.stringify(lost)}, file names ${after.pid}`);
+  check('… and nothing is left aside', !fs.readdirSync(raced).some(f => f.includes('.stale')));
+}
+
 /* ---- 6. pruning: ten days kept, a finished day gzipped and still served ---- */
 {
   const dir = folder();
@@ -400,6 +474,10 @@ function vendor(clock: () => number, opt: { status?: (p: string) => number; onCa
   let peak = 0;
   let recordBusy = 0;
   let recordPeak = 0;
+  /* No real latency: the stand-in vendor holds every call until the test lets it answer, oldest first (answerAll),
+     and the order is a counter, not a clock — so what is measured is the hub's order, never the machine's speed. */
+  let seq = 0;
+  const held: (() => void)[] = [];
   const done: { path: string; end: number; start: number }[] = [];
   const upstream = new Map<string, number>();
   const realFetch = globalThis.fetch;
@@ -414,34 +492,65 @@ function vendor(clock: () => number, opt: { status?: (p: string) => number; onCa
       recordBusy += 1;
       recordPeak = Math.max(recordPeak, recordBusy);
     }
-    const start = Date.now();
-    await sleep(60);
+    const start = seq++;
+    await new Promise<void>(r => held.push(r));
     busy -= 1;
     if (record) recordBusy -= 1;
-    done.push({ path: p, start, end: Date.now() });
+    done.push({ path: p, start, end: seq++ });
     return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
   }) as typeof fetch;
+  const turns = async (n = 20) => {
+    for (let i = 0; i < n; i++) await new Promise(r => setImmediate(r));
+  };
+  /* until `ok`, in event-loop turns (a guard of 100,000 turns, never a sleep) */
+  const turnsUntil = async (ok: () => boolean) => {
+    for (let i = 0; i < 100_000 && !ok(); i++) await new Promise(r => setImmediate(r));
+  };
+  /* answer the held calls one at a time, oldest first, letting the hub admit the next after each, until all settle */
+  const answerAll = async (all: Promise<unknown>[]) => {
+    let settled = false;
+    void Promise.all(all).then(() => (settled = true));
+    while (!settled) {
+      await turnsUntil(() => held.length > 0 || settled);
+      held.shift()?.();
+      await turns();
+    }
+  };
   try {
     const { uwDirect, uwHubStats } = await import('../server/uwProxy.mjs');
     /* eight record asks queued first, then eight viewers arrive */
     const recs = Array.from({ length: 8 }, (_, i) => uwDirect(bookPath(`R${String.fromCharCode(65 + i)}`, 0), { lane: 'record', maxAge: 45_000 }));
-    await sleep(5);
+    /* the record asks are queued and the first is with the vendor before any viewer arrives */
+    await turnsUntil(() => held.length > 0);
+    await turns();
     const views = Array.from({ length: 8 }, (_, i) => uwDirect(`/stock/V${String.fromCharCode(65 + i)}/stock-state`));
-    await Promise.all([...recs, ...views]);
-    const lastViewer = Math.max(...done.filter(d => d.path.includes('stock-state')).map(d => d.end));
-    const recordsAfter = done.filter(d => d.path.includes('spot-exposures') && d.start >= lastViewer - 60).length;
+    await answerAll([...recs, ...views]);
+    /* record asks that reached the vendor only after the last viewer had */
+    const lastViewer = Math.max(...done.filter(d => d.path.includes('stock-state')).map(d => d.start));
+    const recordsAfter = done.filter(d => d.path.includes('spot-exposures') && d.start > lastViewer).length;
     check('never more than the key\'s three requests at once', peak <= 3, `peak ${peak}`);
     check('the recorder holds at most one of them', recordPeak === 1, `peak ${recordPeak}`);
     check('viewers who arrive later go ahead of the queued recorder', recordsAfter >= 5, `${recordsAfter} of 8 record asks ran after the last viewer`);
     /* a viewer's fresh copy is the recorder's: no second call */
     const p = bookPath('SHARED', 0);
     const was = upstream.get(p) ?? 0;
-    await uwDirect(p);
-    await sleep(3_200);
-    const got = await uwDirect(p, { lane: 'record', maxAge: 45_000 });
+    await answerAll([uwDirect(p)]);
+    /* the viewer's copy 3.2 s old: the clock moved on, not waited out */
+    const realNow = Date.now;
+    Date.now = () => realNow() + 3_200;
+    let got: Awaited<ReturnType<typeof uwDirect>>;
+    let age = 0;
+    try {
+      const asked = uwDirect(p, { lane: 'record', maxAge: 45_000 });
+      await answerAll([asked]);
+      got = await asked;
+      age = Date.now() - got.at;
+    } finally {
+      Date.now = realNow;
+    }
     /* in the session that copy is past its 3 s freshness, outside it still fresh (TTL ×10): reused either way, so this
        holds at any hour */
-    check("a viewer's copy (3 s old, inside the recorder's 45 s) is reused, not asked again", (upstream.get(p) ?? 0) - was === 1 && got.status === 200 && got.at < Date.now() - 3_000);
+    check("a viewer's copy (3 s old, inside the recorder's 45 s) is reused, not asked again", (upstream.get(p) ?? 0) - was === 1 && got.status === 200 && age > 3_000, `${age} ms old`);
     const stats = uwHubStats() as Record<string, number>;
     check('record asks are counted apart and keep nothing warm', stats.recordAsks === 9 && stats.recordReused === 1 && stats.upstreamRecord === 8, JSON.stringify({ recordAsks: stats.recordAsks, reused: stats.recordReused, upstreamRecord: stats.upstreamRecord, watching: stats.watching }));
     check('… the hub watches only the viewers\' paths', stats.watching === 9, `${stats.watching}`);
@@ -499,7 +608,8 @@ function vendor(clock: () => number, opt: { status?: (p: string) => number; onCa
   try {
     const tq = await import('../src/data/thetaQuote');
     tq.ensureThetaPrice('ZZPROOF');
-    for (let i = 0; i < 50 && !tq.peekThetaPrice('ZZPROOF'); i++) await sleep(20);
+    /* until the price is in (a condition, polled; the guard is generous so a busy box only makes it slower) */
+    for (const t0 = Date.now(); !tq.peekThetaPrice('ZZPROOF') && Date.now() - t0 < 60_000; ) await sleep(10);
     const fresh = tq.peekThetaPrice('ZZPROOF');
     /* ten minutes on with no new reading (a hidden tab, failing reads): the price is no longer live */
     Date.now = () => realNow() + 10 * 60_000;

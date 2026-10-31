@@ -10,8 +10,14 @@
     read), the same grid, returns and decision rows, so the tile's numbers are the numbers its own read would give
     (scripts/vol-outlook-proof.ts, section 4).
   - Which names: the hot ones (server/hub.mjs HOT_NAMES: SPY, QQQ, IWM, SPX, NVDA, AAPL, TSLA) from the start, and any
-    name a tile asked for today. One name is read at a time; a name already read for today's window is not read again
-    until the next session closes (a closed session never changes, so the next read is that one session).
+    name a tile asked for today. A name a viewer asks for goes to the front of the queue, ahead of the hot names still
+    waiting. A name already read for today's window is not read again until the next session closes (a closed session
+    never changes, so the next read is that one session).
+  - Two names at once, at most, and the second only while the terminal has room (LANES, KEEP_FREE): each name reads
+    two spans at a time, and every read of the second name waits until, with it, at least KEEP_FREE of the terminal's
+    eight slots stay free and no other reader is queued for one. Alone on the terminal the two names hold four slots
+    and leave four; once the Compass engine or a chart takes slots, the second name pauses after its reads in flight
+    and the first goes on as before. With no slot count (a test, a host without the hub) one name is read at a time.
   - Kept on disk, <dir>/<TICKER>.json (the wire format, NaN spelled out), so a restart reads only what it lacks.
   - An ask for a name not read yet answers 202 with its progress and queues it; the tile asks again every few seconds.
 
@@ -28,11 +34,23 @@ import { thetaAnswer } from './compassServer';
 type Req = { url?: string; method?: string; headers: Record<string, string | string[] | undefined> };
 type Res = { statusCode: number; setHeader: (k: string, v: string) => void; end: (body?: string | Buffer) => void };
 
+/** The terminal's slots as they stand (server/thetaProxy.mjs thetaSlots) */
+export interface ThetaSlots {
+  terminal: number;
+  history: number;
+  busy: number;
+  busyHistory: number;
+  /** Readers queued for a slot */
+  waiting: number;
+}
+
 export interface VolServerOptions {
   /** Where each name's sessions are kept */
   dir: string;
   /** One ThetaData answer, in-process (server/thetaProxy.mjs thetaDirect) */
   theta: (path: string) => Promise<{ status: number; body: string; type: string }>;
+  /** The terminal's slots (server/thetaProxy.mjs thetaSlots): a second name is read only while they leave room */
+  slots?: () => ThetaSlots;
   /** The names read from the start, whether or not anyone asks */
   hot: readonly string[];
   /** Read (false: serve what is kept only) */
@@ -51,6 +69,16 @@ export interface VolServer {
 
 const TICKER = /^[A-Z][A-Z0-9.]{0,9}$/;
 const TICK_MS = 10 * 60_000;
+/** Names read at once */
+export const LANES = 2;
+/** Terminal slots a second name's read leaves free, counting itself: the Compass engine, the charts and the quotes
+    share the eight (history at most six) */
+export const KEEP_FREE = 4;
+/** How often a held-back read looks again */
+const ROOM_POLL_MS = 250;
+
+/** Room for one more background read: with it, KEEP_FREE slots stay free, history stays under its cap, nobody waits */
+export const roomForRead = (s: ThetaSlots): boolean => s.waiting === 0 && s.terminal - s.busy - 1 >= KEEP_FREE && s.busyHistory + 1 <= s.history;
 
 export function startVolOutlookServer(o: VolServerOptions): VolServer {
   const log = o.log ?? (() => undefined);
@@ -61,7 +89,8 @@ export function startVolOutlookServer(o: VolServerOptions): VolServer {
   let askedDay = '';
   const asked = new Map<string, number>();
   const queue: string[] = [];
-  let busy = false;
+  /* the names being read, one per lane */
+  const reading = new Set<string>();
   let stopped = false;
 
   try {
@@ -104,14 +133,22 @@ export function startVolOutlookServer(o: VolServerOptions): VolServer {
       return { status: 503, data: null, error: 'terminal_down' };
     }
   };
+  /* No race between two reads that both see room: read() reaches the hub's slot count (server/thetaProxy.mjs slot) in
+     the same turn, with no await before it, so the next look already counts it, or sees it queued. */
+  const room = () => !!o.slots && roomForRead(o.slots());
+  /* a second lane's read waits for room; the first lane's never does (one name at a time, as before) */
+  const readWhenRoom = async (p: string) => {
+    while (!stopped && !room()) await new Promise(r => setTimeout(r, ROOM_POLL_MS));
+    return read(p);
+  };
 
-  const buildOne = async (t: string) => {
+  const buildOne = async (t: string, lane: number) => {
     const w = sessionWindow();
     const have = kept.get(t);
     /* a copy from an earlier window serves as far as it reaches back (readSessions keeps the run from the new start) */
     const prior: Sessions | null = have ? { days: have.days, tail: have.tail } : null;
     const t0 = Date.now();
-    const got = await readSessions(t, prior, w.start, w.last, read, (done, of) => progress.set(t, { done, of }));
+    const got = await readSessions(t, prior, w.start, w.last, lane === 0 ? read : readWhenRoom, (done, of) => progress.set(t, { done, of }));
     progress.delete(t);
     if (got.offline) {
       log(`[vol-outlook] ${t}: the terminal did not answer; asked again on the next pass`);
@@ -124,24 +161,53 @@ export function startVolOutlookServer(o: VolServerOptions): VolServer {
     if (got.read) log(`[vol-outlook] ${t}: ${got.days.length} sessions to ${w.last} in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   };
 
-  const pump = async () => {
-    if (busy || stopped || o.read === false) return;
-    busy = true;
+  /* lane 0 reads whenever there is a name; lane 1 takes a name only while the slots leave room (and its reads wait
+     for room after that) */
+  const lanes: boolean[] = new Array(LANES).fill(false);
+  let roomTimer: ReturnType<typeof setTimeout> | null = null;
+  const runLane = async (lane: number) => {
+    lanes[lane] = true;
     try {
-      while (queue.length && !stopped) {
+      while (queue.length && !stopped && (lane === 0 || room())) {
         const t = queue.shift()!;
-        if (current(t)) continue;
-        await buildOne(t).catch(e => log(`[vol-outlook] ${t}: ${e instanceof Error ? e.message : e}`));
+        if (current(t) || reading.has(t)) continue;
+        reading.add(t);
+        try {
+          await buildOne(t, lane).catch(e => log(`[vol-outlook] ${t}: ${e instanceof Error ? e.message : e}`));
+        } finally {
+          reading.delete(t);
+        }
       }
     } finally {
-      busy = false;
+      lanes[lane] = false;
+    }
+    if (!stopped) pump();
+  };
+  const pump = () => {
+    if (stopped || o.read === false) return;
+    if (!lanes[0] && queue.length) void runLane(0);
+    if (!o.slots) return;
+    for (let lane = 1; lane < LANES; lane++) {
+      if (lanes[lane] || !queue.length) continue;
+      if (room()) void runLane(lane);
+      /* no room now: look again shortly while names wait */ else if (!roomTimer) {
+        roomTimer = setTimeout(() => {
+          roomTimer = null;
+          pump();
+        }, ROOM_POLL_MS * 4);
+        (roomTimer as { unref?: () => void }).unref?.();
+      }
     }
   };
   const want = (t: string, first = false) => {
-    if (current(t) || queue.includes(t)) return;
+    if (current(t) || reading.has(t)) return;
+    const at = queue.indexOf(t);
+    /* a viewer's name jumps the queue, ahead of the hot names still waiting */
+    if (at >= 0 && first && at > 0) queue.splice(at, 1);
+    else if (at >= 0) return;
     if (first) queue.unshift(t);
     else queue.push(t);
-    void pump();
+    pump();
   };
   const sweep = () => {
     const day = sessionWindow().liveDay;
@@ -176,10 +242,11 @@ export function startVolOutlookServer(o: VolServerOptions): VolServer {
       if (s && s.start === sessionWindow().start) return { ready: s };
       return { building: progress.get(t) ?? { done: 0, of: 0 } };
     },
-    status: () => ({ names: [...kept.keys()], queue: [...queue], busy, asked: [...asked.keys()] }),
+    status: () => ({ names: [...kept.keys()], queue: [...queue], reading: [...reading], busy: reading.size > 0, asked: [...asked.keys()] }),
     stop() {
       stopped = true;
       clearInterval(timer);
+      if (roomTimer) clearTimeout(roomTimer);
     },
   };
 }

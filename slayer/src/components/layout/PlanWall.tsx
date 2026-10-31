@@ -19,7 +19,7 @@ const STILL_PATH: Record<string, string> = {
 };
 
 /** what Desk holds, in one line — the tease */
-const DESK_LINE = 'Compass, the Weigher, Practice and Community, with every room in Tape and Book.';
+const DESK_LINE = 'Compass, the Weigher and Practice, every room in Tape and Book, and Community (coming soon).';
 
 /** the rail's room for an address — the longest path it starts with */
 const roomFor = (pathname: string): NavItem | null => {

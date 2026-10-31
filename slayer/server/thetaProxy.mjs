@@ -95,6 +95,9 @@ function wake() {
     slow.shift()();
   }
 }
+/** The terminal's slots as they stand: in use, by history, and readers waiting — for a background reader that should
+    take a slot only while others are left free (src/data/volOutlookServer.ts) */
+export const thetaSlots = () => ({ terminal: TERMINAL_SLOTS, history: HISTORY_SLOTS, busy, busyHistory, waiting: quick.length + slow.length });
 async function slot(p, fn) {
   const hist = isHistory(p);
   if (busy < TERMINAL_SLOTS && (!hist || busyHistory < HISTORY_SLOTS) && !(hist ? slow : quick).length) {

@@ -12,8 +12,9 @@ import { phaseAt, sessionAt } from '../core/session';
 import { etClock, keepTheta, keptTheta, noData, offlineWords, pageHidden, thetaDown, thetaGet, type ThetaAnswer } from './thetaFeed';
 import { thetaUseHere } from './theta';
 import { isCashIndex } from './symbolDirectory';
-import { EXT_WINDOWS, cleanExtendedBars, saneStockBars } from './thetaEligible';
+import { EXT_WINDOWS, RTH_WINDOW, cleanExtendedBars, saneStockBars } from './thetaEligible';
 import { saneBars } from './barSanity';
+import { InUseLru } from './boundedMap';
 
 export const THETA_INDEX = new Set(['SPX', 'VIX', 'RUT', 'NDX', 'XSP']);
 
@@ -29,7 +30,7 @@ export type TapeGrain = '15s' | '1m' | '5m' | '15m' | '30m' | '1h' | 'day' | 'we
 /* Each window ends on its last millisecond: an end of 15:59:59 leaves out every print stamped 15:59:59.xxx (on SPY
    2026-10-29, 14,897 shares of the 15:59 bar and its 769.66 high), and 16:00:00 would open the 16:00 bar. */
 const WINDOWS: Record<DeskSession, { start: string; end: string }[]> = {
-  rth: [{ start: '09:30:00', end: '15:59:59.999' }],
+  rth: [RTH_WINDOW],
   pre: [EXT_WINDOWS.pre],
   post: [EXT_WINDOWS.post],
   overnight: [
@@ -440,8 +441,13 @@ interface Slot extends TapeRead {
   done: boolean;
 }
 
-const slots = new Map<string, Slot>();
+/* Bounded (audit DL6): a tape slot holds a name's whole run of bars at one grain and session, and a tab left open used
+   to keep every tape it ever drew. The store keeps TAPE_PANES slots — about twelve chart panes' worth — and lets go of
+   the least recently used one no pane wants once a thirteenth is made; a slot a pane still wants is never let go,
+   however many there are. A tape let go is read again (its kept copy first) if a pane asks for it later. */
+export const TAPE_PANES = 12;
 const wanted = new Map<string, number>();
+const slots = new InUseLru<string, Slot>(TAPE_PANES, key => wanted.has(key));
 const listeners = new Set<() => void>();
 let rev = 0;
 const emit = () => {
@@ -673,7 +679,10 @@ export function wantTape(symbol: string, grain: TapeGrain, session: DeskSession)
   return () => {
     const n = (wanted.get(key) ?? 1) - 1;
     if (n > 0) wanted.set(key, n);
-    else wanted.delete(key);
+    else {
+      wanted.delete(key);
+      slots.trim();
+    }
     stopClockIfIdle();
   };
 }
@@ -762,8 +771,12 @@ interface PrintSlot {
   keptAt: number;
 }
 
-const prints = new Map<string, PrintSlot>();
+/* Bounded like the tapes: TAPE_PANES names' prints, the least recently used unwanted one let go first, a wanted one never */
 const printWanted = new Map<string, number>();
+const prints = new InUseLru<string, PrintSlot>(TAPE_PANES, name => printWanted.has(name));
+/** The tapes and prints held now, least recently used first (scripts/tape-cache-proof.ts) */
+export const heldTapeKeys = (): string[] => [...slots.keys()];
+export const heldPrintNames = (): string[] => [...prints.keys()];
 
 /** A stock's print moves in every session the stock trades (core/session.ts: overnight, pre, regular, after hours); an
     index's from 09:30 to a quarter after the cash close (16:15; 13:15 on an early close), and the VIX through Global
@@ -857,7 +870,10 @@ export function wantPrint(symbol: string): () => void {
   return () => {
     const n = (printWanted.get(name) ?? 1) - 1;
     if (n > 0) printWanted.set(name, n);
-    else printWanted.delete(name);
+    else {
+      printWanted.delete(name);
+      prints.trim();
+    }
     stopClockIfIdle();
   };
 }

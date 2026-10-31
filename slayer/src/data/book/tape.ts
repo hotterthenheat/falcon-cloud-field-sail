@@ -7,7 +7,7 @@ import { noteBarCloses, peekRegularCloses } from '../dayChange';
 import { type Candle } from '../../types/market';
 import { thetaAllowedHere } from '../theta';
 import { thetaCall } from '../theta';
-import { EXT_WINDOWS, cleanExtendedBars } from '../thetaEligible';
+import { EXT_WINDOWS, RTH_WINDOW, cleanExtendedBars } from '../thetaEligible';
 import { saneBars } from '../barSanity';
 import { type UwBar } from '../whales';
 import { num } from './scale';
@@ -90,10 +90,12 @@ export async function thetaTape(symbol: string, index: boolean): Promise<UwBar[]
   const start = ymdNY(Date.now() - back * 86400000);
   const root = index ? 'index' : 'stock';
   /* The vendor's default window is the cash session. Premarket, the curb and the overnight book are separate asks.
-     Each ends on its last millisecond: an end of 19:59:59 leaves out the prints stamped 19:59:59.xxx, and the cash
-     window's old end of 16:15:00 kept a 16:15 bar of the 16:15:00.000 prints alone (it wins over the post window's). */
+     Each ends on its last millisecond: an end of 19:59:59 leaves out the prints stamped 19:59:59.xxx. The cash window
+     is the one every reader of minute bars asks (thetaEligible RTH_WINDOW, to 15:59:59.999), so the chart's read of
+     the same name and day is the same request; an index's 16:00–16:15 tail and a stock's after-hours come from the
+     post window below (one bar a minute either way: the first window's bar for a minute is kept). */
   const windows = [
-    { start: '09:30:00', end: '16:15:59.999' },
+    RTH_WINDOW,
     EXT_WINDOWS.pre,
     EXT_WINDOWS.post,
     { start: '20:00:00', end: '23:59:59.999' },

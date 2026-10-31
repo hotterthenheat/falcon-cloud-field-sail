@@ -137,10 +137,6 @@ export function keepFresh(key: string, cadence: Cadence, run: () => unknown, sho
   window.setInterval(refreshDue, 10_000);
   document.addEventListener('visibilitychange', refreshDue);
 }
-/** Forget a book's schedule (its key can be registered again) */
-export function dropFresh(key: string): void {
-  jobs.delete(key);
-}
 
 /* ---- kept, then live ------------------------------------------------------------- */
 

@@ -66,12 +66,28 @@ say('mktFacts', mktFacts);
 /* counted per raw row: report_flags/trading_hours/clock for extended, OPRA ML?T/?ESL codes for legs, bid >= ask for
    crossed, an NBBO side stamped 5+ minutes before the fill for stale; no read = mid, legs, after hours, no-read quotes */
 expectEqual('market tape: prints, after hours, crosses, spread legs, compression', [mktFacts.prints, mktFacts.extended, mktFacts.cross, mktFacts.spreadLeg, mktFacts.compression], [500, 3, 0, 184, 0]);
-expectEqual('market tape: quote crossed / stale, no read, crownable', [mktFacts.crossed, mktFacts.stale, mktFacts.noRead, mktFacts.crownable], [2, 1, 201, 316]);
+/* no read 259 = the 201 mid, leg, after-hours and no-read-quote prints + 58 sided prints not likely opening (their day's
+   volume within the open interest it opened on: audit §8 F1, scripts/opening-lean-proof.ts) */
+expectEqual('market tape: quote crossed / stale, no read, crownable', [mktFacts.crossed, mktFacts.stale, mktFacts.noRead, mktFacts.crownable], [2, 1, 259, 316]);
 const mktSum = summarizeTape(regular);
 say('mktSum', { bull: mktSum.bullPremium, bear: mktSum.bearPremium, calls: mktSum.callPremium, puts: mktSum.putPremium, sweeps: mktSum.sweeps, blocks: mktSum.blocks, legs: mktSum.spreadLegs, crosses: mktSum.crosses, largest: mktSum.largest });
-/* the regular prints' premium summed by call/put, and by side (ask-call or bid-put bullish) over the prints that read */
-expectNear('market tape: bullish premium', mktSum.bullPremium, 61249, 1e-9);
-expectNear('market tape: bearish premium', mktSum.bearPremium, 138158, 1e-9);
+/* the regular prints' premium summed by call/put, and by side (ask-call or bid-put bullish) over the prints that read
+   and likely opened. Before the opening rule every sided print leaned: bull 61,249, bear 138,158; the 58 left out hold
+   21,918 of the bull side and 63,381 of the bear side, $85,299 in all. */
+expectNear('market tape: bullish premium', mktSum.bullPremium, 39331, 1e-9);
+expectNear('market tape: bearish premium', mktSum.bearPremium, 74777, 1e-9);
+/* the split recounted off each print's raw fields, not through tape.ts: a sided print (ASK or BID, one leg, no cross,
+   no compression) leans only when its day's volume ran past the open interest (traceRows likelyOpeningOf, unpaired) */
+{
+  const sided = regular.filter(p => (p.side === 'ASK' || p.side === 'BID') && !(p.legs > 1 && !p.compression) && !p.cross && !p.compression && p.quoteNoRead == null);
+  const opens = (p: (typeof regular)[number]) => p.volume > 0 && p.volume > p.oi;
+  const up = (p: (typeof regular)[number]) => (p.right === 'C') === (p.side === 'ASK');
+  const sumOf = (xs: typeof regular) => Math.round(xs.reduce((a, p) => a + p.premium, 0));
+  const out = sided.filter(p => !opens(p));
+  expectEqual('market tape: opening split recounted — bull, bear, left out (count, premium)', [sumOf(sided.filter(p => opens(p) && up(p))), sumOf(sided.filter(p => opens(p) && !up(p))), out.length, sumOf(out)], [39331, 74777, 58, 85299]);
+  expectEqual('market tape: the summary\'s own left-out count and money', [mktSum.notOpening.count, Math.round(mktSum.notOpening.premium)], [58, 85299]);
+  expectEqual('market tape: the old read is the new one plus what was left out', [Math.round(mktSum.bullPremium + sumOf(out.filter(up))), Math.round(mktSum.bearPremium + sumOf(out.filter(p => !up(p))))], [61249, 138158]);
+}
 expectNear('market tape: call premium', mktSum.callPremium, 365791, 1e-9);
 expectNear('market tape: put premium', mktSum.putPremium, 501144, 1e-9);
 expectEqual('market tape: spread legs set apart', [mktSum.spreadLegs.count, Math.round(mktSum.spreadLegs.premium)], [184, 659289]);
@@ -89,10 +105,13 @@ const spyFacts = {
 };
 say('spyFacts', spyFacts);
 /* the same rules over SPY's raw rows; the side is the tag unless the quote contradicts it */
-expectEqual('SPY tape: prints, after hours, legs, no read, ask, bid', [spyFacts.prints, spyFacts.extended, spyFacts.spreadLeg, spyFacts.noRead, spyFacts.ask, spyFacts.bid], [500, 0, 42, 59, 197, 283]);
+/* no read 117 = 59 mid and leg prints + 58 sided prints not likely opening */
+expectEqual('SPY tape: prints, after hours, legs, no read, ask, bid', [spyFacts.prints, spyFacts.extended, spyFacts.spreadLeg, spyFacts.noRead, spyFacts.ask, spyFacts.bid], [500, 0, 42, 117, 197, 283]);
 const spySum = summarizeTape(spy.prints.filter(p => !p.extended));
 say('spySum', { bull: spySum.bullPremium, bear: spySum.bearPremium, calls: spySum.callPremium, puts: spySum.putPremium, largest: spySum.largest });
-expectEqual('SPY tape: bull, bear, calls, puts', [spySum.bullPremium, spySum.bearPremium, spySum.callPremium, spySum.putPremium].map(Math.round), [190079, 169433, 132473, 245827]);
+/* likely-opening prints only (before the opening rule: bull 190,079, bear 169,433); calls and puts keep every print */
+expectEqual('SPY tape: bull, bear, calls, puts', [spySum.bullPremium, spySum.bearPremium, spySum.callPremium, spySum.putPremium].map(Math.round), [75959, 131842, 132473, 245827]);
+expectEqual('SPY tape: left out of the lean — the old read less the new', [spySum.notOpening.count, Math.round(spySum.notOpening.premium)], [58, 190079 - 75959 + (169433 - 131842)]);
 expectEqual('SPY tape: largest crownable print', spySum.largest, { ticker: 'SPY', strike: 775, right: 'C', premium: 52320 });
 
 /* compression: the session's last cbmo / mctp prints */
@@ -275,7 +294,7 @@ const { buildCatches } = await import('../../src/data/flowBook');
   expectEqual('market tide 09:30–16:15: covers', tideNet?.covers, { since: '09:30', until: '16:14', source: 'market tide', leaves: [] });
   const spyTicks = (await uwCall('/stock/SPY/net-prem-ticks')).data as Record<string, unknown>[];
   expectEqual("SPY pane: covers", T.paneCovers('SPY', T.paneFromTicks('SPY', spyTicks, [])), { since: '09:30', until: '16:14', source: 'net-prem-ticks', leaves: ['pre-market', 'after 16:15 ET'] });
-  expectEqual('market tape summary: covers', [mktSum.covers.source, mktSum.covers.leaves], ['the prints in hand', ['spread legs', 'crosses', 'compression', 'mid prints', 'after hours']]);
+  expectEqual('market tape summary: covers', [mktSum.covers.source, mktSum.covers.leaves], ['the prints in hand', ['spread legs', 'crosses', 'compression', 'mid prints', 'after hours', '58 prints not likely opening, perhaps closing ($85K: shown, no lean)']]);
   /* Compare's headline obeys the money cut: on OTM it is the cut's own contracts (≈ premium × (ask − bid) share) — an
      OTM call of $1M at 600/200/200 is +$400K, an OTM put of $500K at 100/300/100 −$200K, net +$600K; the every-strike
      expiry route's +$8M is not the cut's (it read +$8M on every cut) */

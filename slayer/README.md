@@ -118,9 +118,21 @@ open on your machine, which is fine for local use. With accounts on and Stripe n
 ```powershell
 npm run typecheck
 npm run build
-npx tsx scripts/golden/pinpoint-golden.ts        # and the other scripts/golden/*-golden.ts
-node scripts/hub-proof.mjs
-npx tsx scripts/exposure-recorder-proof.ts
+npm test                                  # every proof and golden test CI runs (scripts/run-proofs.mjs)
+npm test -- pine-proof hub-proof          # only the ones named
+node scripts/browser-smoke.mjs            # after a build: every route in Chromium, desktop and phone
 ```
 
-CI (`.github/workflows/ci.yml`) runs the typecheck, the build, every proof script and every golden test on each push.
+CI (`.github/workflows/ci.yml`) runs two jobs on each push to `main` and each pull request:
+
+- **slayer**: `npm ci`, the typecheck (`tsc` over `tsconfig.json` and `tsconfig.node.json`), `npm run build`, then
+  `npm test`. `npm test` runs `scripts/run-proofs.mjs`, which holds the one list of proofs: the 23 `scripts/*-proof.ts`
+  and the two `scripts/*-proof.mjs` named in its `PROOFS` (proxy-auth and hub), then every `scripts/golden/*-golden.ts`.
+  A proof is added to that list, and only there. Not in it, so not in CI: `flow-analytics-proof.ts` on its own (its
+  checks run inside `golden/flow-analytics-golden.ts`); the browser and load proofs that need a running app or a live
+  terminal (`drag-cpu`, `frame-gaps`, `jolt`, `load`, `open-hop`, `perf-sweep` and the five `weigher-*` `.mjs` proofs);
+  the `check-*.mjs` page checks; and the Python `engine/` tests (the engine is dormant, `engine/README.md`).
+- **browser-smoke**: `npx vite build`, then `scripts/browser-smoke.mjs`: the build served by `server.ts` with no keys
+  and no terminal, every route loaded in Chromium at 1440×900 and 390×844, failing on any console error or page error,
+  "NaN" or "undefined" on the page, or sideways overflow. The data routes' offline 503s are the expected state and are
+  counted, not failed.

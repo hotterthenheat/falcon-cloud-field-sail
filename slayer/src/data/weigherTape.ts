@@ -14,6 +14,7 @@ import { thetaUseHere } from './theta';
 import { sessionLive, THETA_INDEX, dayClose, foldTo, grainStep, paintPrint, readEod, readOhlc, useThetaPrint, useThetaTape, tapeWords, weekClose, type TapeGrain } from './thetaTape';
 import { chartGrain, shapeBars } from './thetaCandles';
 import { tfMinutes } from './timeframe';
+import { EXT_WINDOWS, RTH_WINDOW } from './thetaEligible';
 import { productOf, sessionAt } from '../core/session';
 
 const grainOf = (tf: Timeframe): TapeGrain => chartGrain(tfMinutes(tf));
@@ -61,9 +62,9 @@ function optionInterval(tf: Timeframe): string {
 }
 /* each window ends on its last millisecond: an end of 15:59:59 leaves out the prints stamped 15:59:59.xxx */
 const WINDOWS: Record<DeskSession, { start: string; end: string }[]> = {
-  rth: [{ start: '09:30:00', end: '15:59:59.999' }],
-  pre: [{ start: '04:00:00', end: '09:29:59.999' }],
-  post: [{ start: '16:00:00', end: '19:59:59.999' }],
+  rth: [RTH_WINDOW],
+  pre: [EXT_WINDOWS.pre],
+  post: [EXT_WINDOWS.post],
   overnight: [
     { start: '20:00:00', end: '23:59:59.999' },
     { start: '00:00:00', end: '03:59:59.999' },

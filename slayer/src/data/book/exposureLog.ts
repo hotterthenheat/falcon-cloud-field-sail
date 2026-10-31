@@ -170,12 +170,6 @@ export function useExposureLogRev(ticker: string): number {
   );
 }
 
-/** The newest day the log holds, and the earliest moment it covers (ms) — null before the first answer */
-export function exposureLogSpan(ticker: string): { day: string; from: number } | null {
-  const log = logs.get(rootOf(ticker));
-  return log && Number.isFinite(log.from) ? { day: log.day, from: log.from } : null;
-}
-
 const todayMemo = new Map<string, { rev: number; at: number | null }>();
 /** The first moment today any reading covers, ms — null before today's first answer */
 export function exposureTodayFrom(ticker: string, now: number = Date.now()): number | null {

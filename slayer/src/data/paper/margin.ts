@@ -69,7 +69,6 @@ export interface Margin {
   held: number;
 }
 
-const money = (v: number) => `$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const k = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/0$/, ''));
 /** What a leg is worth in the money with the name at `s` */
 const legAt = (strike: number, right: 'C' | 'P', s: number) => Math.max(0, right === 'C' ? s - strike : strike - s);
@@ -191,5 +190,3 @@ export function marginOf(ps: MarginPos[]): Margin {
 
 /** The line a position's margin is on, if any */
 export const marginLineOf = (m: Margin, key: string): MarginLine | undefined => m.lines.find(l => l.keys[0] === key) ?? m.lines.find(l => l.keys.includes(key));
-/** "$1,240.00" — for the words the engine writes */
-export const marginMoney = money;

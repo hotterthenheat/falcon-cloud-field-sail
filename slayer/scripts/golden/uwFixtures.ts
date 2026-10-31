@@ -21,12 +21,21 @@ const keyOf = (path: string) => createHash('sha1').update(path).digest('hex').sl
 
 type Saved = { path: string; status: number; body: string; type?: string };
 
-/** Serve /api/uw/* and /api/theta/* from the named fixture set (or record them). Returns the paths asked for, in order. */
-export function installUwFixtures(set: string): { asked: string[] } {
+export interface Fixtures {
+  /** The paths asked for, in order */
+  asked: string[];
+  /** Fixture requests asked and not yet answered */
+  inFlight: () => number;
+}
+
+/** Serve /api/uw/* and /api/theta/* from the named fixture set (or record them). Returns the paths asked for, in order,
+    and how many are being answered now. */
+export function installUwFixtures(set: string): Fixtures {
   const dir = join(ROOT, set);
   const asked: string[] = [];
+  let open = 0;
   const real = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const serve = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const m = /^\/api\/(uw|theta)(\/.*)$/.exec(url);
     if (!m) return real(input, init);
@@ -67,8 +76,55 @@ export function installUwFixtures(set: string): { asked: string[] } {
     mkdirSync(dir, { recursive: true });
     writeFileSync(file, gzipSync(JSON.stringify({ path, status: res!.status, body, type } satisfies Saved)));
     return new Response(body, { status: res!.status, headers: { 'content-type': type } });
+  };
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    open++;
+    try {
+      return await serve(input, init);
+    } finally {
+      open--;
+    }
   }) as typeof fetch;
-  return { asked };
+  return { asked, inFlight: () => open };
+}
+
+/* Event-loop turns with nothing asked and nothing in flight that count as settled. In replay the app's reads follow
+   one another on promises alone: a fixture answers at once, and the client's only timers are its back-offs after a
+   429 or a gateway fault (data/whales.ts), which are never recorded. So "settled" is a count of turns, not a stretch
+   of wall-clock time, and a busy CPU slows it without breaking it. */
+const SETTLED_TURNS = 200;
+const turn = () => new Promise<void>(r => setImmediate(r));
+
+/** Wait until `ok()` holds and the fixture reads are done: nothing in flight and no new ask for SETTLED_TURNS turns of
+    the event loop. Recording (GOLDEN_RECORD=1) talks to the real vendor, whose answers take wall-clock time, so it
+    keeps waiting for 12 s with no new ask. `ms` is only a guard against a run that never settles. */
+export async function settleOn(fx: Fixtures, ok: () => boolean, what: string, ms = 600_000): Promise<void> {
+  const t0 = Date.now();
+  let last = fx.asked.length;
+  if (RECORD) {
+    let quietSince = Date.now();
+    while (Date.now() - t0 < ms) {
+      await new Promise(r => setTimeout(r, 250));
+      if (fx.asked.length !== last || fx.inFlight() > 0) {
+        last = fx.asked.length;
+        quietSince = Date.now();
+      } else if (ok() && Date.now() - quietSince >= 12_000) return;
+    }
+    throw new Error(`golden: ${what} did not settle`);
+  }
+  let idle = 0;
+  while (Date.now() - t0 < ms) {
+    await turn();
+    if (fx.inFlight() > 0 || fx.asked.length !== last || !ok()) {
+      last = fx.asked.length;
+      idle = 0;
+      /* waiting on the app's own work (a parse, a timer it set): yield to the timers phase too */
+      if (fx.inFlight() === 0) await new Promise(r => setTimeout(r, 1));
+      continue;
+    }
+    if (++idle >= SETTLED_TURNS) return;
+  }
+  throw new Error(`golden: ${what} did not settle`);
 }
 
 /* The clock a fixture set was recorded at, so session and expiry logic replays the same way. */

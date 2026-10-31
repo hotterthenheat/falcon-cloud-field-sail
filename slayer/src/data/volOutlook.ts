@@ -32,6 +32,7 @@ import { nyMinutes, nyParts } from '../core/nyTime';
 import { keepTheta, keptTheta, noData, thetaGet, type ThetaAnswer } from './thetaFeed';
 import { feedHeaders } from './feedGate';
 import { flatRows, sessionsBack, spansOf } from './thetaTape';
+import { RTH_WINDOW } from './thetaEligible';
 import { isCashIndex } from './symbolDirectory';
 import { listLiveExpiries, loadLiveChain } from './weigherDesk';
 import { vendorIvOnTradingClock } from '../core/volClock';
@@ -181,7 +182,7 @@ export function minuteBarsOfRows(data: unknown): Map<string, MinuteBar[]> {
 /** The request the chart's own minute tape makes for the regular session (thetaTape pullIntraday), so the server's
     cache answers both */
 export const minutePath = (ticker: string, from: string, to: string): string =>
-  `/${isCashIndex(ticker) ? 'index' : 'stock'}/history/ohlc?symbol=${encodeURIComponent(ticker)}&start_date=${from}&end_date=${to}&interval=1m&start_time=09:30:00&end_time=15:59:59.999&format=json`;
+  `/${isCashIndex(ticker) ? 'index' : 'stock'}/history/ohlc?symbol=${encodeURIComponent(ticker)}&start_date=${from}&end_date=${to}&interval=1m&start_time=${RTH_WINDOW.start}&end_time=${RTH_WINDOW.end}&format=json`;
 
 /* ------------------------------------------------------------------ least squares */
 
@@ -584,8 +585,14 @@ export function keptRun(have: Sessions | null, start: string): Sessions {
   return { days: have.days.filter(d => d.day >= start), tail: have.tail };
 }
 
-/** Bring a name's sessions up to `last`: the kept run (keptRun), then the missing sessions read (two months of minute
-    bars at a time, two reads at a time, so one name never holds the page's history slots) and digested onto its tail.
+/** Bring a name's sessions up to `last`: the kept run (keptRun), then the missing sessions read (28 days of minute bars
+    at a time, thetaTape spansOf, two reads at a time, so one name never holds the page's history slots) and digested
+    onto its tail.
+    Wider reads are no cheaper. The terminal takes up to end − start = 31 days (2026-07-15…08-15 answers, …08-16 is
+    "limited to no more than 1 month"), but its cost is per session read, not per request: five sessions cost about
+    2.1 s in one request and 2.8 s in five (IWM, 2026-10-31), a month 8–13 s either way. A cold SPY window (272
+    sessions) took 171–201 s in 15 reads of 28 days and 196–197 s in 13 reads of 31: the same. A cold start is
+    shortened by reading two names at once (data/volOutlookServer.ts), not by fewer requests.
     `offline`: a read failed for a reason other than "no data", and the run is the kept one. */
 export async function readSessions(
   ticker: string,

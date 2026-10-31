@@ -424,6 +424,61 @@ console.log('\n4. the server reads the sessions once a day; the tile fits on the
     const ao = outlookOf('QQQ', own.days, w.liveDay);
     const so = served ? outlookOf('QQQ', served.days, w.liveDay) : null;
     check('tile: the outlook off the served sessions = off its own read', same(ao, so));
+
+    /* the lanes, on a terminal the test plays: each read takes a few milliseconds and is counted in flight per name */
+    const { KEEP_FREE, LANES } = await import('../src/data/volOutlookServer');
+    const lanesRun = async (hot: string[], others: () => number, ask?: { at: number; name: string }, slots = true) => {
+      const ldir = mkdtempSync(join(tmpdir(), 'vol-lanes-'));
+      const inflight = new Map<string, number>();
+      let total = 0;
+      let peakTotal = 0;
+      let peakNames = 0;
+      let peakBusy = 0;
+      let readsDone = 0;
+      const doneOrder: string[] = [];
+      const slotsNow = () => ({ terminal: 8, history: 6, busy: total + others(), busyHistory: total + others(), waiting: 0 });
+      const s = startVolOutlookServer({
+        dir: ldir,
+        hot,
+        ...(slots ? { slots: slotsNow } : {}),
+        log: line => {
+          const m = line.match(/\] ([A-Z]+): \d+ sessions/);
+          if (m) doneOrder.push(m[1]);
+        },
+        theta: async p => {
+          const t = p.match(/symbol=([A-Z]+)/)![1];
+          total++;
+          inflight.set(t, (inflight.get(t) ?? 0) + 1);
+          peakTotal = Math.max(peakTotal, total);
+          peakBusy = Math.max(peakBusy, total + others());
+          peakNames = Math.max(peakNames, [...inflight.values()].filter(v => v > 0).length);
+          await new Promise(r => setTimeout(r, 4));
+          total--;
+          inflight.set(t, inflight.get(t)! - 1);
+          readsDone++;
+          if (ask && readsDone === ask.at) s.ask(ask.name);
+          return { status: 200, body: body(p), type: 'application/json' };
+        },
+      });
+      const t0l = Date.now();
+      while (doneOrder.length < hot.length && Date.now() - t0l < 60_000) await new Promise(r => setTimeout(r, 10));
+      s.stop();
+      rmSync(ldir, { recursive: true, force: true });
+      return { doneOrder, peakTotal, peakNames, peakBusy };
+    };
+    /* one lane (no slot count): a viewer's ask for CCC, third among the hot names, while AAA is read — CCC goes next,
+       ahead of BBB still waiting */
+    const jump = await lanesRun(['AAA', 'BBB', 'CCC'], () => 0, { at: 2, name: 'CCC' }, false);
+    check('queue: a viewer\'s name jumps ahead of the hot names still waiting (read AAA, then the asked CCC, then BBB)', jump.doneOrder.join(',') === 'AAA,CCC,BBB' && jump.peakNames === 1, jump.doneOrder.join(','));
+    /* two lanes on an idle terminal: two names at once, two reads each — four slots held, four left free */
+    const idle = await lanesRun(['AAA', 'BBB', 'CCC', 'DDD'], () => 0);
+    check(`lanes: ${LANES} names at once on an idle terminal, ${idle.peakTotal} reads in flight, ${8 - idle.peakBusy} of 8 slots left free (≥ ${KEEP_FREE})`, idle.peakNames === 2 && idle.peakTotal === 4 && 8 - idle.peakBusy >= KEEP_FREE, JSON.stringify(idle));
+    /* the Compass engine and a chart holding three slots: a second name would leave fewer than four free — one name at a time */
+    const shared = await lanesRun(['AAA', 'BBB', 'CCC'], () => 3);
+    check('lanes: with three slots taken by others, one name at a time (the second would leave under four free)', shared.peakNames === 1 && shared.peakTotal === 2, JSON.stringify(shared));
+    /* one slot taken by others: the second name's reads go only while four stay free (8 − 1 − 2 − 1 = 4 for its first) */
+    const one = await lanesRun(['AAA', 'BBB', 'CCC'], () => 1);
+    check(`lanes: with one slot taken by others, a second name reads but never past ${KEEP_FREE} free (peak ${one.peakBusy} of 8 busy)`, one.peakNames === 2 && 8 - one.peakBusy >= KEEP_FREE, JSON.stringify(one));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

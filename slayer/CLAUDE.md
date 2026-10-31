@@ -7,7 +7,7 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
-- On this machine `graphify` is not on PATH (installed 2026-09-19 with `uv tool install graphifyy`): call it as `"C:/Users/Dracula/.local/bin/graphify.exe"` until `~/.local/bin` is added to PATH. The graph lives in `graphify-out/`, which is git-ignored.
+- `graphify` is installed with `uv tool install graphifyy`. If it is not on PATH, call it from where `uv tool install` put it (`uv tool dir --bin` prints that folder; usually `~/.local/bin`, `graphify.exe` on Windows). The graph lives in `graphify-out/`, which is git-ignored.
 
 ## data sources
 
