@@ -1,5 +1,8 @@
 /* The wire map (MapLibre on the public-domain country atlas, fetched once by URL): no tile server, no key. Water is
-   the background, so zooming out never opens a black frame. Loaded only when the News page shows its map. */
+   the background, so zooming out never opens a black frame. Loaded only when the News page shows its map.
+   The coarse atlas draws first; the finer one (1:50m) replaces it once in hand, so a flight to a city lands on a clean
+   coast. Countries are shaded by how many stories on the cut come from them; pins sit on the cities, coloured by how
+   the named stock moved when its story crossed; the open story's lines run to the markets its sector trades through. */
 import { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import type { GeoJSONSource } from 'maplibre-gl';
@@ -8,17 +11,15 @@ import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 import { feature } from 'topojson-client';
-import { geoArea, geoCentroid, geoContains } from 'd3-geo';
-import atlasUrl from 'world-atlas/countries-110m.json?url';
+import { geoArea, geoBounds, geoCentroid, geoContains } from 'd3-geo';
+import coarseUrl from 'world-atlas/countries-110m.json?url';
+import fineUrl from 'world-atlas/countries-50m.json?url';
 import cities from '../../data/cities.json';
 import { useResolvedTheme } from '../../theme/theme';
-import type { CityPing, GeoZone, NewsGrade } from '../../data/newsroom';
-import { HEAT_INK, OPEN_INK, NEWS_INK, type HeatPoint, type MapProps, type Reach } from './NewsMap';
+import type { CityPing, GeoZone } from '../../data/newsroom';
+import { MAP_INK, pinTone, type HeatPoint, type MapProps, type Reach, type SessionDef } from './NewsMap';
 
-const SEA: Record<'dark' | 'light', string> = { dark: '#12181e', light: '#d7e3ea' };
-const LAND: Record<'dark' | 'light', string> = { dark: '#2a333c', light: '#f3f0e8' };
-const EDGE: Record<'dark' | 'light', string> = { dark: 'rgba(255,255,255,0.22)', light: 'rgba(20,28,36,0.25)' };
-const INK: Record<NewsGrade, string> = { THREAT: 'rgb(var(--bear))', ALLY: 'rgb(var(--bull))', WATCH: '#8a8f99' };
+type Tone = 'dark' | 'light';
 
 /* The dateline: the atlas cuts rings at ±180°, which the map draws as a line across the world, so any step longer than
    half the world is carried on past 180° and the polygon stays whole. */
@@ -40,245 +41,291 @@ const unwrapFeature = (f: GeoJSON.Feature): GeoJSON.Feature => {
   return f;
 };
 
-const EMPTY_LAND: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
-let land: GeoJSON.FeatureCollection | null = null;
+const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 type Atlas = Parameters<typeof feature>[0] & { objects: { countries: Parameters<typeof feature>[1] } };
-let atlasAsk: Promise<void> | null = null;
-/** The atlas, read once a visit; Antarctica is left off (no story lands there) */
-const loadAtlas = (): Promise<void> =>
-  (atlasAsk ??= fetch(atlasUrl)
+type Country = { f: GeoJSON.Feature; west: number; east: number; south: number; north: number };
+let land: GeoJSON.FeatureCollection | null = null;
+let countries: Country[] = [];
+/** 0 none, 1 coarse, 2 fine */
+let atlasLevel = 0;
+const readAtlas = (url: string, level: number): Promise<void> =>
+  fetch(url)
     .then(r => r.json() as Promise<Atlas>)
     .then(topo => {
+      if (atlasLevel >= level) return;
       const fc = feature(topo, topo.objects.countries) as unknown as GeoJSON.FeatureCollection;
-      land = { type: 'FeatureCollection', features: fc.features.filter(f => String(f.id) !== '010' && f.geometry).map(unwrapFeature) };
-    }));
-const landCollection = (): GeoJSON.FeatureCollection => land ?? EMPTY_LAND;
-const countryFeatures = () => landCollection().features;
+      /* Antarctica is left off: no story lands there */
+      const fs = fc.features.filter(f => String(f.id) !== '010' && f.geometry && (f.properties as { name?: string } | null)?.name !== 'Antarctica');
+      countries = fs.map(f => {
+        const [[west, south], [east, north]] = geoBounds(f);
+        return { f, west, east, south, north };
+      });
+      land = { type: 'FeatureCollection', features: fs.map(unwrapFeature) };
+      atlasLevel = level;
+      holders.clear();
+      countryLabels = null;
+    });
+let coarseAsk: Promise<void> | null = null;
+let fineAsk: Promise<void> | null = null;
+const loadCoarse = () => (coarseAsk ??= readAtlas(coarseUrl, 1));
+const loadFine = () => (fineAsk ??= readAtlas(fineUrl, 2).catch(() => undefined));
+const landCollection = (): GeoJSON.FeatureCollection => land ?? EMPTY;
 
 type GazCity = { n: string; lat: number; lng: number; pop: number; z: number; c: string };
 const GAZETTEER = cities as GazCity[];
-/** Natural Earth's rank, restated as the zoom on this map where the city may appear.
-    Zoomed out: the megacities only. Closer: the rest come in. */
-const appearAt = (neZoom: number) => (neZoom <= 2.1 ? 0 : neZoom <= 3 ? 2.2 : neZoom <= 4 ? 3.15 : neZoom <= 5.1 ? 4.05 : 4.85);
-const km = (aLat: number, aLng: number, bLat: number, bLng: number) => {
-  const x = (aLng - bLng) * Math.cos((((aLat + bLat) / 2) * Math.PI) / 180);
-  return Math.hypot(x, aLat - bLat) * 111;
-};
+/** Natural Earth's rank, restated as the zoom on this map where a quiet city's name may appear */
+const appearAt = (neZoom: number) => (neZoom <= 2.1 ? 3 : neZoom <= 3 ? 3.4 : neZoom <= 4 ? 4.1 : neZoom <= 5.1 ? 4.8 : 5.5);
 const COUNTRY_NAME: Record<string, string> = {
   'United States of America': 'United States',
-  'Dem. Rep. Congo': 'Congo',
-  'Dominican Rep.': 'Dominican Republic',
-  'Central African Rep.': 'Central African Republic',
+  'Dem. Rep. Congo': 'DR Congo',
+  'Dominican Rep.': 'Dominican Rep.',
+  'Central African Rep.': 'Central African Rep.',
   'Bosnia and Herz.': 'Bosnia',
 };
-type CountryLabel = { name: string; area: number; lng: number; lat: number; feature: GeoJSON.Feature };
+type CountryLabel = { name: string; area: number; lng: number; lat: number };
 let countryLabels: CountryLabel[] | null = null;
 const countriesLabeled = () => {
   if (!countryLabels) {
-    countryLabels = countryFeatures()
-      .map(f => {
+    countryLabels = countries
+      .map(({ f }) => {
         const c = geoCentroid(f);
         const raw = String((f.properties as { name?: string } | null)?.name ?? '');
-        return { name: COUNTRY_NAME[raw] ?? raw, area: geoArea(f), lng: c[0], lat: c[1], feature: f };
+        return { name: COUNTRY_NAME[raw] ?? raw, area: geoArea(f), lng: c[0], lat: c[1] };
       })
-      .filter(c => c.name && Number.isFinite(c.lng) && Number.isFinite(c.lat));
+      .filter(c => c.name && Number.isFinite(c.lng) && Number.isFinite(c.lat))
+      .sort((a, b) => b.area - a.area);
   }
   return countryLabels;
 };
 
-/** Local land. Nothing leaves the browser. */
-const baseStyle = (tone: 'dark' | 'light') => ({
-  version: 8 as const,
-  sources: {
-    land: { type: 'geojson' as const, data: landCollection() },
-  },
+/* Which countries hold a point, kept per point for the atlas in hand: the cut's cities come back on every pick, filter
+   and refresh. A box test first, so the spherical test runs on a country or two. */
+const holders = new Map<string, number[]>();
+const inBox = (c: Country, lng: number, lat: number) =>
+  lat >= c.south - 0.5 && lat <= c.north + 0.5 && (c.west <= c.east ? lng >= c.west - 0.5 && lng <= c.east + 0.5 : lng >= c.west - 0.5 || lng <= c.east + 0.5);
+const countriesHolding = (lng: number, lat: number): number[] => {
+  const key = `${lng},${lat}`;
+  let hit = holders.get(key);
+  if (!hit) {
+    hit = [];
+    for (let i = 0; i < countries.length; i++) if (inBox(countries[i], lng, lat) && geoContains(countries[i].f, [lng, lat])) hit.push(i);
+    if (countries.length) holders.set(key, hit);
+  }
+  return hit;
+};
+
+/** The land overlay: each country a story comes from, shaded in four steps by its count (log scale), and the open
+    story's own country outlined. */
+const landData = (heat: HeatPoint[], reach: Reach | null): GeoJSON.FeatureCollection => {
+  const w = new Float64Array(countries.length);
+  for (const h of heat) for (const i of countriesHolding(h.lng, h.lat)) w[i] += h.w;
+  let max = 0;
+  for (let i = 0; i < w.length; i++) max = Math.max(max, w[i]);
+  const open = new Set(reach && reach.city ? countriesHolding(reach.lng, reach.lat) : []);
+  const fs = landCollection().features;
+  const out: GeoJSON.Feature[] = [];
+  for (let i = 0; i < countries.length; i++) {
+    const isOpen = open.has(i);
+    if (!w[i] && !isOpen) continue;
+    const t = max > 0 ? Math.log1p(w[i]) / Math.log1p(max) : 0;
+    const lvl = w[i] <= 0 ? 0 : t >= 0.8 ? 4 : t >= 0.55 ? 3 : t >= 0.3 ? 2 : 1;
+    out.push({ type: 'Feature', id: i, geometry: fs[i].geometry, properties: { lvl, open: isOpen ? 1 : 0 } });
+  }
+  return { type: 'FeatureCollection', features: out };
+};
+
+/** The open story's lines: a gentle arc from its city to each market its sector trades through, the short way round */
+const nearLng = (lng: number, from: number) => {
+  let x = lng;
+  while (x - from > 180) x -= 360;
+  while (from - x > 180) x += 360;
+  return x;
+};
+const reachEnds = (reach: Reach | null): GeoZone[] => {
+  if (!reach || !reach.city) return [];
+  return reach.zones
+    .map(z => ({ ...z, lng: nearLng(z.lng, reach.lng) }))
+    .filter(z => Math.hypot(z.lat - reach.lat, z.lng - reach.lng) > 1.5);
+};
+const reachData = (reach: Reach | null): GeoJSON.FeatureCollection => {
+  if (!reach) return EMPTY;
+  return {
+    type: 'FeatureCollection',
+    features: reachEnds(reach).map(z => {
+      const dx = z.lng - reach.lng;
+      const dy = z.lat - reach.lat;
+      const len = Math.hypot(dx, dy);
+      /* bow the line to the pole side of the straight path, more for a longer one */
+      const bow = Math.min(18, len * 0.18);
+      const nx = -dy / len;
+      const ny = dx / len;
+      const side = ny >= 0 ? 1 : -1;
+      const cx = (reach.lng + z.lng) / 2 + nx * bow * side;
+      const cy = Math.min(80, (reach.lat + z.lat) / 2 + ny * bow * side);
+      const pts: [number, number][] = [];
+      for (let k = 0; k <= 32; k++) {
+        const t = k / 32;
+        const a = (1 - t) * (1 - t);
+        const b = 2 * (1 - t) * t;
+        const c = t * t;
+        pts.push([a * reach.lng + b * cx + c * z.lng, a * reach.lat + b * cy + c * z.lat]);
+      }
+      return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: pts } };
+    }),
+  };
+};
+
+/** A cash session's longitudes as a band over the inhabited latitudes */
+const band = (west: number, east: number): GeoJSON.Feature => {
+  const ring: [number, number][] = [];
+  for (let x = east; x > west; x -= 4) ring.push([x, -56]);
+  ring.push([west, -56]);
+  for (let x = west; x < east; x += 4) ring.push([x, 76]);
+  ring.push([east, 76], [east, -56]);
+  return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } };
+};
+const sessionData = (sessions: SessionDef[]): GeoJSON.FeatureCollection => ({ type: 'FeatureCollection', features: sessions.map(s => band(s.west, s.east)) });
+
+const setSource = (map: maplibregl.Map, id: string, data: GeoJSON.FeatureCollection) => {
+  (map.getSource(id) as GeoJSONSource | undefined)?.setData(data);
+};
+
+/** Every colour on the map for a theme — set once at build and again on a theme switch, so no layer is ever dropped */
+const paintMap = (map: maplibregl.Map, tone: Tone) => {
+  const k = MAP_INK[tone];
+  const set = (layer: string, prop: Parameters<maplibregl.Map["setPaintProperty"]>[1], value: Parameters<maplibregl.Map["setPaintProperty"]>[2]) => {
+    if (map.getLayer(layer)) map.setPaintProperty(layer, prop, value);
+  };
+  set('background', 'background-color', k.sea);
+  set('land', 'fill-color', k.land);
+  set('land-line', 'line-color', k.edge);
+  set('news-session', 'fill-color', k.session);
+  set('news-session', 'fill-opacity', k.sessionOpacity);
+  set('news-session-edge', 'line-color', k.session);
+  set('news-land-fill', 'fill-color', k.heat);
+  /* the shade is a world view: zoomed to a region, where one country fills the frame, it steps back */
+  const steps = (f: number): maplibregl.ExpressionSpecification => ['match', ['get', 'lvl'], 4, k.heatSteps[3] * f, 3, k.heatSteps[2] * f, 2, k.heatSteps[1] * f, 1, k.heatSteps[0] * f, 0];
+  set('news-land-fill', 'fill-opacity', ['interpolate', ['linear'], ['zoom'], 2.5, steps(1), 4, steps(0.45)]);
+  set('news-land-open', 'line-color', k.open);
+  set('news-reach', 'line-gradient', ['interpolate', ['linear'], ['line-progress'], 0, k.reachFrom, 1, k.reachTo]);
+};
+
+const baseStyle = (tone: Tone): maplibregl.StyleSpecification => ({
+  version: 8,
+  sources: { land: { type: 'geojson', data: landCollection() } },
   layers: [
-    { id: 'background', type: 'background' as const, paint: { 'background-color': SEA[tone] } },
-    { id: 'land', type: 'fill' as const, source: 'land', paint: { 'fill-color': LAND[tone] } },
-    { id: 'land-line', type: 'line' as const, source: 'land', paint: { 'line-color': EDGE[tone], 'line-width': 0.7 } },
+    { id: 'background', type: 'background', paint: { 'background-color': MAP_INK[tone].sea } },
+    { id: 'land', type: 'fill', source: 'land', paint: { 'fill-color': MAP_INK[tone].land } },
+    { id: 'land-line', type: 'line', source: 'land', paint: { 'line-color': MAP_INK[tone].edge, 'line-width': ['interpolate', ['linear'], ['zoom'], 0, 0.3, 1.5, 0.55, 5, 1] } },
   ],
 });
+
+const addOverlays = (map: maplibregl.Map) => {
+  if (map.getSource('news-land')) return;
+  map.addSource('news-session', { type: 'geojson', data: EMPTY });
+  map.addLayer({ id: 'news-session', type: 'fill', source: 'news-session', paint: {} }, 'land-line');
+  map.addLayer({ id: 'news-session-edge', type: 'line', source: 'news-session', paint: { 'line-width': 1, 'line-opacity': 0.35, 'line-dasharray': [2, 3] } });
+  map.addSource('news-land', { type: 'geojson', data: EMPTY });
+  map.addLayer({ id: 'news-land-fill', type: 'fill', source: 'news-land', paint: {} }, 'land-line');
+  map.addLayer({ id: 'news-land-open', type: 'line', source: 'news-land', filter: ['==', ['get', 'open'], 1], paint: { 'line-width': 1.1, 'line-opacity': 0.7 } });
+  map.addSource('news-reach', { type: 'geojson', data: EMPTY, lineMetrics: true });
+  map.addLayer({ id: 'news-reach', type: 'line', source: 'news-reach', layout: { 'line-cap': 'round' }, paint: { 'line-width': 1.6 } });
+};
+
+/** The zoom that shows the inhabited world (56°S to 76°N, every longitude) whole in a box */
+const BAND = (Math.log(Math.tan(Math.PI / 4 + (76 * Math.PI) / 360)) - Math.log(Math.tan(Math.PI / 4 - (56 * Math.PI) / 360))) / (2 * Math.PI);
+const WORLD_CENTER: [number, number] = [14, 22];
+const worldZoom = (w: number, h: number) => Math.max(-1.5, Math.min(Math.log2(Math.max(w, 64) / 512), Math.log2(Math.max(h, 64) / (512 * BAND))) - 0.02);
+
+/* The pins are laid out once per half step of zoom, at the bucket's own zoom: zooming in inside a bucket only spreads
+   them, so nothing laid out apart ever overlaps. */
+const bucketOf = (z: number) => Math.floor(z * 2) / 2;
+
+type Cluster = { head: CityPing; members: CityPing[]; n: number; up: number; down: number; majors: number; x: number; y: number };
 
 interface Props extends MapProps {
   /** Called when the WebGL map cannot draw (no WebGL, a worker that never answers, a failed style) */
   onFail?: () => void;
 }
 
-/** World width at zoom z is 512 * 2^z. Stay a hair inside that so the tiles cover the box. */
-/* clamped into MapLibre's range: a host not yet laid out (0×0) would ask for a zoom under its −2 floor */
-const coverZoom = (w: number, h: number) => Math.min(7.5, Math.max(-2, Math.log2(Math.max(w, h, 64) / 512) + 0.04));
-
-const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
-
-const band = (west: number, east: number): GeoJSON.Feature => {
-  const ring: [number, number][] = [];
-  for (let x = east; x > west; x -= 6) ring.push([x, -58]);
-  ring.push([west, -58]);
-  for (let x = west; x < east; x += 6) ring.push([x, 72]);
-  ring.push([east, 72], [east, -58]);
-  return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } };
+const el = (tag: string, cls: string, text?: string) => {
+  const e = document.createElement(tag);
+  e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
 };
 
-/* Which countries hold a point, kept per point for the visit: the cut's cities come back on every pick, filter and
-   refresh, and the spherical point-in-polygon test over every country is what colouring the land costs. */
-const holders = new Map<string, number[]>();
-const countriesHolding = (lng: number, lat: number): number[] => {
-  const key = `${lng},${lat}`;
-  let hit = holders.get(key);
-  if (!hit) {
-    const fs = countryFeatures();
-    hit = [];
-    for (let i = 0; i < fs.length; i++) if (geoContains(fs[i], [lng, lat])) hit.push(i);
-    if (fs.length) holders.set(key, hit);
-  }
-  return hit;
-};
-
-const landData = (pins: CityPing[], heat: HeatPoint[], reach: Reach | null): GeoJSON.FeatureCollection => {
-  const fs = countryFeatures();
-  const heatW = new Float64Array(fs.length);
-  const touched = new Uint8Array(fs.length);
-  for (const h of heat) for (const i of countriesHolding(h.lng, h.lat)) heatW[i] += h.w;
-  for (const p of pins) for (const i of countriesHolding(p.lng, p.lat)) touched[i] = 1;
-  const open = new Set(reach ? countriesHolding(reach.lng, reach.lat) : []);
-  const features: GeoJSON.Feature[] = [];
-  fs.forEach((f, i) => {
-    if (String(f.id) === '010') return;
-    const role = open.has(i) ? 'open' : heatW[i] > 0 ? 'heat' : touched[i] ? 'news' : '';
-    if (!role || !f.geometry) return;
-    features.push({ type: 'Feature', id: f.id, geometry: f.geometry, properties: { role } });
-  });
-  return { type: 'FeatureCollection', features };
-};
-
-const reachData = (reach: Reach | null): GeoJSON.FeatureCollection => {
-  if (!reach) return EMPTY;
-  const zones = reach.zones.filter((z: GeoZone) => Math.hypot(z.lat - reach.lat, z.lng - reach.lng) > 0.5);
-  return {
-    type: 'FeatureCollection',
-    features: zones.map(z => ({
-      type: 'Feature',
-      properties: {},
-      geometry: {
-        type: 'LineString',
-        coordinates: [
-          [reach.lng, reach.lat],
-          [(reach.lng + z.lng) / 2, (reach.lat + z.lat) / 2 + Math.min(12, Math.hypot(z.lat - reach.lat, z.lng - reach.lng) * 0.15)],
-          [z.lng, z.lat],
-        ],
-      },
-    })),
-  };
-};
-
-const setSource = (map: maplibregl.Map, id: string, data: GeoJSON.FeatureCollection) => {
-  const src = map.getSource(id) as GeoJSONSource | undefined;
-  src?.setData(data);
-};
-
-const ensureLayers = (map: maplibregl.Map) => {
-  if (map.getSource('news-land')) return;
-  map.addSource('news-session', { type: 'geojson', data: EMPTY });
-  map.addLayer({
-    id: 'news-session',
-    type: 'fill',
-    source: 'news-session',
-    paint: { 'fill-color': '#c7d3e8', 'fill-opacity': 0.07 },
-  });
-  map.addSource('news-land', { type: 'geojson', data: EMPTY });
-  map.addLayer({
-    id: 'news-land-fill',
-    type: 'fill',
-    source: 'news-land',
-    paint: {
-      'fill-color': ['match', ['get', 'role'], 'open', OPEN_INK, 'heat', HEAT_INK, NEWS_INK],
-      'fill-opacity': ['match', ['get', 'role'], 'open', 0.42, 'heat', 0.34, 0.28],
-    },
-  });
-  map.addLayer({
-    id: 'news-land-line',
-    type: 'line',
-    source: 'news-land',
-    paint: {
-      'line-color': ['match', ['get', 'role'], 'open', '#e7edf4', '#c5d0dc'],
-      'line-width': ['match', ['get', 'role'], 'open', 1.25, 0.6],
-      'line-opacity': 0.85,
-    },
-  });
-  map.addSource('news-reach', { type: 'geojson', data: EMPTY });
-  map.addLayer({
-    id: 'news-reach',
-    type: 'line',
-    source: 'news-reach',
-    paint: { 'line-color': '#d5deea', 'line-width': 1.25, 'line-opacity': 0.75 },
-  });
-};
-
-const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, flyTo = null, sessions, className = '', onFail }: Props) => {
+const LiveMap = ({ pins, selectedCity, onPick, onHover, heat, reach, flyTo = null, sessions, note = null, className = '', onFail }: Props) => {
   const onFailRef = useRef(onFail);
   onFailRef.current = onFail;
   const theme = useResolvedTheme();
+  const tone: Tone = theme === 'light' ? 'light' : 'dark';
   const host = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const coverRef = useRef(1);
+  const floorRef = useRef(0);
   const moved = useRef(false);
   const flying = useRef(false);
   const flightRef = useRef(0);
   const [ready, setReady] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const [viewId, setViewId] = useState(0);
+  const [bucket, setBucket] = useState(0);
+  const [atlasRev, setAtlasRev] = useState(atlasLevel);
+  const [viewRev, setViewRev] = useState(0);
   const pinsRef = useRef(pins);
-  const heatRef = useRef(heat);
-  const reachRef = useRef(reach);
-  const sessionsRef = useRef(sessions);
   pinsRef.current = pins;
-  heatRef.current = heat;
-  reachRef.current = reach;
-  sessionsRef.current = sessions;
   const onPickRef = useRef(onPick);
   const onHoverRef = useRef(onHover);
   onPickRef.current = onPick;
   onHoverRef.current = onHover;
+  const toneRef = useRef(tone);
+  toneRef.current = tone;
+  const fineReady = useRef(atlasLevel >= 2);
 
+  /** The whole inhabited world, or the cut's pins when they sit in one region */
   const fit = (map: maplibregl.Map, animate: boolean) => {
+    const box = map.getContainer();
+    const z = worldZoom(box.clientWidth, box.clientHeight);
     const pts = pinsRef.current;
-    const cover = coverRef.current;
-    if (pts.length === 0) {
-      map.jumpTo({ center: [8, 28], zoom: cover });
-      return;
+    if (pts.length) {
+      const lngs = pts.map(p => p.lng);
+      const lats = pts.map(p => p.lat);
+      const spanLng = Math.max(...lngs) - Math.min(...lngs);
+      const spanLat = Math.max(...lats) - Math.min(...lats);
+      if (spanLng < 70 && spanLat < 45) {
+        const b = new maplibregl.LngLatBounds([Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]);
+        map.fitBounds(b, { padding: 56, duration: animate ? 650 : 0, maxZoom: 4 });
+        return;
+      }
     }
-    const b = new maplibregl.LngLatBounds();
-    pts.forEach(p => b.extend([p.lng, p.lat]));
-    map.fitBounds(b, { padding: { top: 28, bottom: 44, left: 28, right: 28 }, duration: animate ? 650 : 0, maxZoom: 3.2 });
-    if (map.getZoom() < cover) map.setZoom(cover);
+    if (animate) map.easeTo({ center: WORLD_CENTER, zoom: z, duration: 650 });
+    else map.jumpTo({ center: WORLD_CENTER, zoom: z });
   };
 
   useEffect(() => {
-    const el = host.current;
-    if (!el) return;
-    const z = coverZoom(el.clientWidth, el.clientHeight);
-    coverRef.current = z;
+    const box = host.current;
+    if (!box) return;
+    const z = worldZoom(box.clientWidth, box.clientHeight);
+    floorRef.current = z - 0.35;
     let map: maplibregl.Map;
     try {
       map = new maplibregl.Map({
-      container: el,
-      style: baseStyle(theme === 'light' ? 'light' : 'dark'),
-      center: [8, 28],
-      zoom: z,
-      minZoom: z,
-      maxZoom: 8,
-      attributionControl: false,
-      dragRotate: false,
-      pitchWithRotate: false,
-      renderWorldCopies: true,
-      maxPitch: 0,
-      fadeDuration: 0,
-    });
+        container: box,
+        style: baseStyle(toneRef.current),
+        center: WORLD_CENTER,
+        zoom: z,
+        minZoom: z - 0.35,
+        maxZoom: 6,
+        attributionControl: false,
+        dragRotate: false,
+        pitchWithRotate: false,
+        renderWorldCopies: true,
+        maxPitch: 0,
+        fadeDuration: 0,
+      });
     } catch {
       onFailRef.current?.();
       return;
     }
-    /* the land must draw within a few seconds, or the box is an empty dark rectangle — the flat map stands in */
+    /* the land must draw within a few seconds, or the box is an empty rectangle — the flat note stands in */
     let loaded = false;
     const failTimer = window.setTimeout(() => {
       if (!loaded) onFailRef.current?.();
@@ -286,100 +333,81 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
     map.on('error', () => {
       if (!loaded) onFailRef.current?.();
     });
+    map.touchZoomRotate.disableRotation();
+    map.scrollZoom.setWheelZoomRate(1 / 240);
+    const hold = () => {
+      if (flying.current) return;
+      const next = worldZoom(box.clientWidth, box.clientHeight) - 0.35;
+      floorRef.current = next;
+      map.setMinZoom(next);
+    };
     map.on('load', () => {
       loaded = true;
       window.clearTimeout(failTimer);
-    });
-    map.touchZoomRotate.disableRotation();
-    map.scrollZoom.setWheelZoomRate(1 / 240);
-    const paintGap = () => {
-      const tone = themeRef.current === 'light' ? 'light' : 'dark';
-      if (map.getLayer('background')) map.setPaintProperty('background', 'background-color', SEA[tone]);
-    };
-    const hold = () => {
-      if (flying.current) return;
-      const box = el.getBoundingClientRect();
-      const next = coverZoom(box.width, box.height);
-      coverRef.current = next;
-      map.setMinZoom(next);
-      if (map.getZoom() < next) map.jumpTo({ zoom: next, center: map.getCenter() });
-    };
-    const push = () => {
-      if (!map.getSource('news-land')) return;
-      setSource(map, 'news-land', landData(pinsRef.current, heatRef.current, reachRef.current));
-      setSource(map, 'news-reach', reachData(reachRef.current));
-      setSource(map, 'news-session', { type: 'FeatureCollection', features: sessionsRef.current.map(s => band(s.west, s.east)) });
-    };
-    map.on('load', () => {
-      paintGap();
-      ensureLayers(map);
-      push();
+      addOverlays(map);
+      paintMap(map, toneRef.current);
       hold();
       fit(map, false);
-      setZoom(map.getZoom());
+      setBucket(bucketOf(map.getZoom()));
       setReady(true);
-    });
-    map.on('style.load', () => {
-      paintGap();
-      ensureLayers(map);
-      push();
+      /* the finer coast, once the first frame is up */
+      loadFine().then(() => {
+        if (!mapRef.current || atlasLevel < 2) return;
+        fineReady.current = true;
+        setSource(map, 'land', landCollection());
+        setAtlasRev(atlasLevel);
+      });
     });
     map.on('movestart', (e: maplibregl.MapLibreEvent) => {
-      if (e.originalEvent) moved.current = true;
-    });
-    map.on('dragstart', (e: maplibregl.MapLibreEvent) => {
       if (e.originalEvent) moved.current = true;
     });
     const onWheel = () => {
       moved.current = true;
     };
-    el.addEventListener('wheel', onWheel, { passive: true });
-    map.on('moveend', () => {
-      setZoom(map.getZoom());
-      setViewId(n => n + 1);
-    });
+    box.addEventListener('wheel', onWheel, { passive: true });
+    map.on('zoomend', () => setBucket(b => (bucketOf(map.getZoom()) === b ? b : bucketOf(map.getZoom()))));
+    map.on('moveend', () => setViewRev(n => n + 1));
     const ro = new ResizeObserver(() => {
       map.resize();
       hold();
       if (!flying.current && !moved.current) fit(map, false);
     });
-    ro.observe(el);
+    ro.observe(box);
     mapRef.current = map;
     return () => {
       window.clearTimeout(failTimer);
       ro.disconnect();
-      el.removeEventListener('wheel', onWheel);
+      box.removeEventListener('wheel', onWheel);
       map.remove();
       mapRef.current = null;
       setReady(false);
     };
-    // theme is applied below so the map is not rebuilt on every parent render
+    // the theme and the data are applied below so the map is not rebuilt on every parent render
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const themeRef = useRef(theme);
-  const seenTheme = useRef(theme);
-  themeRef.current = theme;
+  /* a theme switch repaints the layers in place: the overlays stay */
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready || seenTheme.current === theme) return;
-    seenTheme.current = theme;
-    map.setStyle(baseStyle(theme === 'light' ? 'light' : 'dark'));
-  }, [theme, ready]);
+    if (!map || !ready) return;
+    paintMap(map, tone);
+  }, [tone, ready]);
 
   const sessionKey = sessions.map(s => s.key).join(' ');
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready || !map.getSource('news-land')) return;
-    setSource(map, 'news-land', landData(pins, heat, reach));
+    if (!map || !ready) return;
+    setSource(map, 'news-land', landData(heat, reach));
     setSource(map, 'news-reach', reachData(reach));
-    setSource(map, 'news-session', { type: 'FeatureCollection', features: sessions.map(s => band(s.west, s.east)) });
-  }, [ready, pins, heat, reach, sessionKey]);
+    setSource(map, 'news-session', sessionData(sessions));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, heat, reach, sessionKey, atlasRev]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || moved.current) return;
-    fit(map, false);
+    fit(map, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, pins]);
 
   useEffect(() => {
@@ -388,36 +416,22 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
     const flight = ++flightRef.current;
     moved.current = true;
     const here = map.getCenter();
-    let destLng = flyTo.lng;
-    while (destLng - here.lng > 180) destLng -= 360;
-    while (here.lng - destLng > 180) destLng += 360;
+    const destLng = nearLng(flyTo.lng, here.lng);
     const dlng = Math.abs(destLng - here.lng);
     const dlat = Math.abs(flyTo.lat - here.lat);
     const deg = Math.hypot(dlng * Math.cos((((here.lat + flyTo.lat) / 2) * Math.PI) / 180), dlat);
-    const cover = coverRef.current;
-    const arrive = 5.05;
+    /* the coarse atlas is jagged past country scale; the fine one holds to a region */
+    const arrive = fineReady.current ? 4 : 3.5;
     flying.current = true;
     map.stop();
-    map.setMinZoom(Math.max(0, cover - 2.4));
-    const duration = deg < 2.5 ? 800 : Math.round(Math.min(2400, Math.max(1200, 700 + deg * 10)));
+    map.setMinZoom(Math.max(-2, floorRef.current - 2));
+    const duration = deg < 2.5 ? 700 : Math.round(Math.min(2200, Math.max(1100, 650 + deg * 9)));
     const arm = requestAnimationFrame(() => {
       if (flightRef.current !== flight) return;
       if (deg < 2.5) {
-        map.easeTo({
-          center: [destLng, flyTo.lat],
-          zoom: Math.max(map.getZoom(), arrive),
-          duration,
-          essential: true,
-          easing: (t: number) => 1 - Math.pow(1 - t, 3),
-        });
+        map.easeTo({ center: [destLng, flyTo.lat], zoom: Math.max(map.getZoom(), arrive), duration, essential: true, easing: (t: number) => 1 - Math.pow(1 - t, 3) });
       } else {
-        map.flyTo({
-          center: [destLng, flyTo.lat],
-          zoom: arrive,
-          duration,
-          curve: 1.42,
-          essential: true,
-        });
+        map.flyTo({ center: [destLng, flyTo.lat], zoom: arrive, duration, curve: 1.42, essential: true });
       }
     });
     const onEnd = () => {
@@ -431,7 +445,7 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
       const c = map.getCenter();
       const wrapped = ((((c.lng + 540) % 360) + 360) % 360) - 180;
       if (Math.abs(wrapped - c.lng) > 1) map.jumpTo({ center: [wrapped, c.lat], zoom: map.getZoom() });
-      map.setMinZoom(coverRef.current);
+      map.setMinZoom(floorRef.current);
     };
     map.on('moveend', onEnd);
     return () => {
@@ -441,220 +455,220 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flyTo?.key, ready]);
 
+  /* The pins and the country names: laid out once per zoom bucket (and when the cut, the open story or the atlas
+     changes), never on a pan or a hover. */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
     const markers: maplibregl.Marker[] = [];
-    const bounds = map.getBounds();
-    const span = Math.abs(bounds.getEast() - bounds.getWest());
-    const whole = span > 300 || zoom < 1.15;
-    const inside = (lng: number, lat: number) => whole || bounds.contains([lng, lat]);
-    const quiet = theme === 'light';
-    const nameInk = quiet ? 'rgba(28,34,40,0.78)' : 'rgba(232,236,242,0.88)';
-    /* the gazetteer's names clear AA (4.5:1) on the map's ground at 11px — they were 3.9:1 at 10px */
-    const softInk = quiet ? 'rgba(28,34,40,0.66)' : 'rgba(214,220,228,0.64)';
-    const placed: { x: number; y: number }[] = [];
-    const crowded = (lng: number, lat: number, gap: number) => {
-      const pt = map.project([lng, lat]);
-      if (placed.some(p => Math.hypot(p.x - pt.x, p.y - pt.y) < gap)) return true;
-      placed.push(pt);
-      return false;
-    };
-    const countryPlaced: { x: number; y: number }[] = [];
-    const namedCountries = new Set<string>();
-    if (zoom >= 2.45 && zoom <= 5.7) {
-      const minArea = zoom < 3.2 ? 0.012 : zoom < 4.3 ? 0.0025 : 0.00035;
-      const camera = map.getCenter();
-      for (const country of countriesLabeled()) {
-        if (country.area < minArea) continue;
-        const lookingAt = geoContains(country.feature, [camera.lng, camera.lat]);
-        const middleOnScreen = inside(country.lng, country.lat);
-        if (!lookingAt && !middleOnScreen) continue;
-        let lng = country.lng;
-        let lat = country.lat;
-        if (!middleOnScreen) {
-          const at = map.project([camera.lng, camera.lat]);
-          const below = map.unproject([at.x, at.y + 36]);
-          lng = below.lng;
-          lat = below.lat;
-        }
-        const pt = map.project([lng, lat]);
-        if (countryPlaced.some(p => Math.hypot(p.x - pt.x, p.y - pt.y) < 80)) continue;
-        countryPlaced.push(pt);
-        const el = document.createElement('div');
-        el.dataset.newsCountry = country.name;
-        el.textContent = country.name;
-        el.style.cssText = `pointer-events:none;font:600 11px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:0.16em;text-transform:uppercase;color:${softInk};white-space:nowrap;text-shadow:0 1px 2px ${quiet ? 'rgba(255,255,255,0.85)' : '#0b1016'};`;
-        markers.push(new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([lng, lat]).addTo(map));
-        namedCountries.add(country.name);
-      }
-    }
-    const visible = GAZETTEER.filter(c => appearAt(c.z) <= zoom && inside(c.lng, c.lat)).sort((a, b) => b.pop - a.pop);
-    const shown: GazCity[] = [];
-    for (const c of visible) {
-      if (crowded(c.lng, c.lat, 52)) continue;
-      shown.push(c);
-      if (shown.length >= 32) break;
-    }
-    if (zoom >= 2.45 && zoom <= 6.4) {
-      const best = new Map<string, GazCity>();
-      for (const c of shown) {
-        const name = COUNTRY_NAME[c.c] ?? c.c;
-        if (namedCountries.has(name)) continue;
-        const prev = best.get(name);
-        if (!prev || c.pop > prev.pop) best.set(name, c);
-      }
-      for (const [name, c] of best) {
-        const at = map.project([c.lng, c.lat]);
-        const below = map.unproject([at.x, at.y + 22]);
-        const el = document.createElement('div');
-        el.dataset.newsCountry = name;
-        el.textContent = name;
-        el.style.cssText = `pointer-events:none;font:600 11px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:0.16em;text-transform:uppercase;color:${softInk};white-space:nowrap;text-shadow:0 1px 2px ${quiet ? 'rgba(255,255,255,0.85)' : '#0b1016'};`;
-        markers.push(new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([below.lng, below.lat]).addTo(map));
-      }
-    }
-    const rolled = zoom < 3.9;
-    const ROLL_KM = 150;
-    const claimed = new Set<string>();
-    const buckets = new Map<string, { city: string; lat: number; lng: number; n: number; grade: NewsGrade; top: CityPing }>();
-    if (rolled) {
-      for (const p of pins) {
-        let host: GazCity | null = null;
-        let best = 1e9;
-        for (const c of shown) {
-          const d = km(p.lat, p.lng, c.lat, c.lng);
-          if (d < best) {
-            best = d;
-            host = c;
-          }
-        }
-        /* A pin rolls into a named city only within ROLL_KM of it; farther, it keeps its own dot, name and count. */
-        if (!host || best > ROLL_KM) continue;
-        claimed.add(p.city);
-        const had = buckets.get(host.n);
-        if (!had) buckets.set(host.n, { city: host.n, lat: host.lat, lng: host.lng, n: p.n, grade: p.grade, top: p });
-        else {
-          had.n += p.n;
-          if (p.maxSeverity > had.top.maxSeverity) {
-            had.top = p;
-            had.grade = p.grade;
-          }
-        }
-      }
-    }
-    const labeled = new Set<string>();
-    /* A label that would cross the right edge reads leftward; a quiet city's label gives way to a city carrying news. */
-    const frameW = map.getContainer().clientWidth;
-    const boxOf = (c: GazCity, text: string) => {
-      const pt = map.project([c.lng, c.lat]);
-      const w = text.length * 6.4 + 12;
-      const flip = pt.x + w > frameW - 4;
-      return { flip, x0: flip ? pt.x - w : pt.x, x1: flip ? pt.x : pt.x + w, y0: pt.y - 8, y1: pt.y + 8 };
+    const scale = Math.pow(2, bucket - map.getZoom());
+    const at = (lng: number, lat: number) => {
+      const p = map.project([lng, lat]);
+      return { x: p.x * scale, y: p.y * scale };
     };
     type Box = { x0: number; x1: number; y0: number; y1: number };
     const hits = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
-    /* the news cities place their names busiest first; one that would land on a busier one keeps its dot and
-       gives up its name (zoomed out on a phone, Washington, Philadelphia and Memphis were one smear) */
-    const newsBoxes: Box[] = [];
-    const mute = new Set<string>();
-    /* the open story's own pin is placed first — nothing may sit on the story being read */
-    const openPin = pins.find(p => p.city === selectedCity && !buckets.has(p.city));
-    if (openPin) {
-      const at = map.project([openPin.lng, openPin.lat]);
-      const w = `${openPin.city}  ${openPin.n}`.length * 6.4 + 12;
-      newsBoxes.push(at.x + w > frameW - 4 ? { x0: at.x - w, x1: at.x + 6, y0: at.y - 8, y1: at.y + 8 } : { x0: at.x - 6, x1: at.x + w, y0: at.y - 8, y1: at.y + 8 });
+    const taken: Box[] = [];
+
+    /* pins gather into the busiest pin within reach (the open story's city heads its own group, so nothing hides under
+       it); at the closest zoom only pins nearly on top of each other gather */
+    const reachPx = bucket >= 5 ? 12 : 26;
+    const sorted = [...pins].sort((a, b) => (a.city === selectedCity ? -1 : b.city === selectedCity ? 1 : b.n - a.n || b.maxSeverity - a.maxSeverity));
+    const clusters: Cluster[] = [];
+    for (const p of sorted) {
+      const pt = at(p.lng, p.lat);
+      const host = clusters.find(c => Math.hypot(c.x - pt.x, c.y - pt.y) < reachPx);
+      if (host) {
+        host.members.push(p);
+        host.n += p.n;
+        host.up += p.up;
+        host.down += p.down;
+        host.majors += p.majors;
+      } else clusters.push({ head: p, members: [p], n: p.n, up: p.up, down: p.down, majors: p.majors, x: pt.x, y: pt.y });
     }
-    for (const c of shown.filter(x => buckets.has(x.n)).sort((a, b) => buckets.get(b.n)!.n - buckets.get(a.n)!.n)) {
-      const b = boxOf(c, `${c.n}  ${buckets.get(c.n)!.n}`);
-      if (newsBoxes.some(x => hits(x, b))) mute.add(c.n);
-      else newsBoxes.push(b);
-    }
-    for (const c of shown) {
-      const news = buckets.get(c.n);
-      const box = boxOf(c, news ? `${c.n}  ${news.n}` : c.n);
-      if (!news && newsBoxes.some(b => hits(b, box))) continue;
-      if (news) labeled.add(c.n);
-      const el = document.createElement(news ? 'button' : 'div');
-      el.dataset.newsCityMark = c.n;
-      if (news) {
-        (el as HTMLButtonElement).type = 'button';
-        el.style.cssText = `display:flex;align-items:center;gap:4px;background:none;border:0;padding:0;cursor:pointer;${box.flip ? 'flex-direction:row-reverse;' : ''}`;
-        el.addEventListener('click', ev => {
-          ev.stopPropagation();
-          onPickRef.current(news.top);
-        });
-      } else {
-        el.style.cssText = `display:flex;align-items:center;gap:4px;pointer-events:none;${box.flip ? 'flex-direction:row-reverse;' : ''}`;
+    const maxN = Math.max(1, ...clusters.map(c => c.n));
+    /* a phone's whole world is small: the pins and the names shrink with it */
+    const small = bucket < 0.5 ? 0.62 : bucket < 1.5 ? 0.85 : 1;
+    const sizeOf = (n: number) => Math.round((8 + 14 * Math.sqrt(n / maxN)) * small);
+    /* the names: the open city first, then busiest first while they fit; zoomed out, the dozen busiest at most */
+    const nameCap = bucket < 0.5 ? 6 : bucket < 1.5 ? 12 : bucket < 2.5 ? 22 : 99;
+    let named = 0;
+    clusters.forEach(c => {
+      const size = sizeOf(c.n);
+      const open = c.head.city === selectedCity;
+      const near = c.members.length - 1;
+      const label = near > 0 ? `${c.head.city} +${near}` : c.head.city;
+      const w = (label.length + String(c.n).length + 1) * 6.3 + (open ? 22 : 10);
+      const box: Box = { x0: c.x - size / 2 - 2, x1: c.x + size / 2 + 4 + w, y0: c.y - 8, y1: c.y + 8 };
+      const dotBox: Box = { x0: c.x - size / 2, x1: c.x + size / 2, y0: c.y - size / 2, y1: c.y + size / 2 };
+      const showName = open || (named < nameCap && !taken.some(t => hits(t, box)));
+      if (showName) {
+        taken.push(box);
+        named++;
+      } else taken.push(dotBox);
+      const btn = el('button', 'news-pin') as HTMLButtonElement;
+      btn.type = 'button';
+      btn.dataset.newsPin = c.head.city;
+      btn.dataset.tone = pinTone(c.up, c.down);
+      if (open) btn.dataset.open = '';
+      if (open) btn.style.zIndex = '3';
+      const names = c.members.map(m => `${m.city} ${m.n}`).join(', ');
+      const what = `${c.n} ${c.n === 1 ? 'story' : 'stories'}${c.majors ? `, ${c.majors} major` : ''}`;
+      btn.title = near > 0 && bucket < 5.5 ? `${names} — ${what}. Click to zoom in.` : `${near > 0 ? names : c.head.city} — ${what}. Click for ${near > 0 ? `${c.head.city}'s` : 'its'} loudest story.`;
+      btn.setAttribute('aria-label', btn.title);
+      const dot = el('span', 'news-pin__dot');
+      dot.style.width = `${size}px`;
+      dot.style.height = `${size}px`;
+      btn.append(dot);
+      if (showName) {
+        const name = el('span', 'news-pin__name', label);
+        name.dataset.newsCity = c.head.city;
+        name.append(el('span', 'news-pin__n', String(c.n)));
+        btn.append(name);
       }
-      const dot = document.createElement('span');
-      dot.style.cssText = news
-        ? `width:7px;height:7px;border-radius:999px;background:${INK[news.grade]};box-shadow:0 0 0 1px rgba(0,0,0,0.55);display:block;flex:none;`
-        : `width:3px;height:3px;border-radius:999px;background:${softInk};display:block;flex:none;`;
-      const name = document.createElement('span');
-      name.textContent = news ? (mute.has(c.n) ? '' : `${c.n}  ${news.n}`) : c.n;
-      if (news && mute.has(c.n)) el.title = `${c.n} · ${news.n} ${news.n === 1 ? 'story' : 'stories'}`;
-      name.dataset.newsCity = c.n;
-      name.style.cssText = `font:${news ? 600 : 500} 11px/1.15 ui-sans-serif,system-ui,sans-serif;color:${news ? nameInk : softInk};white-space:nowrap;text-shadow:0 1px 2px ${quiet ? 'rgba(255,255,255,0.8)' : '#0b1016'};`;
-      el.append(dot, name);
-      markers.push(new maplibregl.Marker({ element: el, anchor: box.flip ? 'right' : 'left' }).setLngLat([c.lng, c.lat]).addTo(map));
-    }
-    /* the loose pins place busiest first too; a pin whose name would land on a placed name keeps its dot alone */
-    const pinPlaced: Box[] = [...newsBoxes];
-    for (const p of [...pins].sort((a, b) => b.n - a.n)) {
-      const open = p.city === selectedCity;
-      if (labeled.has(p.city)) continue;
-      if (claimed.has(p.city) && !open) continue;
-      if (!open && !inside(p.lng, p.lat)) continue;
-      const hot = p.city === hoverCity;
-      const wrap = document.createElement('button');
-      wrap.type = 'button';
-      wrap.dataset.newsPin = p.city;
-      wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;background:none;border:0;padding:0;cursor:pointer;';
-      const dot = document.createElement('span');
-      const size = open || hot ? 12 : 8;
-      dot.style.cssText = `width:${size}px;height:${size}px;border-radius:999px;background:${INK[p.grade]};box-shadow:0 0 0 ${open ? 2 : 1}px ${open ? 'rgb(var(--silver))' : 'rgba(0,0,0,0.65)'};display:block;flex:none;`;
-      const name = document.createElement('span');
-      const at = map.project([p.lng, p.lat]);
-      const w = `${p.city}  ${p.n}`.length * 6.4 + 12;
-      const pinFlip = at.x + w > frameW - 4;
-      const pinBox: Box = { x0: pinFlip ? at.x - w : at.x - 6, x1: pinFlip ? at.x + 6 : at.x + w, y0: at.y - 8, y1: at.y + 8 };
-      const quietName = !open && !hot && pinPlaced.some(x => hits(x, pinBox));
-      if (!quietName) pinPlaced.push(pinBox);
-      name.textContent = quietName ? '' : `${p.city}  ${p.n}`;
-      if (quietName) wrap.title = `${p.city} · ${p.n} ${p.n === 1 ? 'story' : 'stories'}`;
-      name.dataset.newsCity = p.city;
-      name.style.cssText = `font:600 11px/1.15 ui-sans-serif,system-ui,sans-serif;color:${nameInk};white-space:nowrap;text-shadow:0 1px 2px ${quiet ? 'rgba(255,255,255,0.8)' : '#0b1016'};`;
-      wrap.style.cssText = `display:flex;align-items:center;gap:4px;background:none;border:0;padding:0;cursor:pointer;${pinFlip ? 'flex-direction:row-reverse;' : ''}`;
-      wrap.append(dot, name);
-      wrap.addEventListener('click', ev => {
+      btn.addEventListener('click', ev => {
         ev.stopPropagation();
-        onPickRef.current(p);
+        if (near > 0 && map.getZoom() < 5.6) {
+          moved.current = true;
+          const lngs = c.members.map(m => nearLng(m.lng, c.head.lng));
+          const lats = c.members.map(m => m.lat);
+          map.fitBounds(new maplibregl.LngLatBounds([Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]), {
+            padding: 80,
+            maxZoom: Math.min(6, Math.max(map.getZoom() + 1.5, 4.5)),
+            duration: 700,
+          });
+        } else onPickRef.current(c.head);
       });
-      wrap.addEventListener('mouseenter', () => onHoverRef.current(p));
-      wrap.addEventListener('mouseleave', () => onHoverRef.current(null));
-      /* the dot sits on the city, the name reads away from it */
-      markers.push(new maplibregl.Marker({ element: wrap, anchor: pinFlip ? 'right' : 'left', offset: [pinFlip ? size / 2 : -size / 2, 0] }).setLngLat([p.lng, p.lat]).addTo(map));
+      btn.addEventListener('mouseenter', () => {
+        btn.dataset.hot = '';
+        onHoverRef.current(near > 0 ? { ...c.head, city: `${c.head.city} and ${near} near`, n: c.n, majors: c.majors, up: c.up, down: c.down } : c.head);
+      });
+      btn.addEventListener('mouseleave', () => {
+        delete btn.dataset.hot;
+        onHoverRef.current(null);
+      });
+      markers.push(new maplibregl.Marker({ element: btn, anchor: 'left', offset: [-size / 2, 0] }).setLngLat([c.head.lng, c.head.lat]).addTo(map));
+    });
+
+    /* country names under the pins, biggest first, where they do not cover a pin or a name */
+    if (bucket >= 2) {
+      const minArea = bucket < 3 ? 0.012 : bucket < 4 ? 0.0025 : 0.0004;
+      for (const country of countriesLabeled()) {
+        if (country.area < minArea) break;
+        const pt = at(country.lng, country.lat);
+        const w = country.name.length * 7.6 + 8;
+        const box: Box = { x0: pt.x - w / 2, x1: pt.x + w / 2, y0: pt.y - 7, y1: pt.y + 7 };
+        if (taken.some(t => hits(t, box))) continue;
+        taken.push(box);
+        const e = el('div', 'news-country', country.name);
+        e.dataset.newsCountry = country.name;
+        markers.push(new maplibregl.Marker({ element: e, anchor: 'center' }).setLngLat([country.lng, country.lat]).addTo(map));
+      }
     }
     return () => markers.forEach(m => m.remove());
-  }, [ready, pins, selectedCity, hoverCity, zoom, theme, viewId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, pins, selectedCity, bucket, atlasRev]);
+
+  /* quiet place names for bearings once zoomed to a region: only those on screen, re-placed when the view settles */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || map.getZoom() < 3) return;
+    const z = map.getZoom();
+    const b = map.getBounds();
+    const markers: maplibregl.Marker[] = [];
+    const pinPts = pinsRef.current.map(p => map.project([p.lng, p.lat]));
+    const placed: { x: number; y: number }[] = [];
+    const visible = GAZETTEER.filter(c => appearAt(c.z) <= z && b.contains([c.lng, c.lat])).sort((a, b2) => b2.pop - a.pop);
+    for (const c of visible) {
+      const pt = map.project([c.lng, c.lat]);
+      if (pinPts.some(p => Math.abs(p.y - pt.y) < 16 && pt.x - p.x > -60 && pt.x - p.x < 130)) continue;
+      if (placed.some(p => Math.hypot(p.x - pt.x, p.y - pt.y) < 70)) continue;
+      placed.push(pt);
+      const e = el('div', 'news-place');
+      e.append(el('span', 'news-place__dot'), el('span', '', c.n));
+      markers.push(new maplibregl.Marker({ element: e, anchor: 'left', offset: [-1.5, 0] }).setLngLat([c.lng, c.lat]).addTo(map));
+      if (placed.length >= 24) break;
+    }
+    return () => markers.forEach(m => m.remove());
+  }, [ready, viewRev]);
+
+  /* where the open story's lines land, named once the world is big enough to hold the names */
+  const wide = bucket >= 1;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const markers = reachEnds(reach).map(z => {
+      const e = el('div', 'news-reach-end');
+      e.dataset.newsReach = z.label;
+      e.append(el('span', 'news-reach-end__dot'));
+      if (wide) e.append(el('span', 'news-reach-end__name', z.label));
+      return new maplibregl.Marker({ element: e, anchor: 'left', offset: [-3, 0] }).setLngLat([z.lng, z.lat]).addTo(map);
+    });
+    return () => markers.forEach(m => m.remove());
+  }, [ready, reach, wide]);
+
+  /* the open cash sessions, named at the top of their band */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const markers = sessions.map(s => {
+      const e = el('div', 'news-session-tag', `${s.label} open`);
+      return new maplibregl.Marker({ element: e, anchor: 'top' }).setLngLat([(s.west + s.east) / 2, 74]).addTo(map);
+    });
+    return () => markers.forEach(m => m.remove());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, sessionKey]);
+
+  const zoomBy = (d: number) => {
+    const map = mapRef.current;
+    if (!map) return;
+    moved.current = true;
+    map.easeTo({ zoom: map.getZoom() + d, duration: 300 });
+  };
+  const home = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    moved.current = false;
+    fit(map, true);
+  };
 
   return (
-    <div className={`news-live-map relative h-full w-full ${className}`} data-news-map="live" data-zoom={ready ? '1' : '0'} data-map-z={zoom.toFixed(2)}>
-      <div ref={host} className="h-full w-full" style={{ background: theme === 'light' ? SEA.light : SEA.dark }} />
+    <div className={`news-live-map relative h-full w-full ${className}`} data-news-map="live" data-zoom={ready ? '1' : '0'} data-atlas={atlasRev >= 2 ? 'fine' : 'coarse'}>
+      <div ref={host} className="h-full w-full" style={{ background: MAP_INK[tone].sea }} />
+      {ready && (
+        <div className="news-map-ctrl" data-touch-skip>
+          <button type="button" onClick={() => zoomBy(1)} title="Zoom in" aria-label="Zoom in" data-touch-skip>
+            +
+          </button>
+          <button type="button" onClick={() => zoomBy(-1)} title="Zoom out" aria-label="Zoom out" data-touch-skip>
+            −
+          </button>
+          <button type="button" onClick={home} title="Back to the whole world" aria-label="Back to the whole world" data-touch-skip data-news-map-home>
+            <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+              <circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M1.8 8h12.4M8 1.8c2 2 2 10.4 0 12.4M8 1.8c-2 2-2 10.4 0 12.4" fill="none" stroke="currentColor" strokeWidth="1.1" />
+            </svg>
+          </button>
+        </div>
+      )}
+      {ready && note && (
+        <div className="news-map-empty" data-news-map-empty>
+          <span>{note}</span>
+        </div>
+      )}
     </div>
   );
 };
 
-/** The map once the atlas is in hand; a box of the same size until then */
+/** The map once the coarse atlas is in hand; a box of the same size until then */
 const LiveMapLoader = (props: Props) => {
-  const [ready, setReady] = useState(land != null);
+  const [ready, setReady] = useState(atlasLevel > 0);
   const onFail = useRef(props.onFail);
   onFail.current = props.onFail;
   useEffect(() => {
     if (ready) return;
     let dead = false;
-    loadAtlas()
+    loadCoarse()
       .then(() => !dead && setReady(true))
       .catch(() => !dead && onFail.current?.());
     return () => {

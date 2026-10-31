@@ -1,7 +1,7 @@
 /* The News page's guide: one short section per part of the page, a small figure where a picture says it faster. */
 
 import type { ReactNode } from 'react';
-import { HEAT_INK, OPEN_INK } from './NewsMap';
+import { MAP_INK } from './NewsMap';
 
 const SILVER = 'rgb(var(--silver))';
 const SUPREME = 'rgb(var(--supreme))';
@@ -141,21 +141,21 @@ const MonthFigure = () => {
 export const NewsGuide = () => (
   <div data-news-guide>
     <Section title="The map">
-      <p>The map sits under the story list and loads when you open it. One pin per city a story comes from, its size the count. Countries a story reaches are tinted <span style={{ color: HEAT_INK }}>copper</span>, the open story's own <span style={{ color: OPEN_INK }}>green</span>, and a pale wash marks the cash market open now. A pin takes its colour from the vendor's read — for the name, against it, or grey when that read is neutral or there is no read. Pick a story anywhere and the map flies to its city.</p>
+      <p>The map sits above the story list and opens on the whole world. One pin per city a story comes from, its size the count; pins too close to tell apart gather into one (<b>+2</b> means two more cities) and a click zooms in on them. Countries are shaded <span style={{ color: MAP_INK.dark.heat }}>copper</span> by how many stories on the cut come from them — darker is more. A pin is <span className="text-bull">green</span> when its stories' named stocks were up on the session as they crossed, <span className="text-bear">red</span> when down, and grey for macro stories or when no move was measured at publish. The open story's country is outlined, and its lines run to the markets its sector trades through. A faint band marks a cash market open now. Pick a story anywhere and the map flies to its city; the globe button brings back the whole world. Stories that name no place the map knows stay in the list — the line under the map counts how many are placed.</p>
     </Section>
     <Section title="The square">
       <p>How hard a story lands, on the wire and on the calendar.</p>
       <SquareFigure />
     </Section>
     <Section title="The flags and the numbers">
-      <p><b>MAJOR</b> marks a headline Unusual Whales flags as major that is about a named listed company or the economy — a flag on a call date, a routine dividend, a "to speak at" notice or a story naming no listed company is not shown as major. <b>BOARD</b> marks one that names a stock on your Board. The default sort, What matters, puts major stories on your Board first, then the rest of your Board, then the other major ones — newest first inside each — except that a routine notice (a dividend declared, a results date, a conference slot) is not lifted for its flag. <b>At publish</b> is how the named stock had moved on the session when the story crossed: a snapshot, not today's move now. <b>Biggest move today</b>, in the head, is the regular session's change for the names the stories carry. Stories from paid legal and advice placements, adverts and token-price bot posts are left off the wire. <b>Also</b> lists the other stocks a headline names. The square says how hard a story lands: major stories and big movers land harder.</p>
+      <p><b>MAJOR</b> marks a headline our data provider flags as major that is about a named listed company or the economy — a flag on a call date, a routine dividend, a "to speak at" notice or a story naming no listed company is not shown as major. <b>BOARD</b> marks one that names a stock on your Board. The default sort, What matters, puts major stories on your Board first, then the rest of your Board, then the other major ones — newest first inside each — except that a routine notice (a dividend declared, a results date, a conference slot) is not lifted for its flag. <b>At publish</b> is how the named stock had moved on the session when the story crossed: a snapshot, not today's move now. <b>Biggest move today</b>, in the head, is the regular session's change for the names the stories carry. Stories from paid legal and advice placements, adverts and token-price bot posts are left off the wire. <b>Also</b> lists the other stocks a headline names. The square says how hard a story lands: major stories and big movers land harder.</p>
     </Section>
     <Section title="All news">
       <p>Every headline, newest first, a tab per kind with its count. Follow a name and its stories gather on Following; ring its bell and the alerts drawer tells you of each one. A click opens the story beside the map.</p>
       <TabsFigure />
     </Section>
     <Section title="The month">
-      <p>Every day with what is on it, all from Unusual Whales: the week's economic releases in their impact's ink (the headline ones — CPI, jobs, the Fed, GDP, PCE, retail sales, ISM — in red), the earnings of the next two weeks in silver with their slot (the same dates the Earnings page shows), FDA dates, the public schedule and the posts, and monthly options expiration in magenta. A day the feed names nothing on stays empty — nothing is filled in by rule.</p>
+      <p>Every day with what is on it, all from our data provider: the week's economic releases in their impact's ink (the headline ones — CPI, jobs, the Fed, GDP, PCE, retail sales, ISM — in red), the earnings of the next two weeks in silver with their slot (the same dates the Earnings page shows), FDA dates, the public schedule and the posts, and monthly options expiration in magenta. A day the feed names nothing on stays empty — nothing is filled in by rule.</p>
       <MonthFigure />
     </Section>
   </div>
