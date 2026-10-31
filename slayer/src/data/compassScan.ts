@@ -25,6 +25,7 @@ import {
   scoreLottery,
   setScanBusy,
   setScanReport,
+  setScoreClose,
   underAt,
   type ScoreResult,
 } from './compassModel';
@@ -712,8 +713,9 @@ async function readClose(day: string): Promise<void> {
     const type = String(row.type ?? '');
     const m = /^(\d{2}):(\d{2})/.exec(String(row.close ?? ''));
     closeMin = type === 'early_close' && m ? Number(m[1]) * 60 + Number(m[2]) : null;
-    /* the calls recorded from now on settle against this session's close */
+    /* the calls recorded from now on settle against this session's close, and the entries gate on its flat */
     setSessionClose(closeMin);
+    setScoreClose(day, closeMin);
   } finally {
     closeBusy = false;
   }
@@ -788,6 +790,7 @@ function rollDay(now: number): void {
     closeAsked = 0;
     closeMin = calendarClose(next.replace(/-/g, ''));
     setSessionClose(closeMin);
+    setScoreClose(next.replace(/-/g, ''), closeMin);
     opts.onDay?.(next);
   }
   if (closeDay !== day.replace(/-/g, '')) bg('the session calendar', readClose(day.replace(/-/g, '')));

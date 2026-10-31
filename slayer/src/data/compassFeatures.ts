@@ -66,6 +66,19 @@ export const SECTOR_OF: Record<string, string> = {
   ...Object.fromEntries(XLF.map(t => [t, 'XLF'])),
 };
 
+/** The 56 inputs' names, in the trees' column order. */
+export const INPUT_NAMES = [
+  't (minutes after 09:30)', 'return from the open', '5-minute return', '15-minute return', '60-minute return', 'place in the day range',
+  'day range / open', 'realised vol, 30 min', 'rv30 / prior rv', 'range compression', 'opening-range break', 'opening-range break size',
+  'vs prior high', 'vs prior low', 'open gap', 'minutes left', 'VWAP z', 'volume vs curve', 'last-5 volume vs curve',
+  'SPY 5-minute', 'SPY 15-minute', 'SPY from open', 'sector 15-minute', 'sector from open', 'ATM IV', 'skew',
+  'IV / RV', 'net gamma', 'call wall distance', 'put wall distance', 'moneyness', 'side', 'mid', 'spread / mid',
+  'mid 5-minute change', 'mid 15-minute change', 'contract IV', 'delta', 'gamma', 'theta / day', 'vega', 'gamma / |theta|',
+  'theta / mid', 'contract open interest', 'index class', 'high-beta class', 'signed return from open', 'signed 5-minute',
+  'signed 15-minute', 'signed 60-minute', 'signed VWAP z', 'signed OR break', 'signed SPY 15-minute', 'signed sector 15-minute',
+  'signed vs prior high', 'signed vs prior low',
+];
+
 export interface Bar { d: string; m: number; o: number; h: number; l: number; c: number; v: number }
 export interface Curve { cum: Map<number, number[]>; five: Map<number, number[]> }
 export interface PinBook { nodes: { strike: number; call: number; put: number }[]; oi: (strike: number, right: OptionRight) => number }
@@ -282,7 +295,12 @@ export function features(
   x[2] = ret5;
   x[3] = ret15;
   x[4] = tape.tt >= 60 ? ret60 : NaN;
-  x[5] = tape.H > tape.L ? (s - tape.L) / (tape.H - tape.L) : NaN;
+  /* Place in the day's range. The range here is minutes 0..t-1 (minute t's high and low are not known at the mark), so
+     the price at the mark can sit outside it; the training column spans exactly [0, 1], i.e. a range that holds the
+     price itself. Clipped to [0, 1]: the same value as a range that includes S. (To the trees this changes nothing:
+     every split threshold lies inside the training range, so 1.006 and 1 walk the same branch. It keeps the logged
+     row, the attribution and the study on the training definition.) */
+  x[5] = tape.H > tape.L ? Math.min(1, Math.max(0, (s - tape.L) / (tape.H - tape.L))) : NaN;
   x[6] = tape.H > 0 && tape.L > 0 && op > 0 ? (tape.H - tape.L) / op : NaN;
   x[7] = tape.rv30;
   x[8] = tape.rv30 > 0 && tape.rvPrev > 0 ? tape.rv30 / tape.rvPrev : NaN;
