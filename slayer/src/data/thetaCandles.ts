@@ -8,19 +8,29 @@ import type { DeskSession } from './deskSession';
 import { aggregateCandles } from './timeframe';
 import { offlineWords } from './thetaFeed';
 import { nyParts } from '../core/nyTime';
-import { grainStep, paintPrint, peekPrint, peekTape, tapeOpenMinute, wantPrint, wantTape, type TapeGrain, type TapeRead } from './thetaTape';
+import { extendTape, grainStep, paintPrint, peekPrint, peekTape, tapeOpenMinute, tapeReach, wantPrint, wantTape, type TapeGrain, type TapeRead } from './thetaTape';
 
 /** Sessions a chart keeps warm. A bar is drawn only when that minute has a price. */
 const CHART_SESSIONS: readonly DeskSession[] = ['overnight', 'pre', 'rth', 'post'];
 
-/** The tape grain a timeframe (in minutes) is drawn from. Finer bars are folded up to the interval. */
+/** The tape grain a timeframe (in minutes) is drawn from: the coarsest native ThetaData interval that divides it (5m and
+    10m off 5-minute bars, 15m and 45m off 15-minute, 30m off 30-minute, 1h–12h off hourly), so a coarse chart reaches back
+    months instead of folding a week of minutes. Finer bars are folded up to the interval. */
 export const chartGrain = (mins: number): TapeGrain => {
   if (mins < 1) return '15s';
-  if (mins <= 60) return '1m';
-  if (mins < 1440) return '1h';
+  if (mins < 1440) {
+    if (mins % 60 === 0) return '1h';
+    if (mins % 30 === 0) return '30m';
+    if (mins % 15 === 0) return '15m';
+    if (mins % 5 === 0) return '5m';
+    return '1m';
+  }
   if (mins >= 7 * 1440 && mins < 20 * 1440) return 'week';
   return 'day';
 };
+
+/** A grain's bar, minutes */
+const GRAIN_MIN: Partial<Record<TapeGrain, number>> = { '15s': 0.25, '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60 };
 
 const cashGrain = (grain: TapeGrain): boolean => grain === 'day' || grain === 'week';
 
@@ -48,8 +58,8 @@ function dedupe(bars: Candle[]): Candle[] {
   const out: Candle[] = [];
   for (const b of bars) {
     const prev = out[out.length - 1];
-    /* Same minute in two sessions: keep the earlier one. On a half day regular owns 13:00–15:59 and post also
-       opens then; the cash bar is not replaced by the after-hours copy. */
+    /* Same minute in two sessions: keep the earlier one. Sessions do not overlap (on a half day 13:00–19:59 is the
+       after-hours alone, thetaTape barInTape); this only guards a duplicated stamp. */
     if (prev && prev.time === b.time) continue;
     out.push(b);
   }
@@ -106,8 +116,10 @@ function foldCalendar(bars: Candle[], mins: number): Candle[] {
 export function shapeBars(raw: Candle[], mins: number, session: DeskSession, ticker: string): Candle[] {
   if (!raw.length) return raw;
   if (mins < 1440) {
-    const step = mins <= 60 ? 1 : 60;
-    return mins > step ? aggregateCandles(raw, mins, tapeOpenMinute(session, ticker)) : raw;
+    const step = GRAIN_MIN[chartGrain(mins)] ?? 1;
+    /* each segment counts from its own open (timeframe.ts barBucket: 9:30, 4:00, the close — 13:00 on a half day); an index's
+       overnight from 20:15 */
+    return mins > step ? aggregateCandles(raw, mins, session === 'overnight' ? tapeOpenMinute(session, ticker) : undefined) : raw;
   }
   if (mins >= 7 * 1440 && mins < 20 * 1440) return raw;
   if (mins >= 3 * 1440 && mins < 7 * 1440) return foldCalendarDays(raw, 3);
@@ -126,6 +138,23 @@ export function thetaChartBars(ticker: string, mins: number, _session: DeskSessi
   }
   out.sort((a, b) => a.time - b.time);
   return dedupe(out);
+}
+
+/** The chart reached its left edge: one older chunk for every session's tape of this timeframe's grain (each tape reads one
+    chunk at a time; a tape at its data's start asks nothing). True when any was asked. */
+export function extendChartTape(ticker: string, mins: number): boolean {
+  const grain = chartGrain(mins);
+  const sessions: readonly DeskSession[] = cashGrain(grain) ? ['rth'] : CHART_SESSIONS;
+  let asked = false;
+  for (const s of sessions) if (extendTape(ticker, grain, s)) asked = true;
+  return asked;
+}
+
+/** Older bars are on their way for this chart (a backfill or a scroll-back chunk) */
+export function chartTapeLoading(ticker: string, mins: number): boolean {
+  const grain = chartGrain(mins);
+  const sessions: readonly DeskSession[] = cashGrain(grain) ? ['rth'] : CHART_SESSIONS;
+  return sessions.some(s => tapeReach(ticker, grain, s).loading);
 }
 
 /** What the chart says when it has nothing to draw. Null while any session still has bars, or a tape is still loading. */

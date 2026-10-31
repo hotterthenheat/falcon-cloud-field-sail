@@ -4,9 +4,12 @@
 
 import type { Time, TickMarkFormatter } from 'lightweight-charts';
 import { now } from './clock';
+/* calendar imports nyParts from here; its sets are read only when these functions run, so the cycle is safe */
+import { sessionCloseMinOn } from './calendar';
 
 const NY_TZ = 'America/New_York';
-/** The cash session, in minutes since New York's midnight */
+/** The cash session, in minutes since New York's midnight. SESSION_CLOSE_MIN is a full day's close: on an early close the
+    session ends at 13:00 — nyCloseMin(at) is the close of that instant's own day. */
 export const SESSION_OPEN_MIN = 9 * 60 + 30;
 export const SESSION_CLOSE_MIN = 16 * 60;
 export const SESSION_LENGTH_MIN = SESSION_CLOSE_MIN - SESSION_OPEN_MIN;
@@ -99,6 +102,18 @@ export function nyWallTime(year: number, month: number, day: number, hour = 0, m
   return t;
 }
 
+/** The trading day an instant belongs to, yyyymmdd as a number: its New York date, and from 20:00 the NEXT date — the
+    overnight tape leads into the session it opens, so 20:00–04:00, the premarket, the cash session and the after-hours are one
+    day. One key for the chart's VWAP and session cuts (data/indicators.ts) and for Pine's ta.vwap (core/pine). */
+export function nyTradingDay(at?: At): number {
+  const p = nyParts(at);
+  if (p.hour >= 20) {
+    const d = new Date(Date.UTC(p.year, p.month - 1, p.day + 1));
+    return d.getUTCFullYear() * 10_000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
+  }
+  return p.year * 10_000 + p.month * 100 + p.day;
+}
+
 /** A Theta stamp with no zone is New York wall time, on every machine. */
 export function nyWallStamp(stamp: unknown): number {
   if (typeof stamp === 'number' && Number.isFinite(stamp)) return stamp > 1e12 ? stamp : stamp * 1000;
@@ -111,19 +126,25 @@ export function nyWallStamp(stamp: unknown): number {
   return nyWallTime(Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5])) + Number(m[6] || 0) * 1000;
 }
 
-/** That New York day's cash session, as instants (epoch ms): 09:30 and 16:00 New York */
+/** The minute of New York's day the cash session closes on that instant's date: 960, or 780 on an early close */
+export function nyCloseMin(at?: At): number {
+  return sessionCloseMinOn(nyIsoDate(at));
+}
+
+/** That New York day's cash session, as instants (epoch ms): 09:30 and 16:00 New York (13:00 on an early close) */
 export function nySession(at?: At): { open: number; close: number } {
   const p = nyParts(at);
+  const close = nyCloseMin(at);
   return {
     open: nyWallTime(p.year, p.month, p.day, 9, 30),
-    close: nyWallTime(p.year, p.month, p.day, 16, 0),
+    close: nyWallTime(p.year, p.month, p.day, Math.floor(close / 60), close % 60),
   };
 }
 
-/** Where New York's clock stands against the session: before the open, in it, or after the close */
+/** Where New York's clock stands against the session: before the open, in it, or after the close (13:00 on an early close) */
 export const nySessionPhase = (at?: At): 'before' | 'open' | 'after' => {
   const m = nyMinutes(at);
-  return m < SESSION_OPEN_MIN ? 'before' : m < SESSION_CLOSE_MIN ? 'open' : 'after';
+  return m < SESSION_OPEN_MIN ? 'before' : m < nyCloseMin(at) ? 'open' : 'after';
 };
 
 /* lightweight-charts on New York's clock (the library stamps UTC and has no zone option). A business day prints as it is.

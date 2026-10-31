@@ -6,7 +6,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import type { Candle } from '../types/market';
 import { nyMinutes, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
-import { isTradingDay, isEarlyClose, nyYmd, EARLY_CLOSES } from '../core/calendar';
+import { isTradingDay, isEarlyClose, nyYmd, EARLY_CLOSES, sessionBefore, sessionCloseMinOn } from '../core/calendar';
 import { minuteInSession, sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
 import { etClock, keepTheta, keptTheta, noData, offlineWords, pageHidden, thetaDown, thetaGet } from './thetaFeed';
 import { thetaUseHere } from './theta';
@@ -35,11 +35,105 @@ const WINDOWS: Record<DeskSession, { start: string; end: string }[]> = {
   ],
 };
 
-/** Calendar days of history per grain. 15-second history is asked one day at a time. */
-const DAYS: Record<Exclude<TapeGrain, 'day' | 'week'>, number> = { '15s': 1, '1m': 6, '5m': 12, '15m': 25, '30m': 40, '1h': 56 };
+/*
+  HISTORY IN SESSIONS, AND MORE OF IT ON THE WAY LEFT (2026-10-31). The windows were calendar days ending today, so a
+  weekend or a holiday ate them (15 s and 1 m were empty on a Sunday before the first print) and the coarse grains were
+  shallow (an hour chart was about 28 bars). Each grain now counts TRADING SESSIONS back from the last session whose window
+  has opened (a Saturday or a 7 AM Monday reads Friday), paints its newest chunk first, then backfills older chunks one at a
+  time to its depth; a chart scrolled to its left edge asks for one more chunk (extendTape), until the data's start (two
+  empty chunks in a row; ThetaData's "no data" for the EOD rows). A chunk is at most a month for intraday bars (ThetaData:
+  "Bulk history requests are limited to no more than 1 month"; spansOf cuts 28-day spans) and 365 days for EOD rows. A
+  finished day never changes: it is read once and kept in the slot, and the refresh re-reads only the last few sessions.
+*/
+type IntraGrain = Exclude<TapeGrain, 'day' | 'week'>;
+/** Sessions of history a grain fills on its own: 15 s one session, 1 m a week, 5 m a month, 1 h six months */
+const DEPTH: Record<TapeGrain, number> = { '15s': 1, '1m': 5, '5m': 20, '15m': 40, '30m': 63, '1h': 126, day: 5 * 252, week: 5 * 252 };
+/** Sessions in one read: the first paint, every backfill step and every scroll-back step */
+const CHUNK: Record<TapeGrain, number> = { '15s': 1, '1m': 5, '5m': 20, '15m': 20, '30m': 20, '1h': 20, day: 252, week: 252 };
+/** Sessions the ten-minute refresh re-reads (late corrections land on the last day or two); between refreshes, today only */
+const REFRESH_SESSIONS = 2;
+/** A daily or weekly chart off the extended sessions folds 5-minute bars: its sessions per chunk and its depth */
+const EXT_DAY_CHUNK = 20;
+const EXT_DAY_DEPTH = 40;
 const STEP_SEC: Partial<Record<TapeGrain, number>> = { '15s': 15, '1m': 60, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600 };
 
 const ymd = (at = Date.now()): string => nyYmd(at);
+const two = (n: number) => String(n).padStart(2, '0');
+const ymdOfDate = (d: Date): string => `${d.getFullYear()}${two(d.getMonth() + 1)}${two(d.getDate())}`;
+const dateOfYmd = (v: string): Date => new Date(Number(v.slice(0, 4)), Number(v.slice(4, 6)) - 1, Number(v.slice(6, 8)));
+
+/** The calendar day before a YYYYMMDD */
+export function dayBefore(v: string): string {
+  const d = dateOfYmd(v);
+  d.setDate(d.getDate() - 1);
+  return ymdOfDate(d);
+}
+
+/** Calendar days back from a YYYYMMDD */
+export function daysBack(v: string, n: number): string {
+  const d = dateOfYmd(v);
+  d.setDate(d.getDate() - n);
+  return ymdOfDate(d);
+}
+
+/** The `n`-th trading session counting back from `end` (YYYYMMDD; `end` itself is the first when it trades). */
+export function sessionsBack(end: string, n: number): string {
+  const d = dateOfYmd(end);
+  let left = Math.max(1, Math.floor(n));
+  for (let i = 0; i < 4000; i++) {
+    if (isTradingDay(d)) {
+      left -= 1;
+      if (left === 0) return ymdOfDate(d);
+    }
+    d.setDate(d.getDate() - 1);
+  }
+  return ymdOfDate(d);
+}
+
+/** The minute of New York's day a session's window opens on `iso` (the after-hours at the close: 13:00 on an early close) */
+function windowOpenMin(session: DeskSession, iso: string): number {
+  if (session === 'rth') return 9 * 60 + 30;
+  if (session === 'pre') return 4 * 60;
+  if (session === 'post') return sessionCloseMinOn(iso);
+  return 0;
+}
+
+/** The last session whose `session` window has opened by `nowMs`: today once it has, else the session before (a Saturday,
+    a Sunday, a holiday or 7 AM on a Monday for the cash session all read the session before). YYYYMMDD. */
+export function anchorSession(session: DeskSession, nowMs = Date.now()): string {
+  const p = nyParts(nowMs);
+  const today = new Date(p.year, p.month - 1, p.day);
+  const iso = `${p.year}-${two(p.month)}-${two(p.day)}`;
+  if (isTradingDay(today) && p.hour * 60 + p.minute >= windowOpenMin(session, iso)) return ymdOfDate(today);
+  return ymdOfDate(sessionBefore(today));
+}
+
+/** Where a read ends: today, except a 15-second read (one request a day) on a day with no session ends on the anchor. */
+function readEnd(grain: TapeGrain, session: DeskSession, nowMs = Date.now()): string {
+  const today = ymd(nowMs);
+  if (grain !== '15s') return today;
+  return isTradingDay(dateOfYmd(today)) ? today : anchorSession(session, nowMs);
+}
+
+/** The first chunk a grain paints, [from, to] (YYYYMMDD), and how far back it fills on its own */
+export function tapeWindow(grain: TapeGrain, session: DeskSession, nowMs = Date.now()): { from: string; to: string; target: string } {
+  const anchor = anchorSession(session, nowMs);
+  const to = readEnd(grain, session, nowMs);
+  const cash = session === 'rth' || (grain !== 'day' && grain !== 'week');
+  const chunk = cash ? CHUNK[grain] : EXT_DAY_CHUNK;
+  const depth = cash ? DEPTH[grain] : EXT_DAY_DEPTH;
+  if ((grain === 'day' || grain === 'week') && session === 'rth') return { from: daysBack(to, 365), to, target: daysBack(to, 5 * 365) };
+  return { from: sessionsBack(anchor, chunk), to, target: sessionsBack(anchor, depth) };
+}
+
+/** The older chunk before `from` (YYYYMMDD), no older than `target` when one is given */
+export function olderChunk(grain: TapeGrain, session: DeskSession, from: string, target?: string): { from: string; to: string } {
+  const to = dayBefore(from);
+  const eod = (grain === 'day' || grain === 'week') && session === 'rth';
+  const cash = session === 'rth' || (grain !== 'day' && grain !== 'week');
+  const start = eod ? daysBack(to, 364) : sessionsBack(to, cash ? CHUNK[grain] : EXT_DAY_CHUNK);
+  return { from: target && target > start ? target : start, to };
+}
 
 function num(v: unknown): number {
   const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
@@ -96,8 +190,8 @@ function rangeHasEarlyClose(from: string, to: string): boolean {
 }
 
 /** A print belongs on this tape. The stock overnight starts at 8:00 PM. An index overnight starts at 8:15.
-    On a half day, 13:00–15:59 stays regular — dropping it left those bars in no session — and post opens at
-    13:00, when the early close ends. No bar is invented. */
+    On a half day the cash session ends at 13:00: 13:00–19:59 is the after-hours (post opens when the early close
+    ends), so every minute is in exactly one session and nothing after the close is a regular bar. No bar is invented. */
 export function barInTape(timeSec: number, session: DeskSession, symbol = ''): boolean {
   const min = nyMinutes(timeSec * 1000);
   const name = symbol.trim().toUpperCase();
@@ -107,7 +201,7 @@ export function barInTape(timeSec: number, session: DeskSession, symbol = ''): b
   const p = nyParts(timeSec * 1000);
   const iso = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
   if (isEarlyClose(iso)) {
-    if (session === 'rth') return min >= 9 * 60 + 30 && min < 16 * 60;
+    if (session === 'rth') return min >= 9 * 60 + 30 && min < 13 * 60;
     if (session === 'post') return min >= 13 * 60 && min < 20 * 60;
   }
   return minuteInSession(min, session);
@@ -149,7 +243,9 @@ export function readOhlc(data: unknown, session: DeskSession, symbol = ''): Cand
 export function readEod(data: unknown): Candle[] {
   const bars: Candle[] = [];
   for (const b of flatRows(data)) {
-    const at = nyWallStamp(b.last_trade ?? b.created ?? b.timestamp ?? b.date);
+    /* the row's own day: `created` is when that day's report was made; `last_trade` can be an earlier day's (a contract that
+       did not trade) */
+    const at = nyWallStamp(b.created ?? b.last_trade ?? b.timestamp ?? b.date);
     const close = num(b.close);
     if (!at || !(close > 0)) continue;
     bars.push({ time: dayClose(Math.floor(at / 1000)), open: num(b.open) || close, high: num(b.high) || close, low: num(b.low) || close, close, volume: num(b.volume) });
@@ -172,8 +268,8 @@ const root = (symbol: string): 'index' | 'stock' => (THETA_INDEX.has(symbol) ? '
 
 type Pull = { bars: Candle[]; offline: boolean };
 
-/** One intraday grain over [from, to], every window of the session. 15-second history is one day per call. */
-/** [from, to] as spans the terminal takes in one read: a month at most, and one day for a grain under a minute. */
+/** [from, to] as spans the terminal takes in one read: a month at most (28 days), and one day for a grain under a minute.
+    A 15-second span on a day with no session is not asked. */
 export function spansOf(from: string, to: string, grain: Exclude<TapeGrain, 'day' | 'week'>): [string, string][] {
   const asMs = (d: string) => Date.UTC(Number(d.slice(0, 4)), Number(d.slice(4, 6)) - 1, Number(d.slice(6, 8)));
   const asYmd = (ms: number) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, '');
@@ -181,6 +277,7 @@ export function spansOf(from: string, to: string, grain: Exclude<TapeGrain, 'day
   const out: [string, string][] = [];
   for (let at = asMs(to); at >= asMs(from); at -= width * 86_400_000) {
     const start = Math.max(asMs(from), at - (width - 1) * 86_400_000);
+    if (width === 1 && !isTradingDay(dateOfYmd(asYmd(at)))) continue;
     out.push([asYmd(start), asYmd(at)]);
   }
   return out.reverse();
@@ -211,28 +308,49 @@ async function pullEod(symbol: string, from: string, to: string): Promise<Pull> 
   return { bars: readEod(got.data), offline: false };
 }
 
-/** Daily or weekly bars: the EOD rows, with today's regular session folded from its 5-minute bars until its EOD row lands.
-    Five years, a year at a time. A one-year chart folded from 400 days is a single bar. */
-async function pullEodYears(symbol: string, years: number): Promise<Pull> {
-  const now = Date.now();
+/** EOD rows over [from, to] in spans of at most 365 days (ThetaData's limit), one after another. `none`: the terminal
+    answered "no data" for every span — before the name's first day. */
+async function pullEodRange(symbol: string, from: string, to: string): Promise<Pull & { none: boolean }> {
   const spans: [string, string][] = [];
-  for (let i = 0; i < years; i++) spans.push([ymd(now - (i + 1) * 365 * 86_400_000), ymd(now - i * 365 * 86_400_000)]);
-  const got = await Promise.all(spans.map(([from, to]) => pullEod(symbol, from, to)));
-  return { bars: dedupe(got.flatMap(g => g.bars)), offline: got.some(g => g.offline) };
+  for (let end = to; end >= from; ) {
+    const start = daysBack(end, 364) > from ? daysBack(end, 364) : from;
+    spans.unshift([start, end]);
+    end = dayBefore(start);
+  }
+  const bars: Candle[] = [];
+  let offline = false;
+  let none = true;
+  for (const [a, b] of spans) {
+    const got = await thetaGet(`/${root(symbol)}/history/eod?symbol=${encodeURIComponent(symbol)}&start_date=${a}&end_date=${b}&format=json`);
+    if (got.error) {
+      if (!noData(got)) {
+        offline = true;
+        none = false;
+      }
+      continue;
+    }
+    none = false;
+    bars.push(...readEod(got.data));
+  }
+  return { bars: dedupe(bars), offline, none };
 }
 
-async function pullDays(symbol: string, grain: 'day' | 'week', session: DeskSession): Promise<Pull> {
-  const to = ymd();
+/** Daily bars over [from, to]: the regular session's EOD rows, with today's folded from its 5-minute bars until its EOD row
+    lands (`withToday`); an extended session's days folded from its own 5-minute bars. A weekly chart folds these days when
+    it is read (peekTape), so a chunk's edge never cuts a week in two. */
+async function pullDays(symbol: string, session: DeskSession, from: string, to: string, withToday: boolean): Promise<Pull & { none: boolean }> {
   if (session === 'rth') {
-    const [daily, today] = await Promise.all([pullEodYears(symbol, 5), pullIntraday(symbol, '5m', 'rth', to, to)]);
+    const today = ymd();
+    const [daily, now] = await Promise.all([
+      pullEodRange(symbol, from, to),
+      withToday ? pullIntraday(symbol, '5m', 'rth', today, today) : Promise.resolve({ bars: [] as Candle[], offline: false }),
+    ]);
     const byTime = new Map(daily.bars.map(b => [b.time, b]));
-    for (const b of foldTo(today.bars, dayClose)) if (!byTime.has(b.time)) byTime.set(b.time, b);
-    const days = [...byTime.values()].sort((a, b) => a.time - b.time);
-    return { bars: grain === 'week' ? foldTo(days, weekClose) : days, offline: daily.offline || today.offline };
+    for (const b of foldTo(now.bars, dayClose)) if (!byTime.has(b.time)) byTime.set(b.time, b);
+    return { bars: [...byTime.values()].sort((a, b) => a.time - b.time), offline: daily.offline || now.offline, none: daily.none && !now.bars.length };
   }
-  const intra = await pullIntraday(symbol, '5m', session, ymd(Date.now() - 40 * 86_400_000), to);
-  const days = foldTo(intra.bars, dayClose);
-  return { bars: grain === 'week' ? foldTo(days, weekClose) : days, offline: intra.offline };
+  const intra = await pullIntraday(symbol, '5m', session, from, to);
+  return { bars: foldTo(intra.bars, dayClose), offline: intra.offline, none: false };
 }
 
 /* ---- the store ---- */
@@ -259,6 +377,15 @@ interface Slot extends TapeRead {
   keptAsked: boolean;
   /** When this browser last kept the bars */
   keptAt: number;
+  /** The oldest day read so far (YYYYMMDD, '' before the first read) and the oldest day wanted: older chunks are read one at a
+      time while `from` is after `target` */
+  from: string;
+  target: string;
+  olderBusy: boolean;
+  olderDueAt: number;
+  /** Older chunks that came back empty in a row; two, or a "no data" on the EOD rows, is the data's start */
+  emptyRuns: number;
+  done: boolean;
 }
 
 const slots = new Map<string, Slot>();
@@ -293,7 +420,7 @@ function slotOf(symbol: string, grain: TapeGrain, session: DeskSession): Slot {
   const key = keyOf(symbol, grain, session);
   let s = slots.get(key);
   if (!s) {
-    s = { symbol, grain, session, bars: [], takenAt: 0, state: 'loading', fullAt: 0, dueAt: 0, busy: false, keptAsked: false, keptAt: 0 };
+    s = { symbol, grain, session, bars: [], takenAt: 0, state: 'loading', fullAt: 0, dueAt: 0, busy: false, keptAsked: false, keptAt: 0, from: '', target: '', olderBusy: false, olderDueAt: 0, emptyRuns: 0, done: false };
     slots.set(key, s);
   }
   return s;
@@ -329,13 +456,18 @@ async function read(s: Slot): Promise<void> {
         }
       }
     }
-    const to = ymd();
-    /* the full window once every ten minutes; between, today alone, merged onto what is held */
-    const full = !s.fullAt || Date.now() - s.fullAt > 10 * 60_000 || s.grain === 'day' || s.grain === 'week' || !s.bars.length;
-    const got =
-      s.grain === 'day' || s.grain === 'week'
-        ? await pullDays(s.symbol, s.grain, s.session)
-        : await pullIntraday(s.symbol, s.grain, s.session, full ? ymd(Date.now() - DAYS[s.grain] * 86_400_000) : to, to);
+    const daily = s.grain === 'day' || s.grain === 'week';
+    const win = tapeWindow(s.grain, s.session);
+    const first = !s.from;
+    /* the first read paints the newest chunk; every ten minutes the last sessions again (a late correction); between, today */
+    const refresh = !first && Date.now() - s.fullAt > 10 * 60_000;
+    const from = first ? win.from : refresh ? (daily && s.session === 'rth' ? daysBack(win.to, 12) : sessionsBack(anchorSession(s.session), REFRESH_SESSIONS)) : ymd();
+    const got = daily ? await pullDays(s.symbol, s.session, from, win.to, true) : await pullIntraday(s.symbol, s.grain as IntraGrain, s.session, from, win.to);
+    const full = first || refresh;
+    if (first && !(got.offline && !got.bars.length)) {
+      s.from = win.from;
+      s.target = win.target;
+    }
     if (got.offline && !got.bars.length) {
       if (s.state !== 'offline') {
         s.state = 'offline';
@@ -347,16 +479,63 @@ async function read(s: Slot): Promise<void> {
     s.takenAt = Date.now();
     s.state = 'live';
     if (full) s.fullAt = s.takenAt;
-    /* kept for the next visit at most once a minute */
+    /* kept for the next visit at most once a minute: the newest bars, not a scrolled-back history */
     if (s.takenAt - s.keptAt > 60_000) {
       s.keptAt = s.takenAt;
-      keepTheta(`tape:${key}`, s.bars);
+      keepTheta(`tape:${key}`, s.bars.length > KEEP_BARS ? s.bars.slice(-KEEP_BARS) : s.bars);
     }
     emit();
   } finally {
     s.busy = false;
     s.dueAt = Date.now() + (s.state === 'offline' ? 15_000 : holdMs(s));
   }
+}
+
+/** Bars a browser keeps of one tape for its next visit */
+const KEEP_BARS = 6000;
+
+/** One older chunk for a slot, merged under what it holds. A failed read waits 15 s; two empty chunks are the start. */
+async function readOlder(s: Slot): Promise<void> {
+  if (s.olderBusy || s.done || !s.from || s.from <= s.target || thetaUseHere() === 'none') return;
+  s.olderBusy = true;
+  try {
+    const span = olderChunk(s.grain, s.session, s.from, s.target);
+    const daily = s.grain === 'day' || s.grain === 'week';
+    const got = daily ? await pullDays(s.symbol, s.session, span.from, span.to, false) : { ...(await pullIntraday(s.symbol, s.grain as IntraGrain, s.session, span.from, span.to)), none: false };
+    if (got.offline && !got.bars.length) {
+      s.olderDueAt = Date.now() + 15_000;
+      return;
+    }
+    s.from = span.from;
+    if (got.bars.length) {
+      s.emptyRuns = 0;
+      s.bars = sealBars(s.bars, got.bars);
+      emit();
+    } else {
+      s.emptyRuns += 1;
+      if (got.none || s.emptyRuns >= 2) {
+        s.done = true;
+        s.target = s.from;
+      }
+    }
+  } finally {
+    s.olderBusy = false;
+  }
+}
+
+/** A chart reached the left edge of a tape: one more chunk of older bars (a month of intraday bars at most, a year of daily
+    ones), read on the next beat. False when a chunk is already on its way or the data's start was reached. */
+export function extendTape(symbol: string, grain: TapeGrain, session: DeskSession): boolean {
+  const s = slots.get(keyOf(symbol.trim().toUpperCase(), grain, session));
+  if (!s || s.done || !s.from || s.olderBusy || s.from > s.target) return false;
+  s.target = olderChunk(grain, session, s.from).from;
+  return true;
+}
+
+/** How far back a tape reaches and whether its start was found, for a chart's "loading older bars" state */
+export function tapeReach(symbol: string, grain: TapeGrain, session: DeskSession): { from: string; loading: boolean; done: boolean } {
+  const s = slots.get(keyOf(symbol.trim().toUpperCase(), grain, session));
+  return s ? { from: s.from, loading: s.olderBusy || (!!s.from && s.from > s.target && !s.done), done: s.done } : { from: '', loading: false, done: false };
 }
 
 /* One clock for every wanted tape and print: a read when it is due, none while the tab is hidden. */
@@ -367,6 +546,8 @@ function beat(): void {
   for (const key of wanted.keys()) {
     const s = slots.get(key);
     if (s && !s.busy && now >= s.dueAt) void read(s);
+    /* older chunks, one at a time per tape, after its first paint */
+    else if (s && !s.busy && !s.olderBusy && s.takenAt > 0 && s.from && s.from > s.target && !s.done && now >= s.olderDueAt) void readOlder(s);
   }
   if (printWanted.size && !printsBusy && now >= printsDue) void readPrints();
 }
@@ -401,9 +582,17 @@ export function wantTape(symbol: string, grain: TapeGrain, session: DeskSession)
 
 const NONE: TapeRead = { bars: [], takenAt: 0, state: 'loading' };
 
-/** What is held for a tape now, without asking. */
+const weekly = new WeakMap<Candle[], TapeRead>();
+/** What is held for a tape now, without asking. A weekly tape holds days and is folded to weeks here. */
 export function peekTape(symbol: string, grain: TapeGrain, session: DeskSession): TapeRead {
-  return slots.get(keyOf(symbol.trim().toUpperCase(), grain, session)) ?? NONE;
+  const s = slots.get(keyOf(symbol.trim().toUpperCase(), grain, session));
+  if (!s) return NONE;
+  if (grain !== 'week') return s;
+  const hit = weekly.get(s.bars);
+  if (hit && hit.takenAt === s.takenAt && hit.state === s.state) return hit;
+  const out: TapeRead = { bars: foldTo(s.bars, weekClose), takenAt: s.takenAt, state: s.state };
+  weekly.set(s.bars, out);
+  return out;
 }
 
 export function subscribeTape(fn: () => void): () => void {
@@ -478,12 +667,14 @@ interface PrintSlot {
 const prints = new Map<string, PrintSlot>();
 const printWanted = new Map<string, number>();
 
-/** A stock's print and an index's price move from 04:00 to 20:00 New York on a trading day; outside that they hold. */
+/** A stock's print moves from 04:00 to 20:00 New York on a trading day, an index's from 09:30 to a quarter after the cash
+    close (16:15; 13:15 on an early close); outside that they hold. */
 function printLive(symbol: string): boolean {
   const p = nyParts();
   if (!isTradingDay(new Date(p.year, p.month - 1, p.day))) return false;
   const m = nyMinutes();
-  return THETA_INDEX.has(symbol) ? m >= 9 * 60 + 30 && m < 16 * 60 + 15 : m >= 4 * 60 && m < 20 * 60;
+  const iso = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+  return THETA_INDEX.has(symbol) ? m >= 9 * 60 + 30 && m < (isEarlyClose(iso) ? 13 * 60 : 16 * 60) + 15 : m >= 4 * 60 && m < 20 * 60;
 }
 
 /* Every wanted name's print, one read a name (the same address for every viewer, so the server shares it); each name's

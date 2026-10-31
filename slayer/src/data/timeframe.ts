@@ -5,7 +5,8 @@
 */
 
 import type { Candle, GexSnapshot } from '../types/market';
-import { nyParts, nyWallTime } from '../core/nyTime';
+import { nyParts, nyTradingDay, nyWallTime } from '../core/nyTime';
+import { sessionCloseMinOn } from '../core/calendar';
 
 export type Timeframe =
   | '15s'
@@ -100,12 +101,66 @@ function sessionBucket(timeSec: number, bucketSec: number, openMin: number): num
   return open + Math.floor((timeSec - open) / bucketSec) * bucketSec;
 }
 
+const two = (n: number) => String(n).padStart(2, '0');
+/** 09:30 New York (epoch seconds) on the civil date y-m-d, the day normalised (d = 0 is the last of the month before). */
+function openOn(y: number, m: number, d: number, min = 9 * 60 + 30): number {
+  const u = new Date(Date.UTC(y, m - 1, d));
+  return Math.floor(nyWallTime(u.getUTCFullYear(), u.getUTCMonth() + 1, u.getUTCDate(), Math.floor(min / 60), min % 60) / 1000);
+}
+
+/*
+  THE BUCKET A BAR BELONGS TO, TradingView style (2026-10-31). The default used to be the unix epoch: an hour cut at :00 so the
+  first 1h bar was 9:30–10:00, a day cut at UTC midnight (20:00 New York in summer), a week began on a Thursday (1970-01-01).
+  Intraday buckets now count from the open of the session segment the bar is in — the cash session at 9:30, the after-hours
+  at the close (13:00 on an early close), the premarket at 4:00, the overnight at 20:00 (its morning leg with the evening it
+  started) — so 1h reads 9:30, 10:30 … 15:30 and the 15:30 bar is half an hour. A day is the New York trading day
+  (core/nyTime nyTradingDay; the overnight from 20:00 joins the day it opens), stamped at its 9:30 open; a week starts on that
+  day's Monday; 3D counts civil days; a month, quarter, half or year is the calendar's.
+*/
+export function barBucket(timeSec: number, minutes: number): number {
+  if (minutes >= 1440) {
+    const key = nyTradingDay(timeSec * 1000);
+    const y = Math.floor(key / 10_000);
+    const m = Math.floor(key / 100) % 100;
+    const d = key % 100;
+    if (minutes === 1440) return openOn(y, m, d);
+    if (minutes < 7 * 1440) {
+      const serial = Math.floor(Date.UTC(y, m - 1, d) / 86_400_000);
+      const start = serial - (serial % Math.round(minutes / 1440));
+      const u = new Date(start * 86_400_000);
+      return openOn(u.getUTCFullYear(), u.getUTCMonth() + 1, u.getUTCDate());
+    }
+    if (minutes < 28 * 1440) {
+      const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+      return openOn(y, m, d - ((dow + 6) % 7));
+    }
+    const months = minutes >= 365 * 1440 ? 12 : minutes >= 180 * 1440 ? 6 : minutes >= 90 * 1440 ? 3 : 1;
+    return openOn(y, m - ((m - 1) % months), 1);
+  }
+  const bucketSec = minutes * 60;
+  const p = nyParts(timeSec * 1000);
+  const min = p.hour * 60 + p.minute;
+  const close = sessionCloseMinOn(`${p.year}-${two(p.month)}-${two(p.day)}`);
+  let from: number;
+  let back = 0;
+  if (min >= 9 * 60 + 30 && min < close) from = 9 * 60 + 30;
+  else if (min >= close && min < 20 * 60) from = close;
+  else if (min >= 4 * 60 && min < 9 * 60 + 30) from = 4 * 60;
+  else {
+    from = 20 * 60;
+    if (min < 4 * 60) back = 1;
+  }
+  const open = openOn(p.year, p.month, p.day - back, from);
+  return open + Math.floor((timeSec - open) / bucketSec) * bucketSec;
+}
+
 /** Aggregate 1m OHLC bars into buckets of `minutes`. The base contract is
     ONE-MINUTE bars: sub-minute timeframes never come through here — they
     read the seconds tape directly (see the T-14 note above), so `<= 1`
     correctly means "already at or below the base grid". `openMin` anchors
-    the bucket to that session's New York open. Without it the bucket is the
-    unix epoch, which cuts an hour at :00 and not at 9:30. */
+    the bucket to that one session's New York open; without it each bar's
+    bucket is `barBucket`'s (its session segment's open, the trading day, the
+    Monday week). */
 export function aggregateCandles(base: Candle[], minutes: number, openMin?: number): Candle[] {
   if (minutes <= 1 || base.length === 0) return base;
   const bucketSec = minutes * 60;
@@ -126,7 +181,7 @@ export function aggregateCandles(base: Candle[], minutes: number, openMin?: numb
   let curStart = f.folded;
   for (let i = f.folded; i < base.length; i++) {
     const b = base[i];
-    const bucket = openMin == null ? Math.floor(b.time / bucketSec) * bucketSec : sessionBucket(b.time, bucketSec, openMin);
+    const bucket = openMin == null ? barBucket(b.time, minutes) : sessionBucket(b.time, bucketSec, openMin);
     if (bucket !== curBucket) {
       if (cur) {
         f.closed.push(cur);
@@ -251,7 +306,6 @@ function foldFor(base: GexSnapshot[], minutes: number): SnapFold {
 /** One snapshot per bucket — the PEAK per strike inside it, re-stamped to the bucket start. */
 export function aggregateSnapshots(base: GexSnapshot[], minutes: number): GexSnapshot[] {
   if (base.length === 0 || minutes <= 1) return base;
-  const bucketSec = minutes * 60;
   const f = foldFor(base, minutes);
   /* The bucket's node is its PEAK minute, per strike — the way a candle
      keeps its high and low, not its average. A mean flattened the ribbon's
@@ -262,7 +316,8 @@ export function aggregateSnapshots(base: GexSnapshot[], minutes: number): GexSna
   let peaks = newPeaks();
   for (let i = f.folded; i < base.length; i++) {
     const snap = base[i];
-    const bucket = Math.floor(snap.time / bucketSec) * bucketSec;
+    /* the candles' own bucket, so a node stays pinned to its bar */
+    const bucket = barBucket(snap.time, minutes);
     if (bucket !== curBucket) {
       if (curBucket >= 0) {
         f.closed.push({ time: curBucket, levels: peakLevels(peaks) });

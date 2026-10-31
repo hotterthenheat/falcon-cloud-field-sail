@@ -19,7 +19,10 @@ import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import type { Timeframe } from './timeframe';
 import { tfMinutes } from './timeframe';
 import { shapeBars } from './thetaCandles';
+import { vendorVol } from './coneFeed';
 import { nyYmd as ymd } from '../core/calendar';
+import { anchorSession, daysBack, readEod, sessionsBack } from './thetaTape';
+import { noData } from './thetaFeed';
 
 export type { ThetaState };
 
@@ -106,16 +109,33 @@ interface LiveBar { time: number; open: number; high: number; low: number; close
 
 const barCache = new Map<string, { at: number; bars: LiveBar[] }>();
 
-function barWindow(tf: Timeframe): { interval: string; days: number; minutes: number } {
+/* A contract's window in TRADING SESSIONS back from the last session that opened (a Sunday reads Friday's), not calendar
+   days ending today (1m was today alone and empty all weekend). Intraday reads stay inside ThetaData's one-month limit (one
+   28-day span at most: the 1h window was 40 days and every read was refused); daily bars are the contract's EOD rows
+   (interval=1d is not an interval ThetaData has), a year at most. */
+function barWindow(tf: Timeframe): { interval: string; sessions: number; minutes: number } {
   const minutes = tfMinutes(tf);
-  if (minutes >= 7 * 1440) return { interval: '1d', days: 5 * 365, minutes };
-  if (minutes >= 1440) return { interval: '1d', days: minutes >= 30 * 1440 ? 5 * 365 : 180, minutes };
-  if (minutes >= 60) return { interval: '1h', days: 40, minutes };
-  if (minutes >= 30) return { interval: '30m', days: 10, minutes };
-  if (minutes >= 15) return { interval: '15m', days: 6, minutes };
-  if (minutes >= 5) return { interval: '5m', days: 4, minutes };
-  if (minutes < 1) return { interval: '15s', days: 1, minutes };
-  return { interval: '1m', days: 2, minutes };
+  if (minutes >= 1440) return { interval: '1d', sessions: 252, minutes };
+  if (minutes >= 60) return { interval: '1h', sessions: 20, minutes };
+  if (minutes >= 30) return { interval: '30m', sessions: 20, minutes };
+  if (minutes >= 15) return { interval: '15m', sessions: 10, minutes };
+  if (minutes >= 5) return { interval: '5m', sessions: 5, minutes };
+  if (minutes < 1) return { interval: '15s', sessions: 1, minutes };
+  return { interval: '1m', sessions: 2, minutes };
+}
+
+/** [start, end] (YYYYMMDD) of a contract read: `sessions` back from the last session that opened, to today, inside 28 days
+    (365 for the EOD rows) */
+export function contractSpan(sessions: number, daily: boolean, nowMs = Date.now()): { start: string; end: string } {
+  const end = ymd(nowMs);
+  const start = sessionsBack(anchorSession('rth', nowMs), sessions);
+  const floor = daysBack(end, daily ? 364 : 27);
+  return { start: start < floor ? floor : start, end };
+}
+
+/** A contract's EOD rows as daily bars at 16:00 New York, the day the row reports (`created`) */
+function readEodBars(data: unknown): LiveBar[] {
+  return readEod(asRows(data)).map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close }));
 }
 
 function readBars(data: unknown): LiveBar[] {
@@ -206,18 +226,18 @@ export function useContractBars(ticker: string, expiration: string, strike: numb
     const rightWord = right === 'C' ? 'call' : 'put';
     const pull = async () => {
       if (hidden()) return;
-      const end = ymd(Date.now());
-      const start = ymd(Date.now() - (spec.days - 1) * 86400000);
+      const daily = spec.interval === '1d';
+      const { start, end } = contractSpan(spec.sessions, daily);
       const leg = `symbol=${encodeURIComponent(ticker)}&expiration=${exp}&strike=${strike}&right=${rightWord}&start_date=${start}&end_date=${end}`;
-      const ohlc = await theta(`/option/history/ohlc?${leg}&interval=${spec.interval}&format=json`, true);
+      const ohlc = await theta(daily ? `/option/history/eod?${leg}&format=json` : `/option/history/ohlc?${leg}&interval=${spec.interval}&format=json`, true);
       if (dead) return;
-      let rows = ohlc.error ? [] : readBars(ohlc.data);
-      if (!rows.length) {
+      let rows = ohlc.error ? [] : daily ? readEodBars(ohlc.data) : readBars(ohlc.data);
+      if (!rows.length && !daily) {
         const trades = await theta(`/option/history/trade?${leg}&format=json`, true);
         if (dead) return;
         rows = trades.error ? [] : barsFromTrades(trades.data, stepSec(spec.interval));
         if (ohlc.error && trades.error) return;
-      }
+      } else if (!rows.length && ohlc.error && !noData(ohlc)) return;
       const shaped = shapeBars(rows.map(b => ({ ...b, volume: 0 })), spec.minutes, 'rth', ticker).map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close }));
       barCache.set(key, { at: Date.now(), bars: shaped });
       setBars(shaped);
@@ -230,7 +250,7 @@ export function useContractBars(ticker: string, expiration: string, strike: numb
       dead = true;
       window.clearInterval(id);
     };
-  }, [key, on, ticker, expiration, strike, right, spec.interval, spec.days]);
+  }, [key, on, ticker, expiration, strike, right, spec.interval, spec.sessions]);
   return bars;
 }
 
@@ -297,7 +317,8 @@ async function pullQuote(key: string, want: QuoteWant): Promise<void> {
       theta: perDay(field(parsed.quote.theta)),
       vega: perPoint(field(parsed.quote.vega)),
       rho: perPoint(field(parsed.quote.rho)),
-      iv: rawIv > 0 && rawIv < 3 ? rawIv * 100 : rawIv,
+      /* ThetaData prints implied_vol as a fraction, always (0.1834 = 18.34%; a deep wing's 3.2 is 320%): percent for the page */
+      iv: Number.isFinite(rawIv) ? vendorVol(rawIv) * 100 : rawIv,
     });
     stampPickQuote(want.ticker, want.expiration, want.strike, want.right, quoteBox.get(key)!);
     emit();

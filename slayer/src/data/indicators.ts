@@ -1,5 +1,6 @@
 import type { Candle } from '../types/market';
 import { sessionOccurrence, type DeskSession } from './deskSession';
+import { nyTradingDay } from '../core/nyTime';
 
 /*
 ==================================================
@@ -21,58 +22,96 @@ import { sessionOccurrence, type DeskSession } from './deskSession';
   So: one generator, and the chart maps the numbers onto its own series.
   Nothing here knows about charts, so `npm test` can hold both to a fixture.
 
-  ALIGNED TO `bars`, one value per bar, no leading nulls. Both are seeded
-  rather than warmed up, which is a real property and is asserted rather than
-  hidden: `emaSeries` starts at the first close, so early values are closer to
-  price than a settled EMA would be, and a caller that needs a settled one has
-  to say how many bars it wants behind it. `WARMUP_BARS` is that number.
+  ALIGNED TO `bars`, one value per bar. The EMA is TradingView's (Pine v5
+  ta.ema): null through bar `period − 2`, the SMA of the first `period`
+  closes on bar `period − 1`, then α = 2/(period+1). The Pine interpreter
+  (core/pine/ta.ts) and these lines are one convention, so a script's
+  ta.ema(close, 21) and the toolbar's EMA21 draw the same line.
 */
 
 /**
- * How many bars an EMA needs behind it before its value is the EMA rather
- * than the seed still washing out. One period: after `period` steps the seed's
- * weight is `(1 - 2/(period+1))^period`, which is about 13% at 21 and falls
- * from there — small enough that the curve is the data's, large enough that
- * calling it settled before then would be a claim the numbers do not support.
+ * How many bars an EMA needs behind it before it has a value: one period —
+ * the SMA seed lands on bar `period − 1` (emaSeries, Pine's ta.ema).
  */
 export const emaWarmup = (period: number): number => period;
 
-/**
- * Exponential moving average of closes, seeded at the first close.
- *
- * Seeded rather than started from an SMA of the first `period` bars, because
- * that is what the tape has always drawn and the two differ visibly on the
- * left edge. Changing it here would move a line readers have been reading.
- */
-export function emaSeries(bars: readonly Candle[], period: number): number[] {
-  if (bars.length === 0) return [];
+/** Pine's ta.ema over a number stream: NaN/null in → that bar null; the seed is the SMA of the first `period` values. */
+function emaOf(xs: readonly (number | null)[], period: number): (number | null)[] {
+  const out: (number | null)[] = new Array(xs.length).fill(null);
+  if (period < 1) return out;
   const k = 2 / (period + 1);
-  let ema = bars[0].close;
-  return bars.map(b => {
-    ema = b.close * k + ema * (1 - k);
-    return ema;
-  });
+  let ema: number | null = null;
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < xs.length; i++) {
+    const x = xs[i];
+    if (x == null || !Number.isFinite(x)) {
+      /* before the seed a gap restarts the window, as Pine's sma does (a window holding na is na) */
+      if (ema == null) {
+        sum = 0;
+        n = 0;
+      }
+      continue;
+    }
+    if (ema == null) {
+      sum += x;
+      n += 1;
+      if (n > period) sum -= (xs[i - period] as number);
+      if (n >= period) {
+        ema = sum / period;
+        out[i] = ema;
+      }
+      continue;
+    }
+    ema = x * k + ema * (1 - k);
+    out[i] = ema;
+  }
+  return out;
 }
 
 /**
- * WHERE A SESSION STARTS — index 0, and every bar that follows a gap.
+ * Exponential moving average of closes, TradingView's: null through bar
+ * `period − 2`, seeded on bar `period − 1` with the SMA of the first
+ * `period` closes (Pine v5 ta.ema), α = 2/(period+1) after. The tape used
+ * to seed at the first close, which drew a different left edge from the
+ * same EMA in a Pine script on the same pane.
+ */
+export function emaSeries(bars: readonly Candle[], period: number): (number | null)[] {
+  return emaOf(bars.map(b => b.close), period);
+}
+
+/**
+ * THE TRADING DAY a bar belongs to, as a number (yyyymmdd): its New York
+ * date, and an evening bar from 20:00 on belongs to the NEXT date — the
+ * overnight tape leads into the session it opens, so 20:00–04:00, the
+ * premarket, the cash session and the after-hours are one day and the
+ * overnight is never cut at midnight.
+ */
+export const tradingDayKey = (timeSec: number): number => nyTradingDay(timeSec * 1000);
+
+/**
+ * WHERE A SESSION STARTS — index 0, and every bar whose trading day
+ * (tradingDayKey: the New York date, the overnight from 20:00 joined to the
+ * day it opens) differs from the bar before it.
  *
- * A GAP is a step between bar times of more than 1.5× the bar's own length,
- * which is how a session boundary shows up in a series that only holds RTH
- * bars: 09:30 follows 15:59 by seventeen and a half hours. `barMinutes` has
- * to be the interval these bars were AGGREGATED to, not the base interval —
- * pass 1m bars a `barMinutes` of 15 and every bar looks like a new session.
+ * It used to be a GAP of more than 1.5 bars, so one missing 1-minute bar —
+ * a quiet minute, a halt, a dropped read — started a new session mid-day
+ * and reset the VWAP, its bands, the flow and gamma VWAPs, the volume
+ * profile and the session ATR. A day is a date, not a silence.
+ * `barMinutes` is kept for the callers; the day does not depend on it.
  *
- * ONE RULE, because two things now need it: the VWAP re-anchors here, and
+ * ONE RULE, because many things need it: the VWAP re-anchors here, and
  * T-6's session levels cut the prior day here. Two copies would be a prior
  * high taken from a different day than the VWAP was anchored to.
  */
-export function sessionStarts(bars: readonly Candle[], barMinutes: number): number[] {
+export function sessionStarts(bars: readonly Candle[], _barMinutes?: number): number[] {
   if (bars.length === 0) return [];
-  const gap = barMinutes * 60 * 1.5;
   const out = [0];
+  let prev = tradingDayKey(bars[0].time);
   for (let i = 1; i < bars.length; i++) {
-    if (bars[i].time - bars[i - 1].time > gap) out.push(i);
+    const key = tradingDayKey(bars[i].time);
+    if (key !== prev) out.push(i);
+    prev = key;
   }
   return out;
 }
@@ -126,10 +165,9 @@ export function vwapSeries(bars: readonly Candle[], barMinutes: number, session?
   THE T-4 SET. Two conventions live in this file now, and the difference is
   deliberate:
 
-  · emaSeries / vwapSeries are SEEDED — full-length, no nulls — because that
-    is what the tape has always drawn and moving those lines would move
-    something readers already read.
-  · Everything below is WARMED UP — null until the window it claims to
+  · vwapSeries is SEEDED — full-length, no nulls — because a session's VWAP
+    exists from its first bar.
+  · emaSeries and everything below is WARMED UP — null until the window it claims to
     summarise actually exists. An RSI printed off three bars is a number the
     app cannot source, and the chart maps a null to whitespace, not to zero.
   ──────────────────────────────────────────────────────────────────────────
@@ -138,7 +176,7 @@ export function vwapSeries(bars: readonly Candle[], barMinutes: number, session?
 /**
  * Wilder's RSI. Null through index `period` − the first value sits ON the
  * bar that completes the seed window (period changes need period+1 bars).
- * A lossless window reads 100 and a gainless one 0, per Wilder.
+ * A lossless window reads 100 and a gainless one 0, as Pine's ta.rsi does.
  */
 export function rsiSeries(bars: readonly Candle[], period = 14): (number | null)[] {
   const out: (number | null)[] = new Array(bars.length).fill(null);
@@ -152,7 +190,8 @@ export function rsiSeries(bars: readonly Candle[], period = 14): (number | null)
   }
   g /= period;
   l /= period;
-  const rsiOf = () => (l === 0 ? (g === 0 ? 50 : 100) : 100 - 100 / (1 + g / l));
+  /* Pine v5 ta.rsi: no loss reads 100, no gain 0 — a flat window too reads 100, as TradingView draws it */
+  const rsiOf = () => (l === 0 ? 100 : g === 0 ? 0 : 100 - 100 / (1 + g / l));
   out[period] = rsiOf();
   for (let i = period + 1; i < bars.length; i++) {
     const ch = bars[i].close - bars[i - 1].close;
@@ -171,32 +210,23 @@ export interface MacdSeries {
 }
 
 /**
- * MACD off the SAME seeded EMAs the tape draws (emaSeries), nulled through
- * each part's own warmup: the macd line until the slow EMA has settled
- * (emaWarmup(slow)), the signal until its own EMA of the macd has settled on
- * top of that. Two warmups, because the signal cannot be older than the line
- * it smooths.
+ * MACD, TradingView's (Pine v5 ta.macd): the fast and slow EMAs as
+ * emaSeries draws them, the line from bar `slow − 1` where both exist, the
+ * signal the same SMA-seeded EMA of the line (first on bar
+ * `slow + signal − 2`), the histogram line − signal.
  */
 export function macdSeries(bars: readonly Candle[], fast = 12, slow = 26, signal = 9): MacdSeries {
   const n = bars.length;
-  const macd: (number | null)[] = new Array(n).fill(null);
-  const sig: (number | null)[] = new Array(n).fill(null);
-  const hist: (number | null)[] = new Array(n).fill(null);
-  if (n === 0) return { macd, signal: sig, hist };
   const ef = emaSeries(bars, fast);
   const es = emaSeries(bars, slow);
-  const from = emaWarmup(slow);
-  const k = 2 / (signal + 1);
-  let s: number | null = null;
-  for (let i = from; i < n; i++) {
-    const m = ef[i] - es[i];
-    macd[i] = m;
-    s = s === null ? m : m * k + s * (1 - k);
-    if (i >= from + emaWarmup(signal)) {
-      sig[i] = s;
-      hist[i] = m - s;
-    }
+  const macd: (number | null)[] = new Array(n).fill(null);
+  for (let i = 0; i < n; i++) {
+    const f = ef[i];
+    const s = es[i];
+    if (f != null && s != null) macd[i] = f - s;
   }
+  const sig = emaOf(macd, signal);
+  const hist = macd.map((m, i) => (m != null && sig[i] != null ? m - (sig[i] as number) : null));
   return { macd, signal: sig, hist };
 }
 
@@ -276,22 +306,26 @@ export function vwapSigmaSeries(bars: readonly Candle[], barMinutes: number, ses
 }
 
 /**
- * Wilder's ATR over the DISPLAYED bars — the sub-pane's line, in this
- * pane's own interval, distinct from data/atr.ts's session ATR (T-19's
- * ruler): a 5-minute pane's ATR sub-pane answers "how big are 5-minute
- * bars lately", the ruler answers "how big is a day". Null through the
- * seed window.
+ * ATR over the DISPLAYED bars, TradingView's (Pine v5 ta.atr = ta.rma of
+ * ta.tr(true)): the first bar's true range is its high − low, the seed is
+ * the mean of the first `period` true ranges, on bar `period − 1`, then
+ * Wilder's (atr·(n−1) + tr)/n. The sub-pane's line, in this pane's own
+ * interval, distinct from data/atr.ts's session ATR (T-19's ruler): a
+ * 5-minute pane's ATR answers "how big are 5-minute bars lately", the
+ * ruler answers "how big is a day". Null through the seed window.
  */
 export function atrBarSeries(bars: readonly Candle[], period = 14): (number | null)[] {
   const out: (number | null)[] = new Array(bars.length).fill(null);
-  if (period < 1 || bars.length <= period) return out;
+  if (period < 1 || bars.length < period) return out;
   const tr = (i: number) =>
-    Math.max(bars[i].high - bars[i].low, Math.abs(bars[i].high - bars[i - 1].close), Math.abs(bars[i].low - bars[i - 1].close));
+    i === 0
+      ? bars[0].high - bars[0].low
+      : Math.max(bars[i].high - bars[i].low, Math.abs(bars[i].high - bars[i - 1].close), Math.abs(bars[i].low - bars[i - 1].close));
   let atr = 0;
-  for (let i = 1; i <= period; i++) atr += tr(i);
+  for (let i = 0; i < period; i++) atr += tr(i);
   atr /= period;
-  out[period] = atr;
-  for (let i = period + 1; i < bars.length; i++) {
+  out[period - 1] = atr;
+  for (let i = period; i < bars.length; i++) {
     atr = (atr * (period - 1) + tr(i)) / period;
     out[i] = atr;
   }
@@ -475,8 +509,9 @@ export function alignScalar(
   let last: number | null = null;
   let lastT = -Infinity;
   return bars.map(b => {
+    /* the bar is [time, time + step): a point stamped on the next bar's open is the next bar's */
     const end = b.time + step;
-    while (j < sorted.length && sorted[j].time <= end) {
+    while (j < sorted.length && sorted[j].time < end) {
       last = sorted[j].value;
       lastT = sorted[j].time;
       j += 1;
