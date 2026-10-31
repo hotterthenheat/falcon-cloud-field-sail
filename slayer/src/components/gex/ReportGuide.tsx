@@ -137,7 +137,7 @@ const ReportGuide = ({ rows, bars, from }: ReportGuideProps) => {
       <div>
         <p className="text-t12 font-semibold text-textPrimary">Each row · one of {recordDay().isToday ? "today's" : `${longDay(recordDay().date)}'s`} levels and how it did</p>
         <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
-          Every row is one of the levels: the call wall, the put wall, the flip, the pin, the supreme — read off this name's levels, the same numbers the Board and Compare show. Its price is on the left with a chip that sums up its day. The strip is the whole session, from its first bar to now, with price's path drawn around the level. Every time price reached the level in a one-minute bar, the strip gets a tick: green if the level held, red if price closed through it. The facts count those ticks and say how much hedging the level has gained or lost since the open.
+          Every row is one of the levels: the call wall, the put wall, the flip, the largest open interest, the supreme — read off this name's levels, the same numbers the Board and Compare show. Its price is on the left with a chip that sums up its day. The strip is the whole session, from its first bar to now, with price's path drawn around the level. Every time price reached the level in a one-minute bar, the strip gets a tick: green if the level held, red if price closed through it. The facts count those ticks and say how much hedging the level has gained or lost since the open.
         </p>
         <div className="mt-2 rounded-md border border-borderSubtle/60 bg-panel px-2 py-2 overflow-x-auto scroll-row">
           <RowFigure />

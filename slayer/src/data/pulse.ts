@@ -25,7 +25,7 @@ export function buildKeyLevels(snapshot: MarketSnapshot, levels: KeyLevels, pin:
     { kind: 'call-wall', label: 'Call Wall', price: levels.callWall, distPct: dist(levels.callWall), pressure: pressureAt(snapshot, levels.callWall) },
     { kind: 'spot', label: 'Spot', price: spot, distPct: 0, pressure: 0 },
     { kind: 'put-wall', label: 'Put Wall', price: levels.putWall, distPct: dist(levels.putWall), pressure: pressureAt(snapshot, levels.putWall) },
-    { kind: 'pin', label: 'Pin Level', price: pin, distPct: dist(pin), pressure: pressureAt(snapshot, pin) },
+    { kind: 'pin', label: 'Largest OI', price: pin, distPct: dist(pin), pressure: pressureAt(snapshot, pin) },
     { kind: 'flip', label: 'Flip Level', price: levels.flip, distPct: dist(levels.flip), pressure: pressureAt(snapshot, levels.flip) },
     { kind: 'supreme', label: 'Supreme Node', price: levels.supreme, distPct: dist(levels.supreme), pressure: pressureAt(snapshot, levels.supreme) },
   ];

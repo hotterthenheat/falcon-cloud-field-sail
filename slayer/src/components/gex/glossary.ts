@@ -6,7 +6,7 @@ const WORDS = {
   shelf: 'Shelf: a strike where dealers are long gamma and that holds at least a third of the biggest wall — their hedging slows price there',
   book: 'The book: every open option contract on the name, and the dealer hedging it implies, strike by strike and expiry by expiry',
   callWall: 'Call wall: the strike with the most call gamma — while dealers are long gamma there it tends to slow a rise; once price is through it, it can act as support',
-  putWall: 'Put wall: the strike with the most put gamma — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet',
+  putWall: 'Put wall: the strike with the most put gamma — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling',
   thin: "Too thin to be a trapdoor (or a wall): dealers lean one way here, but with under a third of the heaviest strike's net gamma — too little hedging to slow or speed a move by itself",
   flip: 'Flip: the price where the net dealer gamma, re-priced at that price, crosses zero — on one side their hedging absorbs moves (long gamma), on the other it amplifies them (short gamma)',
   charm: 'Charm: how the dealers’ delta drifts as time passes with price standing still — near the close of an expiring contract it forces hedging trades on its own, often the late-day drift',
@@ -31,7 +31,7 @@ export const openFirstTime = (): void => {
 /** The words a newcomer meets on Pinpoint, in the order they matter — the "First time here?" card reads this */
 export const FIRST_TIME: { term: string; says: string }[] = [
   { term: 'GEX', says: WORDS.gex.replace(/^GEX \(gamma exposure\): /, 'Gamma exposure: ') },
-  { term: 'Long / short gamma', says: 'Long gamma: dealers trade against the move (buy dips, sell rips), so moves tend to be absorbed and price tends to pin. Short gamma: they trade with it, so moves tend to run.' },
+  { term: 'Long / short gamma', says: 'Long gamma: moves tend to be damped — dealers trade against the move (buy dips, sell rips). Short gamma: moves tend to extend — they trade with it. Tested on SPY and QQQ as a volatility read: it says how far moves run, not where price goes.' },
   { term: 'Flip', says: WORDS.flip.replace(/^Flip: /, '') },
   { term: 'Supreme', says: WORDS.supreme.replace(/^Supreme: /, '') },
   { term: 'Call wall', says: WORDS.callWall.replace(/^Call wall: /, '') },

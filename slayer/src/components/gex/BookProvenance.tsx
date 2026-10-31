@@ -71,9 +71,9 @@ const Formula = ({ greek, words, unit }: { greek: string; words: string; unit: s
 const LEVEL_NAMES: { ours: string; what: string }[] = [
   { ours: 'Supreme', what: 'the strike with the most net gamma, either sign, on the Levels card’s contracts (Today’s expiry, or every listed one) — the one the chart and the matrix wear in magenta' },
   { ours: 'Call wall', what: 'the strike with the most call gamma on the Levels card’s contracts (Today’s expiry, or every listed one), either side of spot — while dealers are long gamma there, their hedging slows a rise' },
-  { ours: 'Put wall', what: 'the strike with the most put gamma on the Levels card’s contracts, either side of spot — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet' },
+  { ours: 'Put wall', what: 'the strike with the most put gamma on the Levels card’s contracts, either side of spot — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling' },
   { ours: 'Flip', what: FLIP_RULE },
-  { ours: 'Pin', what: 'the strike with the most open interest in the window — where price tends to settle into expiry (the max-OI strike, not max pain, which is a different calculation)' },
+  { ours: 'Largest OI', what: 'the strike with the most open interest in the window (not max pain, which is a different calculation) — where the chain is heaviest. Not a level price is drawn to: tested on SPY and QQQ, the close did not settle toward it.' },
 ];
 
 /** THE CARD — the source, the freshness, the formula, the sign, the levels, the window */
@@ -144,7 +144,7 @@ export const DataCard = ({ ticker, surface, greeks, expiries, rings, view }: Car
                 {role} <span className="font-mono tnum text-textPrimary">{role === 'supreme' ? fmtStrike(surface.levels.supreme) : role === 'call wall' ? fmtStrike(surface.levels.callWall) : role === 'put wall' ? fmtStrike(surface.levels.putWall) : surface.levels.flipFound === false ? 'none within ±10%' : fmtStrike(surface.levels.flip)}</span>
               </span>
             ))}
-            {surface.levels.pinFound === false ? null : <> · pin <span className="font-mono tnum text-textPrimary">{fmtStrike(surface.levels.pin)}</span></>}
+            {surface.levels.pinFound === false ? null : <> · largest OI <span className="font-mono tnum text-textPrimary">{fmtStrike(surface.levels.pin)}</span></>}
           </li>
         </ul>
       </div>

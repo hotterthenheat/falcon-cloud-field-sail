@@ -134,6 +134,10 @@ export function thetaAnswer(status: number, body: string, type: string): ThetaAn
   }
   if (status === 472) return { status, data: null, error: 'no_data' };
   if (status === 429) return { status, data: null, error: 'busy' };
+  /* the terminal now and then answers 200 with an empty body (seen on option/at_time/quote: 0 bytes, then 18 kB a
+     second later); its "no data" is 472. An empty 200 is a fault to ask again, not an empty chain (it used to read
+     as no quotes and mark the name not scored for good) */
+  if (status === 200 && !body.trim()) return { status, data: null, error: 'empty' };
   if (status !== 200) return { status, data: unwrap(parsed), error: String(o?.error ?? `unavailable ${status}`).slice(0, 180) };
   return { status, data: unwrap(parsed), error: null };
 }

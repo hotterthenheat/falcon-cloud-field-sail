@@ -8,6 +8,7 @@ import type { Column } from '../ui/DataTable';
 import ContractLabel from '../ui/ContractLabel';
 import { TraceGrid, RestFoot, useRestCap, ROWS_AT_REST } from '../trace/TraceBox';
 import SetupScanCard, { ownExpiry } from './SetupScanCard';
+import { BOOK_NAME } from '../../data/compassParams';
 import { STOP_KEEP } from '../../data/contractQuote';
 
 type ScanLayout = 'cards' | 'table';
@@ -31,8 +32,8 @@ const WIDTHS: Record<string, number> = { rank: 56, expiry: 150, book: 90, sigma:
 const TOOLTIPS: Record<string, string> = {
   sigma: 'One standard deviation of the underlying to expiry, from the quote implied vol. A dash means the quote had no vol.',
   premium: 'The ask on this quote.',
-  breaks: 'Book A and Book B: 0.4678 times the ask. Book C has no stop.',
-  book: 'Book A is the near book. Book B is the far book. Book C is the close lottery.',
+  breaks: `${BOOK_NAME.A} and ${BOOK_NAME.B}: 0.4678 times the ask. ${BOOK_NAME.C} has no stop.`,
+  book: `${BOOK_NAME.A} is the near book. ${BOOK_NAME.B} is the far book. ${BOOK_NAME.C} is the close lottery.`,
 };
 
 const STEP = 80;
@@ -82,7 +83,7 @@ const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expi
         key: 'book',
         header: 'Book',
         sortValue: r => r.band ?? '',
-        render: r => <span className="font-mono text-t11 text-textPrimary">{r.band === 'top' ? 'A' : r.band === 'wing' ? 'B' : r.band === 'lottery' ? 'C' : '—'}</span>,
+        render: r => <span className="font-mono text-t11 text-textPrimary">{r.band === 'top' ? BOOK_NAME.A : r.band === 'wing' ? BOOK_NAME.B : r.band === 'lottery' ? BOOK_NAME.C : '—'}</span>,
       },
       { key: 'sigma', header: '1σ to expiry', align: 'right', sortValue: r => r.sigmaMovePct, render: r => <span className="font-mono text-t11 tnum text-textPrimary">{r.greeks.iv > 0 && r.sigmaMovePct > 0 ? `±${r.sigmaMovePct}%` : '—'}</span> },
       { key: 'premium', header: 'Ask', align: 'right', sortValue: r => (r.ask > 0 ? r.ask : -1), render: r => <span className="font-mono text-t11 tnum text-textPrimary">{r.ask > 0 ? `$${r.ask.toFixed(2)}` : '—'}</span> },

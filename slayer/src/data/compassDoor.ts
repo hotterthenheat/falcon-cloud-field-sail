@@ -2,9 +2,10 @@
    session. Five open. The blotter is not this book. */
 
 import { useEffect, useMemo, useState } from 'react';
-import { isoDate, isTradingDay, nextSession, MONTHS } from '../core/calendar';
+import { isoDate, MONTHS } from '../core/calendar';
+import { isSessionDay, nextSessionDay, nyWall, regularCloseMin } from '../core/session';
 import { now } from '../core/clock';
-import { nyParts, type At } from '../core/nyTime';
+import type { At } from '../core/nyTime';
 import type { TrackedSetup } from '../types/tracker';
 import type { SleeveKey } from '../types/compass';
 import { deskPhase } from './compassSession';
@@ -25,39 +26,28 @@ interface ScanClock {
   line: string;
 }
 
-const dayOf = (p: { year: number; month: number; day: number }) => new Date(p.year, p.month - 1, p.day);
 
-/** The session an entry belongs to. After 16:00, or on a closed day, the next session. */
+/** The session an entry belongs to: today until its regular close (16:00, or 13:00 on an early close), then, and on a
+    day with no session, the next session day (core/session). */
+function entryDay(at: At = now()): string {
+  const ms = typeof at === 'number' ? at : at.getTime();
+  const iso = nyWall(ms).iso;
+  if (isSessionDay(iso) && nyWall(ms).min < regularCloseMin(iso)) return iso;
+  return nextSessionDay(iso);
+}
+
 function entrySession(at: At = now()): string {
-  const p = nyParts(at);
-  const day = dayOf(p);
-  const mins = p.hour * 60 + p.minute;
-  if (!isTradingDay(day) || mins >= 16 * 60) {
-    const from = new Date(day);
-    if (mins >= 16 * 60) from.setDate(from.getDate() + 1);
-    return isoDate(nextSession(from));
-  }
-  return isoDate(day);
+  return entryDay(at);
 }
 
 function scanClock(at: At = now()): ScanClock {
-  const p = nyParts(at);
-  const day = dayOf(p);
-  const mins = p.hour * 60 + p.minute;
   const phase = deskPhase(at);
   const open = phase === 'overnight' || phase === 'pre' || phase === 'open' || phase === 'curb';
-  const sessionDate = (() => {
-    if (!isTradingDay(day) || mins >= 16 * 60) {
-      const from = new Date(day);
-      if (mins >= 16 * 60) from.setDate(from.getDate() + 1);
-      return nextSession(from);
-    }
-    return day;
-  })();
+  const sessionDate = new Date(`${entryDay(at)}T12:00:00`);
   const session = isoDate(sessionDate);
   const label = `${WEEKDAY[sessionDate.getDay()]} ${MONTHS[sessionDate.getMonth()]} ${sessionDate.getDate()}`;
   const line = phase === 'overnight'
-    ? 'Overnight. SPX, NDX, RUT, and VIX only. A name with no overnight tape is not on this scan.'
+    ? 'Overnight. SPX, XSP, RUT and VIX only (NDX has no overnight session). A name with no overnight tape is not on this scan.'
     : phase === 'pre'
       ? 'Pre-market. Index roots, the extended single names, and GLD, IWM, QQQ, SPY, XLF.'
       : phase === 'halt'

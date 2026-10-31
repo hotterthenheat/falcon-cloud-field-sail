@@ -131,7 +131,7 @@ export const ToKnow = ({ title, sub, testId, empty, count, children }: { title: 
     {empty ? (
       <div className="h-[70px] flex items-center font-mono text-t10 uppercase tracking-widest text-textMuted">{empty}</div>
     ) : (
-      <div className="grid gap-2 grid-cols-2 max-sm:[&>*:nth-child(n+3)]:hidden sm:grid-cols-3 lg:grid-cols-6 xl:grid-cols-[repeat(var(--cards),minmax(0,1fr))]" style={{ '--cards': Math.max(1, count) } as CSSProperties}>
+      <div className="grid gap-2 grid-cols-2 max-sm:[&>*:nth-child(n+3)]:hidden sm:grid-cols-3 xl:grid-cols-[repeat(var(--cards),minmax(0,1fr))]" style={{ '--cards': Math.max(1, count) } as CSSProperties}>
         {children}
       </div>
     )}

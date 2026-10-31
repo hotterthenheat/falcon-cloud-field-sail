@@ -7,6 +7,7 @@
 import type { Candle } from '../../types/market';
 import type { DeskChain, DeskContract } from '../weigherDesk';
 import { isTradingDay, expiryFor, sessionCloseMinOn } from '../../core/calendar';
+import { sessionAt } from '../../core/session';
 import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
 import { calendarYears, sigmaToExpiry } from '../../core/volClock';
 import { longLeg, spreadBook, spreadSizes, thetaPerSession, bookMark, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
@@ -57,10 +58,11 @@ export const barNowOf = (ticker: string): number => {
   return bars?.length ? bars[bars.length - 1].time : Math.floor(Date.now() / 1000);
 };
 
-/** The options session: a trading day, 09:30 to 16:00 New York — 13:00 on an early close */
+/** The options session the paper engine fills in (core/session.ts equityOption): a trading day, 09:30 to 16:00 New York
+    — 13:00 on an early close. Index options also quote through Cboe's global hours (thetaFeed polls them then), but
+    the paper rules fill in the regular session only. */
 export function optionsOpen(ms: number): boolean {
-  const t = nyAt(ms);
-  return isTradingDay(dateAt(t.date)) && t.minutes >= OPEN_MIN && t.minutes < sessionCloseMinOn(t.date);
+  return sessionAt(ms, 'equityOption').open;
 }
 
 /* ---- an option ---- */

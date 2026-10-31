@@ -40,7 +40,7 @@ const NewAccount = ({ onPractice, onPlan }: Props) => {
   return (
     <div className="flex flex-col gap-2.5 min-w-0" data-paper-start>
       {/* THE PLAIN PRACTICE ACCOUNT */}
-      <div className={`${card} px-6 py-5 flex flex-col gap-3 max-w-[720px] max-sm:px-4`} data-paper-start-practice>
+      <div className={`${card} px-6 py-5 flex flex-col gap-3 max-sm:px-4`} data-paper-start-practice>
         <Head icon={<Wallet className="w-4 h-4" />} title="A practice account" />
         <p className="text-t12 leading-relaxed text-textSecondary">Options off the chain beside the chart, with pretend money, filled at each contract’s live bid and ask during the options session (09:30–16:00 ET): buy, or sell to open — naked shorts, credit spreads, iron condors and cash-secured puts, held on a margin estimate. It carries from day to day. Open as many as you like.</p>
         <div className="grid grid-cols-4 max-[420px]:grid-cols-2 gap-1.5 max-w-[440px]">

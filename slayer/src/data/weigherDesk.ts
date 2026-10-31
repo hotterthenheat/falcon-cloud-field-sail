@@ -8,6 +8,7 @@ import { atmIvAt, expectedMovePctOf, readContract } from './weigherGate';
 import { weekdayDte } from './compassParams';
 import { nameTape } from './compassSession';
 import { nyIsoDate, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
+import { inRegular, productOf, sessionAt } from '../core/session';
 import type { OptionRight } from '../types/compass';
 
 // ---- the chain --------------------------------------------------------------
@@ -739,17 +740,14 @@ export interface ScanRow {
   netPremium: number;
 }
 
-/** Whether New York is trading right now — 9:30 to 16:00 ET on a weekday.
-    Everything else is the overnight session. */
+/** Whether the cash session is trading right now (core/session.ts; 13:00 on an early close); everything else is outside it. */
 export function marketSession(): 'open' | 'overnight' {
-  const p = nyParts();
-  const mins = p.hour * 60 + p.minute;
-  return isTradingDay(new Date(p.year, p.month - 1, p.day)) && mins >= 570 && mins < 960 ? 'open' : 'overnight';
+  return inRegular(Date.now()) ? 'open' : 'overnight';
 }
 
-/** Whether listed options are quoting: 9:30 to 16:15 ET on a trading day (index options trade to 16:15). */
-export function optionsOpen(): boolean {
-  const p = nyParts();
-  const mins = p.hour * 60 + p.minute;
-  return isTradingDay(new Date(p.year, p.month - 1, p.day)) && mins >= 570 && mins < 975;
+/** Whether a name's listed options are quoting now (core/session.ts): an index's (SPX, XSP, VIX, RUT) through Global
+    Trading Hours, the regular session and the curb; an index ETF's 09:30–16:15; a stock's 09:30–16:00 (13:00/13:15 on an
+    early close). With no name: the regular options session, to 16:15. */
+export function optionsOpen(symbol?: string): boolean {
+  return sessionAt(Date.now(), symbol ? productOf(symbol, true) : 'etfOption').open;
 }

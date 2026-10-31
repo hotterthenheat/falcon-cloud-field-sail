@@ -7,7 +7,8 @@ import { useEffect, useSyncExternalStore } from 'react';
 import type { Candle } from '../types/market';
 import { nyMinutes, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { isTradingDay, isEarlyClose, nyYmd, EARLY_CLOSES, sessionBefore, sessionCloseMinOn } from '../core/calendar';
-import { minuteInSession, sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
+import { minuteInSession, sessionMeta, type DeskSession } from './deskSession';
+import { phaseAt, sessionAt } from '../core/session';
 import { etClock, keepTheta, keptTheta, noData, offlineWords, pageHidden, thetaDown, thetaGet } from './thetaFeed';
 import { thetaUseHere } from './theta';
 import { EXT_WINDOWS, cleanExtendedBars, saneStockBars } from './thetaEligible';
@@ -417,22 +418,22 @@ const emit = () => {
 
 const keyOf = (symbol: string, grain: TapeGrain, session: DeskSession) => `${symbol}|${grain}|${session}`;
 
-/** The session trades now (its window, on a trading day). */
-function sessionLive(session: DeskSession): boolean {
-  const p = nyParts();
-  const trading = isTradingDay(new Date(p.year, p.month - 1, p.day));
-  if (!trading) return false;
-  const min = p.hour * 60 + p.minute;
-  const iso = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
-  /* After the early close, post is the session that is open. Regular's bars stay on the tape; the cash session is not live. */
-  if (isEarlyClose(iso) && session === 'post' && min >= 13 * 60 && min < 20 * 60) return true;
-  if (sessionOfMinute(min) !== session) return false;
-  if (session === 'rth' && isEarlyClose(iso) && min >= 13 * 60) return false;
-  return true;
+/** The session trades now: the global phase (core/session.ts) is this desk session — Sunday 20:00 opens the overnight,
+    Friday 20:00 closes it, an early close's after hours runs 13:00–17:00. */
+export function sessionLive(session: DeskSession, nowMs = Date.now()): boolean {
+  const ph = phaseAt(nowMs);
+  return session === 'rth' ? ph === 'regular' : session === 'pre' ? ph === 'pre' : session === 'post' ? ph === 'post' : ph === 'overnight';
 }
 
-/** How long a read holds: a trading session's bars are re-read every 15 s, a closed one's every 5 minutes. */
-const holdMs = (s: Slot): number => (sessionLive(s.session) ? (s.grain === 'day' || s.grain === 'week' ? 60_000 : 15_000) : 5 * 60_000);
+/** How long a read holds: a trading session's bars are re-read every 15 s (60 s for a daily), a closed one's every 5
+    minutes. Overnight a stock's tape is read every minute: the overnight venues are not on ThetaData's tape today (its
+    bars for 20:00–04:00 come back empty), so a minute is quick enough to show prints the day they appear. An index's
+    overnight is the GTH-hours book (the VIX is computed from 03:15): read at the live pace. */
+const holdMs = (s: Slot): number => {
+  if (!sessionLive(s.session)) return 5 * 60_000;
+  if (s.session === 'overnight' && !THETA_INDEX.has(s.symbol)) return 60_000;
+  return s.grain === 'day' || s.grain === 'week' ? 60_000 : 15_000;
+};
 
 function slotOf(symbol: string, grain: TapeGrain, session: DeskSession): Slot {
   const key = keyOf(symbol, grain, session);
@@ -685,14 +686,21 @@ interface PrintSlot {
 const prints = new Map<string, PrintSlot>();
 const printWanted = new Map<string, number>();
 
-/** A stock's print moves from 04:00 to 20:00 New York on a trading day, an index's from 09:30 to a quarter after the cash
-    close (16:15; 13:15 on an early close); outside that they hold. */
-function printLive(symbol: string): boolean {
-  const p = nyParts();
-  if (!isTradingDay(new Date(p.year, p.month - 1, p.day))) return false;
-  const m = nyMinutes();
-  const iso = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
-  return THETA_INDEX.has(symbol) ? m >= 9 * 60 + 30 && m < (isEarlyClose(iso) ? 13 * 60 : 16 * 60) + 15 : m >= 4 * 60 && m < 20 * 60;
+/** A stock's print moves in every session the stock trades (core/session.ts: overnight, pre, regular, after hours); an
+    index's from 09:30 to a quarter after the cash close (16:15; 13:15 on an early close), and the VIX through Global
+    Trading Hours too (Cboe computes it from 03:15). Outside that they hold. */
+export function printLive(symbol: string, nowMs = Date.now()): boolean {
+  if (!THETA_INDEX.has(symbol)) return sessionAt(nowMs).open;
+  const idx = sessionAt(nowMs, 'indexOption');
+  return idx.window?.kind === 'regular' || (symbol === 'VIX' && idx.window?.kind === 'gth');
+}
+/** How often the prints are read: every second while a stock's pre/regular/after tape or an index moves; every 15 s
+    overnight (the overnight venues are not on this feed yet — a fresh look, not a firehose); a minute when shut. */
+function printGap(names: readonly string[], nowMs = Date.now()): number {
+  const ph = phaseAt(nowMs);
+  if (names.some(n => printLive(n, nowMs) && (THETA_INDEX.has(n) || ph !== 'overnight'))) return 1_000;
+  if (names.some(n => printLive(n, nowMs))) return 15_000;
+  return 60_000;
 }
 
 /* Every wanted name's print, one read a name (the same address for every viewer, so the server shares it); each name's
@@ -745,7 +753,7 @@ async function readPrints(): Promise<void> {
     if (moved) emitPrint();
   } finally {
     printsBusy = false;
-    printsDue = Date.now() + (thetaDown() ? 15_000 : printsFailGap || (names.some(printLive) ? 1_000 : 60_000));
+    printsDue = Date.now() + (thetaDown() ? 15_000 : printsFailGap || printGap(names));
   }
 }
 

@@ -6,9 +6,8 @@ import type { Setup } from '../../types/compass';
 import { nyClock } from '../../core/nyTime';
 import ContractLabel from '../ui/ContractLabel';
 import SessionSpark from './SessionSpark';
-import { MODELS_VALIDATED, UNVALIDATED_LINE, UNVALIDATED_WORD } from '../../data/compassParams';
+import { BOOK_NAME, MODELS_VALIDATED, OUTSIDE_TRAINED_WORD, UNVALIDATED_LINE, UNVALIDATED_WORD } from '../../data/compassParams';
 import { activeStop, signalOf } from '../../data/compassLedger';
-import { optionFees } from '../../data/compassOutcome';
 import { P1_MIN } from '../../data/compassParams';
 import { STOP_KEEP } from '../../data/contractQuote';
 import { Tip } from '../ui/Tooltip';
@@ -37,9 +36,10 @@ interface SetupScanCardProps {
 
 const tagOf = (setup: Setup): string => {
   if (setup.band === 'closest') return 'Closest';
-  if (setup.band === 'lottery') return 'Book C';
-  if (setup.band === 'wing') return MODELS_VALIDATED ? 'Book B' : `Book B · ${UNVALIDATED_WORD}`;
-  if (setup.band === 'top') return MODELS_VALIDATED ? 'Book A' : `Book A · ${UNVALIDATED_WORD}`;
+  const outside = setup.outsideTrained ? ` · ${OUTSIDE_TRAINED_WORD}` : '';
+  if (setup.band === 'lottery') return BOOK_NAME.C;
+  if (setup.band === 'wing') return `${BOOK_NAME.B}${MODELS_VALIDATED ? '' : ` · ${UNVALIDATED_WORD}`}${outside}`;
+  if (setup.band === 'top') return `${BOOK_NAME.A}${MODELS_VALIDATED ? '' : ` · ${UNVALIDATED_WORD}`}${outside}`;
   if (setup.band === 'scalp') return 'Scalp';
   if (setup.band === 'average') return 'Average';
   return '';
@@ -48,8 +48,8 @@ const tagOf = (setup: Setup): string => {
 const holdOf = (setup: Setup): string => {
   if (setup.strength) return 'Held. Same trade.';
   if (setup.band === 'closest') return '';
-  if (setup.band === 'lottery') return 'Book C. No score. No stop. Flat at 15:50.';
-  if (setup.band === 'wing') return 'Book B. The exit rides, even under 50%.';
+  if (setup.band === 'lottery') return `${BOOK_NAME.C}. No score. No stop. Flat at 15:50.`;
+  if (setup.band === 'wing') return `${BOOK_NAME.B}. The exit rides, even under 50%.`;
   if (setup.band === 'average') return 'Average.';
   if (setup.runner) return 'The exit rides. Stop ratchets. Flat at 15:55.';
   return 'Out at 1.50 × the ask, or the stop.';
@@ -99,7 +99,7 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
   const target = !priced || !(entry > 0) ? 0 : setup.band === 'lottery' ? Number((entry * 2).toFixed(2)) : runner ? 0 : Number((entry * 1.5).toFixed(2));
   const away = (px: number) => (Number.isFinite(liveBid) && liveBid > 0 && px > 0 ? `${px >= liveBid ? '+' : '−'}${Math.abs((px / liveBid - 1) * 100).toFixed(0)}%` : '');
   const closedOut = outcome?.status === 'closed' ? outcome : null;
-  const pnl = closedOut?.pnl ?? (paid > 0 && Number.isFinite(liveBid) ? (liveBid - paid) * 100 - optionFees(liveBid) : NaN);
+  const pnl = closedOut?.pnl ?? (paid > 0 && Number.isFinite(liveBid) ? (liveBid - paid) * 100 : NaN);
   const pnlWord = Number.isFinite(pnl) ? `${pnl >= 0 ? '+' : '−'}$${Math.abs(pnl).toFixed(0)}` : '—';
   const place = placeWord(setup);
   const line = setup.p1 == null ? '' : setup.p1 + 1e-12 >= P1_MIN ? 'The line cleared.' : 'Short of the line.';
@@ -141,7 +141,7 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
           </Tip>
         ) : null}
         {ticket && setup.late ? (
-          <Tip label="The live scan missed this mark. It was scored afterwards from the quotes ThetaData recorded at the mark, never later ones.">
+          <Tip label="The live scan missed this mark. It was scored afterwards from the recorded quotes at the mark, never later ones.">
             <span className="font-mono text-t10 uppercase tracking-wider text-warn border border-warn/40 rounded px-1.5 py-0.5" data-card-late>Late</span>
           </Tip>
         ) : null}

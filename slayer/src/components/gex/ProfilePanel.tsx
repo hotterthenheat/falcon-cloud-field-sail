@@ -1136,7 +1136,7 @@ const ProfilePanel = ({
       levelOf.set(levels.callWall, { words: 'Call wall', c: ink.callWall });
       levelOf.set(levels.putWall, { words: 'Put wall', c: ink.putWall });
       if (!near(levels.supreme, levels.callWall) && !near(levels.supreme, levels.putWall)) levelOf.set(levels.supreme, { words: 'Supreme', c: ink.supreme });
-      if (Number.isFinite(pin) && !near(pin, levels.callWall) && !near(pin, levels.putWall) && !near(pin, levels.supreme)) levelOf.set(pin, { words: 'Pin', c: ink.ink2 });
+      if (Number.isFinite(pin) && !near(pin, levels.callWall) && !near(pin, levels.putWall) && !near(pin, levels.supreme)) levelOf.set(pin, { words: 'Max OI', c: ink.ink2 });
       const levelAt = (k: number) => {
         for (const [lk, v] of levelOf) if (near(lk, k)) return v;
         return undefined;
@@ -1452,7 +1452,7 @@ const ProfilePanel = ({
       chip(levels.callWall, 'Call wall', ink.callWall);
       chip(levels.putWall, 'Put wall', ink.putWall);
       if (!near(levels.supreme, levels.callWall) && !near(levels.supreme, levels.putWall)) chip(levels.supreme, 'Supreme', ink.supreme);
-      if (Number.isFinite(pin) && !near(pin, levels.callWall) && !near(pin, levels.putWall) && !near(pin, levels.supreme)) chip(pin, 'Pin', ink.ink2);
+      if (Number.isFinite(pin) && !near(pin, levels.callWall) && !near(pin, levels.putWall) && !near(pin, levels.supreme)) chip(pin, 'Max OI', ink.ink2);
 
       /* THE SPOT CHIP — solid, in the column */
       if (spotOn) {
@@ -1619,7 +1619,7 @@ const ProfilePanel = ({
         : near(readRow.strike, levels.supreme)
           ? { words: 'Supreme', c: TOKEN.SUPREME }
           : levels.pin != null && near(readRow.strike, levels.pin)
-            ? { words: 'Pin', c: 'rgb(var(--text-secondary))' }
+            ? { words: 'Max OI', c: 'rgb(var(--text-secondary))' }
             : null
     : null;
   const tapeLast = projection.current?.last() ?? null;

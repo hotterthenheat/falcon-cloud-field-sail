@@ -113,7 +113,7 @@ const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean })
           </span>
         )}
       </div>
-      <div className="mx-auto w-full max-w-[640px] select-none">
+      <div className="w-full select-none">
         <div className="relative" style={{ height: 2 * H }} onMouseLeave={() => setHover(null)}>
           <span className="absolute inset-x-0 top-1/2 h-px bg-ink/25" />
           <span className="absolute left-0 -translate-y-full top-1/2 pb-0.5 font-mono text-t9 uppercase tracking-widest text-textMuted">covered it</span>
@@ -134,7 +134,7 @@ const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean })
             ))}
           </div>
         </div>
-        <div className="flex gap-1.5 mt-1 pl-24">
+        <div className="flex gap-1.5 mt-1 pl-24 max-sm:[&>span:nth-child(even)]:invisible">
           {rows.map(r => (
             <span key={r.label} className="flex-1 min-w-0 text-center font-mono text-t8 sm:text-t9 text-textMuted whitespace-nowrap">
               {r.label}
@@ -499,8 +499,8 @@ const EarningsName = () => {
                 <span className="font-mono text-t11 font-bold text-textSecondary">{e.ticker}</span>
                 <KeptNote at={liveFile.keptAt} />
               </div>
-              {/* an inline-flex line spills rather than truncates, so on a phone it folds */}
-              <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate inline-flex items-center gap-1.5 max-xl:flex-wrap">
+              {/* the line folds at its phrases wherever the facts beside it leave it short, never running under them */}
+              <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap inline-flex flex-wrap items-center gap-x-1.5">
                 {reported ? 'Reported' : 'Reports'} {e.dateLabel} <SlotMark slot={e.slot} timeKnown={e.timeKnown} className="w-3 h-3" /> {slotWord(e)}
                 <span className="text-textMuted">·</span>
                 {reported ? (
@@ -523,7 +523,7 @@ const EarningsName = () => {
               </p>
               {/* the next report after the one that is out */}
               {reported && dossier.nextAfter ? (
-                <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate inline-flex items-center gap-1.5 max-xl:flex-wrap" data-earnings-next>
+                <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap inline-flex flex-wrap items-center gap-x-1.5" data-earnings-next>
                   Next report {dossier.nextAfter.dateLabel} <SlotMark slot={dossier.nextAfter.slot} timeKnown={dossier.nextAfter.timeKnown} className="w-3 h-3" /> {slotWord(dossier.nextAfter)}
                   <span className="text-textMuted">·</span>
                   <span className={dossier.nextAfter.confirmed ? 'text-textMuted' : 'text-warn'}>{dossier.nextAfter.confirmed ? 'the company has confirmed the date' : 'date estimated — the company has not set it'}</span>

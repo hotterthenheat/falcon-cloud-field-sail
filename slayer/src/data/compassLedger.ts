@@ -7,7 +7,7 @@
 import { useSyncExternalStore } from 'react';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import { currentPicks, noteLeft, takeWouldPicks, underCloses } from './compassModel';
-import { fineWindows, settleSignal, type Outcome, type PathQuote, type SignalBook } from './compassOutcome';
+import { fineWindows, noFees, settleSignal, type Outcome, type PathQuote, type SignalBook } from './compassOutcome';
 import { stopAfter } from './compassParams';
 import { compassHost } from './compassHost';
 import { nyIsoDate, nyParts, nyWallStamp } from '../core/nyTime';
@@ -50,6 +50,12 @@ export interface Signal {
   closeMin?: number;
   /** Not a call: what a mark scored late would have called, settled by the same rules for the review and study */
   would?: true;
+  /** The option tape session it was called in; absent on rows from before sessions (regular) */
+  tapeSession?: 'overnight' | 'pre' | 'regular' | 'curb';
+  /** Called at a minute outside the trees' trained minutes (t 15 to 330) */
+  outsideTrained?: true;
+  /** When its session flats it, epoch ms (absent: the day's 15:55, or five before an early close) */
+  flatAt?: number;
 }
 
 let rows: Signal[] = [];
@@ -82,13 +88,13 @@ export function onSignalsChange(fn: () => void): () => void {
 
 /** Replace the record with kept or served rows, newest first. */
 export function importSignals(next: readonly unknown[]): void {
-  rows = next.filter(validRow).slice().sort((a, b) => b.firedAt - a.firedAt);
+  rows = next.filter(validRow).map(noFees).sort((a, b) => b.firedAt - a.firedAt);
   emit();
 }
 
 /** Replace the "would have called" list (late marks), newest first. */
 export function importWould(next: readonly unknown[]): void {
-  wouldRows = next.filter(validRow).map(r => ({ ...r, would: true as const })).sort((a, b) => b.firedAt - a.firedAt);
+  wouldRows = next.filter(validRow).map(r => ({ ...noFees(r), would: true as const })).sort((a, b) => b.firedAt - a.firedAt);
   emit();
 }
 
@@ -152,6 +158,9 @@ function signalOfPick(pick: Setup, book: SignalBook): Signal | null {
     how: pick.late ? 'late' : 'live',
     mark: pick.mark ?? Math.floor(pick.seenAt / 60_000) * 60_000,
     ...(closeMinNow != null ? { closeMin: closeMinNow } : {}),
+    ...(pick.tapeSession ? { tapeSession: pick.tapeSession } : {}),
+    ...(pick.outsideTrained ? { outsideTrained: true as const } : {}),
+    ...(pick.flatAt && book !== 'C' ? { flatAt: pick.flatAt } : {}),
   };
 }
 
@@ -224,8 +233,10 @@ const clockOf = (ms: number) => {
 
 /** The contract's NBBO after the call: one-minute readings for the day, and Book C's second readings for the two
     minutes after its fill. */
-export async function contractPath(sig: Pick<Signal, 'ticker' | 'expiry' | 'strike' | 'right' | 'day' | 'book'>, fillAt: number | null): Promise<PathQuote[] | null> {
-  const base = `/option/history/quote?symbol=${encodeURIComponent(sig.ticker)}&expiration=${ymd(sig.expiry)}&strike=${sig.strike}&right=${sig.right === 'C' ? 'call' : 'put'}&start_date=${ymd(sig.day)}&end_date=${ymd(sig.day)}`;
+export async function contractPath(sig: Pick<Signal, 'ticker' | 'expiry' | 'strike' | 'right' | 'day' | 'book' | 'flatAt'>, fillAt: number | null): Promise<PathQuote[] | null> {
+  /* an overnight call before midnight flats on the next calendar day: the path reads through the flat's date */
+  const last = sig.flatAt && nyIsoDate(sig.flatAt) > sig.day ? nyIsoDate(sig.flatAt) : sig.day;
+  const base = `/option/history/quote?symbol=${encodeURIComponent(sig.ticker)}&expiration=${ymd(sig.expiry)}&strike=${sig.strike}&right=${sig.right === 'C' ? 'call' : 'put'}&start_date=${ymd(sig.day)}&end_date=${ymd(last)}`;
   const got = await compassHost().theta(`${base}&interval=1m&format=json`);
   if (got.error) return null;
   const minute = readQuotes(got.data);
@@ -240,14 +251,18 @@ const fineMemo = new Map<string, { windows: Set<string>; quotes: PathQuote[] }>(
 
 /** A Book A or B call's minute path with the 1-second quotes of every minute whose range crossed its stop or a target
     (compassOutcome fineWindows), each window read once. A window that does not answer is left to the next pass. */
-export async function withFineExits(sig: Pick<Signal, 'key' | 'ticker' | 'expiry' | 'strike' | 'right' | 'day' | 'book' | 'runner' | 'firedAt' | 'closeMin'>, minute: PathQuote[], now = Date.now()): Promise<PathQuote[]> {
+export async function withFineExits(sig: Pick<Signal, 'key' | 'ticker' | 'expiry' | 'strike' | 'right' | 'day' | 'book' | 'runner' | 'firedAt' | 'closeMin' | 'flatAt'>, minute: PathQuote[], now = Date.now()): Promise<PathQuote[]> {
   if (sig.book === 'C') return minute;
   const memo = fineMemo.get(sig.key) ?? { windows: new Set<string>(), quotes: [] };
-  const base = `/option/history/quote?symbol=${encodeURIComponent(sig.ticker)}&expiration=${ymd(sig.expiry)}&strike=${sig.strike}&right=${sig.right === 'C' ? 'call' : 'put'}&start_date=${ymd(sig.day)}&end_date=${ymd(sig.day)}`;
+  /* each window on its own date (an overnight call's minutes run past midnight) */
+  const base = (d: string) => `/option/history/quote?symbol=${encodeURIComponent(sig.ticker)}&expiration=${ymd(sig.expiry)}&strike=${sig.strike}&right=${sig.right === 'C' ? 'call' : 'put'}&start_date=${ymd(d)}&end_date=${ymd(d)}`;
   for (const [after, through] of fineWindows(sig, minute, now)) {
     const id = `${after}|${through}`;
     if (memo.windows.has(id)) continue;
-    const got = await compassHost().theta(`${base}&interval=1s&start_time=${clockOf(after + 1_000)}&end_time=${clockOf(through)}&format=json`);
+    /* a window across midnight reads its later date from 00:00:00 */
+    const d = nyIsoDate(through);
+    const from = nyIsoDate(after + 1_000) === d ? clockOf(after + 1_000) : '00:00:00';
+    const got = await compassHost().theta(`${base(d)}&interval=1s&start_time=${from}&end_time=${clockOf(through)}&format=json`);
     if (got.error && got.error !== 'no_data') continue;
     memo.windows.add(id);
     memo.quotes.push(...readQuotes(got.data).filter(q => q.t > after && q.t <= through && q.t % 60_000 !== 0));
@@ -272,7 +287,9 @@ export async function settleOpen(now = Date.now()): Promise<void> {
       if (sig.outcome && (sig.outcome.status === 'closed' || sig.outcome.status === 'unavailable')) continue;
       if (now - sig.pathAt < 50_000) continue;
       const quotes = await contractPath(sig, sig.outcome?.fill?.at ?? null);
-      if (!quotes) return;
+      /* this contract's path did not answer: the next one is still read (one fault used to stop every later call's
+         settlement for that minute, newest first, so an old open call behind a failing one never settled) */
+      if (!quotes) continue;
       const under = await underCloses(sig.ticker, ymd(sig.day));
       /* Books A and B: the stop and target minutes are judged on their 1-second quotes */
       const path = sig.book === 'C' ? quotes : await withFineExits(sig, quotes);

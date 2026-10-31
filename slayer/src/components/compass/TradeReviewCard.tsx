@@ -4,6 +4,7 @@
 import type { TradeReview, Driver } from '../../data/compassStudy';
 import ContractLabel from '../ui/ContractLabel';
 import { Tip } from '../ui/Tooltip';
+import { BOOK_NAME, MODEL_1_NAME } from '../../data/compassParams';
 
 const usd = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? '—' : `${v < 0 ? '−' : '+'}$${Math.abs(v).toFixed(2)}`);
 const px = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? '—' : `$${v.toFixed(2)}`);
@@ -31,7 +32,7 @@ const Drivers = ({ title, rows }: { title: string; rows: Driver[] }) => (
         ))}
       </ul>
     ) : (
-      <p className="mt-1 font-mono text-t11 text-textMuted">No model row (Book C has no model).</p>
+      <p className="mt-1 font-mono text-t11 text-textMuted">No model row ({BOOK_NAME.C} has no model).</p>
     )}
   </div>
 );
@@ -52,7 +53,7 @@ const TradeReviewCard = ({ r, compact = false }: { r: TradeReview; compact?: boo
     <article id={r.key} className="border border-borderSubtle bg-panel rounded-md overflow-hidden" data-trade-review={r.key}>
       <header className="flex items-center gap-2 flex-wrap px-3.5 py-2.5 border-b border-borderSubtle">
         <ContractLabel contract={r.contract} right={right} logo={r.contract.split(' ')[0]} size="sm" />
-        <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">Book {r.book}</span>
+        <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">{BOOK_NAME[r.book as 'A' | 'B' | 'C'] ?? r.book}</span>
         {r.would ? (
           <Tip label="A mark scored late from recorded quotes cleared every gate. Late marks are never calls and never take a seat: this is what it would have done.">
             <span className="font-mono text-t10 text-warn border border-warn/40 rounded px-1.5 py-0.5">Would have called</span>
@@ -69,7 +70,7 @@ const TradeReviewCard = ({ r, compact = false }: { r: TradeReview; compact?: boo
           <p className="font-mono text-t10 text-warn">{r.verdict.flags.join(' · ')}</p>
         )}
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-          <Num label="Model 1" value={r.p1 != null ? `${(r.p1 * 100).toFixed(1)}%` : r.snapshot.modelRead != null ? `Read ${(r.snapshot.modelRead * 100).toFixed(1)}%` : 'None'} title={r.p1 == null && r.snapshot.modelRead != null ? 'Book C calls without a model; this is what Model 1 read on the contract at that mark.' : undefined} />
+          <Num label={MODEL_1_NAME} value={r.p1 != null ? `${(r.p1 * 100).toFixed(1)}%` : r.snapshot.modelRead != null ? `Read ${(r.snapshot.modelRead * 100).toFixed(1)}%` : 'None'} title={r.p1 == null && r.snapshot.modelRead != null ? `${BOOK_NAME.C} calls without a model; this is what the ${MODEL_1_NAME} read on the contract at that mark.` : undefined} />
           <Num label="At call" value={`${r.snapshot.bid.toFixed(2)}×${r.snapshot.ask.toFixed(2)}`} />
           <Num label="Fill" value={a.fill == null ? '—' : `${px(a.fill)} ${a.fillAt ?? ''}`} />
           <Num label="Exit" value={a.exit == null ? '—' : `${px(a.exit)} ${a.exitAt ?? ''}`} title={a.why} />
@@ -81,7 +82,6 @@ const TradeReviewCard = ({ r, compact = false }: { r: TradeReview; compact?: boo
           <Num label="Decay" value={usd(p.decay)} tone={ink(p.decay)} title="Time passing at the exit's price of the underlying" />
           <Num label="IV" value={usd(p.iv)} tone={ink(p.iv)} title="The change in implied vol from the fill to the exit" />
           <Num label="Spread" value={usd(spread)} tone={ink(spread)} title="The ask paid over the mid, and the mid over the exit price" />
-          <Num label="Fees" value={usd(p.fees == null ? null : -p.fees)} tone="text-textSecondary" />
           <Num label="Underlying" value={pct(a.underMove)} tone={ink(a.underMove)} title="Its move from the fill to the exit, signed for the side" />
         </div>
         {!compact && (
@@ -94,8 +94,8 @@ const TradeReviewCard = ({ r, compact = false }: { r: TradeReview; compact?: boo
         )}
         {!compact && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-borderSubtle/60 pt-3" data-review-drivers>
-            <Drivers title="Pushed Model 1 up (log-odds)" rows={r.snapshot.up} />
-            <Drivers title="Held Model 1 down (log-odds)" rows={r.snapshot.down} />
+            <Drivers title={`Pushed the ${MODEL_1_NAME} up (log-odds)`} rows={r.snapshot.up} />
+            <Drivers title={`Held the ${MODEL_1_NAME} down (log-odds)`} rows={r.snapshot.down} />
           </div>
         )}
       </div>

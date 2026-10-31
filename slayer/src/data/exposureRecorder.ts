@@ -29,6 +29,7 @@ import path from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { nyIsoDate, nyParts, nyWallTime } from '../core/nyTime';
 import { isTradingDay } from '../core/calendar';
+import { phaseAt, sessionAt } from '../core/session';
 import { ALL, closeOf, placeSeg, readAnswer, spanOf, type KeptSeries } from './book/exposureSegs';
 
 export const EXPOSURE_FORMAT = 'exposure-day/1';
@@ -157,14 +158,19 @@ export const cleanTicker = (raw: unknown): string | null => {
 };
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-/** The recorder's slot for an instant: a trading day's minute it reads, or null */
+/** The recorder's slot for an instant: a trading day's minute it reads, or null. By the one session rule
+    (core/session.ts): every minute while the index and ETF options trade their regular session (09:30–16:15; 13:15 on
+    an early close), every `extEvery` minutes in the pre-market and after hours (04:00–09:30, to 20:00; to 17:00 on an
+    early close). Not overnight: the vendor's per-strike exposures are struck off the stock price, which its tape does
+    not carry 20:00–04:00 (its bars and stock state stop at 20:00), so an overnight read would repeat the 19:59 book. */
 export function slotAt(ms: number, extEvery: number): { day: string; minute: number; rth: boolean } | null {
   const p = nyParts(ms);
   if (!isTradingDay(new Date(p.year, p.month - 1, p.day))) return null;
   const minute = p.hour * 60 + p.minute;
   const day = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
-  if (minute >= RTH_FROM && minute < RTH_TO) return { day, minute, rth: true };
-  if (extEvery > 0 && minute >= EXT_FROM && minute < EXT_TO && minute % extEvery === 0) return { day, minute, rth: false };
+  if (sessionAt(ms, 'etfOption').open) return { day, minute, rth: true };
+  const ph = phaseAt(ms);
+  if (extEvery > 0 && (ph === 'pre' || ph === 'post') && minute % extEvery === 0) return { day, minute, rth: false };
   return null;
 }
 

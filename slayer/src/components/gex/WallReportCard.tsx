@@ -33,11 +33,10 @@ const hhmm = (unix: number) => nyClock(unix * 1000);
 /** Each level in one plain line — the row's hover */
 const LEVEL_TIPS: Record<string, string> = {
   'call wall': 'the strike with the most call gamma, either side of price; while dealers are long gamma there it tends to slow a rise, and once price is through it, it can act as support.',
-  'put wall': 'the strike with the most put gamma, either side of price; below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet.',
-  'gamma flip': 'where dealer hedging switches sides. Above it hedging absorbs moves, below it amplifies them.',
-  flip: 'where dealer hedging switches sides. Above it hedging absorbs moves, below it amplifies them.',
-  'gamma pin': 'the strike with the most open contracts near price; price often drifts toward it, mostly through lunch.',
-  pin: 'the strike with the most open contracts near price; price often drifts toward it, mostly through lunch.',
+  'put wall': 'the strike with the most put gamma, either side of price; below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling.',
+  'gamma flip': 'where dealer hedging switches sides. Above it moves tend to be damped (long gamma), below it they tend to extend (short gamma).',
+  flip: 'where dealer hedging switches sides. Above it moves tend to be damped (long gamma), below it they tend to extend (short gamma).',
+  'largest oi': 'the strike with the most open contracts near price, where the chain is heaviest. Not a level price is drawn to: tested on SPY and QQQ, the close did not settle toward it.',
   supreme: 'the single strike with the most dealer hedging on it.',
 };
 
@@ -248,8 +247,8 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
       /* no crossing within ±10% is no flip, and no row — the card's foot says so */
       ...(levels.flipFound === false ? [] : [mk('flip', 'Gamma flip', FLIP, levels.flip, sideOf(levels.flip))]),
       mk('put', 'Put wall', PUT_WALL, levels.putWall, sideOf(levels.putWall)),
-      /* a pin only where dealers are long gamma and price is near it (data/exposure.ts) */
-      ...(levels.pinFound === false ? [] : [mk('pin', 'Gamma pin', 'rgb(var(--text-primary))', levels.pin, sideOf(levels.pin))]),
+      /* the largest-OI strike only where dealers are long gamma and price is near it (data/exposure.ts) */
+      ...(levels.pinFound === false ? [] : [mk('pin', 'Largest OI', 'rgb(var(--text-primary))', levels.pin, sideOf(levels.pin))]),
       mk('supreme', 'Supreme', SUPREME, levels.supreme, sideOf(levels.supreme)),
     ];
     // Highest price first — the section reads like the ladder above it
@@ -266,7 +265,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
       } else merged.push(r);
     }
     /* Names on a shared strike in the one order (core/walls.ts levelRoles), then the flip and the pin. */
-    const ORDER = ['Supreme', 'Call wall', 'Put wall', 'Gamma flip', 'Gamma pin'];
+    const ORDER = ['Supreme', 'Call wall', 'Put wall', 'Gamma flip', 'Largest OI'];
     for (const r of merged) {
       r.labels.sort((a, b) => ORDER.indexOf(a.label) - ORDER.indexOf(b.label));
       r.label = r.labels.map(l => l.label).join(' · ');

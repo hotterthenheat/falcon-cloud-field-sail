@@ -18,7 +18,7 @@
 import { compassHost } from './compassHost';
 import { bsStates, ivStates } from './compassFeatures';
 import { FLAT_T, P1_MIN, SPAN_INDEX, STOP_KEEP, WEEKLY_STRIKES, spreadPass, strikeDistance, strikeSpan, thetaBurns, weekdayDte } from './compassParams';
-import { settleSignal, optionFees, type PathBar, type PathQuote } from './compassOutcome';
+import { grossPnl, settleSignal, type PathBar, type PathQuote } from './compassOutcome';
 import { readQuotes, type Signal } from './compassLedger';
 import { underCloses } from './compassModel';
 import { explain, sigmoid, type ExplainTree } from './lgbmExplain';
@@ -191,7 +191,7 @@ export interface TradeReview {
     midFill: number | null;
     midExit: number | null;
     /** per contract, dollars: what each part of the mid's move came to (Black-Scholes, repriced step by step) */
-    parts: { direction: number | null; decay: number | null; iv: number | null; spreadIn: number | null; spreadOut: number | null; fees: number | null };
+    parts: { direction: number | null; decay: number | null; iv: number | null; spreadIn: number | null; spreadOut: number | null };
     /** the best bid between the fill and the flat, and whether the 1.5× target stood after the exit */
     bestBid: number | null;
     targetLater: boolean;
@@ -249,7 +249,7 @@ export async function reviewTrade(sig: Signal, deps: ReviewDeps): Promise<TradeR
     p1: sig.p1,
     p2: sig.prun,
     snapshot: { modelRead: row ? Number(row.p1.toFixed(4)) : null, bid: sig.bid, ask: sig.ask, spot: sig.spot, x: row ? row.x : null, up: ent.up, down: ent.down, runnerUp: run.up, runnerDown: run.down },
-    after: { fill: null, fillAt: null, exit: null, exitAt: null, why: '', heldMin: null, pnl: null, underMove: null, underBest: null, underWorst: null, underFirst10: null, ivFill: null, ivExit: null, midFill: null, midExit: null, parts: { direction: null, decay: null, iv: null, spreadIn: null, spreadOut: null, fees: null }, bestBid: null, targetLater: false, mids: [] },
+    after: { fill: null, fillAt: null, exit: null, exitAt: null, why: '', heldMin: null, pnl: null, underMove: null, underBest: null, underWorst: null, underFirst10: null, ivFill: null, ivExit: null, midFill: null, midExit: null, parts: { direction: null, decay: null, iv: null, spreadIn: null, spreadOut: null }, bestBid: null, targetLater: false, mids: [] },
     verdict: { cause: 'still open', flags: [], line: '' },
   };
   if (!o || !o.fill) {
@@ -290,7 +290,6 @@ export async function reviewTrade(sig: Signal, deps: ReviewDeps): Promise<TradeR
   }
   const spreadIn = (fill.ask - mid0) * 100;
   const spreadOut = Number.isFinite(mid1) ? (mid1 - exit.px) * 100 : NaN;
-  const fees = o.fees ?? optionFees(exit.px);
   const flatAt = markMs(sig.day, FLAT_MIN);
   const afterFill = quotes.filter(q => q.t > fill.at && q.t <= flatAt);
   const bestBid = afterFill.reduce((m, q) => Math.max(m, q.bid), 0);
@@ -304,7 +303,8 @@ export async function reviewTrade(sig: Signal, deps: ReviewDeps): Promise<TradeR
     exitAt: clockOf(minuteOf(exit.at)),
     why: exit.why,
     heldMin: o.heldMin,
-    pnl: o.pnl,
+    /* (exit - fill) x 100, no fees (a record settled before the rule carried them in its pnl) */
+    pnl: grossPnl(fill.ask, exit.px),
     underMove: r4(signed(S1)),
     underBest: moves.length ? r4(Math.max(...moves)) : null,
     underWorst: moves.length ? r4(Math.min(...moves)) : null,
@@ -313,7 +313,7 @@ export async function reviewTrade(sig: Signal, deps: ReviewDeps): Promise<TradeR
     ivExit: r4(iv1),
     midFill: r4(mid0),
     midExit: r4(mid1),
-    parts: { direction: r2(direction), decay: r2(decay), iv: r2(iv), spreadIn: r2(spreadIn), spreadOut: r2(spreadOut), fees: r2(fees) },
+    parts: { direction: r2(direction), decay: r2(decay), iv: r2(iv), spreadIn: r2(spreadIn), spreadOut: r2(spreadOut) },
     bestBid: bestBid > 0 ? bestBid : null,
     targetLater,
     mids,
@@ -335,7 +335,7 @@ export function verdictOf(sig: Pick<Signal, 'book' | 'right'>, a: TradeReview['a
   const side = sig.right === 'C' ? 'up' : 'down';
   const pct = (v: number | null) => (v == null ? '—' : `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}%`);
   const usd = (v: number | null) => (v == null ? '—' : `${v >= 0 ? '+' : '−'}$${Math.abs(v).toFixed(2)}`);
-  const parts = `Direction ${usd(p.direction)}, decay ${usd(p.decay)}, IV ${usd(p.iv)}, spread ${usd(-cost)}, fees ${usd(-(p.fees ?? 0))}.`;
+  const parts = `Direction ${usd(p.direction)}, decay ${usd(p.decay)}, IV ${usd(p.iv)}, spread ${usd(-cost)}.`;
   if (pnl > 0) {
     const best = (p.iv ?? 0) > (p.direction ?? 0) ? 'IV expansion' : 'direction right';
     return { cause: best, flags, line: `Won ${usd(pnl)}. The underlying went ${pct(a.underMove)} its way while held (best ${pct(a.underBest)}). ${parts}` };

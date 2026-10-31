@@ -19,7 +19,7 @@ import { activeStop, signalOf, useSignals } from '../../data/compassLedger';
 import { liveSetups, liveSpark, useContractBars, useContractLive, useSecondGreek } from '../../data/thetaBook';
 import { leftOf, passedOver } from '../../data/compassModel';
 import { entryGate, quoteContract, quoteMissing, quoteStale } from '../../data/contractQuote';
-import { MODELS_VALIDATED, SPREAD_MAX, STOP_KEEP, UNVALIDATED_WORD, spreadPass, weekdayDte } from '../../data/compassParams';
+import { BOOK_NAME, MODELS_VALIDATED, OUTSIDE_TRAINED_WORD, SPREAD_MAX, STOP_KEEP, UNVALIDATED_WORD, spreadPass, weekdayDte } from '../../data/compassParams';
 import { BLOCK_MIN_PREMIUM, BLOCK_MIN_SIZE } from '../../data/tape';
 import { useShelfPrints } from '../../data/traceLive';
 import type { FlowPrint } from '../../types/trace';
@@ -389,8 +389,8 @@ const CampaignAnalysis = ({
   const greekOk = Number.isFinite(ivPct) && ivPct > 0;
   const pts = spotPx > 0 ? (setup.right === 'C' ? spotPx - setup.strike : setup.strike - spotPx) : NaN;
   const place = !Number.isFinite(pts) ? '' : Math.abs(pts) / spotPx < 0.0015 ? 'ATM' : `${Math.abs(pts).toFixed(0)} pts ${pts > 0 ? 'ITM' : 'OTM'}`;
-  const unchecked = MODELS_VALIDATED ? '' : ` · ${UNVALIDATED_WORD}`;
-  const kindLabel = setup.band === 'closest' ? 'Closest' : setup.band === 'lottery' ? 'Book C' : setup.band === 'wing' ? `Book B${unchecked}` : setup.band === 'top' ? `Book A${unchecked}` : '';
+  const unchecked = `${MODELS_VALIDATED ? '' : ` · ${UNVALIDATED_WORD}`}${setup.outsideTrained ? ` · ${OUTSIDE_TRAINED_WORD}` : ''}`;
+  const kindLabel = setup.band === 'closest' ? 'Closest' : setup.band === 'lottery' ? BOOK_NAME.C : setup.band === 'wing' ? `${BOOK_NAME.B}${unchecked}` : setup.band === 'top' ? `${BOOK_NAME.A}${unchecked}` : '';
   const [guideOpen, setGuideOpen] = useState(false);
 
   const left = leftOf(setup.id);
@@ -445,7 +445,7 @@ const CampaignAnalysis = ({
               <p className="mt-0.5 text-t11 text-textSecondary truncate">{verdict.why}</p>
               {thetaDown && (
                 <p className="mt-0.5 text-t11 text-warn" data-setup-offline>
-                  ThetaData offline — reconnecting.{quoteAt ? ` Quote as of ${nyClock(quoteAt, { seconds: true, zone: true })}.` : ''}
+                  Live data offline — reconnecting.{quoteAt ? ` Quote as of ${nyClock(quoteAt, { seconds: true, zone: true })}.` : ''}
                 </p>
               )}
               {passedOver(setup.ticker).length > 0 && (
@@ -510,7 +510,7 @@ const CampaignAnalysis = ({
             traded={traded}
             volume={sessionPrints.reduce((sum, p) => sum + p.size, 0)}
             emptyNote={traded && traded.length === 0 ? 'No trades on this contract. A minute with no print is not a candle.' : ''}
-            pathNote={traded == null ? (thetaDown ? 'ThetaData offline. No bars.' : 'No bars from ThetaData yet.') : ''}
+            pathNote={traded == null ? (thetaDown ? 'Live data offline. No bars.' : 'No bars in yet.') : ''}
           />
         </div>
         <div className="min-w-0 flex flex-col gap-3">
