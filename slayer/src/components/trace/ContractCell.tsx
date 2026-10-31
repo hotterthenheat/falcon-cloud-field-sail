@@ -1,6 +1,7 @@
 /* The contract cell: strike, "call"/"put" and expiry, right-aligned so every cell ends on one edge; the silver hover is
    the door to the card (door.ts). With a spot it adds a sub-line: days left, the spot at the print, the OTM distance. */
 
+import type { ReactNode } from 'react';
 import { DOOR, DOOR_GROUP_TEXT } from './door';
 import { expiryLabel, pctSigned } from '../../core/format';
 import { indexRoot } from '../../data/traceLive';
@@ -34,9 +35,19 @@ const ContractCell = ({
   otmPct,
   ticker,
   stack = false,
+  spotAside = false,
+  stackTail,
+  stackDte = false,
 }: {
+  /** Stacked: what stands after the expiry on its line (the distance) */
+  stackTail?: ReactNode;
+  /** Stacked: the days left beside the side, on the strike's line */
+  stackDte?: boolean;
   ticker?: string;
-  /** No sub-line: the expiry stands under the strike and side, so a grid's contract column is half as wide */
+  /** The spot stands elsewhere on the row (under the ticker): the sub-line keeps the days left and the distance */
+  spotAside?: boolean;
+  /** The expiry stands under the strike and side, so a grid's contract column is half as wide (stackDte and
+      stackTail add the days left and the distance; the spot sub-line is not drawn) */
   stack?: boolean;
   strike: number;
   right: 'C' | 'P';
@@ -54,15 +65,20 @@ const ContractCell = ({
     otmPct = undefined;
     dte = undefined;
   }
-  const context = dte !== undefined || spot !== undefined || otmPct !== undefined;
-  if (stack && !context)
+  const shownSpot = spotAside ? undefined : spot;
+  const context = dte !== undefined || shownSpot !== undefined || otmPct !== undefined;
+  if (stack)
     return (
       <span className={`group/door inline-flex flex-col items-end gap-[3px] align-middle ${DOOR}`}>
         <span className="inline-flex items-baseline gap-1.5 leading-none">
           <span className={`font-mono text-xs font-bold text-textPrimary tnum ${DOOR_GROUP_TEXT}`}>{strike}</span>
           <span className={`font-mono text-t11 font-semibold ${right === 'C' ? 'text-bull' : 'text-bear'} ${DOOR_GROUP_TEXT}`}>{right === 'C' ? 'call' : 'put'}</span>
+          {stackDte && dte !== undefined && <span className={`font-mono text-t11 tnum text-textSecondary ${DOOR_GROUP_TEXT}`}>{dte}d</span>}
         </span>
-        <span className={`font-mono text-t11 leading-none text-textMuted tnum whitespace-nowrap ${DOOR_GROUP_TEXT}`}>{expiryLabel(expiry)}</span>
+        <span className={`font-mono text-t11 leading-none text-textMuted tnum whitespace-nowrap ${DOOR_GROUP_TEXT}`}>
+          {expiryLabel(expiry)}
+          {stackTail != null && <span className="text-textSecondary"> · {stackTail}</span>}
+        </span>
       </span>
     );
   /* leading-none + align-middle: a grid cell hands its children a 36px line, which would push the door out of a 39px row */
@@ -79,9 +95,9 @@ const ContractCell = ({
       {head}
       <span className="inline-flex items-baseline gap-1 font-mono text-t11 leading-none tnum text-textSecondary whitespace-nowrap">
         {dte !== undefined && <span>{dte}d</span>}
-        {dte !== undefined && (spot !== undefined || otmPct !== undefined) && <span aria-hidden>·</span>}
-        {spot !== undefined && <span title={ticker && indexRoot(ticker) ? 'The index level, whole points' : 'The stock at the moment of this print'}>{ticker && indexRoot(ticker) ? `@${Math.round(spot).toLocaleString('en-US')}` : `@$${spot.toFixed(2)}`}</span>}
-        {spot !== undefined && otmPct !== undefined && <span aria-hidden>·</span>}
+        {dte !== undefined && (shownSpot !== undefined || otmPct !== undefined) && <span aria-hidden>·</span>}
+        {shownSpot !== undefined && <span title={ticker && indexRoot(ticker) ? 'The index level, whole points' : 'The stock at the moment of this print'}>{ticker && indexRoot(ticker) ? `@${Math.round(shownSpot).toLocaleString('en-US')}` : `@$${shownSpot.toFixed(2)}`}</span>}
+        {shownSpot !== undefined && otmPct !== undefined && <span aria-hidden>·</span>}
         {otmPct !== undefined && <OtmCell otmPct={otmPct} ticker={ticker ?? ''} className="" />}
       </span>
     </span>

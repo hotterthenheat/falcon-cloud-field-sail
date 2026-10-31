@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { CalendarDays } from 'lucide-react';
-import { dayLean, dayStartMs, fmtCount as num, lastRegularClose, plural, quoteNoReadWords, tapeSessionIso, tideBetween, useDayBigAlerts, useDayTopContracts, useTide, useAlertTrades, useFlowAlerts, useNameTopContracts, useOlderPages, olderAlerts, usePrintStream, usd as fmtUsd, type TapeQuery } from '../../data/traceLive';
+import { dayLean, dayStartMs, fmtCount as num, indexRoot, lastRegularClose, plural, tapeSessionIso, tideBetween, useDayBigAlerts, useDayTopContracts, useTide, useAlertTrades, useFlowAlerts, useNameTopContracts, useOlderPages, olderAlerts, usePrintStream, usd as fmtUsd, type TapeQuery } from '../../data/traceLive';
 import { leanWords } from '../../data/traceLean';
 import { useTraceSession } from '../../components/trace/traceSession';
 import { nyClock, nyWallTime } from '../../core/nyTime';
@@ -169,15 +169,13 @@ const PIN_RIGHT = ['prem'];
 
 const TOOLTIPS: Record<string, string> = {
   otm: 'Out of the money by this much of the spot, calls and puts alike; negative is in the money',
-  contract: 'The contract, days left, the stock at the print, and OTM %',
-  quote: 'The fill, the side it crossed, and the bid and ask it crossed into',
+  contract: 'The contract; under it the days left and OTM % (the stock at the print stands under the ticker)',
+  quote: 'The fill, the side it crossed and its implied volatility, over the bid and ask it crossed into',
   size: "Contracts on this print, over the day's volume and the open interest",
   prem: 'Dollars paid — size × fill × 100',
   dayRatio: "The contract's whole day by side; on the alerts lane, the alert's premium by side",
-  sentiment: 'Bullish (calls bought, puts sold), bearish (puts bought, calls sold), or no read',
+  sentiment: 'Bullish (calls bought, puts sold), bearish (puts bought, calls sold), or no read — and under it the kind: sweep, block, multi-leg or single print',
   volOverOi: 'Volume over the open interest the session opened on; 1.5+ means positions built today',
-  iv: 'Implied volatility',
-  tag: 'Sweep, block, multi-leg or single print',
 };
 
 /** One stretch of the read — a sentence piece, or a door onto a print */
@@ -245,6 +243,12 @@ const QuoteCell = ({ print }: { print: FlowPrint }) => (
       <span className="font-mono text-t11 font-semibold uppercase tracking-wide text-textPrimary" title={print.extended ? 'After hours — against a post-market quote' : undefined}>
         {sideWordOf(print)}
       </span>
+      {/* the fill's price in vol: the same figure in its other unit, so it stands on the fill's line */}
+      {Number.isFinite(print.iv) && print.iv > 0 && (
+        <span className="font-mono text-t11 tnum text-textSecondary" title="Implied volatility at the print">
+          iv {print.iv.toFixed(0)}%
+        </span>
+      )}
     </span>
     <span className="inline-flex items-center gap-1">
       <span className="font-mono text-t11 tnum text-textSecondary">{print.bid.toFixed(2)}</span>
@@ -269,6 +273,34 @@ const SizeCell = ({ print }: { print: FlowPrint }) => (
 );
 
 const SENT_TEXT: Record<PrintSentiment, string> = { BULLISH: 'text-bull', BEARISH: 'text-bear', NEUTRAL: 'text-textSecondary' };
+
+/** A print's read: its sentiment, or why it has none */
+const readOf = (r: { p: FlowPrint }) => {
+  const s = sentimentOf(r.p);
+  if (r.p.compression) return <span className="text-t11 font-semibold text-textSecondary" title="A compression package — nets open interest down, not a bet">compression</span>;
+  if (r.p.extended) return <span className="text-t11 font-semibold text-textSecondary" title="After hours — against a post-market quote, no read">after hrs</span>;
+  if (isSpreadLeg(r.p)) return <span className="text-t11 font-semibold text-textSecondary" title="One leg of a multi-leg order — Multi-Leg reads the structure">spread leg</span>;
+  if (r.p.cross) return <span className="text-t11 font-semibold text-textSecondary" title="A pre-arranged cross — no side taken">cross</span>;
+  if (r.p.quoteNoRead)
+    return (
+      <span className="text-t11 font-semibold text-textSecondary whitespace-nowrap" title={r.p.quoteNoRead === 'crossed' ? `Quote crossed (bid ${r.p.bid.toFixed(2)} ≥ ask ${r.p.ask.toFixed(2)}) — no side` : 'One side of the quote was over five minutes old — no side'}>
+        {/* the quote's fault in two words: the grey ink says no read, the hover says why */}
+        {r.p.quoteNoRead === 'crossed' ? 'quote crossed' : 'quote stale'}
+      </span>
+    );
+  return <span className={`text-t11 font-semibold ${SENT_TEXT[s]}`}>{s}</span>;
+};
+
+/** A print's kind: a sweep in its ink, an alert's print count beside it */
+const kindOf = (p: FlowPrint) => {
+  const k = printKind(p);
+  return (
+    <span className="text-t11 text-textSecondary whitespace-nowrap" title={k === 'COMPRESSION' ? 'A compression package — not a bet' : p.trades ? `A flow alert of ${p.trades} prints${k === 'BURST' ? '; its largest trade is not known to be a block' : ''}` : k === 'MULTI' ? 'A leg of a multi-leg order' : undefined}>
+      {k === 'SWEEP' ? <span className="text-warn font-semibold">Sweep</span> : KIND_WORD[k]}
+      {p.trades && p.trades > 1 ? <span className="text-textMuted"> · {p.trades} prints</span> : null}
+    </span>
+  );
+};
 
 /* a print with the rank it holds in a ranked view; wrappers are cached per (print, rank) so an unmoved row keeps its
    identity and the grid's memoised row sits the poll out */
@@ -809,10 +841,18 @@ const LiveTape = () => {
         group: 'Contract',
         header: 'Ticker',
         sortValue: r => r.p.ticker,
+        /* the spot at the print under the name, not on the contract's line: the contract column is half as wide */
         render: r => (
-          <span className="inline-flex items-center gap-1.5">
-            <CompanyLogo ticker={r.p.ticker} size={15} />
-            <span className="font-bold text-textPrimary">{r.p.ticker}</span>
+          <span className="inline-flex flex-col items-start gap-[3px] leading-none align-middle">
+            <span className="inline-flex items-center gap-1.5">
+              <CompanyLogo ticker={r.p.ticker} size={15} />
+              <span className="font-bold text-textPrimary">{r.p.ticker}</span>
+            </span>
+            {r.p.spot > 0 && (
+              <span className="pl-[21px] font-mono text-t11 tnum text-textSecondary whitespace-nowrap" title={indexRoot(r.p.ticker) ? 'The index level at this print, whole points' : 'The stock at the moment of this print'}>
+                {indexRoot(r.p.ticker) ? Math.round(r.p.spot).toLocaleString('en-US') : `$${r.p.spot.toFixed(2)}`}
+              </span>
+            )}
           </span>
         ),
       },
@@ -820,10 +860,10 @@ const LiveTape = () => {
         key: 'contract',
         label: 'Contract',
         group: 'Contract',
-        header: 'Contract · OTM %',
+        header: 'Contract',
         align: 'right',
         sortValue: r => r.p.strike,
-        render: r => <ContractCell ticker={r.p.ticker} strike={r.p.strike} right={r.p.right} expiry={r.p.expiry} dte={r.p.dte} spot={r.p.spot} otmPct={r.p.otmPct} />,
+        render: r => <ContractCell ticker={r.p.ticker} strike={r.p.strike} right={r.p.right} expiry={r.p.expiry} dte={r.p.dte} spot={r.p.spot} otmPct={r.p.otmPct} spotAside />,
       },
       { key: 'dte', label: 'DTE', group: 'Contract', header: 'DTE', align: 'right', sortValue: r => r.p.dte, render: r => <span className="text-textPrimary">{r.p.dte}d</span> },
       { key: 'otm', label: 'OTM %', group: 'Contract', header: 'OTM %', align: 'right', sortValue: r => (r.p.spot > 0 && Number.isFinite(r.p.otmPct) ? r.p.otmPct : Number.NEGATIVE_INFINITY), render: r => <OtmCell otmPct={r.p.otmPct} ticker={r.p.ticker} spot={r.p.spot} /> },
@@ -863,20 +903,13 @@ const LiveTape = () => {
         header: 'Sentiment',
         align: 'right',
         sortValue: r => sentimentOf(r.p),
-        render: r => {
-          const s = sentimentOf(r.p);
-          if (r.p.compression) return <span className="text-t11 font-semibold text-textSecondary" title="A compression package — nets open interest down, not a bet">compression</span>;
-          if (r.p.extended) return <span className="text-t11 font-semibold text-textSecondary" title="After hours — against a post-market quote, no read">after hrs</span>;
-          if (isSpreadLeg(r.p)) return <span className="text-t11 font-semibold text-textSecondary" title="One leg of a multi-leg order — Multi-Leg reads the structure">spread leg</span>;
-          if (r.p.cross) return <span className="text-t11 font-semibold text-textSecondary" title="A pre-arranged cross — no side taken">cross</span>;
-          if (r.p.quoteNoRead)
-            return (
-              <span className="inline-block text-t11 leading-tight font-semibold text-textSecondary whitespace-normal" title={r.p.quoteNoRead === 'crossed' ? `Quote crossed (bid ${r.p.bid.toFixed(2)} ≥ ask ${r.p.ask.toFixed(2)}) — no side` : 'One side of the quote was over five minutes old — no side'}>
-                {quoteNoReadWords(r.p.quoteNoRead)}
-              </span>
-            );
-          return <span className={`text-t11 font-semibold ${SENT_TEXT[s]}`}>{s}</span>;
-        },
+        /* the print's kind under its read: one column, not two */
+        render: r => (
+          <span className="inline-flex flex-col items-end gap-[3px] leading-none align-middle">
+            {readOf(r)}
+            {kindOf(r.p)}
+          </span>
+        ),
       },
       { key: 'vol', label: 'Vol', group: 'Activity', header: 'Vol', align: 'right', sortValue: r => r.p.volume, render: r => <span className="text-textPrimary">{num(r.p.volume)}</span> },
       { key: 'oi', label: 'OI', group: 'Activity', header: 'OI', align: 'right', sortValue: r => r.p.oi, render: r => <span className="text-textPrimary">{num(r.p.oi)}</span> },
@@ -889,23 +922,6 @@ const LiveTape = () => {
         sortValue: r => r.p.volOverOI,
         /* the opening flag under the ratio, not beside it: beside, it widened the column past a 1440 box and the pinned premium hid Kind */
         render: r => <span className={`inline-flex flex-col items-end gap-[2px] leading-none align-middle [&>[data-likely-opening]]:ml-0 font-mono tnum ${r.p.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={r.p.oi > 0 ? undefined : 'No open interest before the session — a new contract'}>{volOiText(r.p)}<OpeningTag volume={r.p.volume} oi={r.p.oi} /></span>,
-      },
-      { key: 'iv', label: 'IV', group: 'Activity', header: 'IV', align: 'right', sortValue: r => r.p.iv, render: r => <span className="font-mono tnum text-textPrimary">{r.p.iv.toFixed(0)}%</span> },
-      {
-        key: 'tag',
-        label: 'Kind',
-        group: 'Activity',
-        header: 'Kind',
-        sortValue: r => printKind(r.p),
-        render: r => {
-          const k = printKind(r.p);
-          return (
-            <span className="text-t11 text-textSecondary" title={k === 'COMPRESSION' ? 'A compression package — not a bet' : r.p.trades ? `A flow alert of ${r.p.trades} prints${k === 'BURST' ? '; its largest trade is not known to be a block' : ''}` : k === 'MULTI' ? 'A leg of a multi-leg order' : undefined}>
-              {k === 'SWEEP' ? <span className="text-warn font-semibold">Sweep</span> : KIND_WORD[k]}
-              {r.p.trades && r.p.trades > 1 ? <span className="text-textMuted"> · {r.p.trades} prints</span> : null}
-            </span>
-          );
-        },
       },
     ],
     [champId, lane]
