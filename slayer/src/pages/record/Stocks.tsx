@@ -491,10 +491,11 @@ const Stocks = () => {
             <HeadFact label="Above their 50-day" testId="stocks-breadth" tone={quiet ? 'text-textMuted' : facts.breadth >= 55 ? 'text-bull' : facts.breadth <= 40 ? 'text-bear' : undefined} tip="The share of the names whose last price is above their 50-day simple average">
               <span data-stocks-breadth>{quiet ? '—' : `${facts.breadth}%`}</span>
             </HeadFact>
+            {/* the two sector words are figures in the head's line: a touch hit area (tap-40), not the Dossier's 40px phone box that pushed them off their labels */}
             <HeadFact label="Leading sector" testId="stocks-leader">
               <span data-stocks-leader>
                 {quiet ? '—' : (
-                  <button type="button" onClick={() => toggleSector(top.sector)} title={`Keep the grid to ${top.sector}`} className="text-supreme font-semibold hover:underline underline-offset-2">
+                  <button type="button" onClick={() => toggleSector(top.sector)} title={`Keep the grid to ${top.sector}`} className="tap-40 text-supreme font-semibold hover:underline underline-offset-2" data-touch-skip>
                     {top.sector}
                   </button>
                 )}
@@ -503,7 +504,7 @@ const Stocks = () => {
             <HeadFact label="Ranked last" testId="stocks-trailer" tip="The sector whose names grade worst, its direction beside it; it can rank last and still be turning up">
               <span data-stocks-trailer>
                 {quiet ? '—' : (
-                  <button type="button" onClick={() => toggleSector(bottom.sector)} title={`Keep the grid to ${bottom.sector}`} className="text-bear hover:underline underline-offset-2">
+                  <button type="button" onClick={() => toggleSector(bottom.sector)} title={`Keep the grid to ${bottom.sector}`} className="tap-40 text-bear hover:underline underline-offset-2" data-touch-skip>
                     {bottom.sector} <span className="text-textMuted font-normal">· {PHASE_WORD[bottom.phase].toLowerCase()}</span>
                   </button>
                 )}
