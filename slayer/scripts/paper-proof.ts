@@ -14,7 +14,7 @@ import { NO_RULES, flatTimeOf, floorOf, readRules, ruleRefusal, type PaperPlan, 
 import { CUSTOM_DEFAULTS, PROP_FIRMS, customPlan, planById } from '../src/data/paper/propFirms';
 import { marginOf } from '../src/data/paper/margin';
 import { OPTIONS_FUNDING_WHITELIST } from '../src/data/paper/whitelists';
-import { optionsOpen } from '../src/data/paper/feed';
+import { atmIvAt, expectedMovePctOf, optionsOpen } from '../src/data/paper/feed';
 import { isPaperIndex } from '../src/data/paper/products';
 import { optionRootOf } from '../src/data/paper/thetaFeed';
 import type { ContractId } from '../src/data/review/quotes';
@@ -941,6 +941,19 @@ const fixed = (price: () => number, t = now): PaperMarket => ({
   x = tick(x, { ...fixed(() => 1.5, nyInstant(W, 9 * 60 + 35)), closeOf: () => 25, openOf: (t: string, d: string) => (t === 'VIX' && d === W ? 22.4 : NaN) }).account;
   const vt = optBookOf(x).trades[0];
   ok('…it settles on the VIX opening print of the 18th, 22.40: worth 2.40, and says it is the SOQ’s stand-in', vt?.how === 'expired' && vt.avgOut === 2.4 && /opening print/.test(vt.note ?? '') && /special opening quotation/.test(vt.note ?? ''), `${vt?.avgOut} · ${vt?.note}`);
+}
+
+{
+  /* the Weigher's two bugs, in the paper chain: ATM IV between the strikes either side of the name; one expected-move formula */
+  const row = (k: number, c: number, p: number) => ({ strike: k, call: { iv: c }, put: { iv: p } });
+  /* unsorted, and the middle element of the old list was 30: at 501.5 between 500 (avg 20) and 505 (avg 25) → 20 + 5 × 1.5/5 = 21.5 */
+  ok('ATM IV: the call and put average at the two strikes either side of the name, straight between them — 21.5, not the list’s middle', near(atmIvAt([row(510, 30, 32), row(500, 19, 21), row(505, 24, 26), row(495, 40, 44)], 501.5), 21.5, 1e-9));
+  ok('…one side alone stands for its strike; past the strikes, the nearest', near(atmIvAt([row(500, 20, NaN), row(505, NaN, 30)], 502.5), 25, 1e-9) && atmIvAt([row(500, 20, 22)], 510) === 21);
+  /* a trading-clock 20% vol on the 2026-10-16 expiry from 2026-09-23 10:00: the move is S·σ·√T on the trading clock */
+  const ms = nyInstant('2026-09-23', 10 * 60);
+  const em = expectedMovePctOf(500, 20, { ticker: 'SPY', expiry: '2026-10-16' }, ms);
+  const want = 20 * Math.sqrt(yearsToExpiry('2026-10-16', ms));
+  ok('the expected move goes through sigmaToExpiry and keeps the variance: 20% on the trading clock → 20 × √T_trading %', near(em, want, 0.002), `${em} vs ${want}`);
 }
 
 console.log(`\n${passed} held · ${failed} missed`);
