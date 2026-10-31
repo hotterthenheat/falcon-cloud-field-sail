@@ -2185,16 +2185,179 @@ html[data-theme='light'] [data-paper-chain-side-pick='P']:not([aria-pressed='tru
   }
 }
 
-/* The wire's map fills its column. A max-width here centered it and left two empty sides. */
+/* The wire's map fills the card's width; its height follows the width (the inhabited world is about 2:1) within a
+   share of the screen, so the whole world shows on a laptop and a phone alike. */
 [data-news-stage] {
   width: 100%;
-  height: min(52vh, 480px);
+  height: clamp(220px, 58vw, min(58vh, 560px));
   max-width: none;
 }
-@media (orientation: portrait) {
-  [data-news-stage] {
-    height: min(42vh, 420px);
+/* the pins and names drawn over the map (components/record/NewsMapLive.tsx) */
+.news-live-map .maplibregl-canvas:focus {
+  outline: none;
+}
+.news-pin {
+  --pin: rgb(var(--silver));
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.news-pin[data-tone='up'] {
+  --pin: rgb(var(--bull));
+}
+.news-pin[data-tone='down'] {
+  --pin: rgb(var(--bear));
+}
+.news-pin__dot {
+  display: block;
+  flex: none;
+  border-radius: 999px;
+  background: var(--pin);
+  opacity: 0.92;
+  box-shadow: 0 0 0 1.5px rgb(var(--canvas) / 0.9), 0 1px 4px rgb(0 0 0 / 0.45);
+  transition: transform 120ms ease-out;
+}
+.news-pin[data-hot] .news-pin__dot,
+.news-pin:focus-visible .news-pin__dot {
+  transform: scale(1.22);
+  opacity: 1;
+}
+.news-pin[data-open] .news-pin__dot {
+  opacity: 1;
+  box-shadow: 0 0 0 2px rgb(var(--canvas)), 0 0 0 3.5px rgb(var(--text-primary)), 0 0 14px 2px var(--pin);
+}
+.news-pin__name {
+  font: 600 11px/1.15 ui-sans-serif, system-ui, sans-serif;
+  color: rgb(var(--text-primary) / 0.92);
+  white-space: nowrap;
+  text-shadow: 0 0 3px rgb(var(--canvas)), 0 0 2px rgb(var(--canvas)), 0 1px 1px rgb(var(--canvas));
+}
+.news-pin__n {
+  margin-left: 4px;
+  font-weight: 500;
+  color: rgb(var(--text-secondary));
+}
+.news-pin[data-open] .news-pin__name,
+.news-pin[data-hot] .news-pin__name {
+  color: rgb(var(--text-primary));
+}
+/* the open story's name always shows, so it sits on a plate over whatever pin it crosses */
+.news-pin[data-open] .news-pin__name {
+  padding: 2px 6px;
+  border: 1px solid rgb(var(--border-muted));
+  border-radius: 4px;
+  background: rgb(var(--panel) / 0.9);
+  text-shadow: none;
+}
+.news-country {
+  pointer-events: none;
+  font: 600 10px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgb(var(--text-muted) / 0.85);
+  white-space: nowrap;
+  text-shadow: 0 0 3px rgb(var(--canvas) / 0.9);
+}
+.news-place {
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font: 500 10.5px/1 ui-sans-serif, system-ui, sans-serif;
+  color: rgb(var(--text-muted));
+  white-space: nowrap;
+  text-shadow: 0 0 3px rgb(var(--canvas));
+}
+.news-place__dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+}
+.news-reach-end {
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.news-reach-end__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  border: 1.5px solid rgb(var(--silver));
+  background: rgb(var(--canvas));
+}
+.news-reach-end__name {
+  font: 500 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: rgb(var(--text-secondary));
+  text-shadow: 0 0 3px rgb(var(--canvas)), 0 0 2px rgb(var(--canvas));
+}
+.news-session-tag {
+  pointer-events: none;
+  margin-top: 4px;
+  font: 600 9.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(var(--text-secondary));
+  white-space: nowrap;
+}
+.news-map-ctrl {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgb(var(--border-muted));
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgb(var(--panel) / 0.88);
+  backdrop-filter: blur(6px);
+}
+.news-map-ctrl button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  font: 500 15px/1 ui-sans-serif, system-ui, sans-serif;
+  color: rgb(var(--text-secondary));
+  cursor: pointer;
+}
+.news-map-ctrl button + button {
+  border-top: 1px solid rgb(var(--border-subtle));
+}
+.news-map-ctrl button:hover {
+  color: rgb(var(--text-primary));
+  background: rgb(var(--ink) / 0.06);
+}
+@media (pointer: coarse) {
+  .news-map-ctrl button {
+    width: 36px;
+    height: 36px;
   }
+}
+.news-map-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.news-map-empty > span {
+  max-width: min(88%, 420px);
+  padding: 8px 14px;
+  border: 1px solid rgb(var(--border-muted));
+  border-radius: 6px;
+  background: rgb(var(--panel) / 0.9);
+  font: 500 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: rgb(var(--text-secondary));
+  text-align: center;
 }
 
 /* The shell's bar while a page's code arrives (components/layout/RouteHold.tsx) */

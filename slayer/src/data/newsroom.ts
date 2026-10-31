@@ -90,6 +90,48 @@ const HQ: Record<string, { lat: number; lng: number; city: string; cluster: Clus
   QQQ: { lat: 40.71, lng: -74.01, city: 'New York', cluster: 'index' },
   IWM: { lat: 40.71, lng: -74.01, city: 'New York', cluster: 'index' },
   DIA: { lat: 40.71, lng: -74.01, city: 'New York', cluster: 'index' },
+  ABBV: { lat: 42.33, lng: -87.84, city: 'North Chicago', cluster: 'health' },
+  MRK: { lat: 40.68, lng: -74.41, city: 'Rahway', cluster: 'health' },
+  ABT: { lat: 42.33, lng: -87.84, city: 'North Chicago', cluster: 'health' },
+  GILD: { lat: 37.56, lng: -122.27, city: 'Foster City', cluster: 'health' },
+  REGN: { lat: 41.03, lng: -73.77, city: 'Tarrytown', cluster: 'health' },
+  AMGN: { lat: 34.18, lng: -118.88, city: 'Thousand Oaks', cluster: 'health' },
+  AZN: { lat: 52.2, lng: 0.14, city: 'Cambridge', cluster: 'health' },
+  NVO: { lat: 55.73, lng: 12.45, city: 'Bagsværd', cluster: 'health' },
+  CVS: { lat: 41.99, lng: -71.47, city: 'Woonsocket', cluster: 'health' },
+  F: { lat: 42.32, lng: -83.18, city: 'Dearborn', cluster: 'autos' },
+  GM: { lat: 42.33, lng: -83.05, city: 'Detroit', cluster: 'autos' },
+  RIVN: { lat: 33.68, lng: -117.83, city: 'Irvine', cluster: 'autos' },
+  GD: { lat: 38.96, lng: -77.36, city: 'Reston', cluster: 'industrial' },
+  LMT: { lat: 39.0, lng: -77.1, city: 'Bethesda', cluster: 'industrial' },
+  RTX: { lat: 38.88, lng: -77.11, city: 'Arlington', cluster: 'industrial' },
+  HON: { lat: 35.23, lng: -80.84, city: 'Charlotte', cluster: 'industrial' },
+  UPS: { lat: 33.75, lng: -84.39, city: 'Atlanta', cluster: 'industrial' },
+  CL: { lat: 40.75, lng: -73.97, city: 'New York', cluster: 'consumer' },
+  KO: { lat: 33.75, lng: -84.39, city: 'Atlanta', cluster: 'consumer' },
+  PEP: { lat: 41.03, lng: -73.71, city: 'Purchase', cluster: 'consumer' },
+  TGT: { lat: 44.98, lng: -93.27, city: 'Minneapolis', cluster: 'consumer' },
+  CMG: { lat: 33.66, lng: -117.83, city: 'Newport Beach', cluster: 'consumer' },
+  PANW: { lat: 37.39, lng: -122.03, city: 'Santa Clara', cluster: 'tech' },
+  ADBE: { lat: 37.33, lng: -121.89, city: 'San Jose', cluster: 'tech' },
+  IBM: { lat: 41.11, lng: -73.72, city: 'Armonk', cluster: 'tech' },
+  QCOM: { lat: 32.9, lng: -117.2, city: 'San Diego', cluster: 'chips' },
+  ARM: { lat: 52.2, lng: 0.12, city: 'Cambridge', cluster: 'chips' },
+  SHOP: { lat: 45.42, lng: -75.7, city: 'Ottawa', cluster: 'ecom' },
+  PYPL: { lat: 37.37, lng: -121.92, city: 'San Jose', cluster: 'banks' },
+  MA: { lat: 41.03, lng: -73.71, city: 'Purchase', cluster: 'banks' },
+  WFC: { lat: 37.79, lng: -122.4, city: 'San Francisco', cluster: 'banks' },
+  C: { lat: 40.72, lng: -74.01, city: 'New York', cluster: 'banks' },
+  CBOE: { lat: 41.88, lng: -87.63, city: 'Chicago', cluster: 'banks' },
+  VLO: { lat: 29.42, lng: -98.49, city: 'San Antonio', cluster: 'energy' },
+  SHEL: { lat: 51.51, lng: -0.13, city: 'London', cluster: 'energy' },
+  TTE: { lat: 48.89, lng: 2.24, city: 'Paris', cluster: 'energy' },
+  VALE: { lat: -22.91, lng: -43.17, city: 'Rio de Janeiro', cluster: 'industrial' },
+  EXC: { lat: 41.88, lng: -87.63, city: 'Chicago', cluster: 'energy' },
+  D: { lat: 37.54, lng: -77.44, city: 'Richmond', cluster: 'energy' },
+  ETR: { lat: 29.95, lng: -90.07, city: 'New Orleans', cluster: 'energy' },
+  VST: { lat: 32.86, lng: -96.94, city: 'Irving', cluster: 'energy' },
+  CCJ: { lat: 52.13, lng: -106.67, city: 'Saskatoon', cluster: 'energy' },
 };
 
 /* Where each cluster's news lands: relative zone weights that severity scales into heat; the labels show
@@ -181,12 +223,54 @@ const MACRO_ORIGINS: { re: RegExp; lat: number; lng: number; city: string }[] = 
   { re: /\b(?:mexico|mexican|peso|banxico)\b/i, lat: 19.43, lng: -99.13, city: 'Mexico City' },
   { re: /\b(?:brazil(?:ian)?|brasilia|bovespa)\b/i, lat: -15.79, lng: -47.88, city: 'Brasília' },
   { re: /\b(?:australia(?:n)?|rba|sydney|asx)\b/i, lat: -33.87, lng: 151.21, city: 'Sydney' },
+  { re: /\b(?:poland|polish|warsaw)\b/i, lat: 52.23, lng: 21.01, city: 'Warsaw' },
+  { re: /\b(?:t(?:u|ü)rk(?:ey|iye|ish)|ankara|istanbul|erdogan)\b/i, lat: 41.01, lng: 28.98, city: 'Istanbul' },
+  { re: /\b(?:spain|spanish|madrid)\b/i, lat: 40.42, lng: -3.7, city: 'Madrid' },
+  { re: /\b(?:netherlands|dutch|amsterdam)\b/i, lat: 52.37, lng: 4.9, city: 'Amsterdam' },
+  { re: /\b(?:switzerland|swiss|snb|zurich)\b/i, lat: 47.38, lng: 8.54, city: 'Zurich' },
+  { re: /\b(?:sweden|swedish|riksbank|stockholm)\b/i, lat: 59.33, lng: 18.07, city: 'Stockholm' },
+  { re: /\b(?:norway|norwegian|norges bank|oslo)\b/i, lat: 59.91, lng: 10.75, city: 'Oslo' },
+  { re: /\b(?:denmark|danish|copenhagen)\b/i, lat: 55.68, lng: 12.57, city: 'Copenhagen' },
+  { re: /\b(?:greece|greek|athens)\b/i, lat: 37.98, lng: 23.73, city: 'Athens' },
+  { re: /\b(?:hungary|hungarian|budapest|orban)\b/i, lat: 47.5, lng: 19.04, city: 'Budapest' },
+  { re: /\b(?:european union|eu commission|european commission|brussels|nato)\b/i, lat: 50.85, lng: 4.35, city: 'Brussels' },
+  { re: /\b(?:qatar|qatari|doha)\b/i, lat: 25.29, lng: 51.53, city: 'Doha' },
+  { re: /\b(?:uae|emirati|dubai|abu dhabi)\b/i, lat: 25.2, lng: 55.27, city: 'Dubai' },
+  { re: /\b(?:yemen|houthis?|aden|sanaa)\b/i, lat: 15.37, lng: 44.19, city: "Sana'a" },
+  { re: /\b(?:syria(?:n)?|damascus)\b/i, lat: 33.51, lng: 36.29, city: 'Damascus' },
+  { re: /\b(?:lebanon|lebanese|beirut)\b/i, lat: 33.89, lng: 35.5, city: 'Beirut' },
+  { re: /\b(?:iraq(?:i)?|baghdad)\b/i, lat: 33.31, lng: 44.36, city: 'Baghdad' },
+  { re: /\b(?:egypt(?:ian)?|cairo|suez)\b/i, lat: 30.04, lng: 31.24, city: 'Cairo' },
+  { re: /\b(?:morocc(?:o|an)|rabat|western sahara)\b/i, lat: 34.02, lng: -6.84, city: 'Rabat' },
+  { re: /\b(?:nigeria(?:n)?|lagos|abuja)\b/i, lat: 6.52, lng: 3.38, city: 'Lagos' },
+  { re: /\b(?:south africa(?:n)?|johannesburg|pretoria|cape town)\b/i, lat: -26.2, lng: 28.05, city: 'Johannesburg' },
+  { re: /\b(?:kenya(?:n)?|nairobi)\b/i, lat: -1.29, lng: 36.82, city: 'Nairobi' },
+  { re: /\b(?:ethiopia(?:n)?|addis ababa)\b/i, lat: 9.03, lng: 38.74, city: 'Addis Ababa' },
+  { re: /\b(?:sudan(?:ese)?|khartoum)\b/i, lat: 15.5, lng: 32.56, city: 'Khartoum' },
+  { re: /\b(?:congo(?:lese)?|kinshasa)\b/i, lat: -4.32, lng: 15.31, city: 'Kinshasa' },
+  { re: /\b(?:pakistan(?:i)?|islamabad|karachi)\b/i, lat: 33.68, lng: 73.05, city: 'Islamabad' },
+  { re: /\b(?:indonesia(?:n)?|jakarta)\b/i, lat: -6.21, lng: 106.85, city: 'Jakarta' },
+  { re: /\b(?:vietnam(?:ese)?|hanoi)\b/i, lat: 21.03, lng: 105.85, city: 'Hanoi' },
+  { re: /\b(?:thailand|thai|bangkok)\b/i, lat: 13.76, lng: 100.5, city: 'Bangkok' },
+  { re: /\b(?:philippines?|filipino|manila)\b/i, lat: 14.6, lng: 120.98, city: 'Manila' },
+  { re: /\b(?:malaysia(?:n)?|kuala lumpur)\b/i, lat: 3.14, lng: 101.69, city: 'Kuala Lumpur' },
+  { re: /\b(?:singapore(?:an)?)\b/i, lat: 1.35, lng: 103.82, city: 'Singapore' },
+  { re: /\b(?:new zealand|rbnz|wellington)\b/i, lat: -41.29, lng: 174.78, city: 'Wellington' },
+  { re: /\b(?:argentin(?:a|e|ian)|buenos aires|milei)\b/i, lat: -34.6, lng: -58.38, city: 'Buenos Aires' },
+  { re: /\b(?:chile(?:an)?|santiago|cochilco)\b/i, lat: -33.45, lng: -70.67, city: 'Santiago' },
+  { re: /\b(?:peru(?:vian)?|lima)\b/i, lat: -12.05, lng: -77.04, city: 'Lima' },
+  { re: /\b(?:colombia(?:n)?|bogot(?:a|á))\b/i, lat: 4.71, lng: -74.07, city: 'Bogotá' },
+  { re: /\b(?:venezuela(?:n)?|caracas|maduro)\b/i, lat: 10.48, lng: -66.9, city: 'Caracas' },
+  { re: /\b(?:cuba(?:n)?|havana)\b/i, lat: 23.11, lng: -82.37, city: 'Havana' },
+  { re: /\b(?:alaska(?:n)?|anchorage)\b/i, lat: 61.22, lng: -149.9, city: 'Anchorage' },
   { re: /\b(?:export controls?|commerce (?:dept|department)|chip curbs?)\b/i, lat: 38.89, lng: -77.04, city: 'Washington' },
   { re: /\b(?:fed|fomc|powell|interest rates?|rate (?:cut|hike|decision)s?|cpi|ppi|pce|inflation|payrolls?|nonfarm|jobs report|jobless|claims|ism|treasury|treasuries|t-bills?|yields?|white house|congress|senate|tariffs?)\b/i, lat: 38.89, lng: -77.04, city: 'Washington' },
+  { re: /\b(?:trump|pentagon|supreme court|justice department|doj|sec|ftc|fda|midterms?)\b/i, lat: 38.89, lng: -77.04, city: 'Washington' },
   { re: /\b(?:crude|oil prices?|brent)\b/i, lat: 48.21, lng: 16.37, city: 'Vienna' },
+  { re: /\b(?:s&p 500|s&p|nasdaq(?: 100| composite)?|dow(?: jones| 30)?|wall street|nyse|nymex|russell 2000|moc imbalance|stock market)\b/i, lat: 40.71, lng: -74.01, city: 'New York' },
 ];
 
-/** The tier a story starts on before its move: the vendor's major flag (NewsItem.magnitude 1) or not */
+/** The tier a story starts on before its move: the provider's major flag (NewsItem.magnitude 1) or not */
 const MAJOR_TIER = 4;
 const MINOR_TIER = 2.25;
 /** Internal 1–10 from the wire's own numbers — the move at publish and the vendor's major flag — deterministic, never
@@ -252,6 +336,11 @@ export interface CityPing {
   topHeadline: string;
   maxSeverity: number;
   freshest: Freshness;
+  /** Stories whose named stock was up / down on the session when they crossed (a measured move at publish only) */
+  up: number;
+  down: number;
+  /** Stories flagged as major */
+  majors: number;
 }
 
 /* The economic calendar's row: what is scheduled to move markets. */
@@ -297,7 +386,7 @@ export function buildRoomInsights(events: GeoNewsEvent[]): RoomInsight[] {
       ink: lean === 'positive' ? 'bull' : lean === 'negative' ? 'bear' : 'neutral',
       read:
         marked === 0
-          ? `${events.filter(e => e.item.major).length} of ${events.length} headlines are major — flagged so by Unusual Whales, about a named listed company or the economy, and not house-keeping (call dates, routine dividends).${anyRead ? '' : ' There is no read.'} The hardest-landing one is ${where}${from}.`
+          ? `${events.filter(e => e.item.major).length} of ${events.length} headlines are major — flagged so by our data provider, about a named listed company or the economy, and not house-keeping (call dates, routine dividends).${anyRead ? '' : ' There is no read.'} The hardest-landing one is ${where}${from}.`
           : `${positive} positive against ${negative} negative across ${events.length} headlines — the wire is ${
               lean === 'split' ? 'split down the middle' : `net ${lean}`
             }. The heaviest print is ${where}${from}.`,
@@ -374,6 +463,9 @@ export function clusterByCity(events: GeoNewsEvent[]): CityPing[] {
       topHeadline: top.item.headline,
       maxSeverity: top.severity,
       freshest,
+      up: list.filter(e => e.item.prediction.measured && e.item.prediction.expMove1dPct > 0).length,
+      down: list.filter(e => e.item.prediction.measured && e.item.prediction.expMove1dPct < 0).length,
+      majors: list.filter(e => e.item.major).length,
     };
   });
 }

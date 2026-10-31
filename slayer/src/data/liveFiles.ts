@@ -96,7 +96,7 @@ interface Snap {
   holdings: Record<string, EtfHolding[]>;
   /** Each fund's file as read: the lines on it, and the fund's own count of holdings */
   holdingsCover: Record<string, { lines: number; weight: number; fundCount: number | null }>;
-  /** Each house's whole 13F value as Unusual Whales totals it, dollars — the grid shows the top lines only */
+  /** Each house's whole 13F value as our data provider totals it, dollars — the grid shows the top lines only */
   houseTotals: Record<string, number>;
   /** Each house's whole-13F call and put values, dollars, as Unusual Whales totals them (call_value, put_value) */
   houseOptions: Record<string, { calls: number; puts: number }>;
@@ -490,7 +490,7 @@ export function shortRowFromFile(
     if (session.market_date) out.shortVolDate = String(session.market_date).slice(0, 10);
     const sv = num(session.short_volume);
     if (sv > 0) out.shortVolM = sv / 1e6;
-    out.shortVolSource = 'Unusual Whales short volume and ratio (FINRA CNMS, the consolidated tape)';
+    out.shortVolSource = 'Short volume and ratio from our data provider (FINRA CNMS, the consolidated tape)';
   }
   const fails = arr(reads.ftd).filter(f => f.date).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   if (fails.length && !out.ftdDays.length) {

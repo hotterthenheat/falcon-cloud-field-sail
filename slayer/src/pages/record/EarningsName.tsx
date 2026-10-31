@@ -433,6 +433,8 @@ const EarningsName = () => {
   }
 
   const { event: e, quarters } = dossier;
+  /* the straddle's own loss on the quiet prints (premiumLostPct is the same figure on a file read before the split) */
+  const straddleLoss = dossier.straddleLossPct ?? dossier.premiumLostPct;
   const priced = stateOf(e);
   /* no expected move on the row (a print months out) — every straddle figure says so instead of $0.00 */
   const isPriced = e.impliedMovePct > 0 && e.price > 0;
@@ -633,12 +635,25 @@ const EarningsName = () => {
       </div>
 
       <Box title="After the print" sub="What the options lose overnight once the number is out" testId="after">
-        <dl className="px-5 pb-4 grid grid-cols-4 gap-x-6">
+        <dl className="px-5 pb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-3">
           {/* the median premium a long straddle gave back by the next open on the quiet prints: the option's loss, not an IV drop */}
           <Fact label="A quiet print takes" testId="crush">
-            {!dossier.live || dossier.crushKnown ? <span className="text-warn">−{dossier.ivCrushPct}%</span> : <span className="text-textMuted">—</span>}
+            {(!dossier.live || dossier.crushKnown) && Number.isFinite(straddleLoss) ? <span className="text-warn" title="The median share of a long straddle's premium lost by the next open, on the past prints the move did not pay for">−{straddleLoss}%</span> : <span className="text-textMuted">—</span>}
           </Fact>
-          <Fact label="Straddle kept by next open">{!dossier.live || dossier.crushKnown ? `~${Math.max(0, 100 - dossier.premiumLostPct)}%` : '—'}</Fact>
+          <Fact label="Straddle kept by next open">{(!dossier.live || dossier.crushKnown) && Number.isFinite(straddleLoss) ? `~${Math.max(0, 100 - straddleLoss)}%` : '—'}</Fact>
+          {/* the implied vol's own drop across past reports — a separate figure from the straddle's loss, shown only when the
+              IV history covers a report on both sides */}
+          <Fact label="IV drop after a print" testId="iv-drop">
+            {dossier.ivCrushKnown && Number.isFinite(dossier.ivCrushPct) ? (
+              <span title="The median drop of the name's 30-day implied vol from the close before a report to the close after it">
+                {/* a name whose IV typically rose through its prints says so, never "−-4%" */}
+                {dossier.ivCrushPct >= 0 ? `−${dossier.ivCrushPct}%` : `+${-dossier.ivCrushPct}%`}
+                {dossier.ivCrushPoints != null && Number.isFinite(dossier.ivCrushPoints) && dossier.ivCrushPoints !== 0 ? <span className="block text-t10 text-textMuted" data-name-fact="iv-points">{dossier.ivCrushPoints > 0 ? '−' : '+'}{Math.abs(dossier.ivCrushPoints).toFixed(1)} vol pts</span> : null}
+              </span>
+            ) : (
+              <span className="text-textMuted" title="The IV history does not cover a past report on both sides">—</span>
+            )}
+          </Fact>
           <Fact label={reported ? 'Straddle priced' : 'Straddle today'}>{isPriced ? `$${((e.price * e.impliedMovePct) / 100).toFixed(2)}` : <span className="text-textMuted">—</span>}</Fact>
           <Fact label={quote && quote.phase !== 'regular' ? 'The stock · close' : 'The stock'}>
             {spotNow > 0 ? (

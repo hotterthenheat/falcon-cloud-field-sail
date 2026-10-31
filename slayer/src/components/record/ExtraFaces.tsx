@@ -146,7 +146,7 @@ export const InsiderSectorFlow = ({ trades, windowDays, state = 'read' }: { trad
   }, [trades]);
   const columnDefs = useMemo<ColDef<SectorRow>[]>(
     () => [
-      { headerName: 'Sector', field: 'sector', flex: 1.4, minWidth: 160, cellRenderer: SectorCell, headerTooltip: "The company's sector as Unusual Whales files it" },
+      { headerName: 'Sector', field: 'sector', flex: 1.4, minWidth: 160, cellRenderer: SectorCell, headerTooltip: "The company's sector as our data provider files it" },
       { headerName: 'Buys', field: 'boughtM', width: 150, cellRenderer: BuysCell, type: 'rightAligned', headerTooltip: 'Open-market purchases in the sector on this cut, and the dollars' },
       { headerName: 'Sales', field: 'soldM', width: 150, cellRenderer: SalesCell, type: 'rightAligned', headerTooltip: 'Open-market sales in the sector on this cut, and the dollars' },
       { headerName: 'Net', field: 'netM', width: 110, cellRenderer: NetCell, type: 'rightAligned', sort: 'desc', comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'Dollars bought minus dollars sold — every dollar counts the same, chosen or planned. Largest either way first' },

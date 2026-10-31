@@ -3,6 +3,7 @@
 
 import { lazy, Suspense, useState } from 'react';
 import type { CityPing, GeoZone } from '../../data/newsroom';
+import { useResolvedTheme } from '../../theme/theme';
 
 /** One zone's summed weight over the cut — the heat under a country */
 export interface HeatPoint {
@@ -81,23 +82,64 @@ export const nextOpen = (at: Date): { session: SessionDef; at: Date } | null => 
   return null;
 };
 
-/** The land's inks on the map, and the legend's */
-export const HEAT_INK = '#c4845a';
-export const OPEN_INK = '#5f9e86';
-export const NEWS_INK = '#4d7a68';
+/** Every colour the map paints, per theme; the legend reads the same values */
+export const MAP_INK = {
+  dark: {
+    sea: '#0a1016',
+    land: '#1c242d',
+    edge: 'rgba(170,186,204,0.26)',
+    heat: '#e0a25a',
+    heatSteps: [0.16, 0.28, 0.42, 0.6] as const,
+    open: '#eef3fa',
+    reachFrom: 'rgba(199,211,232,0.25)',
+    reachTo: 'rgba(199,211,232,0.95)',
+    session: '#c7d3e8',
+    sessionOpacity: 0.06,
+  },
+  light: {
+    sea: '#c6d6e0',
+    land: '#f6f4ef',
+    edge: 'rgba(36,50,64,0.42)',
+    heat: '#c2661a',
+    heatSteps: [0.16, 0.3, 0.46, 0.66] as const,
+    open: '#1b2636',
+    reachFrom: 'rgba(47,61,92,0.3)',
+    reachTo: 'rgba(47,61,92,0.95)',
+    session: '#2f3d5c',
+    sessionOpacity: 0.07,
+  },
+};
 
-export const HeatLegend = ({ className = '' }: { className?: string }) => (
-  <span className={`inline-flex items-center gap-3 font-mono text-t10 text-textSecondary whitespace-nowrap ${className}`} title="Countries a story on the cut reaches, and the open story's own" data-heat-legend>
-    <span className="inline-flex items-center gap-1.5">
-      <span className="inline-block w-2 h-2 rounded-[2px]" style={{ background: HEAT_INK }} data-heat-swatch="lands" />
-      where the news lands
+/** A pin's colour: the way the named stocks moved when their stories crossed — more up, more down, or neither
+    (macro stories, no move measured at publish, or as many each way) */
+export const pinTone = (up: number, down: number): 'up' | 'down' | 'flat' => (up > down ? 'up' : down > up ? 'down' : 'flat');
+
+export const HeatLegend = ({ className = '' }: { className?: string }) => {
+  const theme = useResolvedTheme();
+  const k = MAP_INK[theme === 'light' ? 'light' : 'dark'];
+  return (
+    <span className={`inline-flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-t10 text-textSecondary ${className}`} data-heat-legend>
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title="Countries shaded by how many stories on this cut come from them — darker is more">
+        <span className="inline-flex" aria-hidden="true">
+          {k.heatSteps.map((o, i) => (
+            <span key={i} className="inline-block w-2.5 h-2.5" style={{ background: k.heat, opacity: o + 0.12 }} data-heat-swatch={`step-${i + 1}`} />
+          ))}
+        </span>
+        stories from here
+      </span>
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title="A pin is green when its stories' named stocks were up on the session as they crossed, red when down, grey when neither (macro stories, or no move measured at publish)">
+        <span className="inline-block w-2 h-2 rounded-full bg-bull" data-pin-swatch="up" />
+        <span className="inline-block w-2 h-2 rounded-full bg-bear" data-pin-swatch="down" />
+        <span className="inline-block w-2 h-2 rounded-full bg-silver" data-pin-swatch="flat" />
+        name up / down / no move at publish
+      </span>
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title="The open story's lines run to the markets its sector trades through">
+        <span className="inline-block w-3 h-px bg-silver" data-heat-swatch="reach" />
+        the open story's reach
+      </span>
     </span>
-    <span className="inline-flex items-center gap-1.5">
-      <span className="inline-block w-2 h-2 rounded-[2px]" style={{ background: OPEN_INK }} data-heat-swatch="open" />
-      the open story
-    </span>
-  </span>
-);
+  );
+};
 
 export interface MapProps {
   pins: CityPing[];
@@ -105,13 +147,15 @@ export interface MapProps {
   hoverCity: string | null;
   onPick: (pin: CityPing) => void;
   onHover: (pin: CityPing | null) => void;
-  /** Where the cut's news lands, summed by zone */
+  /** Where the cut's stories come from: one point per city, weighed by its story count */
   heat: HeatPoint[];
   /** The open story's origin and zones, or nothing open */
   reach: Reach | null;
   /** A picked story's city; a new key flies the map there */
   flyTo?: FlyTo | null;
   sessions: SessionDef[];
+  /** Said over the map when it has nothing to show (the wire still reading, or no story on the cut names a place) */
+  note?: string | null;
   className?: string;
 }
 
