@@ -16,7 +16,7 @@
 import path from 'node:path';
 import { gate, sendDenied } from './auth.mjs';
 import { uwDirect } from './uwProxy.mjs';
-import { thetaDirect } from './thetaProxy.mjs';
+import { thetaDirect, thetaUncached } from './thetaProxy.mjs';
 
 const send = (res, status, body) => {
   res.statusCode = status;
@@ -64,6 +64,8 @@ export function exposureMount(load, root = process.cwd()) {
         hist = mod.createExposureHist({
           dir: process.env.EXPOSURE_HIST_DIR || path.join(root, '.cache', 'exposure-hist'),
           theta: thetaDirect,
+          /* a day's option trades: large, read once and kept by the module, not in the hub */
+          thetaRaw: thetaUncached,
           recorded: (t, day) => rec.day(t, day, 0),
           log: (line) => console.log(line),
         });

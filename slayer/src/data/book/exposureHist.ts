@@ -24,6 +24,7 @@
 
 import { dollarGammaPerContract } from '../../core/gammaFlip';
 import { DEALER_SIDE } from '../../core/dealerSign';
+import { dealerInventory, flowFirm, flowImbalance, flowWindow, unsignedShare } from '../../core/volClock';
 import { saneBars } from '../barSanity';
 import { ALL, WINDOW, closeOf, type KeptSeries } from './exposureSegs';
 
@@ -240,10 +241,107 @@ export function closeTerm(inp: HistInputs): { expiry: string; iv: number }[] {
   return out.sort((a, b) => a.expiry.localeCompare(b.expiry));
 }
 
+/* ---- the Live book's prints ------------------------------------------------------------------------------------ */
+
+export const FLOW_FORMAT = 'exposure-flow/1';
+
+/** A day's option prints in the window, per contract and minute, sided against the quote at the print — what the Live
+    book adds to the opening open interest. */
+export interface FlowInputs {
+  format: typeof FLOW_FORMAT;
+  ticker: string;
+  day: string;
+  /** [expiry, strike, right, minute starts (ms), volume, at the ask, at the bid, multi-leg, at mid or with no side] */
+  legs: [string, number, Right, number[], number[], number[], number[], number[], number[]][];
+}
+
+/* The terminal's trade conditions (thetadata.net, Trade Conditions): a cancelled print never traded; a multi-leg, a
+   spread or a tied stock-option print is the complex volume the Live book takes out in proportion, as the vendor's
+   multi_leg_volume is (core/volClock.ts dealerInventory) */
+const CANCELLED = new Set([40, 41, 42, 43, 44]);
+const COMPLEX = new Set([35, 36, 37, 38, 124, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 147]);
+
+/** Minute buckets per contract while a day's chunks are read: volume, ask, bid, multi-leg, unsigned */
+export type FlowTally = Map<string, Map<number, [number, number, number, number, number]>>;
+
+/**
+ * One chunk of /option/history/trade_quote (format=csv) into the tally. A print at or above the ask at that moment is a
+ * buy at the ask, at or below the bid a sale at the bid; between them, or with no quote, it has no side. Returns the
+ * prints read.
+ */
+export function tallyTradeQuotes(csv: string, toMs: (stamp: string) => number, into: FlowTally): number {
+  let at = csv.indexOf('\n');
+  if (at < 0) return 0;
+  const head = csv.slice(0, at).split(',').map(h => h.trim().replace(/"/g, ''));
+  const col = (name: string) => head.indexOf(name);
+  const cExp = col('expiration');
+  const cStrike = col('strike');
+  const cRight = col('right');
+  const cTs = col('trade_timestamp');
+  const cCond = [col('condition'), col('ext_condition1'), col('ext_condition2'), col('ext_condition3'), col('ext_condition4')].filter(i => i >= 0);
+  const cSize = col('size');
+  const cPrice = col('price');
+  const cBid = col('bid');
+  const cAsk = col('ask');
+  if ([cExp, cStrike, cRight, cTs, cSize, cPrice, cBid, cAsk].some(i => i < 0)) return 0;
+  const minuteMs = new Map<string, number>();
+  let n = 0;
+  while (at < csv.length) {
+    const end = csv.indexOf('\n', at + 1);
+    const line = csv.slice(at + 1, end < 0 ? csv.length : end);
+    at = end < 0 ? csv.length : end;
+    if (!line) continue;
+    const f = line.split(',');
+    let skip = false;
+    let complex = false;
+    for (const i of cCond) {
+      const c = Number(f[i]);
+      if (CANCELLED.has(c)) skip = true;
+      if (COMPLEX.has(c)) complex = true;
+    }
+    if (skip) continue;
+    const size = Number(f[cSize]);
+    const price = Number(f[cPrice]);
+    if (!(size > 0) || !(price > 0)) continue;
+    const ts = f[cTs];
+    const mk = ts.slice(0, 16);
+    let m = minuteMs.get(mk);
+    if (m == null) minuteMs.set(mk, (m = toMs(mk)));
+    if (!Number.isFinite(m)) continue;
+    const right = f[cRight].includes('C') ? 'C' : 'P';
+    const key = `${f[cExp].replace(/"/g, '').slice(0, 10)}|${Number(f[cStrike])}|${right}`;
+    let leg = into.get(key);
+    if (!leg) into.set(key, (leg = new Map()));
+    let b = leg.get(m);
+    if (!b) leg.set(m, (b = [0, 0, 0, 0, 0]));
+    const bid = Number(f[cBid]);
+    const ask = Number(f[cAsk]);
+    b[0] += size;
+    if (ask > 0 && price >= ask) b[1] += size;
+    else if (bid > 0 && price <= bid) b[2] += size;
+    else b[4] += size;
+    if (complex) b[3] += size;
+    n++;
+  }
+  return n;
+}
+
+/** The tally as kept */
+export function flowOf(t: string, day: string, tally: FlowTally): FlowInputs {
+  const legs: FlowInputs['legs'] = [];
+  for (const [key, mins] of tally) {
+    const [expiry, k, right] = key.split('|');
+    const ms = [...mins.keys()].sort((a, b) => a - b);
+    const pick = (i: number) => ms.map(m => mins.get(m)![i]);
+    legs.push([expiry, Number(k), right as Right, ms, pick(0), pick(1), pick(2), pick(3), pick(4)]);
+  }
+  return { format: FLOW_FORMAT, ticker: t, day, legs };
+}
+
 /* ---- the rebuild -------------------------------------------------------------------------------------------- */
 
 export interface Rebuilt {
-  /** the series, as the field's log keeps them: [expiry or ALL, strike, flat segments from,to,oi,flow] */
+  /** the series, as the field's log keeps them: [expiry or ALL, strike, flat segments from,to,settled,live] */
   series: KeptSeries[];
   /** strikes in the window, bars rebuilt, legs priced per bar */
   strikes: number;
@@ -251,12 +349,40 @@ export interface Rebuilt {
   legs: number;
 }
 
+/** One leg's running prints at each bar's end: volume, ask, bid, multi-leg, unsigned */
+function runningAt(leg: FlowInputs['legs'][number] | undefined, bars: HistInputs['bars']): Float64Array | null {
+  if (!leg) return null;
+  const [, , , ms, vol, ask, bid, multi, uns] = leg;
+  const out = new Float64Array(bars.length * 5);
+  let j = 0;
+  const run = [0, 0, 0, 0, 0];
+  for (let i = 0; i < bars.length; i++) {
+    /* every print inside the bar's minute counts by its end */
+    while (j < ms.length && ms[j] <= bars[i][0]) {
+      run[0] += vol[j];
+      run[1] += ask[j];
+      run[2] += bid[j];
+      run[3] += multi[j];
+      run[4] += uns[j];
+      j++;
+    }
+    out.set(run, i * 5);
+  }
+  return out;
+}
+
 /**
  * The day's series for one cut: 'book' sums every expiry into the whole-book pseudo-expiry (ALL), a date keeps that
- * expiry alone. One segment a bar: [bar start, bar start + 59 999 ms, value, value] — the reconstruction has no
- * trades, so the flow model reads the open-interest figure. Values are whole dollars per 1%, the vendor's sign.
+ * expiry alone. One segment a bar: [bar start, bar start + 59 999 ms, Settled, Live], whole dollars per 1%, the vendor's
+ * sign.
+ * - Settled: side × the opening open interest × Γ·100·S²·0.01.
+ * - Live: the same, with each contract's count moved by the day's prints so far, by the Live book's own rule
+ *   (data/book/scale.ts stampFlow): a call count is dealerInventory(OI, ask, bid, multi, volume) — a customer buy at the
+ *   ask shortens the dealer, a sale at the bid lengthens him, multi-leg volume out in proportion — and a put count the
+ *   same with ask and bid swapped (dealers are short the puts). A leg past five sessions to expiry (flowWindow), or one
+ *   whose strike's signed net is under the noise (flowFirm), keeps its settled count. With no prints Live is Settled.
  */
-export function rebuildDay(inp: HistInputs, cut: 'book' | string, carried: CarriedVol = {}): Rebuilt {
+export function rebuildDay(inp: HistInputs, cut: 'book' | string, carried: CarriedVol = {}, flow: FlowInputs | null = null): Rebuilt {
   const bars = inp.bars;
   if (!bars.length || !inp.oi.length) return { series: [], strikes: 0, bars: 0, legs: 0 };
   let lo = Infinity;
@@ -267,17 +393,39 @@ export function rebuildDay(inp: HistInputs, cut: 'book' | string, carried: Carri
   }
   const kLo = lo * (1 - WINDOW);
   const kHi = hi * (1 + WINDOW);
-  /* the legs in the window, grouped by strike: expiry, side × open interest */
-  const legsBy = new Map<number, { expiry: string; close: number; side: number; oi: number }[]>();
+  /* the legs in the window, by strike and expiry: each right's open interest and prints */
+  interface Pair {
+    expiry: string;
+    close: number;
+    oiC: number;
+    oiP: number;
+    runC: Float64Array | null;
+    runP: Float64Array | null;
+  }
+  const byStrike = new Map<number, Map<string, Pair>>();
+  const pairOf = (k: number, expiry: string): Pair => {
+    let m = byStrike.get(k);
+    if (!m) byStrike.set(k, (m = new Map()));
+    let p = m.get(expiry);
+    if (!p) m.set(expiry, (p = { expiry, close: closeOf(expiry), oiC: 0, oiP: 0, runC: null, runP: null }));
+    return p;
+  };
+  const inCut = (expiry: string, k: number) => k >= kLo && k <= kHi && (cut === 'book' || expiry === cut);
   for (const [expiry, strike, right, oi] of inp.oi) {
-    if (strike < kLo || strike > kHi) continue;
-    if (cut !== 'book' && expiry !== cut) continue;
-    let l = legsBy.get(strike);
-    if (!l) legsBy.set(strike, (l = []));
-    l.push({ expiry, close: closeOf(expiry), side: DEALER_SIDE[right], oi });
+    if (!inCut(expiry, strike)) continue;
+    const p = pairOf(strike, expiry);
+    if (right === 'C') p.oiC += oi;
+    else p.oiP += oi;
+  }
+  for (const leg of flow?.legs ?? []) {
+    const [expiry, strike, right] = leg;
+    if (!inCut(expiry, strike)) continue;
+    const p = pairOf(strike, expiry);
+    if (right === 'C') p.runC = runningAt(leg, bars);
+    else p.runP = runningAt(leg, bars);
   }
   const paths = volPaths(inp.iv);
-  const strikes = [...legsBy.keys()].sort((a, b) => a - b);
+  const strikes = [...byStrike.keys()].sort((a, b) => a - b);
   const series: KeptSeries[] = [];
   let legCount = 0;
   /* each expiry's years to its close, per bar: calendar time, the clock the terminal's vols are quoted on (a vol on one
@@ -293,34 +441,65 @@ export function rebuildDay(inp: HistInputs, cut: 'book' | string, carried: Carri
     }
     return y;
   };
+  /* within five sessions of its expiry, per bar (the Live book's own window) */
+  const nearBy = new Map<string, Uint8Array>();
+  const nearOf = (expiry: string): Uint8Array => {
+    let a = nearBy.get(expiry);
+    if (!a) {
+      a = new Uint8Array(bars.length);
+      for (let i = 0; i < bars.length; i++) a[i] = flowWindow(expiry, bars[i][0] + 59_999) ? 1 : 0;
+      nearBy.set(expiry, a);
+    }
+    return a;
+  };
   for (const k of strikes) {
-    const legs = legsBy.get(k)!;
-    /* each leg's vol path: its own strike's, else the nearest strike's on its expiry; no path at all leaves it out */
-    const priced = legs
-      .map(l => {
-        const ex = paths.get(l.expiry);
+    /* each pair's vol path: its own strike's, else the nearest strike's on its expiry; no path at all leaves it out */
+    const priced = [...byStrike.get(k)!.values()]
+      .map(p => {
+        const ex = paths.get(p.expiry);
         if (!ex) return null;
         const i = nearestIndex(ex.strikes, k);
-        return { ...l, path: ex.paths[i], before: carried[`${l.expiry}|${ex.strikes[i]}`], years: yearsOf(l.expiry) };
+        return { ...p, path: ex.paths[i], before: carried[`${p.expiry}|${ex.strikes[i]}`], years: yearsOf(p.expiry), near: p.runC || p.runP ? nearOf(p.expiry) : null };
       })
-      .filter((l): l is NonNullable<typeof l> => !!l);
+      .filter((p): p is NonNullable<typeof p> => !!p);
     if (!priced.length) continue;
     const segs: number[] = [];
     for (let i = 0; i < bars.length; i++) {
       const [t, S] = bars[i];
-      let v = 0;
+      let settled = 0;
+      let live = 0;
       let any = false;
-      for (const l of priced) {
+      for (const p of priced) {
         /* a leg is gone from its expiry's close */
-        if (t >= l.close) continue;
-        const sigma = volAt(l.path, t, l.before);
-        v += l.side * l.oi * dollarGammaPerContract(S, k, l.years[i], sigma);
+        if (t >= p.close) continue;
+        const g = dollarGammaPerContract(S, k, p.years[i], volAt(p.path, t, p.before));
+        settled += (DEALER_SIDE.C * p.oiC + DEALER_SIDE.P * p.oiP) * g;
+        let c = p.oiC;
+        let q = p.oiP;
+        if (p.near && p.near[i]) {
+          const o = i * 5;
+          const C = p.runC;
+          const P = p.runP;
+          const cVol = C ? C[o] : 0;
+          const pVol = P ? P[o] : 0;
+          const gross = cVol + pVol;
+          if (gross > 0) {
+            const callNet = C ? flowImbalance(C[o + 1], C[o + 2], C[o + 3], cVol) : 0;
+            const putNet = P ? flowImbalance(P[o + 1], P[o + 2], P[o + 3], pVol) : 0;
+            const bare = (C ? C[o + 4] : 0) + (P ? P[o + 4] : 0);
+            if (flowFirm(Math.abs(callNet) + Math.abs(putNet), gross, unsignedShare(bare, 0, gross))) {
+              if (C) c = dealerInventory(p.oiC, C[o + 1], C[o + 2], C[o + 3], cVol);
+              /* dealers are short the puts: a buy at the ask makes the count larger (ask and bid swapped) */
+              if (P) q = dealerInventory(p.oiP, P[o + 2], P[o + 1], P[o + 3], pVol);
+            }
+          }
+        }
+        live += (DEALER_SIDE.C * c + DEALER_SIDE.P * q) * g;
         any = true;
         legCount++;
       }
       if (!any) continue;
-      const r = Math.round(v);
-      segs.push(t, t + 59_999, r, r);
+      segs.push(t, t + 59_999, Math.round(settled), Math.round(live));
     }
     if (segs.length) series.push([cut === 'book' ? ALL : cut, k, segs]);
   }

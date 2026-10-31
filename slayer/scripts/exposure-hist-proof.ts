@@ -11,9 +11,14 @@
   - the next expiry alone (11-02): net within 10%, mean absolute error within 12% (measured: −966M against −902M, 9%).
   The day's own expiry is left out of the comparison: the rebuild drops it at 16:00, when it expires, while the vendor's
   after-close book still carries it at its own frozen clock (its 10-30 rows sum to −7.9B at 16:15).
+
+  Live (the opening open interest moved by the day's prints, by the Live book's own rule): a hand example; Live =
+  Settled with no prints, past five sessions to expiry, and where the signed net is under the noise; the terminal's
+  prints read (cancelled out, multi-leg kept apart, sided against the quote); and the 11-02 expiry's Live book at 16:14
+  against the vendor's (oi + ask + bid gamma): net within 15% (measured −1,053M against −959M).
 */
 import { readFileSync } from 'node:fs';
-import { HIST_FORMAT, lastVols, nyStampMs, readBars, readIv, readOi, rebuildDay, type HistInputs } from '../src/data/book/exposureHist';
+import { FLOW_FORMAT, HIST_FORMAT, flowOf, lastVols, nyStampMs, readBars, readIv, readOi, rebuildDay, tallyTradeQuotes, type FlowInputs, type FlowTally, type HistInputs } from '../src/data/book/exposureHist';
 import { ALL } from '../src/data/book/exposureSegs';
 import { nyWallTime } from '../src/core/nyTime';
 import { getCarry } from '../src/core/carry';
@@ -133,10 +138,89 @@ const at = (segs: number[], t: number) => {
   check('bars: a minute that did not trade is not a price', bars.length === 1 && bars[0][1] === 760.5);
 }
 
+/* ---- Live: the opening open interest moved by the day's prints ------------------------------------------------- */
+{
+  /* One strike (100) on the Tue 11-03 expiry, inside the Live book's five sessions from Fri 10-30. Calls: OI 1,000;
+     by 10:00, 400 traded — 300 at the ask (40 of them in multi-leg prints), 100 at the bid. Puts: OI 500; 100 bought at
+     the ask. Rule (core/volClock.ts dealerInventory, data/book/scale.ts dealerPuts): multi-leg volume comes out in
+     proportion (40 / 400 = 10%), so calls count 1,000 − 270 + 90 = 820 (dealers long); puts count 500 + 100 = 600
+     (dealers short, ask and bid swapped). Live = (820 − 600) × g, Settled = (1,000 − 500) × g. */
+  const t930 = nyWallTime(2026, 10, 30, 9, 30);
+  const b0 = nyWallTime(2026, 10, 30, 10, 0);
+  const pre = nyWallTime(2026, 10, 30, 8, 0);
+  const inp: HistInputs = {
+    format: HIST_FORMAT,
+    ticker: 'XYZ',
+    day: '2026-10-30',
+    oi: [
+      ['2026-11-03', 100, 'C', 1000],
+      ['2026-11-03', 100, 'P', 500],
+    ],
+    iv: [['2026-11-03', 100, 'C', [t930], [0.2], [100]]],
+    bars: [
+      [pre, 100],
+      [b0, 100],
+    ],
+  };
+  const m = nyWallTime(2026, 10, 30, 9, 45);
+  const flow: FlowInputs = {
+    format: FLOW_FORMAT,
+    ticker: 'XYZ',
+    day: '2026-10-30',
+    legs: [
+      ['2026-11-03', 100, 'C', [m], [400], [300], [100], [40], [0]],
+      ['2026-11-03', 100, 'P', [m], [100], [100], [0], [0], [0]],
+    ],
+  };
+  const got = rebuildDay(inp, 'book', {}, flow).series[0][2];
+  const g = got[6] / 500;
+  check('Live hand example: Settled is (1,000 − 500) × g', Math.abs(got[6] - 500 * g) < 1e-6 && got[6] !== 0);
+  check('Live hand example: calls 1,000 − 270 + 90 = 820, puts 500 + 100 = 600, Live = 220 × g', Math.abs(got[7] - Math.round(220 * g)) <= 1, `${got[7]} vs ${(220 * g).toFixed(1)}`);
+  check('Live before the first print is Settled (the pre-market bar)', got[2] === got[3]);
+  check('Live = Settled with no prints', (() => {
+    const a = rebuildDay(inp, 'book').series[0][2];
+    const b = rebuildDay(inp, 'book', {}, { ...flow, legs: [] }).series[0][2];
+    return a.every((v, i) => i % 4 !== 3 || v === a[i - 1]) && b.every((v, i) => v === a[i]);
+  })());
+  /* the same prints on an expiry past the Live book's five sessions (Fri 11-13) leave it settled */
+  const far: HistInputs = { ...inp, oi: inp.oi.map(r => ['2026-11-13', r[1], r[2], r[3]] as HistInputs['oi'][number]), iv: [['2026-11-13', 100, 'C', [t930], [0.2], [100]]] };
+  const farFlow: FlowInputs = { ...flow, legs: flow.legs.map(l => ['2026-11-13', ...l.slice(1)] as FlowInputs['legs'][number]) };
+  const f = rebuildDay(far, 'book', {}, farFlow).series[0][2];
+  check('Live past five sessions to expiry stays Settled', f[7] === f[6]);
+  /* balanced prints (as many at the bid as at the ask) are under the noise: the strike keeps its settled count */
+  const even: FlowInputs = { ...flow, legs: [['2026-11-03', 100, 'C', [m], [400], [200], [200], [0], [0]]] };
+  const e = rebuildDay(inp, 'book', {}, even).series[0][2];
+  check('Live where the signed net is under the noise stays Settled', e[7] === e[6]);
+  /* a print that set no side (mid) does not move the count */
+  const mid: FlowInputs = { ...flow, legs: [['2026-11-03', 100, 'C', [m], [400], [300], [0], [0], [100]]] };
+  const md = rebuildDay(inp, 'book', {}, mid).series[0][2];
+  check('Live: a mid print adds volume, not count (1,000 − 300 = 700 calls)', Math.abs(md[7] - Math.round((700 - 500) * g)) <= 1);
+
+  /* the terminal's prints read: a cancelled print dropped, a multi-leg print kept apart, each sided against its quote */
+  const csv = [
+    'symbol,expiration,strike,right,trade_timestamp,quote_timestamp,sequence,ext_condition1,ext_condition2,ext_condition3,ext_condition4,condition,size,exchange,price,bid_size,bid_exchange,bid,bid_condition,ask_size,ask_exchange,ask,ask_condition',
+    '"XYZ","2026-11-03",100.000,"CALL",2026-10-30T09:45:01.000,2026-10-30T09:45:00.900,1,255,255,255,255,18,10,1,2.10,1,1,2.00,50,1,1,2.10,50',
+    '"XYZ","2026-11-03",100.000,"CALL",2026-10-30T09:45:02.000,2026-10-30T09:45:01.900,2,255,255,255,255,18,4,1,2.00,1,1,2.00,50,1,1,2.10,50',
+    '"XYZ","2026-11-03",100.000,"CALL",2026-10-30T09:45:03.000,2026-10-30T09:45:02.900,3,255,255,255,255,18,3,1,2.05,1,1,2.00,50,1,1,2.10,50',
+    '"XYZ","2026-11-03",100.000,"CALL",2026-10-30T09:45:04.000,2026-10-30T09:45:03.900,4,255,255,255,255,130,6,1,2.10,1,1,2.00,50,1,1,2.10,50',
+    '"XYZ","2026-11-03",100.000,"CALL",2026-10-30T09:45:05.000,2026-10-30T09:45:04.900,5,255,255,255,255,40,99,1,2.10,1,1,2.00,50,1,1,2.10,50',
+    '"XYZ","2026-11-03",100.000,"PUT",2026-10-30T09:46:00.000,2026-10-30T09:45:59.900,6,255,255,255,255,18,7,1,1.50,1,1,1.40,50,1,1,1.50,50',
+  ].join('\n');
+  const tally: FlowTally = new Map();
+  const read = tallyTradeQuotes(csv, s => nyStampMs(s, nyWallTime), tally);
+  const fl = flowOf('XYZ', '2026-10-30', tally);
+  const call = fl.legs.find(l => l[2] === 'C')!;
+  const put = fl.legs.find(l => l[2] === 'P')!;
+  check('prints: the cancelled one is dropped, five read', read === 5);
+  check('prints: calls 23 traded — 16 at the ask (6 in a multi-leg print), 4 at the bid, 3 at mid', call[3][0] === m && call[4][0] === 23 && call[5][0] === 16 && call[6][0] === 4 && call[7][0] === 6 && call[8][0] === 3);
+  check('prints: a put minute of its own', put[3][0] === nyWallTime(2026, 10, 30, 9, 46) && put[5][0] === 7);
+}
+
 /* ---- the close of 2026-10-30 against the vendor's book ------------------------------------------------------- */
 {
   const fx = JSON.parse(readFileSync(new URL('./fixtures/spy-exposure-hist-2026-10-30.json', import.meta.url), 'utf8')) as {
     inputs: HistInputs;
+    flow: FlowInputs;
     vendor: Record<string, Record<string, number>>;
   };
   const t = nyWallTime(2026, 10, 30, 16, 14);
@@ -170,6 +254,18 @@ const at = (segs: number[], t: number) => {
   console.log(`     the 11-02 expiry at 16:14, ${next.n} strikes: rebuilt ${M(next.net)}, vendor ${M(next.vnet)}, mean abs error ${(next.err * 100).toFixed(1)}%`);
   check('the close, the next expiry: net within 10%', Math.abs(next.net - next.vnet) <= 0.1 * Math.abs(next.vnet));
   check('the close, the next expiry: strikes within 12%', next.err <= 0.12);
+  /* the Live book on the 11-02 expiry, against the vendor's live book (oi + ask + bid gamma) */
+  const liveGot = rebuildDay(fx.inputs, '2026-11-02', {}, fx.flow);
+  let ln = 0;
+  let lv = 0;
+  for (const [, k, segs] of liveGot.series) {
+    if (k < 735 || k > 780) continue;
+    for (let i = 0; i < segs.length; i += 4) if (segs[i] === t) ln += segs[i + 3];
+    lv += fx.vendor['2026-11-02 live'][String(k.toFixed(1))] ?? 0;
+  }
+  console.log(`     the 11-02 Live book at 16:14: rebuilt ${M(ln)}, vendor ${M(lv)}`);
+  check('the close, Live on the next expiry: net within 15% of the vendor\'s live book', Math.abs(ln - lv) <= 0.15 * Math.abs(lv));
+  check('the close: Live moved off Settled where the day traded', liveGot.series.some(s => s[2].some((v, i) => i % 4 === 3 && v !== s[2][i - 1])));
   const day = rebuildDay(fx.inputs, 'book');
   check('the rebuild spans every bar it was handed (15:30–16:14)', day.bars === 45 && day.series.every(s => s[2].length / 4 >= 44));
   check('the day\'s own expiry is gone from 16:00', (() => {

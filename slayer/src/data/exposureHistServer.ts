@@ -19,7 +19,8 @@ import path from 'node:path';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { nyIsoDate, nyWallTime } from '../core/nyTime';
 import { isTradingDay } from '../core/calendar';
-import { HIST_FORMAT, IV_STEP_MIN, IV_STRIKES, closeTerm, lastVols, nyStampMs, readBars, readIv, readOi, rebuildDay, type HistInputs } from './book/exposureHist';
+import { FLOW_FORMAT, HIST_FORMAT, IV_STEP_MIN, IV_STRIKES, closeTerm, flowOf, lastVols, nyStampMs, readBars, readIv, readOi, rebuildDay, tallyTradeQuotes, type FlowInputs, type FlowTally, type HistInputs } from './book/exposureHist';
+import { flowWindow } from '../core/volClock';
 import { ALL, type KeptSeries } from './book/exposureSegs';
 
 /** History reads in flight at once, across every name */
@@ -37,6 +38,8 @@ export interface HistOptions {
   dir: string;
   /** one terminal answer through the hub (server/thetaProxy.mjs thetaDirect); the path is the v3 path after /v3 */
   theta: (path: string) => Promise<ThetaAnswer>;
+  /** one large terminal answer outside the hub's cache (server/thetaProxy.mjs thetaUncached): a day's option prints */
+  thetaRaw?: (path: string) => Promise<ThetaAnswer>;
   /** the recorder's day, when it holds one (it takes priority) */
   recorded?: (ticker: string, day: string) => { series: KeptSeries[] } | null;
   now?: () => number;
@@ -71,20 +74,32 @@ export function createExposureHist(o: HistOptions): HistService {
   /* the read gate: HIST_READS at once, the rest wait their turn */
   let busy = 0;
   const queue: (() => void)[] = [];
-  const read = async (p: string): Promise<unknown> => {
+  const gate = async <T>(fn: () => Promise<T>): Promise<T> => {
     if (busy >= HIST_READS) await new Promise<void>(r => queue.push(r));
     else busy += 1;
     try {
-      const got = await o.theta(p);
-      if (got.status === 472) return { response: [] };
-      if (got.status !== 200) throw new Error(`terminal answered ${got.status}`);
-      return JSON.parse(got.body);
+      return await fn();
     } finally {
       const next = queue.shift();
       if (next) next();
       else busy -= 1;
     }
   };
+  const read = (p: string): Promise<unknown> =>
+    gate(async () => {
+      const got = await o.theta(p);
+      if (got.status === 472) return { response: [] };
+      if (got.status !== 200) throw new Error(`terminal answered ${got.status}`);
+      return JSON.parse(got.body);
+    });
+  /** a large CSV answer, outside the hub; '' for a chunk with no prints */
+  const readRaw = (p: string): Promise<string> =>
+    gate(async () => {
+      const got = await (o.thetaRaw ?? o.theta)(p);
+      if (got.status === 472) return '';
+      if (got.status !== 200) throw new Error(`terminal answered ${got.status}`);
+      return String(got.body);
+    });
 
   const fileOf = (t: string, day: string) => path.join(o.dir, day, `${t}.json.gz`);
   const pending = new Map<string, Promise<HistInputs | null>>();
@@ -138,6 +153,58 @@ export function createExposureHist(o: HistOptions): HistService {
     return {};
   };
 
+  /* ---- the Live book's prints: the day's option trades with the quote at each, 30 minutes a read, the strike window
+     around the money, only the expiries the Live book moves (five sessions out, flowWindow) kept ---- */
+  const flowFile = (t: string, day: string) => path.join(o.dir, day, `${t}.flow.json.gz`);
+  const flowPending = new Map<string, Promise<FlowInputs | null>>();
+  const flowInputs = (t: string, day: string, inp: HistInputs): Promise<FlowInputs | null> => {
+    const key = `${t}|${day}`;
+    const hit = flowPending.get(key);
+    if (hit) return hit;
+    const job = (async () => {
+      try {
+        const kept = JSON.parse(gunzipSync(fs.readFileSync(flowFile(t, day))).toString('utf8')) as FlowInputs;
+        if (kept.format === FLOW_FORMAT) return kept;
+      } catch {
+        /* not read yet */
+      }
+      const [y, m, d] = day.split('-').map(Number);
+      const open = nyWallTime(y, m, d, 9, 30);
+      const near = new Set([...new Set(inp.oi.map(r => r[0]))].filter(e => flowWindow(e, open)));
+      if (!near.size) return null;
+      const started = Date.now();
+      const tally: FlowTally = new Map();
+      const windows: [string, string][] = [];
+      for (let min = 9 * 60 + 30; min < 16 * 60 + 15; min += 30) {
+        const hh = (x: number) => `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
+        windows.push([`${hh(min)}:00`, `${hh(Math.min(min + 30, 16 * 60 + 15) - 1)}:59.999`]);
+      }
+      let prints = 0;
+      const one = async ([from, to]: [string, string]) => {
+        const csv = await readRaw(`/option/history/trade_quote?symbol=${encodeURIComponent(t)}&expiration=*&date=${ymd(day)}&start_time=${from}&end_time=${to}&strike_range=${IV_STRIKES}&format=csv`);
+        const part: FlowTally = new Map();
+        prints += tallyTradeQuotes(csv, toMs, part);
+        for (const [k, mins] of part) {
+          if (!near.has(k.slice(0, 10))) continue;
+          /* a contract prints in many chunks; their minutes never overlap */
+          const had = tally.get(k);
+          if (!had) tally.set(k, mins);
+          else for (const [m, b] of mins) had.set(m, b);
+        }
+      };
+      /* every chunk through the gate (two at once at most), each folded and dropped as it lands */
+      await Promise.all(windows.map(one));
+      const flow = flowOf(t, day, tally);
+      fs.mkdirSync(path.dirname(flowFile(t, day)), { recursive: true });
+      fs.writeFileSync(`${flowFile(t, day)}.tmp`, gzipSync(JSON.stringify(flow)));
+      fs.renameSync(`${flowFile(t, day)}.tmp`, flowFile(t, day));
+      log(`[exposure-hist] ${t} ${day}: ${prints} prints, ${flow.legs.length} live contracts in ${Math.round((Date.now() - started) / 1000)} s`);
+      return flow;
+    })().finally(() => flowPending.delete(key));
+    flowPending.set(key, job);
+    return job;
+  };
+
   const answers = new Map<string, Buffer>();
   const keepAnswer = (key: string, gz: Buffer) => {
     answers.set(key, gz);
@@ -160,7 +227,12 @@ export function createExposureHist(o: HistOptions): HistService {
       if (hit) return { status: 200, gz: hit };
       const inp = await inputs(t, day);
       if (!inp) return { status: 404, gz: pack({ format: HIST_FORMAT, ticker: t, day, cut, source: 'reconstructed', series: [] }) };
-      const rebuilt = rebuildDay(inp, cut, carriedFor(t, day));
+      /* the Live book needs the day's prints; a terminal that cannot give them leaves Live on the settled counts */
+      const flow = await flowInputs(t, day, inp).catch(e => {
+        log(`[exposure-hist] ${t} ${day}: no prints (${e instanceof Error ? e.message : e}); Live reads as Settled`);
+        return null;
+      });
+      const rebuilt = rebuildDay(inp, cut, carriedFor(t, day), flow);
       const gz = pack({ format: HIST_FORMAT, ticker: t, day, cut, source: 'reconstructed', series: rebuilt.series, term: closeTerm(inp) });
       keepAnswer(key, gz);
       return { status: 200, gz };
