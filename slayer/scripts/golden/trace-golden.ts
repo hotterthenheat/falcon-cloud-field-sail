@@ -234,6 +234,41 @@ const { buildCatches } = await import('../../src/data/flowBook');
   expectEqual('day card at 40% legs, 27% swept: not legs, swept', [card.legs, card.sweep], [1, true]);
   expectEqual('hammering at 12,000 contracts, 27% swept', buildCatches([day]).flatMap(c => c.rules), ['hammering']);
 }
+{
+  /* the side inside the spread: within a fifth of it from a side counts to that side, the middle stays mid; a locked
+     quote says nothing (execOf read a fill at a locked 1.00 × 1.00 as ASK while sideOfTags read MID) */
+  const { execOf, sideOfTags, printSideOf, tradeToPrint, printKeyOf } = await import('../../src/data/traceRows');
+  expectEqual('fill inside 1.00 × 1.10 at 1.09, 1.01, 1.05; locked at 1.00', [execOf(1.09, 1, 1.1), execOf(1.01, 1, 1.1), execOf(1.05, 1, 1.1), execOf(1, 1, 1), sideOfTags([], 1, 1, 1)], ['ASK', 'BID', 'MID', 'MID', 'MID']);
+  expectEqual('a mid_side tag at 1.09 of 1.00 × 1.10 reads ASK; no_side stays MID', [sideOfTags(['mid_side'], 1.09, 1, 1.1), sideOfTags(['no_side'], 1.09, 1, 1.1)], ['ASK', 'MID']);
+  /* a cross is no read on every page (the contract card sided it by its tag) */
+  const cross = { tags: ['ask_side'], report_flags: ['cross_trade'], price: '1.10', nbbo_bid: '1.00', nbbo_ask: '1.10', executed_at: '2026-10-28T15:00:00Z' };
+  expectEqual('a cross trade at the ask: MID', printSideOf(cross, 1.1, 1, 1.1, Date.parse(cross.executed_at)), 'MID');
+  /* a row with no vendor id is the same print on any page: its id is its content, not its index */
+  const bare = { underlying_symbol: 'ZZZ', option_chain_id: 'ZZZ271217C00010000', executed_at: '2026-10-28T15:00:00.123Z', price: '1.05', size: 10, premium: '1050', nbbo_bid: '1.00', nbbo_ask: '1.10', strike: '10', option_type: 'call', expiry: '2027-12-17' };
+  expectEqual('an id-less print read at index 0 and at index 7: one id', tradeToPrint(bare, 0).id === tradeToPrint(bare, 7).id && printKeyOf(bare) === tradeToPrint(bare, 3).vendorId, true);
+  const darkBare = { ticker: 'ZZZ', executed_at: '2026-10-28T15:00:00Z', price: '10', size: 100000, premium: '1000000', volume: 5 };
+  expectEqual('an id-less dark print at index 0 and 7: one id', darkPrint(darkBare, 0).id === darkPrint(darkBare, 7).id, true);
+  /* a cancel that lands after its print merged takes it back out of the tape and the dark accumulator */
+  const { mergePrints, noteCancelled } = await import('../../src/data/traceLive');
+  const { mergeDark } = await import('../../src/data/traceDark');
+  const a = tradeToPrint({ ...bare, id: 'trade-a' });
+  const b = tradeToPrint({ ...bare, id: 'trade-b', executed_at: '2026-10-28T15:00:01Z' });
+  const held = mergePrints([], [a, b], 'front');
+  noteCancelled([{ ...bare, id: 'trade-a', canceled: true }]);
+  expectEqual('tape after trade-a is cancelled: trade-b alone', mergePrints(held, [], 'front').map(p => p.vendorId), ['trade-b']);
+  const d1 = darkPrint({ ...darkBare, tracking_id: 1 }, 0);
+  const d2 = darkPrint({ ...darkBare, tracking_id: 2 }, 1);
+  expectEqual('dark accumulator after print 1 is cancelled: print 2 alone', mergeDark(mergeDark([], [d1, d2]), [], new Set([d1.id])).map(p => p.id), [d2.id]);
+  /* a one-minute bar's volume is its own, never the day's running total_volume: 1,000 then 1,500 running, then a bar of
+     0, read 1,000 · 1,500 · 1,500; now 0 (no bar before it) · 500 · 0 */
+  const { parseTape } = await import('../../src/data/book/tape');
+  const bars = [
+    { open: 1, high: 1, low: 1, close: 1, total_volume: 1000, start_time: '2026-10-28T13:30:00Z' },
+    { open: 1, high: 1, low: 1, close: 1, total_volume: 1500, start_time: '2026-10-28T13:31:00Z' },
+    { open: 1, high: 1, low: 1, close: 1, volume: 0, total_volume: 1500, start_time: '2026-10-28T13:32:00Z' },
+  ];
+  expectEqual('one-minute bar volumes off a running total', parseTape(bars).map(c => c.volume), [0, 500, 0]);
+}
 
 void stockClose;
 done();

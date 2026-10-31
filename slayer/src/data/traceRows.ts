@@ -195,8 +195,24 @@ export function sideOfTags(tags: unknown, price: number, bid: number, ask: numbe
   const quoted = price > 0 && bid > 0 && ask > bid;
   if (t.includes('ask_side')) return quoted && price <= bid + 1e-6 ? 'BID' : 'ASK';
   if (t.includes('bid_side')) return quoted && price >= ask - 1e-6 ? 'ASK' : 'BID';
-  if (t.includes('mid_side') || t.includes('no_side')) return 'MID';
+  /* a mid tag inside a live quote follows where the fill sat: within a fifth of the spread of a side it is that side's
+     (execOf); a no-side tag carries nothing to place */
+  if (t.includes('mid_side')) return execOf(price, bid, ask) ?? 'MID';
+  if (t.includes('no_side')) return 'MID';
   return execOf(price, bid, ask) ?? 'MID';
+}
+/** A print's side, the one rule every page reads: no read (MID) on a crossed or stale quote and on a cross trade, else
+    the tag against the quote (sideOfTags) */
+export function printSideOf(row: Record<string, unknown>, price: number, bid: number, ask: number, atMs: number): 'ASK' | 'BID' | 'MID' {
+  if (quoteNoReadOf(row, price, bid, ask, atMs)) return 'MID';
+  if (printCondition(row).cross) return 'MID';
+  return sideOfTags(row.tags, price, bid, ask);
+}
+/** A print's identity: the vendor's trade id, else its content (contract, instant, price, size, premium) — never its
+    place on a page, which shifts as prints land and repeats a print read on two pages */
+export function printKeyOf(row: Record<string, unknown>): string {
+  if (row.id != null && row.id !== '') return String(row.id);
+  return `${tickerOfRow(row)}|${row.option_chain_id ?? row.option_chain ?? row.option_symbol ?? ''}|${row.executed_at ?? row.created_at ?? ''}|${row.price ?? ''}|${row.size ?? ''}|${row.premium ?? ''}`;
 }
 
 /* The print's OPRA condition says what it was: ISOI a sweep; ML?T / TL?T and the ?ESL / ?ASL / ?FSL family legs of a
@@ -419,9 +435,8 @@ export function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   const right: 'C' | 'P' = String(row.option_type || row.type || '').toLowerCase().startsWith('p') ? 'P' : 'C';
   /* (a flow alert's side is its money's split, not one quote — the check is a print's) */
   const quoteNoRead = row.__aggregate ? null : quoteNoReadOf(row, fill, bid, ask, when.ms);
-  /* a cross takes no side on the screen, so no read */
-  const crossPrint = /cross_trade/i.test(Array.isArray(row.report_flags) ? row.report_flags.join(' ') : String(row.report_flags || ''));
-  const side = quoteNoRead || crossPrint ? 'MID' : sideOfTags(row.tags, fill, bid, ask);
+  /* a cross takes no side on the screen, so no read (printSideOf; an alert's side is its money's, never a quote's) */
+  const side = row.__aggregate ? (Array.isArray(row.tags) && row.tags.includes('mid_side') ? 'MID' : sideOfTags(row.tags, fill, bid, ask)) : printSideOf(row, fill, bid, ask, when.ms);
   /* the vendor's flag, else the clock: a fill outside the name's regular session (09:30 to 16:00, 16:15 for the index
      and ETF options) is an extended-hours print whether or not it came flagged (a hive call at 17:11:50 did not) */
   /* By the print, not the wall clock: between 16:00 and 16:15 the vendor's own flag decides; before 09:30 and from
@@ -440,7 +455,8 @@ export function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   const bidVol = num(row.bid_vol);
   const volSum = askVol + bidVol;
   const { multi, sweep, compression, cross } = printCondition(row);
-  const idRaw = String(row.id || `${ticker}-${when.epoch}-${i}`);
+  void i;
+  const idRaw = printKeyOf(row);
   return {
     id: hashId(idRaw),
     time: when.time,
@@ -710,10 +726,17 @@ export function occOf(root: string, strike: number, right: 'C' | 'P', expiry: st
   return `${root.toUpperCase()}${d[1].slice(2)}${d[2]}${d[3]}${right}${String(Math.round(strike * 1000)).padStart(8, '0')}`;
 }
 
-/** Print versus the quote. At or above the ask is a lift; at or below the bid is a hit. Null when NBBO is missing. */
+/** Inside the spread, a fill this far toward a side (fillPos 0–1 from the bid) counts to it: 0.8 and up the ask, 0.2 and
+    under the bid; the middle three-fifths stays MID */
+export const NEAR_SIDE = 0.8;
+/** Print versus the quote. At or above the ask is a lift, at or below the bid a hit, and within a fifth of the spread of
+    either it counts to that side (NEAR_SIDE). A locked or crossed quote (bid at or over the ask) says nothing: MID, as
+    sideOfTags reads it. Null when NBBO is missing. */
 export function execOf(price: number, bid: number, ask: number): 'ASK' | 'BID' | 'MID' | null {
-  if (!(price > 0) || !(bid > 0) || !(ask > 0) || ask < bid) return null;
+  if (!(price > 0) || !(bid > 0) || !(ask > 0)) return null;
+  if (bid >= ask) return 'MID';
   if (price >= ask - 1e-6) return 'ASK';
   if (price <= bid + 1e-6) return 'BID';
-  return 'MID';
+  const pos = (price - bid) / (ask - bid);
+  return pos >= NEAR_SIDE - 1e-9 ? 'ASK' : pos <= 1 - NEAR_SIDE + 1e-9 ? 'BID' : 'MID';
 }
