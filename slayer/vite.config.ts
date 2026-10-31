@@ -134,10 +134,8 @@ export default defineConfig(({ mode }) => {
     rollupOptions: {
       output: {
         manualChunks,
-        /* No experimentalMinChunkSize: merging small chunks into their neighbours pulled code a route never runs into its
-           first load (the landing took the Radix menus, a modal and the skeleton kit it never shows), and
-           there is no waterfall to save — Vite preloads a dynamic import's chunks in parallel. Measured 2026-10-31: first-load
-           JS -47 to -73 KB gz per route (landing 358 -> 296), more but smaller requests over HTTP/2. */
+        /* merge tiny chunks (skeletons, small helpers) into their neighbours to cut the request waterfall */
+        experimentalMinChunkSize: 20_000,
       },
     },
   },
