@@ -9,7 +9,7 @@ import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../.
 import { thetaAllowedHere, thetaCall } from '../theta';
 import { barTime, flatRows, legKey, parseBars, parseQuotes, rowAt, standingAt } from '../review/history';
 import { bookMark, contractKey, longLeg, spreadBook, spreadSizes, type ContractId, type Quote } from '../review/quotes';
-import { dateAt, nyAt, nyInstant, yearsToExpiry, OPEN_MIN } from './clock';
+import { dateAt, lastTradeDayOf, nyAt, nyInstant, yearsToExpiry, OPEN_MIN } from './clock';
 import { gapOf, judgeOrders, type OptOrder, type PaperAccount, type PaperMarket } from './engine';
 import { optionRootOf } from './thetaFeed';
 
@@ -59,7 +59,7 @@ function gapsOf(a: PaperAccount, now: number): Gap[] {
   for (const o of a.opt.orders) {
     const from = gapOf(o, now);
     if (from == null) continue;
-    let to = Math.min(now, lateEndOn(o.contract.expiry));
+    let to = Math.min(now, lateEndOn(lastTradeDayOf(o.contract)));
     if (o.tif === 'day') to = Math.min(to, lateEndOn(nyAt(o.placed.at).date));
     out.push({ order: o, from, to, days: to > from ? sessionsOf(from, to) : [] });
   }
@@ -135,7 +135,7 @@ function recorded(c: ContractId, day: string, m: number, f: Fetched, at: number)
     const intrinsic = spot > 0 ? Math.max(0, k.right === 'C' ? spot - k.strike : k.strike - spot) : 0;
     if (!q || !(q.ask > 0) || !(q.bid > 0)) return { bid: 0, ask: 0, mark: NaN, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic, dead: true, spot };
     const mid = (q.bid + q.ask) / 2;
-    const t = Math.max(yearsToExpiry(k.expiry, at), 1 / (252 * 390));
+    const t = Math.max(yearsToExpiry(lastTradeDayOf(k), at), 1 / (252 * 390));
     const iv = spot > 0 ? impliedVolFromPrice(mid, spot, k.strike, t, k.right) : null;
     const g = iv != null ? blackScholesGreeks(spot, k.strike, t, iv) : null;
     /* the sizes the row showed: a replayed fill is capped the way a live one is (the row's minute is which quote it is) */
@@ -209,7 +209,7 @@ export function replayGaps(a: PaperAccount, f: Fetched, now: number, life: strin
       optQuote: quote,
       optQuoteAt: (c, spot) => {
         const q = quote(c);
-        const t = Math.max(yearsToExpiry(c.expiry, end), 1 / (252 * 390));
+        const t = Math.max(yearsToExpiry(lastTradeDayOf(c), end), 1 / (252 * 390));
         const v = q.iv > 0 ? Math.max(0, blackScholesPrice(spot, c.strike, t, q.iv, c.right)) : 0;
         return { ...q, bid: cents(v), ask: cents(v), mark: cents(v), dead: !(v > 0), spot };
       },

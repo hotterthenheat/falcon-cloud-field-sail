@@ -342,6 +342,12 @@ export function closeBasisOf(ticker: string, day: string): { price: number; prin
 export function closePrintOf(ticker: string, day: string): number {
   return closeBasisOf(ticker, day)?.price ?? NaN;
 }
+/** The name's opening print that day: the first real bar's open — NaN until the day's bars are loaded, or where there
+    were none. VIX options settle on it, as the best stand-in for the SOQ (the vendor does not carry the SOQ). */
+export function openPrintOf(ticker: string, day: string): number {
+  const first = dayBars(ticker, day)[0];
+  return first && first.open > 0 ? first.open : NaN;
+}
 /** Where the name stood at the end of a minute: the last real print at or before it (NaN until its bars are loaded) */
 export function spotAt(ticker: string, day: string, minute: number): number {
   const b = dayBars(ticker, day);

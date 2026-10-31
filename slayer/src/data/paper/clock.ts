@@ -91,6 +91,21 @@ export function dayBeginsAt(day: string): number {
 /** The options session's close on a date — 16:00 New York, 13:00 on an early close: when a contract expiring that day
     settles and the session's orders stop filling */
 export const bellOf = (date: string): number => nyInstant(date, sessionCloseMinOn(date));
+/** VIX options: their listed expiration is the Wednesday they settle on (the special opening quotation, SOQ, of that
+    morning); they last trade on the Tuesday before. A listing that names the Tuesday is read the same way. */
+export const isVixRoot = (ticker: string): boolean => /^VIXW?$/i.test(ticker);
+export function vixSchedule(expiry: string): { lastTrade: string; settleDay: string } {
+  const wd = dateAt(expiry).getDay();
+  if (wd === 2) return { lastTrade: expiry, settleDay: sessionFrom(addDays(expiry, 1)) };
+  let d = addDays(expiry, -1);
+  for (let i = 0; i < 12 && !isTradingDay(dateAt(d)); i++) d = addDays(d, -1);
+  return { lastTrade: d, settleDay: expiry };
+}
+/** The last day a contract trades: its expiry — the Tuesday before for VIX */
+export const lastTradeDayOf = (c: { ticker: string; expiry: string }): string => (isVixRoot(c.ticker) ? vixSchedule(c.expiry).lastTrade : c.expiry);
+/** When a contract stops trading: the close of its last trading day (13:00 on an early close) */
+export const tradingEndsAt = (c: { ticker: string; expiry: string }): number => bellOf(lastTradeDayOf(c));
+
 /** 16:59 New York on a trading day — an evaluation's flat-by */
 export const flatByOf = (day: string): number => nyInstant(day, FLAT_MIN);
 

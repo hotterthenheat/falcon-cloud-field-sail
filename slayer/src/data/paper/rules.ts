@@ -20,7 +20,7 @@ import type { ContractId } from '../review/quotes';
 import { contractKey, legsOf } from '../review/quotes';
 import { MULT } from '../review/engine';
 import { listKey } from './whitelists';
-import { addDays, dateAt, dayEndsAt, nyAt, nyInstant, sessionFrom, sessionTimeOn } from './clock';
+import { addDays, dateAt, dayEndsAt, lastTradeDayOf, nyAt, nyInstant, sessionFrom, sessionTimeOn } from './clock';
 import type { OptTrade, PaperAccount, PaperMarket, PaperView, OptDraft } from './engine';
 
 /* ================================================================== */
@@ -274,7 +274,7 @@ export function flatTimeOf(a: PaperAccount, day: string, c: ContractId | null, m
   if (r.flatBy) out.push({ at: planAt(day, r.flatBy), why: `flat by ${r.flatBy} ET`, rule: 'flat' });
   if (!r.overnight) bell('nothing is held past the close', 'overnight');
   else if (!r.weekend && breakFollows(day)) bell('nothing is held over the weekend or a market holiday', 'weekend');
-  if (c && r.expiryClose && c.expiry === day) {
+  if (c && r.expiryClose && lastTradeDayOf(c) === day) {
     const late = r.expiryClose.except.includes(c.ticker.toUpperCase());
     if (!late) out.push({ at: planAt(day, r.expiryClose.at), why: `an expiring contract is closed at ${r.expiryClose.at} ET on its expiry day`, rule: 'expiry' });
     else if (r.expiryClose.lateAt) out.push({ at: planAt(day, r.expiryClose.lateAt), why: `an expiring ${c.ticker.toUpperCase()} contract is closed at ${r.expiryClose.lateAt} ET on its expiry day`, rule: 'expiry' });

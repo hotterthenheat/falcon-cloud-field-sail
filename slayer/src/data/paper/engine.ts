@@ -12,7 +12,7 @@ import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, 
 import { contractKey, contractWords, dteAt, fillableQty, legsOf, type ContractId, type Quote } from '../review/quotes';
 import { closeBasisOf } from '../review/history';
 import type { Candle } from '../../types/market';
-import { bellOf, dayBeginsAt, dayEndsAt, nyAt, tradingDayOf } from './clock';
+import { dayBeginsAt, dayEndsAt, isVixRoot, nyAt, tradingDayOf, tradingEndsAt, vixSchedule } from './clock';
 import { paperFut } from './products';
 import { closeMeasure, judgePass, judgeRoll, judgeTick, lateCloseOf, mustBeFlat, nakedCallsBarred, peakAfterRoll, peakAfterTick, putsSecured, ruleRefusal, type EarningsWhen, type PaperPlan, type RuleId } from './rules';
 
@@ -47,6 +47,9 @@ export interface PaperMarket {
   /** The name's close on a past or today's date (what an expiring contract settles on): the 16:00 closing print when
       one was recorded, else the last real print — NaN until it is known. Never a flat zero-volume candle. */
   closeOf?: (ticker: string, day: string) => number;
+  /** The name's opening print on a date (the first real bar's open) — what a VIX option settles on, the SOQ's stand-in.
+      NaN until it is known. */
+  openOf?: (ticker: string, day: string) => number;
   /** A replayed minute of the history (store.ts catch-up), not the live market */
   replay?: boolean;
 }
@@ -868,7 +871,7 @@ export function draftOf(a: PaperAccount, d: OptDraft): OptDraft & { opens: boole
 /** An expiring SPY, QQQ, IWM or DIA contract on a plan that closes it at 16:10: from the bell to then it may still be closed */
 export const lateWindow = (a: PaperAccount, c: ContractId, now: number): boolean => {
   const late = lateCloseOf(a, c);
-  return late != null && now >= bellOf(c.expiry) && now < late;
+  return late != null && now >= tradingEndsAt(c) && now < late;
 };
 /** What closing a way out leaves: what is held less what the working ways out already speak for */
 const reservedOf = (a: PaperAccount, key: string, dir: 1 | -1) => (dir > 0 ? optReserved(a, key) : workingCovers(a, key).reduce((x, o) => x + o.qty, 0));
@@ -919,7 +922,7 @@ export function optRefusal(a: PaperAccount, m: PaperMarket, d0: OptDraft, alone 
   const d = draftOf(a, d0);
   const opening = d.opens;
   const late = !opening && lateWindow(a, d.contract, m.now);
-  if (bellOf(d.contract.expiry) <= m.now && !late) return 'That contract has expired';
+  if (tradingEndsAt(d.contract) <= m.now && !late) return isVixRoot(d.contract.ticker) && d.contract.expiry >= nyAt(m.now).date ? 'VIX options stop trading at the close the day before they settle' : 'That contract has expired';
   if (d.contract.short != null) {
     const { strike, short, right } = d.contract;
     if (short === strike) return 'A spread needs two different strikes';
@@ -1430,8 +1433,8 @@ export interface PaperEvent {
   key?: string;
 }
 
-/** Is an option position's expiry past: 16:00 New York on its date */
-const expired = (c: ContractId, now: number) => bellOf(c.expiry) <= now;
+/** Has an option stopped trading: the close of its expiry (13:00 on an early close) — Tuesday's close for VIX */
+const expired = (c: ContractId, now: number) => tradingEndsAt(c) <= now;
 const nyClockOf = (ms: number) => {
   const t = nyAt(ms);
   return `${String(Math.floor(t.minutes / 60)).padStart(2, '0')}:${String(t.minutes % 60).padStart(2, '0')} ET`;
@@ -1748,14 +1751,17 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
       if (next.opt.orders.some(o => contractKey(o.contract) === p.key && gapOf(o, m.now) != null)) continue;
       const when = momentAt(m.now);
       next = setOpt(next, next.opt.orders.map(o => (o.status === 'working' && contractKey(o.contract) === p.key ? { ...o, status: 'cancelled' as const, done: when, why: 'the contract expired' } : o)));
-      /* on the name's 16:00 close that day, not wherever it stands when the page next ticks; it waits until that is known */
-      const close = m.closeOf ? m.closeOf(p.contract.ticker, p.contract.expiry) : NaN;
+      /* on the name's 16:00 close that day, not wherever it stands when the page next ticks; it waits until that is known.
+         VIX settles the morning after its last trade, on the VIX index's opening print — the stand-in for the SOQ */
+      const vix = isVixRoot(p.contract.ticker) ? vixSchedule(p.contract.expiry) : null;
+      const close = vix ? (m.openOf ? m.openOf('VIX', vix.settleDay) : NaN) : m.closeOf ? m.closeOf(p.contract.ticker, p.contract.expiry) : NaN;
       if (!(close > 0)) continue;
       const q = { ...m.optQuote(p.contract), spot: close };
       const value = settleValue(p.contract, close);
-      const print = printOf(p.contract.ticker, p.contract.expiry, close);
+      const print = vix ? 'open' : printOf(p.contract.ticker, p.contract.expiry, close);
       const on = print === '16:00' ? 'the 16:00 close' : `the ${print} print`;
-      const note = p.dir < 0 ? settleWords(p.contract, close, value, print) : late != null ? `no live quote at its ${nyClockOf(late)} close — settled at ${on}` : undefined;
+      const vixWords = vix ? `settled at ${value.toFixed(2)} on the VIX opening print of ${vix.settleDay} (${close.toFixed(2)}) — the stand-in for the special opening quotation, which the feed does not carry` : undefined;
+      const note = vixWords ?? (p.dir < 0 ? settleWords(p.contract, close, value, print) : late != null ? `no live quote at its ${nyClockOf(late)} close — settled at ${on}` : undefined);
       next = optFillNow(next, { id: '', placed: when, contract: p.contract, side: p.dir > 0 ? 'sell' : 'buy', qty: p.qty, kind: 'market', tif: 'day', status: 'working', tag: p.tag, life: m.life, opens: false }, value, 'expired', q, m, note);
     }
     /* the plan's holding rules (rules.ts): flat by its time, nothing past the close, over a weekend, or through a

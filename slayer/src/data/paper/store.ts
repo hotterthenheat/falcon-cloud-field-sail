@@ -13,8 +13,8 @@ import { chime } from '../../core/sound';
 import { contractKey, type ContractId, type Quote } from '../review/quotes';
 import type { DayNote, JournalEntry } from '../review/journal';
 import { LIFE, SIM_FEED, barNowOf, candlesOf, optionFresh, optionQuote, optionQuoteAt, optionsOpen, spotForBidNow } from './feed';
-import { bellOf, nyAt } from './clock';
-import { closePrintOf, ensureBars } from '../review/history';
+import { bellOf, nyAt, nyInstant, OPEN_MIN } from './clock';
+import { closePrintOf, ensureBars, openPrintOf } from '../review/history';
 import { canCatchUp, fetchGaps, hasGaps, replayGaps } from './catchUp';
 import { whalesEarnings } from '../whales';
 import {
@@ -113,6 +113,13 @@ export function liveMarket(now = Date.now()): PaperMarket {
       if (now < bellOf(day) + 90_000) return NaN;
       void ensureBars(ticker, day);
       return closePrintOf(ticker, day);
+    },
+    /* The opening print (the first real bar's open) — VIX options settle on it, the SOQ's stand-in. Asked once the first
+       minute has printed and a minute and a half more. */
+    openOf: (ticker: string, day: string) => {
+      if (now < nyInstant(day, OPEN_MIN) + 150_000) return NaN;
+      void ensureBars(ticker, day);
+      return openPrintOf(ticker, day);
     },
   };
 }
