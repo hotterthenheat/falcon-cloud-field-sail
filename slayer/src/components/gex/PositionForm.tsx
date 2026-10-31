@@ -115,8 +115,8 @@ const PositionForm = ({ ticker, position, defaultStrike, trigger, align = 'end',
   const strike = Number(draft.strike);
   const contracts = Math.round(Number(draft.contracts));
   const entry = draft.entry.trim() === '' ? undefined : Number(draft.entry);
-  const today = nyIsoDate();
-  const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(draft.enteredOn) && draft.enteredOn <= today && draft.enteredOn <= draft.expiry;
+  const todayIso = nyIsoDate();
+  const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(draft.enteredOn) && draft.enteredOn <= todayIso && draft.enteredOn <= draft.expiry;
   const valid = Number.isFinite(strike) && strike > 0 && Number.isFinite(contracts) && contracts >= 1 && /^\d{4}-\d{2}-\d{2}$/.test(draft.expiry) && dateOk && (entry === undefined || (Number.isFinite(entry) && entry >= 0));
 
   const save = async () => {

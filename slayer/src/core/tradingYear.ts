@@ -1,11 +1,14 @@
-import { isTradingDay } from './calendar';
-import { nyParts, SESSION_CLOSE_MIN, SESSION_LENGTH_MIN, SESSION_OPEN_MIN } from './nyTime';
+import { isTradingDay, sessionCloseMinOn } from './calendar';
+import { nyParts, SESSION_LENGTH_MIN, SESSION_OPEN_MIN } from './nyTime';
 
 /** Sessions in the year the desk decays on. Not 365. */
 export const TRADING_DAYS = 252;
 const DAY = 86_400_000;
 /** A leg at the bell stays finite. Five trading minutes, not five clock minutes. */
 const FLOOR_MIN = 5;
+
+/** The cash close of the UTC-midnight day `t` (ms), minutes after midnight New York: 13:00 on an early close. */
+const closeOfUtc = (t: number): number => sessionCloseMinOn(new Date(t).toISOString().slice(0, 10));
 
 /** Is the UTC-midnight day `t` (ms) a session — memoised, every leg of every book asks the same few hundred days. */
 const sessionDay = new Map<number, boolean>();
@@ -23,7 +26,7 @@ function isSessionUtc(t: number): boolean {
 /** The answer depends only on the expiry and the New York minute, so it is kept per (expiry, minute, floor). */
 const minutesMemo = new Map<string, number | null>();
 
-/** Trading minutes left until 16:00 ET on `expiry` (weekends and overnight do not count); null once past. `floor` keeps five minutes. */
+/** Trading minutes left until the cash close (16:00 ET, 13:00 on an early close) on `expiry` (weekends and overnight do not count); null once past. `floor` keeps five minutes. */
 export function tradingMinutes(expiry: string, nowMs = Date.now(), floor = false): number | null {
   const key = `${expiry}|${Math.floor(nowMs / 60_000)}|${floor ? 1 : 0}`;
   const hit = minutesMemo.get(key);
@@ -47,14 +50,15 @@ function tradingMinutesNow(expiry: string, nowMs: number, floor: boolean): numbe
       if (t === end) return floor ? FLOOR_MIN : null;
       continue;
     }
+    const close = closeOfUtc(t);
     if (t === start) {
       const nowMin = p.hour * 60 + p.minute;
-      if (nowMin >= SESSION_CLOSE_MIN) {
+      if (nowMin >= close) {
         if (t === end) return floor ? FLOOR_MIN : null;
         continue;
       }
-      minutes += SESSION_CLOSE_MIN - Math.max(nowMin, SESSION_OPEN_MIN);
-    } else minutes += SESSION_LENGTH_MIN;
+      minutes += close - Math.max(nowMin, SESSION_OPEN_MIN);
+    } else minutes += close - SESSION_OPEN_MIN;
   }
   if (!(minutes > 0)) return floor ? FLOOR_MIN : null;
   return floor ? Math.max(FLOOR_MIN, minutes) : minutes;
@@ -67,12 +71,13 @@ export function tradingMinutesBetween(a: number, b: number): number {
   const pb = nyParts(b);
   const start = Date.UTC(pa.year, pa.month - 1, pa.day);
   const end = Date.UTC(pb.year, pb.month - 1, pb.day);
-  const clamp = (m: number) => Math.min(SESSION_CLOSE_MIN, Math.max(SESSION_OPEN_MIN, m));
   let total = 0;
   for (let t = start; t <= end; t += DAY) {
     if (!isSessionUtc(t)) continue;
+    const close = closeOfUtc(t);
+    const clamp = (m: number) => Math.min(close, Math.max(SESSION_OPEN_MIN, m));
     const from = t === start ? clamp(pa.hour * 60 + pa.minute) : SESSION_OPEN_MIN;
-    const to = t === end ? clamp(pb.hour * 60 + pb.minute) : SESSION_CLOSE_MIN;
+    const to = t === end ? clamp(pb.hour * 60 + pb.minute) : close;
     if (to > from) total += to - from;
   }
   return total;
