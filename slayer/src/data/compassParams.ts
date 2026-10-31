@@ -1,3 +1,5 @@
+import { MARKET_HOLIDAYS } from '../core/calendar';
+
 /* Compass parameters, in one place. The entry and runner trees ship in public/models; scoring stays shut until
    those files hash to the values below. */
 
@@ -41,6 +43,27 @@ export const SEAT_CAP = 5;
 const BOOK_B_ASK = 1;
 const BOOK_B_HALVE = 0.5;
 export const BOOK_B_LOOKBACK = 30;
+
+/* Fees, per contract, an estimate (not a broker's schedule): $0.50 commission and $0.04 exchange, clearing and ORF a
+   side, and on the sale the SEC fee (Section 31: $27.80 per million of the sale, the FY2024 rate; was $20.60 here; the
+   SEC resets it each fiscal year, so check sec.gov's fee-rate advisory) and FINRA's TAF ($0.00279 a contract sold). */
+const COMMISSION = 0.5;
+const EXCHANGE = 0.04;
+export const SEC_FEE_RATE = 0.0000278;
+export const FINRA_TAF = 0.00279;
+
+/** The round trip's fees on one contract sold at `exitPx`, dollars, to the cent. */
+export function optionFees(exitPx: number): number {
+  const sec = Math.max(0, exitPx) * 100 * SEC_FEE_RATE;
+  return Number((COMMISSION * 2 + EXCHANGE * 2 + sec + FINRA_TAF).toFixed(2));
+}
+
+/** The bid that sells for no loss after the round trip's fees: the ask paid plus the fees per share. */
+export function breakEvenBid(entryAsk: number): number {
+  if (!(entryAsk > 0)) return entryAsk;
+  /* the fees at the break-even price itself, solved by one pass from the ask (the SEC part moves by under 0.01 cent) */
+  return entryAsk + optionFees(entryAsk) / 100;
+}
 
 const STOP_HAIRCUT = 0.5322;
 export const STOP_KEEP = 1 - STOP_HAIRCUT;
@@ -151,20 +174,28 @@ function asIso(ymd: string): string {
   return ymd;
 }
 
-/** Weekdays from the session date to the expiration. Same day is 0. A weekday guess is not a listing. */
+/** Trading sessions from the session date to the expiration: weekdays that are not market holidays
+    (core/calendar MARKET_HOLIDAYS). Same day is 0. A weekday guess is not a listing. Wednesday 2026-11-25 to Friday
+    11-27 is 1 (Thanksgiving is not a session); it was 2 when holidays were counted. */
 export function weekdayDte(sessionYmd: string, expiryYmd: string): number {
   const from = Date.parse(`${asIso(sessionYmd)}T00:00:00Z`);
   const to = Date.parse(`${asIso(expiryYmd)}T00:00:00Z`);
   if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return NaN;
   let n = 0;
   for (let t = from + 86400000; t <= to; t += 86400000) {
-    const day = new Date(t).getUTCDay();
-    if (day !== 0 && day !== 6) n += 1;
+    const d = new Date(t);
+    const day = d.getUTCDay();
+    if (day === 0 || day === 6) continue;
+    if (MARKET_HOLIDAYS.has(d.toISOString().slice(0, 10))) continue;
+    n += 1;
   }
   return n;
 }
 
-/** Published T. The scan minute, a 16:00 expiration. Not the wall clock. Not DTE. */
+/** Published T. The scan minute, a 16:00 expiration. Not the wall clock. Not DTE.
+    Retrain item: for a 1 to 7 DTE contract this is still only today's minutes left (the training rows were built the
+    same way, so the live input matches the trees and must not change until they are retrained); the true time to a
+    Friday expiry from Monday is about five sessions, not hours. The greeks, IV and theta columns inherit it. */
 export function yearFrac(t: number): number {
   const mins = Math.max(0, SESSION_MIN - t);
   return mins / (SESSION_MIN * YEAR_SESSIONS) + T_EPS;
@@ -279,7 +310,8 @@ function hardStop(entryAsk: number): number {
 
 export function stopAfter(entryAsk: number, peak: number, runner: boolean): number {
   let stop = hardStop(entryAsk);
-  if (peak >= entryAsk * BE_PEAK) stop = Math.max(stop, entryAsk);
+  /* break-even means no loss after fees: at 1.25x the stop moves to the ask plus the round trip (was the bare ask) */
+  if (peak >= entryAsk * BE_PEAK) stop = Math.max(stop, breakEvenBid(entryAsk));
   if (!runner) return stop;
   if (peak >= entryAsk * TP1_BID) stop = Math.max(stop, entryAsk * TP1_STOP);
   if (peak >= entryAsk * TP2_BID) stop = Math.max(stop, entryAsk * TP2_STOP);

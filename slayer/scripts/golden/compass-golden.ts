@@ -349,7 +349,8 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
     { outcome: closedAt(1.88, 1.25, 61.92, 1.08) },
     /* lost: the stop test's -68.08 */
     { outcome: closedAt(0.58, 1.25, -68.08, 1.08) },
-    /* open: fill 1.25, last bid 1.40: (1.40 - 1.25)·100 - (1.00 + 0.08 + 1.40·100·0.0000206 = 1.0829 → 1.08) = 13.92 */
+    /* open: fill 1.25, last bid 1.40: (1.40 - 1.25)·100 - (1.00 + 0.08 + 1.40·100·0.0000278 + 0.00279 TAF = 1.0867
+       → 1.09) = 13.91 (was 13.92 with the old SEC rate and no TAF) */
     { outcome: { status: 'open' as const, fill: { at: 0, bid: 1.21, ask: 1.25 }, exit: null, peak: 1.4, stop: 0.58, last: { t: 0, bid: 1.4, ask: 1.44 }, ret: 12, pnl: null, fees: null, heldMin: 5 } },
     { outcome: null },
     { outcome: { status: 'unavailable' as const, fill: null, exit: null, peak: 0, stop: 0, last: null, ret: null, pnl: null, fees: null, heldMin: null } },
@@ -358,8 +359,18 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   expectEqual('day: calls, won, lost, open, filling, unavailable', [d.calls, d.won, d.lost, d.open, d.waiting, d.unavailable], [5, 1, 1, 1, 1, 1]);
   /* net 61.92 - 68.08 = -6.16; open marked 13.92; fees 1.08 + 1.08 + 1.08 */
   expectEqual('day: net per contract after the round trip', d.net, -6.16);
-  expectEqual('day: open calls marked at the bid', d.openMark, 13.92);
-  expectEqual('day: round-trip fees inside', d.fees, 3.24);
+  expectEqual('day: open calls marked at the bid', d.openMark, 13.91);
+  expectEqual('day: round-trip fees inside (1.08 + 1.08 + 1.09)', d.fees, 3.25);
+  /* the fee schedule: 1.00 commission + 0.08 exchange + SEC 0.0000278 of the sale + TAF 0.00279 */
+  const { optionFees: fees, breakEvenBid, stopAfter } = await import('../../src/data/compassParams');
+  expectEqual('fees: sale at 10.00 = 1.08 + 0.0278 + 0.0028 = 1.11 (was 1.10)', fees(10), 1.11);
+  /* break-even after fees: a 1.25 ask that peaked at 1.5625 (1.25x) stops at 1.25 + fees(1.25)/100, fees =
+     1.08 + 0.0035 + 0.0028 = 1.0863 → 1.09, so 1.2609 (was 1.25, a sale that lost the fees) */
+  expectNear('break-even stop includes the fees', stopAfter(1.25, 1.5625, false), 1.2609, 1e-9);
+  expectNear('break-even bid', breakEvenBid(2), 2 + 1.09 / 100, 1e-12);
+  const { weekdayDte: wdte } = await import('../../src/data/compassParams');
+  /* sessions to expiry skip market holidays: Wed 11-25 to Fri 11-27 is 1 (was 2, Thanksgiving counted); Fri to Mon is 1 */
+  expectEqual('sessions to expiry over Thanksgiving, and over a weekend', [wdte('20261125', '2026-11-27'), wdte('20261030', '2026-11-02'), wdte('20261030', '2026-10-30')], [1, 1, 0]);
   /* a stop exactly at the fill still loses its fees: (1.25 - 1.25)·100 - 1.08 is a loss */
   expectEqual('day: breakeven exit counts as lost', daySummary([{ outcome: closedAt(1.25, 1.25, -1.08, 1.08) }]).lost, 1);
 }

@@ -5,7 +5,7 @@
    second quotes. Nothing is filled from a quote that was not printed. */
 
 import { nyParts } from '../core/nyTime';
-import { lotteryExit, reversalLine, stopAfter, treeExit } from './compassParams';
+import { lotteryExit, optionFees, reversalLine, stopAfter, treeExit } from './compassParams';
 import type { OptionRight } from '../types/compass';
 
 export type SignalBook = 'A' | 'B' | 'C';
@@ -69,12 +69,8 @@ const dayOf = (ms: number) => {
 /** The New York minute a ms instant falls in, as epoch ms of that minute's start. */
 const minuteStart = (ms: number) => Math.floor(ms / 60_000) * 60_000;
 
-/** A per-side estimate: $0.50 commission, $0.04 exchange and clearing, and the SEC fee on the sale. Not a broker's
-    schedule. */
-export function optionFees(exitPx: number): number {
-  const sec = Math.max(0, exitPx) * 100 * 0.0000206;
-  return Number((0.5 * 2 + 0.04 * 2 + sec).toFixed(2));
-}
+/** The round trip's fees (compassParams optionFees: commission, exchange, the SEC fee and FINRA's TAF on the sale). */
+export { optionFees };
 
 const validQuote = (q: PathQuote) => q.ask > 0 && q.bid >= 0 && q.ask >= q.bid;
 
