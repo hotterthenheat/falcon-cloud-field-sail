@@ -7,6 +7,7 @@ import { daysBetween, lastSessionIso, nyDayOf, nyTodayIso } from './nyDate';
 import type { DarkPoolPrint } from '../types/darkpool';
 import type { FlowPrint } from '../types/trace';
 import { darkPrint } from './traceLive';
+import { hashId, otmOf } from './traceRows';
 import { alertSides, darkPrintKey } from './sidesRule';
 import { uwCall, whalesAnalysts, whalesBars, whalesDailyLong, whalesEarnings, whalesFinancials, whalesOptionContracts, whalesScreener, whalesStock, type UwDaily } from './whales';
 import { nyClock, nyIsoDate, nyMinutes as nyMinuteOf, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
@@ -184,13 +185,15 @@ function flowsFrom(rows: Record<string, unknown>[], spot: number, session: strin
     const expiry = String(row.expiry || '');
     const under = num(row.underlying_price) || spot;
     return {
-      id: i + 1,
+      /* the alert's own id, else its content — never its place on the page, which moves as alerts land */
+      id: hashId(String(row.id ?? `${row.option_chain ?? ''}|${row.created_at ?? ''}|${row.total_premium ?? ''}|${row.total_size ?? ''}`)),
       time: clock(String(row.created_at || '')),
       ticker: String(row.ticker || '').toUpperCase(),
       legs: row.has_multileg ? 2 : 1,
       strike,
       right,
-      otmPct: under > 0 ? ((strike - under) / under) * 100 : 0,
+      /* + out of the money for calls and puts alike (traceRows otmOf) */
+      otmPct: otmOf(right, strike, under, false),
       expiry: expiry.includes('-') ? mmddyyyy(expiry) : expiry,
       dte: dteOf(expiry, session),
       fill: num(row.price),
@@ -206,7 +209,8 @@ function flowsFrom(rows: Record<string, unknown>[], spot: number, session: strin
       oi: num(row.open_interest),
       deltaOI: 0,
       spot: under,
-      iv: num(row.iv) * (num(row.iv) < 3 ? 100 : 1),
+      /* always a fraction: a 3.4 is 340%, never 3.4% */
+      iv: num(row.iv) * 100,
       volOverOI: num(row.volume_oi_ratio),
       strat: '—',
       sweep: !!row.has_sweep,

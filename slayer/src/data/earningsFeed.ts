@@ -506,7 +506,7 @@ function occOf(symbol: string): { expiry: string; right: 'CALL' | 'PUT'; strike:
   return { expiry: `20${m[1]}-${m[2]}-${m[3]}`, right: m[4] === 'C' ? 'CALL' : 'PUT', strike };
 }
 
-function contractsFrom(ticker: string, rows: Record<string, unknown>[], spot: number, spotWord?: string): { calls: ActiveContract[]; puts: ActiveContract[] } {
+export function contractsFrom(ticker: string, rows: Record<string, unknown>[], spot: number, spotWord?: string): { calls: ActiveContract[]; puts: ActiveContract[] } {
   const calls: ActiveContract[] = [];
   const puts: ActiveContract[] = [];
   const today = nyToday();
@@ -538,7 +538,8 @@ function contractsFrom(ticker: string, rows: Record<string, unknown>[], spot: nu
       volume,
       oi,
       volOverOi: oi > 0 ? Number((volume / oi).toFixed(2)) : 0,
-      ivPct: Math.round((iv > 3 ? iv : iv * 100)),
+      /* the vendor's IV is always a fraction: a same-day contract's 3.4 is 340%, never 3% */
+      ivPct: Math.round(iv * 100),
       fromSpotPct: Number(fromSpot.toFixed(1)),
       spotWord,
       breakevenPct: Number(Math.max(0, need).toFixed(1)),
