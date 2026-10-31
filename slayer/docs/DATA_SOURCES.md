@@ -10,6 +10,9 @@ endpoint name suggests.
   candles from ThetaData (stock and index snapshots and bars). No ThetaData greeks or open interest on Pinpoint.
 - **Terrain, Weigher, Compass and Practice** read ThetaData for real-time quotes, NBBO, chains, greeks, bars and
   history, and Unusual Whales for what ThetaData does not carry (exposure, flow, levels).
+- The Weigher's per-contract **gamma** is Unusual Whales' (`/stock/{t}/option-contracts` `gamma`, the rows the name's
+  book already reads; `src/data/weigherDesk.ts` `withVendorGamma`), set by the owner on 2026-10-31. ThetaData's
+  first-order snapshot sends no gamma; the model's gamma stays only where the vendor has no row.
 - `thetaCall` in `src/data/theta.ts` enforces this per page (`thetaUseHere`, `thetaAllowedHere`).
 - The pricing rate (SOFR, `/interest_rate/history/eod`, `src/data/rateFeed.ts`) and the year's holidays
   (`/calendar/year_holidays`) are reference reads, not greeks or open interest: Pinpoint may ask them too. One shared

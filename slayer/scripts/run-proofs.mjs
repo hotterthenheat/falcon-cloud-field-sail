@@ -44,6 +44,7 @@ const PROOFS = [
   'book-mode-proof',
   'carry-proof',
   'rate-proof',
+  'weigher-gamma-proof',
   'node-strikes-proof',
   'proxy-auth-proof.mjs',
   'hub-proof.mjs',

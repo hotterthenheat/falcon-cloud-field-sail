@@ -10,6 +10,9 @@ import { nameTape } from './compassSession';
 import { nyIsoDate, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { inRegular, productOf, sessionAt } from '../core/session';
 import type { OptionRight } from '../types/compass';
+import type { StrikeNode } from '../types/market';
+import { peekEntry } from './book/store';
+import { sameName } from './spotGexBook';
 
 // ---- the chain --------------------------------------------------------------
 
@@ -19,7 +22,11 @@ export interface DeskContract {
   /** Modeled mid, the same estimator every Compass surface prices with */
   mark: number;
   delta: number;
+  /** Per $1 of the underlying, per share. The options-flow vendor's own per-contract gamma (its option-contracts rows, the
+      ones the name's book already reads) where it has this contract, else the model's off the row's vol. */
   gamma: number;
+  /** Where the gamma came from */
+  gammaFrom?: 'vendor' | 'model';
   /** Per trading SESSION: the price change over one session on the trading clock, spot and vol held (core/greeks
       thetaPerSession). Inside the last session it is minus the extrinsic. */
   theta: number;
@@ -504,7 +511,6 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
       const solved = spot > 0 ? readContract({ ticker: name, root: symbol, spot, strike, right, bid: bidN, ask: askN, expiryIso: iso, vendorIv: feedIv, ivAt: at, now }) : null;
       const ivPct = solved ? solved.iv : NaN;
       const feedDelta = feed('delta');
-      const feedGamma = feed('gamma');
       const mark = bidN >= 0 && askN >= bidN && askN > 0 ? (bidN + askN) / 2 : NaN;
       const intrinsic = spot > 0 ? Math.max(0, right === 'C' ? spot - strike : strike - spot) : NaN;
       const breakeven = askN > 0 ? (right === 'C' ? strike + askN : strike - askN) : NaN;
@@ -513,7 +519,10 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
         right,
         mark: Number.isFinite(mark) ? Number(mark.toFixed(2)) : NaN,
         delta: solved ? Number(solved.delta.toFixed(4)) : feedDelta != null ? Number(feedDelta.toFixed(4)) : NaN,
-        gamma: solved ? Number(solved.gamma.toFixed(4)) : feedGamma != null ? Number(feedGamma.toFixed(4)) : NaN,
+        /* the model's gamma off the row's one vol; the vendor's own per-contract gamma replaces it once the book has
+           this expiry's contracts (withVendorGamma). The first-order snapshot sends no gamma, so none is read from it. */
+        gamma: solved ? Number(solved.gamma.toFixed(4)) : NaN,
+        gammaFrom: solved ? 'model' : undefined,
         theta: solved ? Number(solved.theta.toFixed(4)) : NaN,
         thetaHour: solved ? Number(solved.thetaHour.toFixed(4)) : NaN,
         vega: solved ? Number(solved.vega.toFixed(4)) : NaN,
@@ -595,6 +604,38 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
     expiryIso: iso,
     optRoot: symbol,
   };
+}
+
+/** The options-flow vendor's per-contract gamma for one expiry, strike by strike: the option-contracts rows the name's
+    book has already read for that date (data/book/load.ts fillExpiryFacts → book/scale.ts foldContracts, `row.gamma`
+    into callGamma / putGamma). Null until that date's rows are read; nothing is asked here. */
+export function vendorGammaRows(ticker: string, expiryIso: string): readonly StrikeNode[] | null {
+  const e = peekEntry(sameName(ticker));
+  if (!e || e.status !== 'live' || !expiryIso || !e.factsDates?.has(expiryIso)) return null;
+  const nodes = e.byDate[expiryIso];
+  return nodes?.length ? nodes : null;
+}
+
+/** The chain with each contract's gamma the vendor's own, where its row has one (callGamma / putGamma > 0); the model's
+    stays on the rest. The same chain object when nothing changes. */
+export function withVendorGamma(chain: DeskChain, nodes: readonly StrikeNode[] | null): DeskChain {
+  if (!nodes?.length || !chain.rows.length) return chain;
+  const by = new Map<number, StrikeNode>();
+  for (const n of nodes) by.set(Number(n.strike.toFixed(3)), n);
+  let changed = 0;
+  const lay = (c: DeskContract, g: number | undefined): DeskContract => {
+    if (!(g != null && g > 0) || (c.gammaFrom === 'vendor' && c.gamma === g)) return c;
+    changed += 1;
+    return { ...c, gamma: g, gammaFrom: 'vendor' };
+  };
+  const rows = chain.rows.map(r => {
+    const n = by.get(Number(r.strike.toFixed(3)));
+    if (!n) return r;
+    const call = lay(r.call, n.callGamma);
+    const put = lay(r.put, n.putGamma);
+    return call === r.call && put === r.put ? r : { strike: r.strike, call, put };
+  });
+  return changed ? { ...chain, rows } : chain;
 }
 
 /** Keep the slow fields (volume, open interest, yesterday) on a chain that just got a new quote. */
