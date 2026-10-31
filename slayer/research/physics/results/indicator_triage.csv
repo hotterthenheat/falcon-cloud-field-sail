@@ -1,0 +1,201 @@
+id,name,family,verdict,standard_name,data_needed,slayer_page
+1,Flux Field,electromagnetism,MERGE,signed volume profile / order-flow imbalance (OFI),1m,Terrain
+2,Field Gradient,electromagnetism,MERGE,slope of the per-strike gamma profile (dGEX/dK); Terrain strike rail,OPT,Terrain
+3,Polarity,electromagnetism,MERGE,put/call volume or premium ratio; net premium sign,OPT,Trace
+4,Equilibrium,electromagnetism,MERGE,VWAP / volume point-of-control / gamma flip (all exist),1m+OPT,Terrain
+5,Charge Density,electromagnetism,MERGE,open interest by strike (exists),OPT,Weigher
+6,Magnetic Pull,electromagnetism,DROP,strike pinning (tested as Gravity Well: no attraction),OPT+1m,none
+7,Induction,electromagnetism,DROP,volume-volatility correlation (no new information),1m,none
+8,Capacitance,electromagnetism,RESEARCH,gamma/charm roll-off into expiry (OPEX unclenching),OPT,Pinpoint
+9,Resistance (Ohm),electromagnetism,MERGE,Kyle's lambda (tested as Viscosity),1m,Pulse
+10,Current,electromagnetism,MERGE,signed volume per minute (OFI),1m,Terrain
+11,Voltage,electromagnetism,MERGE,VWAP z-score (Compass input already),1m,Compass
+12,Field Lines,electromagnetism,DROP,visual metaphor only,-,none
+13,Dipole Moment,electromagnetism,RESEARCH,call-wall minus put-wall distance vs the implied move,OPT,Pinpoint
+14,Lorentz Force,electromagnetism,DROP,no computable definition,-,none
+15,Electric Potential Map,electromagnetism,MERGE,integrated gamma profile = Potential Energy Map row,OPT,none
+16,Coulomb Repulsion,electromagnetism,DROP,contradicts its own sibling (pull); same data as walls,OPT,none
+17,Faraday Shock,electromagnetism,MERGE,OI change z-score by strike (book/oiChange exists),OPT,Pinpoint
+18,Conductivity,electromagnetism,MERGE,inverse Amihud illiquidity,1m,Pulse
+19,Shielding,electromagnetism,RESEARCH,net/gross gamma ratio (how much of the book offsets),OPT,Pinpoint
+20,Field Strength Index,electromagnetism,DROP,composite of the rows above,-,none
+21,Order-Flow Velocity,fluid dynamics,MERGE,order-flow imbalance rate (OFI),1m/TAPE,Terrain
+22,Viscosity,fluid dynamics,RESEARCH,Amihud illiquidity / Kyle lambda on 1-min bars (tested: ~0 beyond relative volume; display-only for single names),1m,Weigher
+23,Turbulence,fluid dynamics,RESEARCH,Kritzman-Li turbulence (Mahalanobis distance of cross-asset returns),X,Pulse
+24,Reynolds Regime,fluid dynamics,MERGE,trend-to-noise ratio = Kaufman efficiency ratio,1m,Pulse
+25,Vortex Detector,fluid dynamics,MERGE,Vortex Indicator (Botes-Siepman) / short-horizon reversal,1m,Terrain
+26,Eddy Reversal,fluid dynamics,MERGE,short-horizon mean reversion (duplicate of Vortex),1m,none
+27,Laminar/Turbulent State,fluid dynamics,MERGE,regime label from vol level + efficiency ratio,1m,Pulse
+28,Pressure Gradient,fluid dynamics,RESEARCH,NBBO size imbalance (quote imbalance); full depth is L2 = UNAVAILABLE,quotes,Terrain
+29,Bernoulli Effect,fluid dynamics,DROP,no computable definition,-,none
+30,Drag Coefficient,fluid dynamics,MERGE,slippage per unit volume (Viscosity),1m,none
+31,Flow Divergence,fluid dynamics,MERGE,OBV / volume-price divergence,1m,Terrain
+32,Laminar Trend Score,fluid dynamics,MERGE,R^2 of a linear fit to price (efficiency ratio),1m,none
+33,Boundary Layer,fluid dynamics,MERGE,behaviour at a level = wall back-test (docs/wall-backtest.md),OPT+1m,Pinpoint
+34,Liquidity Vortex,fluid dynamics,MERGE,repeated tests of a level; wall back-test found re-tests add ~nothing,OPT+1m,none
+35,Flow Compressibility,fluid dynamics,MERGE,price elasticity to volume (Kyle lambda),1m,none
+36,Wake,fluid dynamics,RESEARCH,post-block-trade drift (needs the trade tape),TAPE,Trace
+37,Cavitation,fluid dynamics,MERGE,low-volume nodes of the volume profile,1m,Terrain
+38,Stream Function,fluid dynamics,DROP,no computable definition,-,none
+39,Kolmogorov Spectrum,fluid dynamics,MERGE,multiscale variance scaling (Hurst / DFA),1m,none
+40,Momentum Flux,fluid dynamics,DROP,volume-weighted momentum (duplicate),1m,none
+41,Market Entropy,thermodynamics,MERGE,Shannon entropy of binned returns -> permutation entropy row,1m,none
+42,Permutation Entropy,thermodynamics,DROP,"Bandt-Pompe permutation entropy (tested: no vol gain on 4 of 5 names, no direction)",1m,none
+43,Volatility Temperature,thermodynamics,MERGE,realised volatility (exists),1m,Terrain
+44,Phase Transition,thermodynamics,RESEARCH,Markov-switching / HMM regime probability,D/1m,Pulse
+45,Volatility Half-Life,thermodynamics,KEEP,AR(1)/HAR mean-reversion half-life of realised vol (tested),1m->D,Pulse
+46,Kinetic Energy,thermodynamics,MERGE,volume x squared return ~ realised variance,1m,none
+47,Potential Energy Map,thermodynamics,KEEP,dealer hedging potential = integrated gamma profile; its curvature at spot is net dealer gamma (tested: +3.7pp R2 on the day RV over HAR+VIX),OPT,Terrain
+48,Heat Capacity,thermodynamics,DROP,no stable definition,-,none
+49,Free Energy,thermodynamics,DROP,no computable definition,-,none
+50,Enthalpy,thermodynamics,DROP,no computable definition,-,none
+51,Thermal Equilibrium,thermodynamics,KEEP,implied-minus-realised vol spread (variance risk premium),OPT+1m,Weigher
+52,Heat Flow,thermodynamics,MERGE,volatility spillover (Gravitational Wave Scanner row),X,none
+53,Boiling Point,thermodynamics,DROP,arbitrary vol thresholds,D,none
+54,Latent Heat,thermodynamics,MERGE,volume absorbed without range (inverse Amihud),1m,none
+55,Carnot Efficiency,thermodynamics,MERGE,Kaufman efficiency ratio,1m,none
+56,Pressure,thermodynamics,DROP,no computable definition,-,none
+57,Equation of State,thermodynamics,DROP,no computable definition,-,none
+58,Sample Entropy,thermodynamics,MERGE,Richman-Moorman sample entropy (tested beside permutation entropy),1m,none
+59,Thermal Noise Floor,thermodynamics,RESEARCH,"microstructure-noise variance (volatility signature plot, Zhang-Mykland-Ait-Sahalia)",1m/quotes,none
+60,Cooling Rate,thermodynamics,MERGE,vol decay after a spike = half-life row,1m,none
+61,Frequency Spectrum,wave physics,DROP,periodogram of returns: white apart from intraday seasonality,1m,none
+62,Spectral Momentum,wave physics,MERGE,low-frequency power / multi-horizon momentum,1m,none
+63,Wavelet Decomposition,wave physics,RESEARCH,"MODWT multiresolution (denoising tool, not a signal)",1m,none
+64,Phase Synchronization,wave physics,DROP,Hilbert phase locking across timeframes (tested: no edge over plain sign agreement),1m,none
+65,Wave Interference,wave physics,MERGE,sum of cycle components = phase synchronisation row,1m,none
+66,Dominant Cycle,wave physics,DROP,Ehlers dominant cycle; returns have no stable cycle,1m,none
+67,Amplitude,wave physics,MERGE,range / ATR,1m,none
+68,Standing Waves,wave physics,MERGE,range-bound regime label,1m,Pulse
+69,Resonance,wave physics,RESEARCH,OPEX / calendar effects on vol and pinning,OPT+D,Pinpoint
+70,Doppler Shift,wave physics,DROP,no computable definition,-,none
+71,Harmonics,wave physics,DROP,no computable definition,-,none
+72,Wave Packet,wave physics,DROP,no computable definition,-,none
+73,Damping Ratio,wave physics,MERGE,AR(2) damping = half-life row,1m,none
+74,Beat Frequency,wave physics,DROP,no computable definition,-,none
+75,Group Velocity,wave physics,DROP,no computable definition,-,none
+76,Wavelet Coherence,wave physics,RESEARCH,wavelet coherence between two assets (Torrence-Compo),X,none
+77,Hilbert Phase,wave physics,MERGE,phase synchronisation row,1m,none
+78,Spectral Entropy,wave physics,MERGE,entropy row,1m,none
+79,Fourier Forecast,wave physics,DROP,extrapolating a non-stationary spectrum: classic overfit,1m,none
+80,Cross-Timeframe Alignment,wave physics,MERGE,plain multi-horizon momentum sign agreement (the phase test baseline; no edge either),1m,Terrain
+81,Inertia,classical mechanics,MERGE,return autocorrelation / Hurst,1m,none
+82,Impulse,classical mechanics,MERGE,volume-weighted return burst,1m,none
+83,Escape Velocity,classical mechanics,DROP,range-compression breakout strength (tested: no continuation; size signal = the breakout bar alone; Compass has range compression + OR break),1m,none
+84,Elastic Reversion,classical mechanics,MERGE,"Ornstein-Uhlenbeck reversion to VWAP (VWAP z, Compass input)",1m,Compass
+85,Rebound Coefficient,classical mechanics,MERGE,bounce ratio at a wall = wall back-test,OPT+1m,Pinpoint
+86,Friction,classical mechanics,MERGE,bid-ask spread / trading cost (spread/mid is a Compass input),quotes,Compass
+87,Momentum (p = m v),classical mechanics,MERGE,volume x return,1m,none
+88,Acceleration,classical mechanics,DROP,second difference of price: noise,1m,none
+89,Jerk,classical mechanics,DROP,third difference: noise,1m,none
+90,Centripetal Force,classical mechanics,DROP,no computable definition,-,none
+91,Torque,classical mechanics,DROP,no computable definition,-,none
+92,Angular Momentum,classical mechanics,DROP,no computable definition,-,none
+93,Work Done,classical mechanics,MERGE,move x volume,1m,none
+94,Power,classical mechanics,DROP,no computable definition,-,none
+95,Projectile Target,classical mechanics,DROP,measured-move folklore,1m,none
+96,Spring Constant,classical mechanics,MERGE,OU mean-reversion speed kappa = half-life row,1m,none
+97,Center of Mass,classical mechanics,MERGE,VWAP / volume POC (exist),1m,Terrain
+98,Collision,classical mechanics,MERGE,a touch of a wall (wall back-test),OPT+1m,none
+99,Pendulum Period,classical mechanics,DROP,no stable cycle to measure,-,none
+100,Terminal Velocity,classical mechanics,MERGE,trend exhaustion (RSI-type),1m,none
+101,Market Lyapunov,chaos,DROP,Rosenstein largest Lyapunov exponent: unidentifiable on short noisy returns,1m,none
+102,Hurst Exponent,chaos,MERGE,R/S Hurst -> DFA row,1m,none
+103,DFA Persistence,chaos,DROP,"detrended fluctuation analysis (tested: no continuation edge, not better than variance ratio)",1m,none
+104,Fractal Dimension,chaos,MERGE,Higuchi / Katz FD (~2 - H),1m,none
+105,Multifractal Spectrum,chaos,RESEARCH,MF-DFA spectrum width (needs long windows; daily use only),1m,none
+106,Recurrence Rate,chaos,RESEARCH,recurrence quantification analysis (RQA),1m,none
+107,Determinism (RQA),chaos,MERGE,RQA row,1m,none
+108,Critical Transition Detector,chaos,MERGE,critical slowing down: rising AR(1) + variance (tested: AR(1) part AUC 0.49-0.51 = coin flip; variance part = the vol ratio a HAR already holds),1m,Pulse
+109,Correlation Dimension,chaos,DROP,Grassberger-Procaccia: needs far more clean data than exists,1m,none
+110,Strange Attractor Map,chaos,DROP,visual only,-,none
+111,Bifurcation Detector,chaos,MERGE,critical transition row,1m,none
+112,Butterfly Sensitivity,chaos,DROP,no computable definition,-,none
+113,Kolmogorov-Sinai Entropy,chaos,DROP,not estimable on this data,-,none
+114,Lacunarity,chaos,DROP,no use in prediction literature,1m,none
+115,Edge of Chaos Score,chaos,DROP,no computable definition,-,none
+116,Skewness Rise (EWS),chaos,MERGE,early-warning skewness = critical transition row,1m,none
+117,Flickering (EWS),chaos,MERGE,bimodality early warning = critical transition row,1m,none
+118,Variance Ratio,chaos,DROP,Lo-MacKinlay variance ratio (the plain persistence measure; tested as the baseline: no edge either),1m,none
+119,Fractal Efficiency,chaos,MERGE,Kaufman efficiency ratio,1m,none
+120,Self-Similarity Score,chaos,DROP,duplicate of Hurst,1m,none
+121,Scenario Distributions,quantum-inspired,KEEP,risk-neutral density from the chain (Breeden-Litzenberger),OPT,Weigher
+122,Tunneling Probability,quantum-inspired,KEEP,probability of touching a level before expiry (barrier-hit ~ 2x delta) vs empirical wall breaks,OPT,Weigher
+123,Uncertainty Principle,quantum-inspired,DROP,no computable definition,-,none
+124,Wavefunction Collapse,quantum-inspired,MERGE,event IV crush,OPT,Weigher
+125,Entanglement,quantum-inspired,MERGE,correlation,X,none
+126,Quantum States,quantum-inspired,MERGE,HMM regime label,D,Pulse
+127,Energy Levels,quantum-inspired,MERGE,strikes / levels (exist),OPT,none
+128,Spin,quantum-inspired,DROP,no computable definition,-,none
+129,Decoherence,quantum-inspired,MERGE,correlation breakdown (absorption-ratio row),X,none
+130,Observer Effect,quantum-inspired,DROP,no computable definition,-,none
+131,Path Integral,quantum-inspired,MERGE,Monte-Carlo cone (scenario row),OPT,none
+132,Probability Cloud,quantum-inspired,MERGE,implied-move band from the ATM straddle,OPT,Terrain
+133,Barrier Penetration Rate,quantum-inspired,MERGE,empirical wall break rate (wall back-test),OPT+1m,none
+134,Zero-Point Energy,quantum-inspired,DROP,no computable definition,-,none
+135,Tunneling Time,quantum-inspired,DROP,no computable definition,-,none
+136,Superposition Bias,quantum-inspired,MERGE,risk-reversal skew (Compass input),OPT,Compass
+137,Scenario Interference,quantum-inspired,DROP,no computable definition,-,none
+138,Eigenstate Levels,quantum-inspired,DROP,no computable definition,-,none
+139,Heisenberg Spread,quantum-inspired,DROP,no computable definition,-,none
+140,Quantum Momentum,quantum-inspired,DROP,no computable definition,-,none
+141,Signal Polarization,optics,MERGE,agreement of signals -> cross-timeframe alignment row (only meaningful if signals are independent),1m,none
+142,Absorption,optics,MERGE,volume absorbed at a level without a move (Viscosity at the level),1m,none
+143,Refraction,optics,DROP,no computable definition,-,none
+144,Reflection,optics,MERGE,bounce at a wall (wall back-test),OPT+1m,none
+145,Lens Focus,optics,RESEARCH,Herfindahl concentration of gamma / OI across strikes,OPT,Pinpoint
+146,Diffraction,optics,DROP,no computable definition,-,none
+147,Spectral Lines,optics,DROP,no computable definition,-,none
+148,Luminosity,optics,MERGE,volume vs its intraday curve (Compass input),1m,Compass
+149,Opacity,optics,DROP,off-exchange share: needs TRF-tagged prints; UNAVAILABLE as built,TAPE,none
+150,Brightness Index,optics,DROP,no computable definition,-,none
+151,Prism,optics,DROP,flow by participant type: UNAVAILABLE (no participant IDs),-,none
+152,Laser Coherence,optics,DROP,duplicate of polarization,-,none
+153,Red Shift,optics,DROP,no computable definition,-,none
+154,Optical Depth,optics,DROP,book depth: L2 UNAVAILABLE,L2,none
+155,Glare,optics,MERGE,noise-to-signal = 1 / efficiency ratio,1m,none
+156,Interference Fringes,optics,DROP,no computable definition,-,none
+157,Focal Point,optics,DROP,no computable definition,-,none
+158,Shadow,optics,DROP,hidden liquidity: UNAVAILABLE,L2,none
+159,Polarization Filter,optics,MERGE,signal-agreement filter (polarization row),-,none
+160,Transparency Score,optics,DROP,no computable definition,-,none
+161,Market Diffusion,statistical mechanics,MERGE,realised variance per unit time; anomalous-diffusion exponent = variance ratio / Hurst,1m,none
+162,Magnetization,statistical mechanics,RESEARCH,breadth: share of constituents / sectors moving with the index,X,Pulse
+163,Correlation Decomposition,statistical mechanics,RESEARCH,PCA absorption ratio (Kritzman et al.),X,Pulse
+164,Random-Matrix Filtering,statistical mechanics,RESEARCH,Marchenko-Pastur eigenvalue cleaning (portfolio tool),X,none
+165,Systemic Stress,statistical mechanics,MERGE,absorption ratio / turbulence,X,none
+166,Ising Herding,statistical mechanics,DROP,"a model, not an indicator",-,none
+167,Partition Function,statistical mechanics,DROP,no computable definition,-,none
+168,Boltzmann Returns,statistical mechanics,DROP,"a distribution fit, not a signal",-,none
+169,Mean Free Path,statistical mechanics,MERGE,time between directional changes = intrinsic-time row,1m,none
+170,Brownian Drift,statistical mechanics,DROP,mean return (no information),-,none
+171,Fokker-Planck Density,statistical mechanics,MERGE,scenario-distribution row,OPT,none
+172,Critical Temperature,statistical mechanics,DROP,no computable definition,-,none
+173,Susceptibility,statistical mechanics,MERGE,beta to SPY,X,none
+174,Order Parameter,statistical mechanics,MERGE,magnetization row,X,none
+175,Percolation,statistical mechanics,DROP,no computable definition,-,none
+176,Detailed Balance,statistical mechanics,RESEARCH,time-irreversibility test (low priority),1m,none
+177,Fluctuation-Dissipation,statistical mechanics,DROP,no computable definition,-,none
+178,Equipartition,statistical mechanics,DROP,no computable definition,-,none
+179,Mean-Field Pressure,statistical mechanics,DROP,no computable definition,-,none
+180,Correlation Regime,statistical mechanics,MERGE,rolling cross-asset correlation (absorption-ratio row),X,none
+181,Gravity Well,astrophysics,DROP,"strike pinning to the largest-gamma strike (tested on the rebuilt SPY book: no attraction, slight drift away; pull direction n.s.)",OPT+1m,none
+182,Market Clock,astrophysics,KEEP,intrinsic time: volume / directional-change bars (Guillaume et al.),1m,Terrain
+183,Gravitational Wave Scanner,astrophysics,KEEP,"market-to-single-name volatility spillover (HAR-X; tested: +0.6-1.0pp R2 on AAPL, ~+0.15 on NVDA, ~0.1 between ETFs)",X,Compass-retrain
+184,Event Horizon,astrophysics,DROP,no computable definition,-,none
+185,Black Hole,astrophysics,DROP,no computable definition,-,none
+186,Orbit,astrophysics,MERGE,oscillation around a level = pinning row,OPT+1m,none
+187,Escape Trajectory,astrophysics,MERGE,escape-velocity row,1m,none
+188,Supernova,astrophysics,RESEARCH,jump detection (Lee-Mykland / bipower variation),1m,Pulse
+189,Dark Matter,astrophysics,DROP,unseen positioning: UNAVAILABLE by definition,-,none
+190,Dark Energy,astrophysics,DROP,no computable definition,-,none
+191,Redshift,astrophysics,DROP,no computable definition,-,none
+192,Tidal Force,astrophysics,MERGE,expiry charm / gamma roll-off (Capacitance row),OPT,none
+193,Lagrange Points,astrophysics,DROP,midpoint between walls: no evidence of meaning,OPT,none
+194,Solar Wind,astrophysics,DROP,no computable definition,-,none
+195,Gravitational Lensing,astrophysics,DROP,no computable definition,-,none
+196,Orbital Period,astrophysics,DROP,no stable cycle,-,none
+197,Cosmic Background,astrophysics,MERGE,noise floor (Thermal Noise Floor row),1m,none
+198,Accretion,astrophysics,MERGE,OI build-up by strike (book/oiChange exists),OPT,Pinpoint
+199,Shock Propagation,astrophysics,MERGE,cross-asset lead-lag = Gravitational Wave Scanner row,X,none
+200,Planetary Alignment,astrophysics,MERGE,multi-asset alignment = magnetization row,X,none
