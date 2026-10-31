@@ -4,7 +4,7 @@
 
 import { MULT, stampOf, type Session, type Trade } from './engine';
 import { instantOf, type JournalRow } from './journal';
-import { contractKey, longLeg, quoteAt } from './quotes';
+import { contractKey, legsOf, longLeg, quoteAt } from './quotes';
 import { paperFut } from '../paper/products';
 import { LAST_MIN, barTime, barsKnown, ensureBars, ensureLeg, legKnown, sessionAfter, spotAt } from './history';
 
@@ -122,7 +122,8 @@ function ofOption(s: Session, t: Trade): Excursion {
   });
   const key = contractKey(t.contract);
   const rode = s.orders.filter(o => o.side === 'sell' && o.kind !== 'market' && o.price != null && o.status !== 'refused' && contractKey(o.contract) === key && within(o.placed, t.opened, t.closed));
-  const worth = (price: number, qty: number) => (price - t.avgIn) * MULT * qty - (s.fee * qty * 2);
+  /* the fee a contract each way on every leg (a spread is two) */
+  const worth = (price: number, qty: number) => (price - t.avgIn) * MULT * qty - s.fee * qty * legsOf(t.contract) * 2;
   const waysOut = (kind: 'limit' | 'stop'): WayOut[] =>
     rode
       .filter(o => o.kind === kind)
@@ -176,9 +177,17 @@ function ofPaper(r: Extract<JournalRow, { paper: true }>): Excursion {
   } else {
     const ot = r.t as Extract<JournalRow, { paper: true; fut: false }>['t'];
     const key = contractKey(ot.contract);
-    const rode = r.s.opt.orders.filter(o => o.side === 'sell' && o.kind !== 'market' && o.price != null && o.status !== 'refused' && contractKey(o.contract) === key && inWindow(o.placed.at));
-    const worth = (price: number, qty: number) => (price - ot.avgIn) * MULT * qty - r.s.fee * qty * 2;
-    const ways = (kind: 'limit' | 'stop') => rode.filter(o => o.kind === kind).map<WayOut>(o => (o.on === 'name' ? { price: o.price!, qty: o.qty, of: 'name', pnl: null, trailed: o.trail != null || undefined, movedToCost: !!o.moved || undefined } : { price: o.price!, qty: o.qty, of: 'contract', pnl: worth(o.price!, o.qty), trailed: o.trail != null || undefined, movedToCost: !!o.moved || undefined })).sort((a, b) => (kind === 'limit' ? a.price - b.price : b.price - a.price));
+    /* a long's way out is a sell, a short's a buy back — never the order that opened it (an opening sell is not a target) */
+    const dir = ot.short ? -1 : 1;
+    const outSide = dir > 0 ? 'sell' : 'buy';
+    const closes = (o: { side: string; opens?: boolean }) => o.side === outSide && (o.opens === false || (o.opens == null && o.side === 'sell'));
+    const rode = r.s.opt.orders.filter(o => closes(o) && o.kind !== 'market' && o.price != null && o.status !== 'refused' && contractKey(o.contract) === key && inWindow(o.placed.at));
+    /* what it would have made: the way the trade faces, less the fee a contract each way on every leg (a spread is two) */
+    const fee = r.s.sandbox ? 0 : r.s.fee;
+    const worth = (price: number, qty: number) => dir * (price - ot.avgIn) * MULT * qty - fee * qty * legsOf(ot.contract) * 2;
+    /* nearest first: a long's targets rise from the entry and its stops fall; a short's the other way */
+    const order = (kind: 'limit' | 'stop') => (kind === 'limit' ? dir : -dir);
+    const ways = (kind: 'limit' | 'stop') => rode.filter(o => o.kind === kind).map<WayOut>(o => (o.on === 'name' ? { price: o.price!, qty: o.qty, of: 'name', pnl: null, trailed: o.trail != null || undefined, movedToCost: !!o.moved || undefined } : { price: o.price!, qty: o.qty, of: 'contract', pnl: worth(o.price!, o.qty), trailed: o.trail != null || undefined, movedToCost: !!o.moved || undefined })).sort((a, b) => order(kind) * (a.price - b.price));
     targets = ways('limit');
     stops = ways('stop');
   }
