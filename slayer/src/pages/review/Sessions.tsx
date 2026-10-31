@@ -304,7 +304,7 @@ const Sessions = () => {
           <Fact label="Sessions">{sessions.length}</Fact>
           <Fact label="Closed trades">{totals.trades}</Fact>
           <Fact label="All sessions, up or down" title={totals.unmarked ? 'A session whose open contracts are not marked yet counts what it has banked' : 'Every session’s move since its start, open contracts marked'}>
-            <span className={dirInk(totals.net)}>{usdSigned(totals.net)}</span>
+            {sessions.length ? <span className={dirInk(totals.net)}>{usdSigned(totals.net)}</span> : <span className="text-textMuted">—</span>}
           </Fact>
         </>
       }
