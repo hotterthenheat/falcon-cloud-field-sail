@@ -45,15 +45,25 @@ function note(a: ThetaAnswer): void {
   emit();
 }
 
+/** How long a read waits on the first one before it goes out on its own. The first read can take as long as the
+    browser's own limit (data/theta.ts thetaWaitMs: 25 s for a quote, 95 s for history); every pane waiting that long
+    behind one slow history read is the stall this bounds. */
+export const FIRST_READ_WAIT_MS = 8_000;
+/* the first read, or FIRST_READ_WAIT_MS from when it went out, whichever is sooner: one timer for every waiter */
+let firstGate: Promise<unknown> | null = null;
+
 /** One ThetaData read. While the terminal is down only one call at a time goes out; the others answer offline at once. */
 export async function thetaGet(path: string, jump = false): Promise<ThetaAnswer> {
-  if (!known && firstRead) await firstRead.catch(() => undefined);
+  if (!known && firstGate) await firstGate;
   if (down && probing) return { status: 503, data: null, error: 'terminal_down' };
   const probe = down;
   if (probe) probing = true;
   try {
     const call = thetaCall(path, jump);
-    if (!known && !firstRead) firstRead = call;
+    if (!known && !firstRead) {
+      firstRead = call;
+      firstGate = Promise.race([call.catch(() => undefined), new Promise(resolve => setTimeout(resolve, FIRST_READ_WAIT_MS))]);
+    }
     const a = await call;
     note(a);
     return a;

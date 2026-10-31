@@ -79,6 +79,8 @@ function faultText(status: number, parsed: unknown, text: string): string {
   const raw = o ? String(o.error || o.message || '') : typeof parsed === 'string' ? parsed : text;
   if (code === 'terminal_down' || code === 'terminal_login' || code === 'session_lost' || code === 'terminal_unavailable' || status === 0 || downStatus(status) || /not running|invalid session/i.test(raw)) return 'terminal_down';
   if (status === 472) return 'no_data';
+  /* the server gave up waiting on a terminal that is up (server/thetaProxy.mjs BUSY): busy, by its code */
+  if (code === 'terminal_busy') return 'terminal_busy';
   const msg = raw.replace(/\s+/g, ' ').trim().slice(0, 180);
   return msg || `unavailable ${status}`;
 }
@@ -133,6 +135,19 @@ export function thetaCall(path: string, jump = false): Promise<ThetaAnswer> {
   return slot.answer;
 }
 
+/* How long this browser waits on one read: a little past the server's own limit on the terminal (server/thetaProxy.mjs
+   loadNow: 20 s for a snapshot, 90 s for history), so the server's busy answer (504 terminal_busy) normally lands
+   first. A read that outlives it anyway (a stalled socket, a proxy that never answers) is the terminal being busy, not
+   down: no breaker, the next read asks again. */
+const THETA_WAIT_MS = { quote: 25_000, history: 95_000 } as const;
+const historyPath = (p: string): boolean => /\/(history|at_time)\//.test(p);
+export const thetaWaitMs = (path: string): number => (historyPath(path) ? THETA_WAIT_MS.history : THETA_WAIT_MS.quote);
+const BUSY_ANSWER = (): ThetaAnswer => ({ status: 504, data: null, error: 'terminal_busy' });
+const timedOut = (e: unknown): boolean => {
+  const name = e && typeof e === 'object' ? (e as { name?: unknown }).name : undefined;
+  return name === 'TimeoutError' || name === 'AbortError';
+};
+
 async function thetaRead(path: string, jump = false): Promise<ThetaAnswer> {
   path = optionPath(path);
   if (SIM_DESK) return { status: 0, data: null, error: 'sim' };
@@ -142,7 +157,7 @@ async function thetaRead(path: string, jump = false): Promise<ThetaAnswer> {
   if (Date.now() < downUntil) return { status: 503, data: null, error: 'terminal_down' };
   await take(jump);
   try {
-    const res = await fetch(`/api/theta${path}`, { headers: { ...auth.headers, 'x-theta-soft': '1' } });
+    const res = await fetch(`/api/theta${path}`, { headers: { ...auth.headers, 'x-theta-soft': '1' }, signal: AbortSignal.timeout(thetaWaitMs(path)) });
     const text = await res.text();
     const type = res.headers.get('content-type') || '';
     let parsed: unknown = null;
@@ -176,7 +191,9 @@ async function thetaRead(path: string, jump = false): Promise<ThetaAnswer> {
     }
     noteUp();
     return { status: res.status, data, error: null };
-  } catch {
+  } catch (e) {
+    /* our own wait ran out: busy, never down (the body can time out too, after the headers came in) */
+    if (timedOut(e)) return BUSY_ANSWER();
     noteDown();
     return { status: 0, data: null, error: 'terminal_down' };
   } finally {
