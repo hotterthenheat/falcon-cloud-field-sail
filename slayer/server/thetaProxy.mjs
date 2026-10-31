@@ -64,7 +64,7 @@ const withLogin = (got) =>
 
 /* The app's own client sends x-theta-soft: 1 and reads `code`, so an outage it already shows on screen is answered
    200 rather than 503, and the browser does not log every call of a known outage as an error. Anyone else gets 503. */
-const OUTAGE = /"code":"(terminal_down|session_lost|terminal_unavailable)"/;
+const OUTAGE = /"code":"(terminal_down|terminal_login|session_lost|terminal_unavailable)"/;
 const statusFor = (req, status, body) =>
   status === 503 && req.headers['x-theta-soft'] === '1' && OUTAGE.test(String(body).slice(0, 200)) ? 200 : status;
 /* 472 is ThetaData's "no data for this request" (a contract that never quoted that day): an answer, not a fault */

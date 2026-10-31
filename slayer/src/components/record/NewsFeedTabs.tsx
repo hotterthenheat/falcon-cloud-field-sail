@@ -16,7 +16,7 @@ import TickerLookup from '../ui/TickerLookup';
 import { ImpactLegend, ImpactMark, NEWS_FLAG_TIP, NewsFlag, tierOf } from './impactMark';
 
 /** MACRO only for an economy or market story; an untagged company story is not macro */
-export const nameWord = (item: { ticker: string | null; category: string; mentions?: string[] }): string => item.ticker ?? (item.mentions?.length ? `mentions ${item.mentions[0]}` : item.category === 'Macro' ? 'MACRO' : 'NO NAME');
+export const nameWord = (item: { ticker: string | null; category: string; mentions?: string[] }): string => item.ticker ?? (item.mentions?.length ? `mentions ${item.mentions[0]}` : item.category === 'Macro' ? 'MACRO' : 'GENERAL');
 import { useBoardNames } from '../../data/boardNames';
 
 type FeedTab = 'all' | 'following' | 'earnings' | 'data' | 'analyst' | 'deals' | 'other';

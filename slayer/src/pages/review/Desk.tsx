@@ -34,7 +34,7 @@ import type { KeyLevels } from '../../types/gex';
    fold; no weekly: the sessions kept behind the clock are too few weeks). The overlays that read BARS — the rest
    need the book, and a replayed tape has none yet, so their switches are not offered. */
 const REVIEW_TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '30m', '1h', '1D'];
-const REVIEW_OVERLAY_KEYS: (keyof ChartOverlays)[] = ['volume', 'session', 'cone', 'volDrift'];
+const REVIEW_OVERLAY_KEYS: (keyof ChartOverlays)[] = ['volume', 'session', 'cone', 'volDrift', 'trails', 'flow'];
 /** Sessions kept behind the clock's day — what the daily candles, a 50-bar average and yesterday's levels are made from */
 const CONTEXT_DAYS = 20;
 type Tab = 'open' | 'orders' | 'closed';
