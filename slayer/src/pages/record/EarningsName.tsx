@@ -646,8 +646,9 @@ const EarningsName = () => {
           <Fact label="IV drop after a print" testId="iv-drop">
             {dossier.ivCrushKnown && Number.isFinite(dossier.ivCrushPct) ? (
               <span title="The median drop of the name's 30-day implied vol from the close before a report to the close after it">
-                −{dossier.ivCrushPct}%
-                {dossier.ivCrushPoints != null && Number.isFinite(dossier.ivCrushPoints) && dossier.ivCrushPoints !== 0 ? <span className="block text-t10 text-textMuted" data-name-fact="iv-points">{dossier.ivCrushPoints.toFixed(1)} vol pts</span> : null}
+                {/* a name whose IV typically rose through its prints says so, never "−-4%" */}
+                {dossier.ivCrushPct >= 0 ? `−${dossier.ivCrushPct}%` : `+${-dossier.ivCrushPct}%`}
+                {dossier.ivCrushPoints != null && Number.isFinite(dossier.ivCrushPoints) && dossier.ivCrushPoints !== 0 ? <span className="block text-t10 text-textMuted" data-name-fact="iv-points">{dossier.ivCrushPoints > 0 ? '−' : '+'}{Math.abs(dossier.ivCrushPoints).toFixed(1)} vol pts</span> : null}
               </span>
             ) : (
               <span className="text-textMuted" title="The IV history does not cover a past report on both sides">—</span>

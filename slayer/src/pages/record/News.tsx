@@ -1095,9 +1095,11 @@ const News = () => {
                 </>
               ) : (
                 <>
-                  <span className="text-textMuted" data-news-map-count>
-                    {placedCount.toLocaleString('en-US')} of {rows.length.toLocaleString('en-US')} {rows.length === 1 ? 'story' : 'stories'} placed · {pins.length} {pins.length === 1 ? 'city' : 'cities'}
-                  </span>
+                  {rows.length > 0 && (
+                    <span className="text-textMuted" data-news-map-count title="Stories that name a company with a known home or a place in their headline sit on the map; the rest are in the list">
+                      {placedCount.toLocaleString('en-US')} of {rows.length.toLocaleString('en-US')} {rows.length === 1 ? 'story' : 'stories'} placed · {pins.length} {pins.length === 1 ? 'city' : 'cities'}
+                    </span>
+                  )}
                   <HeatLegend />
                   <span className="ml-auto" data-news-session-read>
                     {sessionsOpen.length ? (

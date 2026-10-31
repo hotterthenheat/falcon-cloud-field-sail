@@ -593,7 +593,7 @@ const LiveMap = ({ pins, selectedCity, onPick, onHover, heat, reach, flyTo = nul
   }, [ready, viewRev]);
 
   /* where the open story's lines land, named once the world is big enough to hold the names */
-  const wide = bucket >= 1;
+  const wide = bucket >= 0.5;
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
