@@ -112,7 +112,7 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
       </span>
       {shed < 4 && (
         <span className="-ml-1">
-          <DayMoveText snapshot={snapshot} short={!showExt} />
+          <DayMoveText snapshot={snapshot} short={!showExt} price={spot} />
         </span>
       )}
       <span className={`inline-flex items-baseline gap-1.5 ${SEP}`} title={flip != null ? `The gamma flip: the price where the book's net gamma crosses zero — dealers ${absorb ? 'are long gamma on this side and turn short' : 'are short gamma on this side and turn long'} past it` : "No flip within ±10%: the book's net gamma keeps one sign across the whole range"}>
