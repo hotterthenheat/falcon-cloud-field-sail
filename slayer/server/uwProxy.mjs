@@ -260,16 +260,63 @@ const send = (res, status, body, type = 'application/json') => {
   res.end(body);
 };
 
+/* ---- the key's breaker ----
+   A 429 is about the key, not the path: every caller holds off until the vendor's Retry-After (else 1 s, 2 s, 4 s … up
+   to 30 s) has passed. The wait happens outside the three slots, background work (refreshes, the recorder) never waits
+   at all (it gives up at once and the hub keeps the last good copy), and a viewer waits at most VIEWER_COOL_MS before
+   being answered 429 with the time left, which the browser honours (data/whales.ts). */
+let coolUntil = 0;
+let strikes = 0;
+const VIEWER_COOL_MS = 8_000;
+const MAX_COOL_MS = 60_000;
+const stats429 = { refusals: 0, held: 0, gaveUp: 0 };
+/** ms the vendor asked us to wait (Retry-After in seconds or as a date), or 0 */
+function retryAfterMs(h) {
+  if (!h) return 0;
+  const s = Number(h);
+  if (Number.isFinite(s)) return s > 0 ? s * 1000 : 0;
+  const at = Date.parse(h);
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : 0;
+}
+function noteRefused(header) {
+  strikes += 1;
+  stats429.refusals += 1;
+  const ms = Math.min(MAX_COOL_MS, retryAfterMs(header) || Math.min(30_000, 1000 * 2 ** (strikes - 1)));
+  coolUntil = Math.max(coolUntil, Date.now() + ms);
+}
+const coolLeft = () => Math.max(0, coolUntil - Date.now());
+const tooMany = () => ({
+  status: 429,
+  body: Buffer.from(JSON.stringify({ error: 'unusual whales is rate limiting this key; asked again shortly', code: 'rate_limited_upstream' })),
+  type: 'application/json',
+});
+const COOLING = Symbol('cooling');
+
 async function load(path, key, lane) {
   const ticket = { entry: null, dead: false };
+  const background = lane !== 'viewer';
   const job = (async () => {
-    /* The vendor's 429s are waited out here (Retry-After, else 0.8 s, 1.6 s, 3.2 s), not in the browser. */
+    /* At most one retry of a 429 (after the key's breaker has passed) and two of a gateway error; never a sleep inside
+       a slot. */
     let upstream;
     let buf;
+    let refusals = 0;
     for (let attempt = 0; ; attempt++) {
       if (ticket.dead) throw new Error('withdrawn');
+      const wait = coolLeft();
+      if (wait > 0) {
+        if (background || wait > VIEWER_COOL_MS) {
+          stats429.gaveUp += 1;
+          return tooMany();
+        }
+        stats429.held += 1;
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
       /* the body is read inside the slot, so a slot frees only once the vendor has finished answering */
-      [upstream, buf] = await upstreamSlot(async () => {
+      const got = await upstreamSlot(async () => {
+        /* the breaker tripped while this ask waited for its slot: give the slot back without a call */
+        if (coolLeft() > 0) return COOLING;
         const t0 = Date.now();
         const r = await fetch(`https://api.unusualwhales.com/api${path}`, {
           headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
@@ -282,11 +329,22 @@ async function load(path, key, lane) {
         if (!ticket.dead) recent.push(`${e?.name || 'error'} ${path.slice(0, 60)}`);
         throw e;
       });
+      if (got === COOLING) {
+        attempt -= 1;
+        continue;
+      }
+      [upstream, buf] = got;
       recent.push(`${upstream.status} ${path.slice(0, 60)}`);
       if (recent.length > 20) recent.splice(0, recent.length - 20);
-      if (!retryable(upstream.status) || attempt >= 3) break;
-      const after = Number(upstream.headers.get('retry-after'));
-      await new Promise((r) => setTimeout(r, Number.isFinite(after) && after > 0 && after <= 5 ? after * 1000 : 800 * 2 ** attempt));
+      if (upstream.status === 429) {
+        noteRefused(upstream.headers.get('retry-after'));
+        refusals += 1;
+        if (refusals >= 2 || background) break;
+        continue;
+      }
+      if (upstream.status < 500) strikes = 0;
+      if (!retryable(upstream.status) || attempt >= 2) break;
+      await new Promise((r) => setTimeout(r, 800 * 2 ** attempt));
     }
     /* a refusal that outlasts the retries comes back as is; the hub keeps the last good answer on screen */
     const type = upstream.headers.get('content-type') || 'application/json';
@@ -341,7 +399,7 @@ export async function proxyUw(req, res) {
     return;
   }
   if (/^(?:\/api\/uw)?\/__hub(?:\?|$)/.test(req.url || '') && process.env.VERCEL_ENV !== 'production') {
-    send(res, 200, JSON.stringify({ ...hub.stats(), slotsBusy: upstreamBusy, slowSlots: slowBusy, refreshSlots: refreshBusy, quickQueued: quickQueue.length, viewersQueued: viewerQueue.length, refreshesQueued: refreshQueue.length, recent }));
+    send(res, 200, JSON.stringify({ ...hub.stats(), slotsBusy: upstreamBusy, slowSlots: slowBusy, refreshSlots: refreshBusy, quickQueued: quickQueue.length, viewersQueued: viewerQueue.length, refreshesQueued: refreshQueue.length, coolingMs: coolLeft(), ...stats429, recent }));
     return;
   }
   const path = forwardPath(req.url, /^\/api\/uw/, 400);
@@ -361,6 +419,10 @@ export async function proxyUw(req, res) {
   }
   try {
     const got = await hub.get(path);
+    /* a refusal tells the browser how long the key's breaker still holds, so it waits that out instead of asking again */
+    if (got.status === 429) res.setHeader('retry-after', String(Math.max(1, Math.ceil(coolLeft() / 1000))));
+    /* how old the answer is (Age, x-hub-at), so a feed can say "as of" when the hub is holding an old copy */
+    else for (const [k, v] of Object.entries(hub.ageHeaders(path, got))) res.setHeader(k, v);
     send(res, got.status, got.body, got.type);
   } catch {
     send(res, 502, JSON.stringify({ error: 'unusual whales unreachable' }));

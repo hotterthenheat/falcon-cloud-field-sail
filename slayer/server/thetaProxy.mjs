@@ -167,6 +167,7 @@ export async function proxyTheta(req, res) {
   }
   try {
     const got = await hub.get(reqPath);
+    if (got.status === 200) for (const [k, v] of Object.entries(hub.ageHeaders(reqPath, got))) res.setHeader(k, v);
     sendSoftly(req, res, got.status, got.body, got.type);
   } catch {
     send(res, statusFor(req, 503, DOWN), DOWN);

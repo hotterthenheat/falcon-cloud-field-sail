@@ -356,6 +356,17 @@ export function createHub(o) {
     get,
     canonical,
     savePins,
+    /** ms an answer for this path stays fresh right now (ten times longer outside market hours) */
+    freshFor: (p) => ttlNow(canonical(p)),
+    /** Headers saying how old an answer is: Age (s), x-hub-at (ms the vendor answered) and x-hub-held: 1 when it is
+        being served past its normal stale window (the vendor is refusing and keepOnFail kept the last good copy). */
+    ageHeaders(p, entry, now = Date.now()) {
+      const ttl = ttlNow(canonical(p));
+      const age = Math.max(0, now - (entry.at ?? now));
+      const h = { age: String(Math.floor(age / 1000)), 'x-hub-at': String(entry.at ?? now) };
+      if (age >= Math.max(2 * ttl, ttl + 2_000)) h['x-hub-held'] = '1';
+      return h;
+    },
     /** The paths kept warm with nobody watching (the popular list), for the load check */
     pinned: () => [...wanted.entries()].filter(([, w]) => w.pinned).map(([k]) => k),
     /** Counts for the load check: asks served fresh, served stale, waited on, and the vendor calls behind them. */
