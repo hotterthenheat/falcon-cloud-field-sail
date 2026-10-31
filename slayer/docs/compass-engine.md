@@ -13,8 +13,16 @@ Compass scans, calls and settles on the server, once for every viewer. Browsers 
   `src/data/compassHost.ts` is where they read from: the browser through `/api/theta` and HTTP, the server through
   the hub in-process (`server/thetaProxy.mjs` `thetaDirect`), with the same eight-request cap every viewer's call goes
   through. `server/compassApi.mjs` mounts it.
-- One process per record folder runs the scan: it holds `.cache/compass/engine.lock`. A second server on the same
-  folder serves the first one's record and scans nothing.
+- One process per record folder runs the scan: it holds `.cache/compass/engine.lock` and refreshes it every 30 s. A
+  second server on the same folder serves the first one's record and scans nothing; it asks for the lock every 30 s
+  and takes over the scan once the holder's lock is stale (two minutes unrefreshed, or its process gone). A scanner
+  that finds the lock taken by another live process stops scanning and becomes a reader.
+- A failed engine start (an import error, a disk error) is tried again after 5 s, doubling to 5 minutes, and logged.
+  Each background step of the scan (the tick, the card quotes, settlement, the late fill) logs a failure instead of
+  leaving an unhandled rejection, and the servers log any unhandled rejection or uncaught exception
+  (`installProcessLogger`). A model-lock reason (a file missing, a hash miss) is logged when it changes.
+- `slayer/.gitattributes` keeps `public/models/*` and `public/config/*.json` byte-exact (no line-end conversion):
+  their SHA-256 is the lock.
 - `COMPASS_ENGINE=0` serves the record without scanning. `COMPASS_DIR` moves the record.
 - The exposure recorder (Terrain's per-strike field, `docs/exposure-recorder.md`) runs beside it the same way: started
   and stopped with the server, one lock per folder (`.cache/exposure/recorder.lock`), read-only at `/api/exposure/*`.
@@ -37,8 +45,40 @@ Compass scans, calls and settles on the server, once for every viewer. Browsers 
   `npm run compass:study -- YYYYMMDD` builds them for any day on record, through the dev server's `/api/theta`.
 - Between marks it refreshes the cards' quotes every 15 seconds and settles every open call once a minute on the
   contract's own one-minute NBBO.
-- On an early-close day (ThetaData's calendar) nothing is scored after the close and the flats move with it.
+- On an early-close day nothing is scored after the close and the flats move with it. The close is
+  `core/calendar`'s (13:00 on a listed early close) from the day roll, and ThetaData's calendar is asked every tick
+  (at most every 10 s) until it answers.
+- A market holiday is no session: no mark is scanned on it or in the overnight before it, and that clock's record
+  belongs to the next trading day.
 - At 20:15 ET the session rolls to the next trading day: a new file, every seat free.
+
+## The rules the scan applies
+
+- **Entry time (Books A and B).** A mark can call only if `t` (minutes after 09:30) is inside the trees' trained
+  minutes, 15 to 330 (09:45 to 15:00), **and** at least 55 minutes before the session's flat: `flatT − t ≥ 55`, with
+  `flatT = 385` (15:55) on a full day and `close − 5 − 570` on an early close (205 on a 13:00 close, so the last
+  entry is 12:00). `entryTimeOk` in `compassParams.ts`. 09:30–09:40, 15:05 on, the curb and every overnight mark are
+  scored and logged, but call nothing. The theta-burn check reads the same flat.
+- **Inputs the trees never saw missing.** A LightGBM split with missing type *none* reads a NaN as 0. Where 0 is
+  outside the column's training range, that row walks a branch no training row took, so the model is not scored
+  (`lgbm.ts nanUnsafeColumns`): Model 1 on columns 0, 6, 7, 15, 32; Model 2 on 0, 6, 7, 9, 15, 32, 38, 40, 41. Live
+  that is Model 2 before 10:30 (range compression, column 9, needs 60 minutes) and any row without realised vol
+  (column 7) or gamma/|theta| (column 41). Model 2 unscored: `prun` is null, Book A does not ride, the reason says
+  so. Model 1 unscored: no call. Column 5 (place in the day range) is clipped to its training [0, 1]; to the trees
+  that changes nothing (every split on it lies in 0.0118–0.9857).
+- **Fresh bars.** A live score needs minute t−1's bar; a memo that does not reach it is read again.
+- **Late marks** are judged on the seats and contracts as they stood at their own mark.
+- **The weekly read** is each name's nearest expiry 1 to 7 sessions out, 17 strikes either side of the money (Book
+  B's outer strike at the widest span); the same-day read is 16.
+- **Exits.** Books A and B settle on the contract's one-minute NBBO, and on its 1-second quotes in every minute
+  whose range crosses the stop, the 1.50× target or a ratchet rung (at most 12 such minutes a call). The 1.25×
+  break-even stop is the ask plus the round trip's fees. Fees: $0.50 commission and $0.04 exchange a side, the SEC
+  fee (0.0000278 of the sale) and FINRA's TAF ($0.00279 a contract sold).
+- **Sessions to expiry** (`weekdayDte`) skip market holidays. `yearFrac` for a 1–7 DTE contract still counts only
+  today's minutes, as the training rows did; it is a retrain item, not a live fix.
+- **The study.** Pooled rates carry cluster-robust Wilson intervals (by session; by name and session in a pool of one
+  session) and an effective row count; the rows bar reads effective rows. Each label follows its own book's exit.
+  The threshold sweep is advisory: it tries seven cuts on the same rows.
 
 ## The record
 
