@@ -19,7 +19,7 @@ import type { Candle } from '../types/market';
 import type { BookContract, FlowPrint } from '../types/trace';
 import type { DarkPoolView } from '../types/darkpool';
 import { otmOf } from './traceRows';
-import { leanOfSides } from './traceLean';
+import { FRESH_VOL_OI, leanOfSides } from './traceLean';
 import { DARK_MIN_PRINTS, darkPosture } from './traceDark';
 
 export type PillarKey = 'trend' | 'numbers' | 'money' | 'news';
@@ -700,6 +700,9 @@ export const busiestOf = (rows: Record<string, unknown>[], right: 'C' | 'P', tic
 
 /* ---- the money, from the book, the flow and the dark pool ------------------------------- */
 
+/** Alerts whose volume ran past their open interest — Trace's one cut (traceLean FRESH_VOL_OI, 1.5×) */
+export const unusualOf = (flow: readonly Pick<FlowPrint, 'volOverOI'>[]): number => flow.filter(p => p.volOverOI >= FRESH_VOL_OI).length;
+
 /** The alerts' premium by side: an alert's own split where it carries one, else its whole premium on its side */
 export function flowSidesOf(flow: readonly Pick<FlowPrint, 'premium' | 'side' | 'alertSides'>[]): { ask: number; bid: number; mid: number } {
   const out = { ask: 0, bid: 0, mid: 0 };
@@ -734,7 +737,7 @@ const moneyFor = (ticker: string, spot: number, blocks: Candle[][], file: StockF
   const sidedLean = leanOfSides(flowSides);
   const askSharePct = flowPrem > 0 && Number.isFinite(sidedLean.askSided) && flowSides.ask + flowSides.bid > 0 ? sidedLean.askSided : null;
   const sweepSharePct = flowPrem > 0 ? (100 * sweepPrem) / flowPrem : null;
-  const unusual = file.flow.filter(p => p.volOverOI >= 2).length;
+  const unusual = unusualOf(file.flow);
   const stockVol = nOr(screen?.stock_volume);
   const avg30 = nOr(screen?.avg30_volume);
   const rel = nOr(screen?.relative_volume);

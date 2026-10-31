@@ -7,7 +7,9 @@ import { sleeveForDte } from './compass';
 import { reasonMatches, reasonsSignature, type UserReason } from './flowReasons';
 import type { SleeveKey } from '../types/compass';
 import type { BookContract } from '../types/trace';
-import { dayLean, leanWords } from './traceLean';
+import { dayLean, FRESH_VOL_OI, leanWords, SPREAD_LEG_PCT, SWEEP_DAY_PCT } from './traceLean';
+
+export { FRESH_VOL_OI, SPREAD_LEG_PCT, SWEEP_DAY_PCT };
 import { advUsdOf, usd } from './traceRows';
 
 /** A New York minute of the day, spoken — "14:30" */
@@ -72,11 +74,11 @@ export function runScreen(rows: BookContract[], key: ScreenKey): BookContract[] 
       return rows.filter(r => r.volOverOI >= FRESH_VOL_OI).sort((a, b) => b.volOverOI - a.volOverOI);
     case 'conviction-calls':
       return rows
-        .filter(r => r.right === 'C' && r.sweepPct >= 25 && r.otmPct >= 0)
+        .filter(r => r.right === 'C' && r.sweepPct >= SWEEP_DAY_PCT && r.otmPct >= 0)
         .sort((a, b) => b.premium - a.premium);
     case 'conviction-puts':
       return rows
-        .filter(r => r.right === 'P' && r.sweepPct >= 25 && r.otmPct >= 0) /* otmPct is + out of the money for calls and puts alike */
+        .filter(r => r.right === 'P' && r.sweepPct >= SWEEP_DAY_PCT && r.otmPct >= 0) /* otmPct is + out of the money for calls and puts alike */
         .sort((a, b) => b.premium - a.premium);
     case 'cheap':
       return rows.filter(r => r.right === 'C' && r.last <= 1.5 && r.otmPct >= 3).sort((a, b) => b.volume - a.volume);
@@ -166,13 +168,13 @@ export const WATCHERS: WatcherRule[] = [
   {
     key: 'fresh-size',
     label: 'Fresh size',
-    reason: 'Volume 1.5× its open interest or more, on $300K or more',
+    reason: `Volume ${FRESH_VOL_OI}× its open interest or more, on $300K or more`,
     hint: 'Trading many times its open interest — positions built in the session',
   },
   {
     key: 'hammering',
     label: 'Hammering',
-    reason: '12,000 contracts or more, 30% of them swept',
+    reason: `12,000 contracts or more, ${SWEEP_DAY_PCT}% of them swept`,
     hint: 'One contract absorbing hit after hit all session',
   },
 ];
@@ -228,7 +230,6 @@ export function floorPackaged(r: Pick<BookContract, 'floorPct' | 'multiPct'>): b
 
 /** A spread-leg day: 50% or more of the contracts in multi-leg orders, so its side says how a package filled, not
     where money leans. Shown and counted as legs; never crowned, never given a lean. */
-export const SPREAD_LEG_PCT = 50;
 /** Mostly legs of multi-leg orders, and not a floor package (that has its own label) */
 export function spreadLegDay(r: Pick<BookContract, 'floorPct' | 'multiPct'>): boolean {
   return !floorPackaged(r) && r.multiPct >= SPREAD_LEG_PCT;
@@ -270,9 +271,6 @@ export function notABetLabel(rows: (Pick<BookContract, 'floorPct' | 'multiPct'> 
   return kinds.has('f') ? 'Floor packages' : kinds.has('l') ? 'Spread legs' : rows.length === 1 ? 'One cross' : 'Crosses';
 }
 
-/** One floor for "fresh" volume across Trace: volume at least this many times the open interest reads as positions
-    built in the session */
-export const FRESH_VOL_OI = 1.5;
 /** Vol/OI as a cell: "new" when there was no open interest to divide by */
 export function volOiText(r: Pick<BookContract, 'oi' | 'volume' | 'volOverOI'>): string {
   /* volOverOI is against the count at the session's open — a row may now show the newer count (usePairedOi), so the
@@ -320,10 +318,10 @@ function rulesFor(r: BookContract, bigLine = BIG_MONEY_MIN): WatcherKey[] {
   // Climbing and falling are mirror predicates — chasers vs sellers, same bar.
   /* a day of spread legs has no lean to chase or sell on */
   const lean = notABet(r) ? 'UNSIDED' : dayLean(r).lean;
-  if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct >= 8 && lean === 'ASK') out.push('climbing');
-  else if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct <= -8 && lean === 'BID') out.push('falling');
+  if (r.volume >= 6000 && r.sweepPct >= SWEEP_DAY_PCT && r.chgPct >= 8 && lean === 'ASK') out.push('climbing');
+  else if (r.volume >= 6000 && r.sweepPct >= SWEEP_DAY_PCT && r.chgPct <= -8 && lean === 'BID') out.push('falling');
   if (r.volOverOI >= FRESH_VOL_OI && r.premium >= 300_000) out.push('fresh-size');
-  if (r.volume >= 12000 && r.sweepPct >= 30) out.push('hammering');
+  if (r.volume >= 12000 && r.sweepPct >= SWEEP_DAY_PCT) out.push('hammering');
   return out;
 }
 
