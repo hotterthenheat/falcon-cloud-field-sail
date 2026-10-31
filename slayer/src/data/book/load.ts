@@ -17,7 +17,8 @@ import { carryFacts, chainFrom, flowMap, foldContracts, liveGammaRows, num, oiMa
 import { BOARD_MS, FULL_MS, LIVE_GAMMA_MS, cache, chartAll, chartSpan, closestDate, datesComplete, emit, emptyDates, gammaPriced, gen, horizonFactsMissing, hotGet, isHot, keptBooks, liveGammaCache, liveGammaWait, peekEntry, recordAsked, recordIso, settledLive, type BookMode, type Entry } from './store';
 import { readKept } from './kept';
 import { noteExposureRows } from './exposureLog';
-import { CLOSE_MIN, INDEX_TAPE, candlesFrom, cashToOf, closesFromTape, parseTape, quoteFromBars, regularCloseOf, thetaTape, twoCashSessions } from './tape';
+import { hasListedOptions } from '../symbolDirectory';
+import { CLOSE_MIN, candlesFrom, isCashIndex, cashToOf, closesFromTape, parseTape, quoteFromBars, regularCloseOf, thetaTape, twoCashSessions } from './tape';
 
 
 /** The live open-interest gamma per strike (retail sign: calls +, puts −, dollars per 1%) — every expiry when `date` is
@@ -301,7 +302,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
      interest unless the name's levels read every expiry */
   const boardOnly = mode === 'board' && !cache.get(ticker)?.wantFull;
   /* a CBOE index has no stock-state or stock bars on this key (422 cboe_index_access_missing): neither is asked */
-  const index = INDEX_TAPE.has(ticker);
+  const index = isCashIndex(ticker);
   const [stateRaw, strikeRaw, oiRows, flowRows, ivRows, termRows, interpRows, stockBars, live] = await Promise.all([
     index ? Promise.resolve(null) : (hot ? hotGet<UwState>(`/stock/${t}/stock-state`, true) : whalesState(ticker)).catch(() => null),
     (hot ? hotGet<UwGreekStrike[]>(`/stock/${t}/greek-exposure/strike`, true) : whalesGreekStrike(ticker)).catch(() => [] as UwGreekStrike[]),
@@ -322,7 +323,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
      them (book/tape.ts thetaTape); a stock whose bars did not come back likewise — the last trade, not a bid. */
   let bars: UwBar[] = Array.isArray(stockBars) ? stockBars : [];
   let tapeKind: 'vendor' | 'index' | 'stock' = 'vendor';
-  if (bars.length === 0 && INDEX_TAPE.has(ticker)) {
+  if (bars.length === 0 && isCashIndex(ticker)) {
     bars = await thetaTape(ticker, true);
     if (bars.length) tapeKind = 'index';
     if (!still()) return;
@@ -933,6 +934,8 @@ export function ensureBook(ticker: string, mode: BookMode = 'board', force = fal
   const t = sameName(ticker);
   if (!t) return;
   if (SIM_DESK) return;
+  /* a name with no listed options has no book: nothing is asked of the vendor for it */
+  if (hasListedOptions(t) === false) return;
   const e = cache.get(t);
   if (e?.status === 'loading') {
     if (mode === 'full') e.wantFull = true;

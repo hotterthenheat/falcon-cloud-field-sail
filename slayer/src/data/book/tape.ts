@@ -1,6 +1,7 @@
 /* The day's price off the bars: minute bars into cash candles and the tape, the regular close, and the ThetaData tape a
    name the vendor has no bars for falls back to (never on the UW-only desks). */
 
+import { isCashIndex } from '../symbolDirectory';
 import { nyIsoDate, nyMinutes, nyWallStamp } from '../../core/nyTime';
 import { noteBarCloses, peekRegularCloses } from '../dayChange';
 import { type Candle } from '../../types/market';
@@ -17,6 +18,8 @@ export const CLOSE_MIN = 16 * 60;
 const INDEX_CASH_TO = 16 * 60 + 15;
 /** CBOE indexes. /stock/SPX/ohlc and stock-state answer 422 (cboe_index_access_missing). The day's price is the index tape. */
 export const INDEX_TAPE = new Set(['SPX', 'RUT', 'NDX', 'VIX', 'XSP']);
+/** Any cash index the terminal prices (SOX, DJI, VIX9D …), the directory's own list */
+export { isCashIndex };
 
 function ymdNY(ms: number): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms)).replace(/-/g, '');
@@ -24,7 +27,7 @@ function ymdNY(ms: number): string {
 
 /** How far the cash chart runs. A stock's 16:00 bar is the closing print. An index's close can print until 16:15. */
 export function cashToOf(symbol: string): number {
-  return INDEX_TAPE.has(symbol.toUpperCase()) ? INDEX_CASH_TO : CLOSE_MIN;
+  return isCashIndex(symbol.toUpperCase()) ? INDEX_CASH_TO : CLOSE_MIN;
 }
 
 /** Regular, pre, or post off the clock. The 16:00 minute is the close. Anything later is after hours, except an index through 16:15. */
@@ -227,7 +230,7 @@ export function closesFromTape(bars: readonly UwBar[]): { date: string; close: n
 export async function tapeQuote(symbol: string): Promise<{ close: number; prev_close: number; market_time: string; tape_time: string } | null> {
   const name = symbol.trim().toUpperCase();
   if (!name) return null;
-  const index = INDEX_TAPE.has(name);
+  const index = isCashIndex(name);
   const bars = await thetaTape(name, index);
   const quoted = quoteFromBars(name, bars);
   if (!quoted) return null;

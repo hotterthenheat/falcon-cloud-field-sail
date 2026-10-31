@@ -127,6 +127,20 @@ export function hasListedOptions(symbol: string): boolean | null {
   return e ? e.options : null;
 }
 
+/* The cash indexes the terminal prices (scripts/build-symbol-directory.mjs INDEX_NAMES, less the symbols a stock
+   holds): known before the directory loads, so a price read never waits on it */
+const CASH_INDEXES = new Set([
+  'SPX', 'SPXW', 'XSP', 'NDX', 'NDXP', 'XNDX', 'NQX', 'MNX', 'RUT', 'RUTW', 'MRUT', 'RUI', 'RUA', 'RLG', 'RLV', 'VIX', 'VIXW',
+  'VIX1D', 'VIX9D', 'VIX3M', 'VIX6M', 'VIX1Y', 'VVIX', 'VXN', 'RVX', 'VXD', 'GVZ', 'OVX', 'VXEEM', 'SKEW', 'DJX', 'DJI', 'DJU',
+  'OEX', 'XEO', 'SPESG', 'SOX', 'OSX', 'BKX', 'HGX', 'XAU', 'UTY', 'TNX', 'TYX', 'FVX', 'IRX',
+]);
+/** A cash index (priced off the terminal's index reads, never its stock reads) */
+export function isCashIndex(symbol: string): boolean {
+  const s = symbol.trim().toUpperCase();
+  const e = entries.length ? bySymbol.get(s) : undefined;
+  return e ? e.kind === 'index' : CASH_INDEXES.has(s);
+}
+
 export const kindLabel = (kind: SymbolKind): string =>
   kind === 'etf' ? 'ETF' : kind === 'index' ? 'Index' : kind === 'stock' ? 'Stock' : kind.charAt(0).toUpperCase() + kind.slice(1);
 export const exchangeLabel = (code: string): string => EXCHANGES[code] ?? '';

@@ -11,6 +11,7 @@ import { minuteInSession, sessionMeta, type DeskSession } from './deskSession';
 import { phaseAt, sessionAt } from '../core/session';
 import { etClock, keepTheta, keptTheta, noData, offlineWords, pageHidden, thetaDown, thetaGet } from './thetaFeed';
 import { thetaUseHere } from './theta';
+import { isCashIndex } from './symbolDirectory';
 import { EXT_WINDOWS, cleanExtendedBars } from './thetaEligible';
 
 export const THETA_INDEX = new Set(['SPX', 'VIX', 'RUT', 'NDX', 'XSP']);
@@ -279,7 +280,7 @@ function dedupe(bars: Candle[]): Candle[] {
   return out;
 }
 
-const root = (symbol: string): 'index' | 'stock' => (THETA_INDEX.has(symbol) ? 'index' : 'stock');
+const root = (symbol: string): 'index' | 'stock' => (isCashIndex(symbol) ? 'index' : 'stock');
 
 type Pull = { bars: Candle[]; offline: boolean };
 
@@ -722,7 +723,7 @@ async function readPrints(): Promise<void> {
       }),
     );
     const reads = await Promise.all(
-      names.map(n => thetaGet(THETA_INDEX.has(n) ? `/index/snapshot/price?symbol=${encodeURIComponent(n)}&format=json` : `/stock/snapshot/trade?symbol=${encodeURIComponent(n)}&format=json`, true)),
+      names.map(n => thetaGet(isCashIndex(n) ? `/index/snapshot/price?symbol=${encodeURIComponent(n)}&format=json` : `/stock/snapshot/trade?symbol=${encodeURIComponent(n)}&format=json`, true)),
     );
     let moved = false;
     printsFailGap = reads.length && reads.every(got => got.error && got.error !== 'terminal_down') ? Math.min(60_000, printsFailGap ? printsFailGap * 2 : 15_000) : 0;
