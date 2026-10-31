@@ -207,6 +207,20 @@ expectEqual('touch odds are never below the finish odds', read.touch >= read.itm
   ];
   expectNear('ATM IV at 769.35 = 22.495 + 0.35·(22.125 − 22.495)', gate.atmIvAt(rows, 769.35), 22.495 + 0.35 * (22.125 - 22.495), 1e-9);
   expectNear('ATM IV on a strike = that strike\'s mean', gate.atmIvAt(rows, 770), 22.125, 1e-9);
+  /* a Friday-close vol read on Saturday: no session has traded, so the priced move does not shrink. ThetaData SPY
+     2026-11-02 at Fri 16:15 ET: S 756.59, ATM IV 12.36%, straddle 6.73 → 6.73·√(π/2) = $8.43; the model reads $8.47 at the
+     quote's instant and the same on Saturday (on Saturday's calendar clock it read $7.19) */
+  const fri = Date.parse('2026-10-30T20:15:00Z');
+  const sat = Date.parse('2026-10-31T16:00:00Z');
+  const atFri = gate.expectedMovePctOf(756.59, 12.36, '2026-11-02', fri);
+  expectNear('Friday-close move, $', (atFri / 100) * 756.59, 756.59 * 0.1236 * Math.sqrt(4305 / 525600), 1e-9);
+  expectNear('the same vol read on Saturday prices the same move', gate.expectedMovePctOf(756.59, 12.36, '2026-11-02', sat, fri), atFri, 1e-9);
+  const satRow = gate.readContract({ ticker: 'SPY', spot: 756.59, strike: 757, right: 'C', bid: 3.29, ask: 3.31, expiryIso: '2026-11-02', vendorIv: 0.1237, ivAt: fri, now: sat })!;
+  const friRow = gate.readContract({ ticker: 'SPY', spot: 756.59, strike: 757, right: 'C', bid: 3.29, ask: 3.31, expiryIso: '2026-11-02', vendorIv: 0.1237, now: fri })!;
+  /* the variance is Friday's; only the weekend's interest accrual (r·19.75 h) moves the forward: delta −0.003 */
+  expectNear('Saturday delta = Friday-close delta (ThetaData 0.4944) less the weekend carry', satRow.delta, friRow.delta, 0.005);
+  expectNear('… and the Saturday vol on the trading clock is Friday\'s', satRow.ivTrading, friRow.ivTrading, 1e-9);
+  expectNear('Saturday IV still reads the quoted 12.37%', satRow.iv, 12.37, 1e-9);
   expectNear('ATM IV with one side only', gate.atmIvAt([{ strike: 770, call: { iv: NaN }, put: { iv: 22.16 } }, { strike: 771, call: { iv: 21.72 }, put: { iv: NaN } }], 770.5), (22.16 + 21.72) / 2, 1e-9);
 }
 

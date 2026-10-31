@@ -260,7 +260,7 @@ export function sheetChain(ticker: string, iso: string, range = 18, root?: strin
     const side = right as OptionRight;
     /* every model number in the row off one vol on one clock: the vendor's calendar-year IV moved onto the trading
        clock, else the mid's own (data/weigherGate readContract); the vendor's own greeks are on its clock and not shown */
-    const solved = spot > 0 ? readContract({ ticker: name, root: r, spot, strike, right: side, bid: m.bid, ask: m.ask, expiryIso: iso, vendorIv: m.iv, now }) : null;
+    const solved = spot > 0 ? readContract({ ticker: name, root: r, spot, strike, right: side, bid: m.bid, ask: m.ask, expiryIso: iso, vendorIv: m.iv, ivAt: m.at, now }) : null;
     const ivPct = solved ? solved.iv : NaN;
     quotedAt = Math.max(quotedAt, m.at);
     const intrinsic = spot > 0 ? Math.max(0, side === 'C' ? spot - strike : strike - spot) : NaN;
@@ -319,7 +319,7 @@ export function sheetChain(ticker: string, iso: string, range = 18, root?: strin
     rows,
     expiry,
     atmIv: atm > 0 ? fixed(atm, 2) : 0,
-    expectedMovePct: fixed(expectedMovePctOf(spot, atm, iso, now), 2),
+    expectedMovePct: fixed(expectedMovePctOf(spot, atm, iso, now, quotedAt), 2),
     source: 'live',
     quotedAt,
     expiryIso: iso,

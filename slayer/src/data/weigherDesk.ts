@@ -498,7 +498,7 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
       const feedIv = feed('implied_vol');
       /* every model number in the row off one vol on one clock: the vendor's IV moved onto the trading clock, else the
          mid's own (data/weigherGate readContract) */
-      const solved = spot > 0 ? readContract({ ticker: name, root: symbol, spot, strike, right, bid: bidN, ask: askN, expiryIso: iso, vendorIv: feedIv, now }) : null;
+      const solved = spot > 0 ? readContract({ ticker: name, root: symbol, spot, strike, right, bid: bidN, ask: askN, expiryIso: iso, vendorIv: feedIv, ivAt: at, now }) : null;
       const ivPct = solved ? solved.iv : NaN;
       const feedDelta = feed('delta');
       const feedGamma = feed('gamma');
@@ -586,7 +586,7 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
     rows,
     expiry,
     atmIv: atm > 0 ? Number(atm.toFixed(2)) : 0,
-    expectedMovePct: Number(expectedMovePctOf(spot, atm, iso, now).toFixed(2)),
+    expectedMovePct: Number(expectedMovePctOf(spot, atm, iso, now, quotedAt).toFixed(2)),
     source: 'live',
     quotedAt,
     expiryIso: iso,
