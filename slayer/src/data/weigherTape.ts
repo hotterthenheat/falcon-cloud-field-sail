@@ -11,9 +11,10 @@ import { nyYmd } from '../core/calendar';
 import { sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
 import { noData, offlineWords, pageHidden, thetaGet } from './thetaFeed';
 import { thetaUseHere } from './theta';
-import { THETA_INDEX, dayClose, foldTo, grainStep, paintPrint, readEod, readOhlc, useThetaPrint, useThetaTape, tapeWords, weekClose, type TapeGrain } from './thetaTape';
+import { sessionLive, THETA_INDEX, dayClose, foldTo, grainStep, paintPrint, readEod, readOhlc, useThetaPrint, useThetaTape, tapeWords, weekClose, type TapeGrain } from './thetaTape';
 import { chartGrain, shapeBars } from './thetaCandles';
 import { tfMinutes } from './timeframe';
+import { productOf, sessionAt } from '../core/session';
 
 const grainOf = (tf: Timeframe): TapeGrain => chartGrain(tfMinutes(tf));
 
@@ -129,7 +130,8 @@ export function useWeigherContract(
     let dead = false;
     const run = () => {
       const hit = contracts.get(key);
-      const live = sessionOfMinute(nyMinutes()) === session;
+      /* live while the clock is in this session and the contract's options trade (index options through GTH) */
+      const live = sessionLive(session) && sessionAt(Date.now(), productOf(root, true)).open;
       if (hit && Date.now() - hit.at < (live ? 20_000 : 5 * 60_000)) {
         if (!dead) setState({ key, bars: hit.bars, note: hit.bars.length ? null : `${sessionMeta(session).label} has no prints on this contract.` });
         return;

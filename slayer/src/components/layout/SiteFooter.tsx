@@ -7,7 +7,7 @@ import { useLaunch } from './LaunchTransition';
 import Wordmark from '../../brand/Wordmark';
 import Signature from '../../brand/Signature';
 import { readMarketState } from '../../data/marketState';
-import { nyClock, nyMinutes } from '../../core/nyTime';
+import { nyClock } from '../../core/nyTime';
 import { useAlertsDrawer } from '../../data/alertsDrawer';
 import { sceneFor } from './footer/registry';
 
@@ -143,13 +143,11 @@ const FooterLink = ({ to, home, gate, className, children }: { to: string; home:
 };
 
 /* the market state in New York for the status line, from data/marketState.ts like the signature's word */
-/* pre-market starts at 04:00 ET; before it and from 20:00 it is overnight. The clock beside it is Central, 12-hour. */
-const sessionWordAt = (d: Date, short: string): string => {
-  if (short !== 'pre-market' && short !== 'after hours') return short;
-  const m = nyMinutes(d);
-  return m < 4 * 60 || m >= 20 * 60 ? 'overnight' : short;
+/* the one session (core/session.ts): overnight 20:00–04:00 on the nights it trades, pre-market, open, after hours, closed */
+const marketNow = (d = new Date()): { words: string; clock: string } => {
+  const st = readMarketState(d);
+  return { words: st.session.phase === 'closed' ? st.badge.replace(/^Closed · /, `${st.short} · `) : st.short, clock: nyClock(d, { zone: true }) };
 };
-const marketNow = (d = new Date()): { words: string; clock: string } => ({ words: sessionWordAt(d, readMarketState(d).short), clock: nyClock(d, { zone: true }) });
 const useMarketNow = () => {
   const [state, setState] = useState(marketNow);
   useEffect(() => {

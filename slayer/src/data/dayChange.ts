@@ -3,8 +3,9 @@
 import { whalesDailyRecent, type UwDaily } from './whales';
 import { nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
 import { isTradingDay, sessionCloseMinOn, today as nyToday } from '../core/calendar';
+import { extWordAt, phaseAt, type ExtWord } from '../core/session';
 
-export type MarketPhase = 'pre' | 'regular' | 'post' | 'closed';
+export type MarketPhase = 'overnight' | 'pre' | 'regular' | 'post' | 'closed';
 
 interface DayChange {
   /** The regular session's change: the move a reader means by "today" */
@@ -110,8 +111,8 @@ export interface CloseMove {
   dayPct: number | null;
   /** The move of the last trade from the last regular close, outside the session; null in the session or when equal */
   extPct: number | null;
-  /** Which extended session the last trade is in */
-  extWord: 'pre-market' | 'after hours' | null;
+  /** Which extended session the last trade is in (core/session.ts: ON / PM / AH) */
+  extWord: ExtWord | null;
   phase: MarketPhase;
   /** The close the day's change is measured from */
   base: number | null;
@@ -136,7 +137,8 @@ export function moveOffCloses(price: number, priceAt: number, closesIn: readonly
   const none: CloseMove = { dayPct: null, extPct: null, extWord: null, phase: 'closed', base: null, regClose: null, regDate: null };
   if (!(price > 0)) return none;
   const printDay = priceAt > 0 ? nyIsoDate(priceAt) : today;
-  const inSession = trading && m >= 570 && m < sessionCloseMinOn(today);
+  const globalPhase = phaseAt(now);
+  const inSession = globalPhase === 'regular';
   if (inSession && printDay === today) {
     const base = closes.find(c => c.date < today)?.close ?? null;
     return { ...none, phase: 'regular', base, dayPct: base ? ((price - base) / base) * 100 : null };
@@ -147,9 +149,11 @@ export function moveOffCloses(price: number, priceAt: number, closesIn: readonly
   const todayMissing = trading && m >= sessionCloseMinOn(today) && sessions[0]?.date !== today;
   const last = todayMissing ? undefined : sessions[0];
   const before = todayMissing ? undefined : sessions[1];
-  const printMin = priceAt > 0 ? nyMinutes(priceAt) : m;
-  const extWord: CloseMove['extWord'] = printDay === today && trading && printMin >= 240 && printMin < 570 ? 'pre-market' : 'after hours';
-  const phase: MarketPhase = extWord === 'pre-market' ? 'pre' : trading && m >= 240 ? 'post' : 'closed';
+  /* the session the last trade printed in: overnight (ON), pre-market (PM) or after hours (AH); a regular print shown
+     outside the session (a weekend's Friday close) differs from the close by cents at most and reads as after hours */
+  const extWord: ExtWord = (priceAt > 0 ? extWordAt(priceAt) : null) ?? 'after hours';
+  /* the phase is the clock's, the one the whole site follows */
+  const phase: MarketPhase = globalPhase;
   if (!last) return { ...none, phase, base: sessions[0]?.close ?? null };
   const ext = Math.abs(price - last.close) >= 0.005 ? ((price - last.close) / last.close) * 100 : null;
   return {

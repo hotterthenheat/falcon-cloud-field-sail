@@ -16,7 +16,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { EARLY_CLOSE_DATES, HOLIDAY_DATES } from '../shared/marketCalendar.mjs';
+import { feedMoving } from '../shared/marketSession.mjs';
 
 const NY_PARTS = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York',
@@ -28,23 +28,22 @@ const NY_PARTS = new Intl.DateTimeFormat('en-US', {
   minute: '2-digit',
   hour12: false,
 });
-const HOLIDAYS = new Set(HOLIDAY_DATES);
-const EARLY = new Set(EARLY_CLOSE_DATES);
 /** New York's date (YYYY-MM-DD), weekday and minute of the day at an instant */
 export function nyNow(now = Date.now()) {
   const parts = Object.fromEntries(NY_PARTS.formatToParts(new Date(now)).map((p) => [p.type, p.value]));
   return { day: `${parts.year}-${parts.month}-${parts.day}`, weekday: parts.weekday, minute: (Number(parts.hour) % 24) * 60 + Number(parts.minute) };
 }
-/** Trading days 04:00–20:00 New York, to 17:00 on an early close: the hours anything moves (pre-market, session,
-    after-hours). Weekends and holidays are closed all day (shared/marketCalendar.mjs).
+/** Does what `path` answers move now — the one session rule (shared/marketSession.mjs feedMoving): a stock's books
+    04:00–20:00 New York on a session day (17:00 on an early close); an index's (SPX, SPXW, XSP, VIX, RUT) through Cboe's
+    Global Trading Hours too — Sunday 20:15 on, the evening before each session — and the 16:15–17:00 curb. The stock
+    overnight venues are on neither vendor's tape, so a stock path keeps the closed pace overnight. Weekends and
+    holidays are closed (shared/marketCalendar.mjs). With no path: the stock day (04:00–20:00).
     SLAYER_HUB_HOURS=open|closed pins it, for a load check outside the session. */
-export function marketHours(now = Date.now()) {
+export function marketHours(now = Date.now(), path) {
   const pin = process.env.SLAYER_HUB_HOURS;
   if (pin === 'open') return true;
   if (pin === 'closed') return false;
-  const t = nyNow(now);
-  if (t.weekday === 'Sat' || t.weekday === 'Sun' || HOLIDAYS.has(t.day)) return false;
-  return t.minute >= 4 * 60 && t.minute < (EARLY.has(t.day) ? 17 : 20) * 60;
+  return feedMoving(now, path ?? '');
 }
 
 /* a date in a query value: 2026-10-29 or 20261029 */
@@ -98,7 +97,7 @@ export function canonical(p) {
  * @param {number} o.refreshPerSec             background refresh budget
  * @param {number} [o.maxBytes]
  * @param {number} [o.maxRefreshing]             background refreshes outstanding at once (default 2)
- * @param {() => boolean} [o.hours]           is the market moving now (default marketHours; the proof pins it)
+ * @param {(path?: string) => boolean} [o.hours]  does this path's answer move now (default marketHours; the proof pins it)
  * @param {(path: string, ageMs: number) => boolean} [o.keepOnFail]  may a failed refresh fall back to the last good
  *   answer of this age? (default: never, so a failure shows as one)
  * @param {(path: string) => void} [o.promote]  a viewer is now waiting on this path's background refresh: move it ahead
@@ -127,8 +126,8 @@ export function createHub(o) {
   const stats = { asks: 0, fresh: 0, stale: 0, waited: 0, upstreamViewer: 0, upstreamRefresh: 0, recordAsks: 0, recordReused: 0, upstreamRecord: 0, startedAt: Date.now() };
 
   /* outside market hours nothing moves: answers stay good ten times longer */
-  const hours = o.hours ?? (() => marketHours());
-  const ttlNow = (key) => (hours() ? o.ttl(key) : o.ttl(key) * 10);
+  const hours = o.hours ?? ((key) => marketHours(Date.now(), key));
+  const ttlNow = (key) => (hours(key) ? o.ttl(key) : o.ttl(key) * 10);
 
   function keep(key, entry) {
     const old = cache.get(key);
@@ -296,7 +295,7 @@ export function createHub(o) {
       } else if (w.pinned) {
         /* a popular path nobody is watching yet: loaded, and kept within a minute while anything moves (five minutes
            when nobody has asked for it in a day) */
-        if (!hours() && hit) continue;
+        if (!hours(key) && hit) continue;
         const pace = now - (w.seenAt ?? 0) < DAY_MS ? PIN_WARM_MS : PIN_COOL_MS;
         if (hit && now - hit.at < Math.max(ttl, pace)) continue;
         due.push([key, w]);

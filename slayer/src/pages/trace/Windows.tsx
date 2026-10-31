@@ -78,7 +78,7 @@ function liveQuarter(endMin: number): number | null {
   const p = nyParts(new Date());
   const m = p.hour * 60 + p.minute - 570;
   /* a trading day (the phase is not "closed") inside the name's own session — 16:00 or 16:15 */
-  return sessionPhase() !== 'closed' && m >= 0 && m < endMin - 570 ? Math.floor(m / 15) : null;
+  return sessionPhase() !== 'closed' && sessionPhase() !== 'overnight' && m >= 0 && m < endMin - 570 ? Math.floor(m / 15) : null;
 }
 
 const WIDTHS: Record<string, number> = { win: 132, vol: 104, share: 120, calls: 150, puts: 150, ncall: 104, nput: 104, net: 104 };

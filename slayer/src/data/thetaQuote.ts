@@ -17,6 +17,7 @@ const marksHere = () => thetaAllowedHere('/option/snapshot/quote');
 const closesHere = () => thetaAllowedHere('/stock/history/eod');
 import { nyIsoDate, nyMinutes, nyWallStamp } from '../core/nyTime';
 import { isTradingDay, sessionCloseMinOn, today as nyToday } from '../core/calendar';
+import { phaseAt, type ExtWord } from '../core/session';
 import type { OptionRight } from '../types/compass';
 import type { Candle } from '../types/market';
 
@@ -170,13 +171,13 @@ const symbolOf = (ticker: string) => {
   return UNDERLYING[t] ?? t;
 };
 
-/** How long a reading stays fresh: 3 s in the regular session, 15 s in extended hours, a minute when nothing trades */
+/** How long a reading stays fresh, by the session (core/session.ts): 3 s in the regular session, 15 s in the pre-market,
+    after hours and overnight (Sunday 20:00 on), a minute when nothing trades */
 function ttl(): number {
-  if (!isTradingDay(nyToday())) return 60_000;
-  const m = nyMinutes();
-  if (m >= 570 && m < 960) return 3_000;
-  if (m >= 240 && m < 1200) return 15_000;
-  return 60_000;
+  const ph = phaseAt(Date.now());
+  if (ph === 'regular') return 3_000;
+  if (ph === 'closed') return 60_000;
+  return 15_000;
 }
 const hidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
@@ -421,7 +422,7 @@ export const thetaStatus = (): ThetaStatus => status;
     session's change (`pct`, null while the close it needs is not written) and, outside the session, the last trade's
     move from the last regular close (`ext`, labelled by `extWord`). A reading kept from before the closes were carried is
     read off its prior close in the session only. */
-export function thetaMove(p: ThetaPrice | null | undefined, at = Date.now()): { pct: number | null; base: number | null; ext: number | null; extWord: 'pre-market' | 'after hours' | null; regClose: number | null; regDate: string | null } | null {
+export function thetaMove(p: ThetaPrice | null | undefined, at = Date.now()): { pct: number | null; base: number | null; ext: number | null; extWord: ExtWord | null; regClose: number | null; regDate: string | null } | null {
   if (!p) return null;
   const closes = p.closes ?? [];
   if (!closes.length) {

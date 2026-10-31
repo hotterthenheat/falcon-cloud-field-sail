@@ -1,6 +1,7 @@
 /* New York's session clock: the phase (pre-market, open, closing auction, after hours, closed), the wall clock, the minutes to the next turn. */
 
 import { MARKET_HOLIDAYS, sessionCloseMinOn } from '../core/calendar';
+import { isSessionDay, nextOpenLine, sessionAt } from '../core/session';
 
 // ---- the session clock ----------------------------------------------------------
 
@@ -54,9 +55,14 @@ export function readSessionClock(now: Date = new Date()): SessionClock {
   const mins = hour * 60 + minute;
   /* the cross is at the cash close: 13:00 on an early close, its imbalance book from 12:50 */
   const closeMins = sessionCloseMinOn(isoDay);
-  const isWeekend = weekday === 'Sat' || weekday === 'Sun';
   const isHoliday = MARKET_HOLIDAYS.has(isoDay);
-  const marketClosedToday = isWeekend || isHoliday;
+  const marketClosedToday = !isSessionDay(isoDay);
+  /* the global session (core/session.ts): the cash clock below is the closing cross's, the words are the session's */
+  const global = sessionAt(now.getTime());
+  const shutWords = (): string => {
+    const next = nextOpenLine({ ...global, open: false, next: global.nextPhase });
+    return next ? `Closed · ${next}` : 'Closed';
+  };
   const etTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}`;
 
   let phase: SessionPhase;
@@ -73,19 +79,20 @@ export function readSessionClock(now: Date = new Date()): SessionClock {
   const mm = Math.floor((secondsToClose % 3600) / 60);
   const ss = secondsToClose % 60;
 
-  const label = isHoliday
-    ? 'Market closed — holiday'
-    : isWeekend
-      ? 'Market closed for the weekend'
-      : phase === 'PREMARKET'
-        ? 'Before the open'
-        : phase === 'AFTERHOURS'
-          ? weekday === 'Fri'
-            ? 'Closed — next session Monday'
-            : 'After the close'
-          : phase === 'AUCTION'
-            ? 'Closing auction — the book is publishing'
-            : 'Market open';
+  const label =
+    global.phase === 'overnight'
+      ? 'Overnight session'
+      : global.phase === 'closed'
+        ? isHoliday
+          ? `Market closed — holiday · ${shutWords().replace('Closed · ', '')}`
+          : shutWords()
+        : phase === 'PREMARKET'
+          ? 'Pre-market — before the open'
+          : phase === 'AFTERHOURS'
+            ? 'After hours'
+            : phase === 'AUCTION'
+              ? 'Closing auction — the book is publishing'
+              : 'Market open';
 
   return {
     etTime,

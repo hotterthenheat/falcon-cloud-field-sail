@@ -11,6 +11,7 @@ import { useTracker } from '../../context/TrackerContext';
 import { useWatchlist } from '../../data/watchlist';
 import { peekThetaPrice, thetaMove, useThetaPrices, useThetaStatus } from '../../data/thetaQuote';
 import { closeMoveTitle, sessionWhen } from '../../data/dayChange';
+import { extTag } from '../../core/session';
 import { asOfText } from '../ui/states';
 import { OfflineLine, useUwOnlyRoute } from './NavQuote';
 import { peekQuote, sessionPrice, useDayMoves } from '../../data/liveQuote';
@@ -65,7 +66,7 @@ function readName(symbol: string, uwOnly: boolean): NameRead {
   const change = uwOnly ? (q ? q.changePct : null) : mv?.pct ?? null;
   const extPct = uwOnly ? (q && q.phase !== 'regular' ? q.extPct : null) : mv?.ext ?? null;
   const extPre = uwOnly ? q?.phase === 'pre' : mv?.extWord === 'pre-market';
-  const ext = extPct != null && Number.isFinite(extPct) ? `${extPre ? 'PM' : 'AH'} ${pctSigned(extPct)}` : null;
+  const ext = extPct != null && Number.isFinite(extPct) ? `${uwOnly ? (extPre ? 'PM' : 'AH') : extTag(mv?.extWord)} ${pctSigned(extPct)}` : null;
   const changeTitle = mv ? closeMoveTitle(mv) : q && q.phase !== 'regular' ? `${sessionWhen(q.regDate) ?? 'The last'} regular-session change${q.extPct != null ? ` · ${q.phase === 'pre' ? 'pre-market' : 'after hours'} ${pctSigned(q.extPct)} since that close` : ''}` : null;
   const book = peekEntry(symbol);
   let near: NameRead['near'] = null;

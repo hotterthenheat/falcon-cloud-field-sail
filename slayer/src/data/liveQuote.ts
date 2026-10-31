@@ -1,6 +1,7 @@
 /* One quote: the last print, the regular session's change (data/dayChange.ts) and the extended-hours move kept apart, labelled by `phase`.
    A name with no print yet is null. */
 
+import { phaseAt } from '../core/session';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { peekSpot, subscribeBook, tapeQuote } from './uwBook';
 import { whalesQuote, whalesScreener, whalesState } from './whales';
@@ -35,13 +36,14 @@ export interface LiveQuote {
 }
 
 const TTL = 15_000;
-/* How often a quote is re-read: 15 s in the regular session, a minute in extended hours (04:00–09:30, 16:00–20:00),
-   15 minutes when nothing trades; never while the tab is hidden. */
+/* How often a quote is re-read, by the one session (core/session.ts): 15 s in the regular session, a minute in the
+   pre-market and after hours (to 17:00 on an early close), 15 minutes when nothing trades — and overnight too: the
+   vendor's stock state stops at 20:00 and resumes at 04:00 (no overnight prints), so a re-read would repeat it. Never
+   while the tab is hidden. */
 function ttlNow(): number {
-  if (!isTradingDay(nyTodayDate())) return 15 * 60_000;
-  const m = nyMinutes();
-  if (m >= 570 && m < 960) return TTL;
-  if (m >= 240 && m < 1200) return 60_000;
+  const ph = phaseAt(Date.now());
+  if (ph === 'regular') return TTL;
+  if (ph === 'pre' || ph === 'post') return 60_000;
   return 15 * 60_000;
 }
 /* the stock-state counts as stalled market-wide when a name's print is this old in the session (a thin name can go
