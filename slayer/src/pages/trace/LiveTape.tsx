@@ -39,6 +39,7 @@ import { useIsPhone } from '../../components/ui/useMediaQuery';
 import OpeningTag from '../../components/trace/OpeningTag';
 import { coversSpan, coversTip } from '../../components/trace/coversWords';
 import FlowStructures from '../../components/trace/FlowStructures';
+import TapeFold, { useTapeFold } from '../../components/trace/TapeFold';
 import { detectRolls, printKey as rollPrintKey, withoutRollLegs, type RollRead } from '../../data/flowRolls';
 import { detectRepeats, type RepeatRead } from '../../data/flowRepeats';
 import { nextOiOf, nyDateOf, onNextOi } from '../../data/traceLive';
@@ -51,10 +52,9 @@ const LANE_OPTIONS: DropdownOption<'prints' | 'alerts'>[] = [
   { value: 'prints', label: 'Every print', hint: 'Each trade as it hits the tape' },
   { value: 'alerts', label: 'Flow alerts', hint: 'A burst of prints on one contract, as one row' },
 ];
-const DAY_PANEL: DropdownOption<'on' | 'off'>[] = [
-  { value: 'on', label: 'Shown', hint: "The day's tide, biggest contracts and largest alerts" },
-  { value: 'off', label: 'Hidden', hint: 'The tape only' },
-];
+/* the two panels above the tape fold to one line each; the viewer's choice is kept (TapeFold) */
+const DAY_FOLD_KEY = 'slayer_tape_day_panel';
+const STRUCT_FOLD_KEY = 'slayer_tape_structures_panel';
 /** Ordering is one axis, direction (the Lean card) another — they compose */
 type TapeView = 'STREAM' | 'NOTABLE' | 'PREMIUM' | 'SIZE';
 
@@ -705,15 +705,16 @@ const LiveTape = () => {
 
   const zdteShare = useMemo(() => (beamRows.length === 0 ? 0 : beamRows.filter(r => r.dte === 0).length / beamRows.length), [beamRows]);
 
-  const [dayPick, setDayPick] = useState<boolean | null>(null);
-  /* the whole-day panel: open at a desk, folded on a phone so the first print sits above the fold */
-  const showDay = lane === 'prints' && (dayPick ?? !phone);
+  /* the whole-day panel: a line with the market's net folded, its three reads open */
+  const [dayOpen, toggleDay] = useTapeFold(DAY_FOLD_KEY);
+  const showDay = lane === 'prints' && dayOpen;
   /* after the close the head leads with the day, not the last prints' seconds */
   const dayFirst = lane === 'prints' && !!anchor && regularOnly && !scopeActive;
   const dayIso = anchor?.iso ?? tapeSessionIso();
   const dayOpenMs = useMemo(() => dayStartMs(dayIso), [dayIso]);
   const dayWanted = showDay || dayFirst;
-  const dayTide = useTide('market', '', dayWanted);
+  /* the tide is the folded line's figure too: read whenever the prints lane stands */
+  const dayTide = useTide('market', '', lane === 'prints');
   /* twenty, so three bets remain after the packages are set apart */
   const dayTop = useDayTopContracts(20, dayWanted);
   const dayAlerts = useDayBigAlerts(dayOpenMs, anchor?.closeMs ?? null, regularOnly ? 'regular' : 'extended', 5_000_000, 200, dayWanted);
@@ -757,9 +758,7 @@ const LiveTape = () => {
     const p = rowsRef.current.find(r => rollPrintKey(r) === k);
     if (p) setOpenPrint(p);
   }, []);
-  const [structPick, setStructPick] = useState<boolean | null>(null);
-  /* open at a desk, folded on a phone so the first print stays near the top */
-  const structOpen = structPick ?? !phone;
+  const [structOpen, toggleStruct] = useTapeFold(STRUCT_FOLD_KEY);
   const openRow = useCallback((r: TapeRow) => setOpenPrint(r.p), []);
 
   /* stepping walks the rows the reader is looking at; a print that aged out stays open, just not steerable */
@@ -947,13 +946,14 @@ const LiveTape = () => {
     if (tapeDown && beamRows.length === 0) return 'The tape did not answer — it fills when the feed does.';
     if (headReading && !dayFirst) return lane === 'alerts' ? 'Reading the alerts…' : searchQuery.trim() ? `Reading the prints for ${searchQuery.trim()}…` : 'Reading the tape…';
     const day = lane === 'prints' && dayNet && !scopeActive && regularOnly ? `The market leaned ${dayNet.net >= 0 ? 'bullish' : 'bearish'} ${anchor ? dayAdv(anchor.iso) : 'so far today'}: ${fmtUsd(Math.abs(dayNet.net))} more net into ${dayNet.net >= 0 ? 'calls' : 'puts'}.` : '';
-    if (dayFirst) return day || `The ${shortDay(anchor!.iso)} session has closed.`;
+    /* while the tide reads, the line already runs about as long as the lean it waits for: a phone's lead keeps its two lines */
+    if (dayFirst) return day || `The ${shortDay(anchor!.iso)} session has closed${dayTide.waiting ? " — reading the market's net premium…" : '.'}`;
     if (beamRows.length === 0) return searchQuery.trim() ? `No ${noun} for ${searchQuery.trim()} ${dayAdv(dayIso)}.` : `${day} No ${noun} in this view.`.trim();
     const who = searchQuery.trim() ? `${searchQuery.trim()}: ` : '';
     if (beamSummary.bullPremium === 0 && beamSummary.bearPremium === 0) return `${day} ${who}${num(beamRows.length)} ${noun}, none with a clear side.`.trim();
     const bull = beamSummary.bullPremium >= beamSummary.bearPremium;
     return `${day} ${who}${num(beamRows.length)} ${noun}: ${fmtUsd(bull ? beamSummary.bullPremium : beamSummary.bearPremium)} ${bull ? 'bullish' : 'bearish'} vs ${fmtUsd(bull ? beamSummary.bearPremium : beamSummary.bullPremium)}.`.trim();
-  }, [lane, tapeDown, beamRows, headReading, searchQuery, dayNet, scopeActive, regularOnly, anchor, beamSummary, dayIso, dayFirst]);
+  }, [lane, tapeDown, beamRows, headReading, searchQuery, dayNet, scopeActive, regularOnly, anchor, beamSummary, dayIso, dayFirst, dayTide.waiting]);
 
   const windowFacts = (
     <>
@@ -1012,13 +1012,14 @@ const LiveTape = () => {
   );
   const dayTopBet = dayBets[0] ?? null;
   const dayAlertTop = dayAlertsSplit.bets[0] ?? null;
+  /* on a phone a day fact's value runs to two lines once it lands: each holds both from the first frame */
   const dayFacts = (
     <>
-      <Fact label="Market net" testId="day-net" reserve="min-w-[13rem]" title={`The market tide's net ${dayAdv(dayIso)}${dayNet ? ` · ${coversTip(dayNet.covers)}` : ''}. ${VENDOR_TOTAL_NOTE}`}>
+      <Fact label="Market net" testId="day-net" reserve="min-w-[13rem] max-sm:min-h-[2lh]" title={`The market tide's net ${dayAdv(dayIso)}${dayNet ? ` · ${coversTip(dayNet.covers)}` : ''}. ${VENDOR_TOTAL_NOTE}`}>
         {dayNet ? <span className={dayNet.net >= 0 ? 'text-bull' : 'text-bear'}>{dayNet.net >= 0 ? '+' : '−'}{fmtUsd(Math.abs(dayNet.net))}</span> : <span className="text-textMuted">{dayTide.waiting ? '…' : '—'}</span>}
         {dayNet && <span className="text-textSecondary"> · {shortDay(dayIso)}{coversSpan(dayNet.covers) ? ` ${coversSpan(dayNet.covers)}` : ''}</span>}
       </Fact>
-      <Fact label="Net calls · puts" testId="day-sides" reserve="min-w-[8.25rem]" title="Net call and net put premium; puts bought lean bearish">
+      <Fact label="Net calls · puts" testId="day-sides" reserve="min-w-[8.25rem] max-sm:min-h-[2lh]" title="Net call and net put premium; puts bought lean bearish">
         {dayNet ? (
           <>
             <span className={dayNet.calls >= 0 ? 'text-bull' : 'text-bear'}>{dayNet.calls >= 0 ? '+' : '−'}{fmtUsd(Math.abs(dayNet.calls))}</span> <span className="text-textSecondary">·</span> <span className={dayNet.puts >= 0 ? 'text-bear' : 'text-bull'}>{dayNet.puts >= 0 ? '+' : '−'}{fmtUsd(Math.abs(dayNet.puts))}</span>
@@ -1029,7 +1030,7 @@ const LiveTape = () => {
       </Fact>
       {/* both day champions keep their place while they read and when the day has none: the row never reflows */}
       {dayTopBet ? (
-        <Champion label="Most premium" ink="supreme" reserve="min-w-[9.25rem]" title={`The day's heaviest single bet, ${leanWords(dayLean(dayTopBet))}`} onOpen={() => {
+        <Champion label="Most premium" ink="supreme" reserve="min-w-[9.25rem] max-sm:min-h-[2lh]" title={`The day's heaviest single bet, ${leanWords(dayLean(dayTopBet))}`} onOpen={() => {
           const day = bookRowToPrint(dayTopBet);
           /* the screener's day, not one fill: no quote is on the row, so none is drawn */
           setOpenPrint({ ...day, occ: dayTopBet.optionSymbol, bid: 0, ask: 0, dayCard: day.dayCard ?? { last: null, session: 'regular session' } });
@@ -1038,20 +1039,20 @@ const LiveTape = () => {
           {dayTopBet.right} · {fmtUsd(dayTopBet.premium)}
         </Champion>
       ) : (
-        <Fact label="Most premium" testId="day-top" reserve="min-w-[9.25rem]" title={dayTop.waiting ? "The day's heaviest single bet" : "None of the screener's heaviest contracts has a clear side — packages and legs are not bets"}>
+        <Fact label="Most premium" testId="day-top" reserve="min-w-[9.25rem] max-sm:min-h-[2lh]" title={dayTop.waiting ? "The day's heaviest single bet" : "None of the screener's heaviest contracts has a clear side — packages and legs are not bets"}>
           <span className="text-textMuted">{dayTop.waiting ? '…' : '—'}</span>
         </Fact>
       )}
       {dayAlertTop ? (
-        <Champion label="Largest alert" ink="plain" reserve="min-w-[9.25rem]" title="The day's largest flow alert of $5M+" onOpen={() => setOpenPrint(dayAlertTop)} testId="day-alert">
+        <Champion label="Largest alert" ink="plain" reserve="min-w-[9.25rem] max-sm:min-h-[2lh]" title="The day's largest flow alert of $5M+" onOpen={() => setOpenPrint(dayAlertTop)} testId="day-alert">
           {pill(dayAlertTop)}
         </Champion>
       ) : (
-        <Fact label="Largest alert" testId="day-alert" reserve="min-w-[9.25rem]" title={dayAlerts.waiting ? "The day's largest flow alert of $5M+" : 'No flow alert of $5M+ that is a bet this session'}>
+        <Fact label="Largest alert" testId="day-alert" reserve="min-w-[9.25rem] max-sm:min-h-[2lh]" title={dayAlerts.waiting ? "The day's largest flow alert of $5M+" : 'No flow alert of $5M+ that is a bet this session'}>
           <span className="text-textMuted">{dayAlerts.waiting ? '…' : '—'}</span>
         </Fact>
       )}
-      <Fact label="Last prints" testId="window" reserve="min-w-[10.75rem]" title="The stretch the tape below holds, walked back from the close">
+      <Fact label="Last prints" testId="window" reserve="min-w-[10.75rem] max-sm:min-h-[2lh]" title="The stretch the tape below holds, walked back from the close">
         {headReading ? <span className="text-textMuted">—</span> : windowSpan ? `${windowSpan} ET` : '—'}
       </Fact>
     </>
@@ -1135,9 +1136,6 @@ const LiveTape = () => {
             <span data-tape-lane>
               <DropdownSelect label="Tape" value={lane} options={LANE_OPTIONS} onChange={setLane} title="Every trade, or flow alerts" testId="tape-lane" />
             </span>
-            <span className={lane === 'prints' ? undefined : 'invisible pointer-events-none'} aria-hidden={lane === 'prints' ? undefined : true} data-tape-day-toggle>
-              <DropdownSelect label="Whole day" value={showDay ? 'on' : 'off'} options={DAY_PANEL} onChange={v => lane === 'prints' && setDayPick(v === 'on')} title="The whole-day panel — not a filter" testId="tape-day" />
-            </span>
             <FlowSearch value={searchQuery} onChange={setSearchQuery} rows={rows} span />
             <DropdownSelect label="Order" value={view} options={ORDER_OPTIONS} onChange={setView} title="How the prints are ordered" testId="tape-order" />
             <DropdownSelect label="Kind" value={flowFilter} options={KIND_OPTIONS} onChange={setFlowFilter} title="Sweeps, blocks, multi-leg or single prints" testId="tape-kind" />
@@ -1172,14 +1170,48 @@ const LiveTape = () => {
         }
       >
         <div data-tape-body>
-          {showDay && (
-            <div className="px-5 py-3 border-t border-borderSubtle flex flex-col gap-2" data-tape-day>
-              <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="font-mono text-t11 uppercase tracking-widest text-textPrimary">The whole day</span>
-                <span className="text-t11 text-textMuted">
-                  {dayAdv(dayIso) === 'today' ? 'Today' : shortDay(dayIso)} · {regularOnly ? (anchor ? '09:30–16:15 ET' : 'from 09:30 ET') : 'outside the regular session'} · the tide, the screener and the alerts, not the prints below
-                </span>
-              </div>
+          {lane === 'prints' && (
+            <TapeFold
+              title="The whole day"
+              noun="the whole day"
+              summary={
+                dayOpen ? (
+                  <>
+                    {dayAdv(dayIso) === 'today' ? 'Today' : shortDay(dayIso)} · {regularOnly ? (anchor ? '09:30–16:15 ET' : 'from 09:30 ET') : 'outside the regular session'}
+                    <span className="max-sm:hidden"> · the tide, the screener and the alerts, not the prints below</span>
+                  </>
+                ) : dayNet ? (
+                  <span data-tape-day-net>
+                    <span className="text-textSecondary">Market net </span>
+                    <span className={`font-mono tnum ${dayNet.net >= 0 ? 'text-bull' : 'text-bear'}`}>
+                      {dayNet.net >= 0 ? '+' : '−'}
+                      {fmtUsd(Math.abs(dayNet.net))}
+                    </span>
+                    {/* a phone's line holds the net alone */}
+                    <span className="font-mono tnum max-sm:hidden">
+                      {' '}
+                      · calls{' '}
+                      <span className={dayNet.calls >= 0 ? 'text-bull' : 'text-bear'}>
+                        {dayNet.calls >= 0 ? '+' : '−'}
+                        {fmtUsd(Math.abs(dayNet.calls))}
+                      </span>{' '}
+                      · puts{' '}
+                      <span className={dayNet.puts >= 0 ? 'text-bear' : 'text-bull'}>
+                        {dayNet.puts >= 0 ? '+' : '−'}
+                        {fmtUsd(Math.abs(dayNet.puts))}
+                      </span>{' '}
+                      · {dayAdv(dayIso) === 'today' ? 'today' : shortDay(dayIso)}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="font-mono">{dayTide.waiting ? '…' : '—'}</span>
+                )
+              }
+              summaryTitle={dayOpen ? undefined : `The market tide's net premium ${dayAdv(dayIso)}: net calls less net puts. ${VENDOR_TOTAL_NOTE}`}
+              open={dayOpen}
+              onToggle={toggleDay}
+              testId="tape-day"
+            >
               {/* the height the three reads fill (a title and four lines), held from the first frame: they land
                   one by one and must not push the rolls and the tape down */}
               <div className="grid gap-x-8 gap-y-2 md:grid-cols-3 md:min-h-[117px] text-t11">
@@ -1283,7 +1315,7 @@ const LiveTape = () => {
                   )}
                 </div>
               </div>
-            </div>
+            </TapeFold>
           )}
           {lane === 'prints' && (
             <FlowStructures
@@ -1293,7 +1325,7 @@ const LiveTape = () => {
               span={windowSpan}
               reading={tapeReading && !frozen && rows.length === 0}
               open={structOpen}
-              onToggle={() => setStructPick(!structOpen)}
+              onToggle={toggleStruct}
               onOpenPrint={openByKey}
             />
           )}

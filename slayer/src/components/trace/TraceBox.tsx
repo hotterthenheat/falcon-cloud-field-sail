@@ -186,6 +186,9 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
     fitTimer.current = window.setTimeout(() => {
       const wrap = wrapRef.current;
       if (!wrap || phone || lockColumns) return;
+      /* no rows yet: a head alone sets a floor only where it is cut. Its plain width would be a pinned column's wall,
+         narrower than the rows will want, and the grid would slide sideways twice as they land */
+      const anyCell = !!wrap.querySelector('.ag-cell[col-id]');
       const need: Record<string, number> = {};
       /* the content's own width, to the subpixel: scrollWidth rounds, and a 0.1px overflow still paints an ellipsis */
       const range = document.createRange();
@@ -215,6 +218,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
         const w = contentW(text);
         /* cut (a sort arrow took the room): what it has plus what it lacks; else the cell around its label and the words */
         const cut = w > shown + 0.01;
+        if (!anyCell && !cut) return;
         want(head.getAttribute('col-id'), cut ? head.offsetWidth + (w - shown) + 1 : head.offsetWidth - label.getBoundingClientRect().width + w + 1, cut);
       });
       setFit(prev => {
