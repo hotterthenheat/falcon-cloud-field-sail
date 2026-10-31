@@ -8,7 +8,7 @@ import type { Column } from '../ui/DataTable';
 import ContractLabel from '../ui/ContractLabel';
 import { TraceGrid, RestFoot, useRestCap, ROWS_AT_REST } from '../trace/TraceBox';
 import SetupScanCard, { ownExpiry } from './SetupScanCard';
-import { BOOK_NAME } from '../../data/compassParams';
+import { MODEL_WORD, RIDING_WORD, modelOfBand } from '../../data/compassParams';
 import { STOP_KEEP } from '../../data/contractQuote';
 
 type ScanLayout = 'cards' | 'table';
@@ -28,12 +28,12 @@ interface SetupScanBoardProps {
   emptyLabel?: string;
 }
 
-const WIDTHS: Record<string, number> = { rank: 56, expiry: 150, book: 90, sigma: 110, premium: 96, breaks: 120, open: 72 };
+const WIDTHS: Record<string, number> = { rank: 56, expiry: 150, book: 190, sigma: 110, premium: 96, breaks: 120, open: 72 };
 const TOOLTIPS: Record<string, string> = {
   sigma: 'One standard deviation of the underlying to expiry, from the quote implied vol. A dash means the quote had no vol.',
   premium: 'The ask on this quote.',
-  breaks: `${BOOK_NAME.A} and ${BOOK_NAME.B}: 0.4678 times the ask. ${BOOK_NAME.C} has no stop.`,
-  book: `${BOOK_NAME.A} is the near book. ${BOOK_NAME.B} is the far book. ${BOOK_NAME.C} is the close lottery.`,
+  breaks: `${MODEL_WORD[1]}: 0.4678 times the ask. ${MODEL_WORD[3]} has no stop.`,
+  book: `${MODEL_WORD[1]} is the entry model. ${MODEL_WORD[2]} rides a call when it clears too. ${MODEL_WORD[3]} is the late sweep, by rule.`,
 };
 
 const STEP = 80;
@@ -81,9 +81,14 @@ const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expi
       { key: 'expiry', header: 'Expiry', render: r => <span className="font-mono text-t11 text-textSecondary whitespace-normal">{ownExpiry(r)}</span> },
       {
         key: 'book',
-        header: 'Book',
-        sortValue: r => r.band ?? '',
-        render: r => <span className="font-mono text-t11 text-textPrimary">{r.band === 'top' ? BOOK_NAME.A : r.band === 'wing' ? BOOK_NAME.B : r.band === 'lottery' ? BOOK_NAME.C : '—'}</span>,
+        header: 'Model',
+        sortValue: r => modelOfBand(r.band) || 'z',
+        render: r => (
+          <span className="font-mono text-t11 font-semibold text-textPrimary whitespace-nowrap">
+            {modelOfBand(r.band) || '—'}
+            {r.band === 'top' && r.runner ? <span className="ml-1.5 font-normal text-textSecondary">· {RIDING_WORD}</span> : null}
+          </span>
+        ),
       },
       { key: 'sigma', header: '1σ to expiry', align: 'right', sortValue: r => r.sigmaMovePct, render: r => <span className="font-mono text-t11 tnum text-textPrimary">{r.greeks.iv > 0 && r.sigmaMovePct > 0 ? `±${r.sigmaMovePct}%` : '—'}</span> },
       { key: 'premium', header: 'Ask', align: 'right', sortValue: r => (r.ask > 0 ? r.ask : -1), render: r => <span className="font-mono text-t11 tnum text-textPrimary">{r.ask > 0 ? `$${r.ask.toFixed(2)}` : '—'}</span> },

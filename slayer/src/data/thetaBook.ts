@@ -215,9 +215,11 @@ const hidden = () => typeof document !== 'undefined' && document.hidden;
 
 /** The contract's own bars from the terminal: history OHLC, or trades when OHLC has no prints. A quote is not a bar.
     Polls while the page shows it and the tab is visible. Null until the feed answers; [] when it answered and there were no trades. */
-export function useContractBars(ticker: string, expiration: string, strike: number, right: OptionRight, on: boolean, tf: Timeframe = '1m'): LiveBar[] | null {
+export function useContractBars(ticker: string, expiration: string, strike: number, right: OptionRight, on: boolean, tf: Timeframe = '1m', day = ''): LiveBar[] | null {
   const spec = barWindow(tf);
-  const key = `${ticker}|${expiration}|${strike}|${right}|${tf}`;
+  /* a past call's page reads the bars up to its own session (YYYY-MM-DD), once: that window ends at its 16:00 */
+  const asOf = /^\d{4}-\d{2}-\d{2}$/.test(day) ? nyWallTime(Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10)), 16, 0) : 0;
+  const key = `${ticker}|${expiration}|${strike}|${right}|${tf}|${asOf}`;
   /* the bars are held with the contract they are for: on a switch the last contract's bars are not shown under the new one */
   const [held, setHeld] = useState<{ key: string; bars: LiveBar[] | null }>(() => ({ key, bars: barCache.get(key)?.bars ?? null }));
   const setBars = (next: LiveBar[] | null) => setHeld({ key, bars: next });
@@ -229,7 +231,7 @@ export function useContractBars(ticker: string, expiration: string, strike: numb
     const pull = async () => {
       if (hidden()) return;
       const daily = spec.interval === '1d';
-      const { start, end } = contractSpan(spec.sessions, daily);
+      const { start, end } = contractSpan(spec.sessions, daily, asOf || Date.now());
       const leg = `symbol=${encodeURIComponent(ticker)}&expiration=${exp}&strike=${strike}&right=${rightWord}&start_date=${start}&end_date=${end}`;
       const ohlc = await theta(daily ? `/option/history/eod?${leg}&format=json` : `/option/history/ohlc?${leg}&interval=${spec.interval}&format=json`, true);
       if (dead) return;
@@ -246,13 +248,15 @@ export function useContractBars(ticker: string, expiration: string, strike: numb
     };
     const hit = barCache.get(key);
     if (hit) setBars(hit.bars);
+    /* a finished session's bars do not change: read once */
+    if (asOf && hit?.bars.length) return () => { dead = true; };
     void pull();
-    const id = window.setInterval(() => void pull(), spec.interval === '1m' ? 15_000 : 60_000);
+    const id = asOf ? 0 : window.setInterval(() => void pull(), spec.interval === '1m' ? 15_000 : 60_000);
     return () => {
       dead = true;
-      window.clearInterval(id);
+      if (id) window.clearInterval(id);
     };
-  }, [key, on, ticker, expiration, strike, right, spec.interval, spec.sessions]);
+  }, [key, on, ticker, expiration, strike, right, spec.interval, spec.sessions, asOf]);
   return held.key === key ? held.bars : barCache.get(key)?.bars ?? null;
 }
 
@@ -455,4 +459,113 @@ export function useThetaBook(sleeve: SleeveKey): BookView {
     feedAt: f.at,
     feedError: f.error,
   };
+}
+
+/** A contract's first-order greeks and quote at one minute of a past session (the call's minute, for a past call's
+    page): the terminal's own history rows, nothing modelled. Null until it answers, or when that minute has no row. */
+export interface GreeksAt {
+  at: number;
+  bid: number;
+  ask: number;
+  under: number;
+  delta: number;
+  theta: number;
+  vega: number;
+  rho: number;
+  iv: number;
+}
+const greeksAtMemo = new Map<string, GreeksAt | null>();
+
+export function useGreeksAt(ticker: string, expiration: string, strike: number, right: OptionRight, atMs: number, on: boolean): GreeksAt | null {
+  const minute = Math.floor(atMs / 60_000) * 60_000;
+  const key = `${ticker}|${expiration}|${strike}|${right}|${minute}`;
+  const [held, setHeld] = useState<{ key: string; row: GreeksAt | null }>(() => ({ key, row: greeksAtMemo.get(key) ?? null }));
+  useEffect(() => {
+    if (!on || !ticker || !expiration || !(strike > 0) || !(minute > 0)) return;
+    if (greeksAtMemo.has(key)) {
+      setHeld({ key, row: greeksAtMemo.get(key) ?? null });
+      return;
+    }
+    let dead = false;
+    const day = ymd(minute);
+    const rightWord = right === 'C' ? 'call' : 'put';
+    void theta(`/option/history/greeks/first_order?symbol=${encodeURIComponent(ticker)}&expiration=${expiration.replace(/-/g, '')}&strike=${strike}&right=${rightWord}&start_date=${day}&end_date=${day}&interval=1m&format=json`, true).then(got => {
+      if (dead || got.error) return;
+      let row: GreeksAt | null = null;
+      for (const item of asRows(got.data)) {
+        const list = Array.isArray(item.data) ? (item.data as Record<string, unknown>[]) : [item];
+        for (const q of list) {
+          const t = nyWallStamp(q.timestamp);
+          if (Math.floor(t / 60_000) * 60_000 !== minute) continue;
+          const rawIv = field(q.implied_vol);
+          row = {
+            at: t,
+            bid: field(q.bid),
+            ask: field(q.ask),
+            under: field(q.underlying_price),
+            delta: field(q.delta),
+            theta: perDay(field(q.theta)),
+            vega: perPoint(field(q.vega)),
+            rho: perPoint(field(q.rho)),
+            iv: Number.isFinite(rawIv) ? vendorVol(rawIv) * 100 : NaN,
+          };
+        }
+      }
+      greeksAtMemo.set(key, row);
+      setHeld({ key, row });
+    });
+    return () => {
+      dead = true;
+    };
+  }, [key, on, ticker, expiration, strike, right, minute]);
+  return on && held.key === key ? held.row : null;
+}
+
+/** One strike of the book around a contract, as the live quote prints it. */
+export interface ChainRow {
+  strike: number;
+  right: OptionRight;
+  bid: number;
+  ask: number;
+  delta: number;
+  iv: number;
+}
+const chainMemo = new Map<string, { at: number; rows: ChainRow[] }>();
+
+/** The live book around a contract (both sides, `span` strikes either way of the money) on its expiration, read every
+    15 seconds while its page shows it. Null until the feed answers; [] when it answered with nothing. */
+export function useChainAround(ticker: string, expiration: string, span: number, on: boolean): ChainRow[] | null {
+  const key = `${ticker}|${expiration}|${span}`;
+  const [held, setHeld] = useState<{ key: string; rows: ChainRow[] | null }>(() => ({ key, rows: chainMemo.get(key)?.rows ?? null }));
+  useEffect(() => {
+    if (!on || !ticker || !expiration) return;
+    let dead = false;
+    const pull = async () => {
+      if (hidden()) return;
+      const got = await theta(`/option/snapshot/greeks/first_order?symbol=${encodeURIComponent(ticker)}&expiration=${expiration.replace(/-/g, '')}&right=both&strike_range=${span}&format=json`, true);
+      if (dead || (got.error && !noData(got))) return;
+      const rows: ChainRow[] = [];
+      for (const item of asRows(got.data)) {
+        const parsed = rowOf(item);
+        if (!parsed) continue;
+        const strike = num(parsed.contract.strike);
+        const word = String(parsed.contract.right || '').toLowerCase();
+        const side: OptionRight | '' = word.startsWith('c') ? 'C' : word.startsWith('p') ? 'P' : '';
+        const bid = field(parsed.quote.bid);
+        const ask = field(parsed.quote.ask);
+        if (!(strike > 0) || !side || !Number.isFinite(bid) || !Number.isFinite(ask)) continue;
+        const rawIv = field(parsed.quote.implied_vol);
+        rows.push({ strike, right: side, bid, ask, delta: field(parsed.quote.delta), iv: Number.isFinite(rawIv) ? vendorVol(rawIv) * 100 : NaN });
+      }
+      chainMemo.set(key, { at: Date.now(), rows });
+      setHeld({ key, rows });
+    };
+    void pull();
+    const id = window.setInterval(() => void pull(), 15_000);
+    return () => {
+      dead = true;
+      window.clearInterval(id);
+    };
+  }, [key, on, ticker, expiration, span]);
+  return on && held.key === key ? held.rows : null;
 }

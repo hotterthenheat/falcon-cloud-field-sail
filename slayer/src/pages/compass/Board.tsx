@@ -13,7 +13,7 @@ import { bestByName, currentPicks, lastScanAt, scanBusy, scanReport, seatsNow } 
 import { backlogLine, compassFeed } from '../../data/compassFeed';
 import { daySummary } from '../../data/compassOutcome';
 import { asOfText } from '../../components/ui/states';
-import { BOOK_NAME, MODELS_VALIDATED, MODEL_1_NAME, MODEL_2_NAME, P1_MIN, SEAT_CAP, inModelWindow } from '../../data/compassParams';
+import { MODELS_VALIDATED, MODEL_WORD, P1_MIN, SEAT_CAP, inModelWindow } from '../../data/compassParams';
 import { nyClock, nyDay, nyIsoDate, nyMinutes, nyWallTime } from '../../core/nyTime';
 import { setCompassView, useCompassView, type BoardLayout } from '../../data/compassView';
 import { useScanClock } from '../../data/compassDoor';
@@ -47,7 +47,7 @@ const LAYOUT_OPTIONS: DropdownOption<BoardLayout>[] = [
   { value: 'table', label: 'Table', hint: 'One row per setup, sortable' },
 ];
 
-/** A card is a call, or one of the closest that did not clear. Closest does not need 70.67%. */
+/** A card is a call, or one of the closest that did not clear. Closest does not need the line. */
 function shownCard(s: Setup): boolean {
   const dte = s.expiry === '0DTE' ? 0 : Number(/^(\d+)DTE$/.exec(s.expiry)?.[1]);
   if (!(dte >= 0 && dte <= 7)) return false;
@@ -174,12 +174,12 @@ const Board = () => {
       {
         value: 'odte',
         label: `0DTE · ${dayOf(same.date)}`,
-        hint: same.dte === 0 ? `Stops today. ${BOOK_NAME.C} runs here.` : `Next session, ${same.weekday}.`,
+        hint: same.dte === 0 ? `Stops today. ${MODEL_WORD[3]} runs here.` : `Next session, ${same.weekday}.`,
       },
       {
         value: 'weekly',
         label: `1–7 DTE · ${dayOf(week.date)}`,
-        hint: `Same scores as same-day. ${BOOK_NAME.C} does not run here.`,
+        hint: `${MODEL_WORD[1]} and ${MODEL_WORD[2]} as same-day. ${MODEL_WORD[3]} does not run here.`,
       },
     ];
   }, [sleeveDates]);
@@ -228,7 +228,7 @@ const Board = () => {
   const scanOff = clock.phase === 'closed';
   const report = scanReport(offered === 'weekly' ? 'weekly' : 'odte');
   const bestLine = report.scored
-    ? `Nothing cleared. Closest is ${report.contract} at ${(report.best * 100).toFixed(1)}%.`
+    ? `Nothing cleared. Closest is ${report.contract}.`
     : report.quiet
       ? 'Quotes are in. The minute tape did not load, so nothing was scored.'
       : '';
@@ -239,9 +239,11 @@ const Board = () => {
   const near = rankedSetups.filter(s => s.band === 'closest').length;
   const called = swings + wings + booksC;
   const caveat = MODELS_VALIDATED ? '' : ' Unvalidated models.';
+  const ridden = rankedSetups.filter(s => s.band === 'top' && s.runner === true).length;
+  const ridingWord = ridden ? ` ${MODEL_WORD[2]} rides ${ridden}.` : '';
   const calledLine = offered === 'odte'
-    ? `${BOOK_NAME.A} ${swings}. ${BOOK_NAME.B} ${wings}. ${BOOK_NAME.C} ${booksC}.${near ? ` Closest ${near}.` : ''}${caveat}`
-    : `${BOOK_NAME.A} ${swings}. ${BOOK_NAME.B} ${wings}. ${BOOK_NAME.C} is same-day only.${near ? ` Closest ${near}.` : ''}${caveat}`;
+    ? `${MODEL_WORD[1]} ${swings + wings}.${ridingWord} ${MODEL_WORD[3]} ${booksC}.${near ? ` Closest ${near}.` : ''}${caveat}`
+    : `${MODEL_WORD[1]} ${swings + wings}.${ridingWord} ${MODEL_WORD[3]} is same-day only.${near ? ` Closest ${near}.` : ''}${caveat}`;
   const scannedAt = lastScanAt(offered === 'weekly' ? 'weekly' : 'odte');
   const asOf = scannedAt
     ? `Last scan ${nyClock(scannedAt, { zone: true })}.`
@@ -261,14 +263,14 @@ const Board = () => {
       : '';
   const tNow = nyMinutes() - (9 * 60 + 30);
   const inWindow = inModelWindow(tNow);
-  const windowLine = inWindow ? '' : ` Calls run 09:45–15:00 ET. Outside those minutes the scan still reads the book, but the ${MODEL_1_NAME} needs the regular session’s own minutes, so nothing calls.`;
+  const windowLine = inWindow ? '' : ` Calls run 09:45–15:00 ET. Outside those minutes the scan still reads the book, but ${MODEL_WORD[1]} needs the regular session’s own minutes, so nothing calls.`;
   /* the runner tree's range input needs an hour of minutes: before 10:30 a call cannot ride */
-  const runnerLine = !scanOff && tNow >= 15 && tNow < 60 ? ` ${MODEL_2_NAME} is off before 10:30 ET (it needs an hour of minutes), so a call before then takes the 1.50× profit and does not ride.` : '';
+  const runnerLine = !scanOff && tNow >= 15 && tNow < 60 ? ` ${MODEL_WORD[2]} is off before 10:30 ET (it needs an hour of minutes), so a call before then takes the 1.50× profit and does not ride.` : '';
   const sessionDay = !scanOff && clock.phase !== 'halt' && !odteAsleep();
   const preEntry = sessionDay && tNow >= -60 && tNow < 15 && !day.calls;
   const nothingLine = preEntry
     ? 'Compass scans from 09:45 ET; no calls yet today.'
-    : offered === 'odte' ? `Nothing cleared ${BOOK_NAME.A}, ${BOOK_NAME.B} or ${BOOK_NAME.C}.` : `Nothing cleared ${BOOK_NAME.A} or ${BOOK_NAME.B}.`;
+    : offered === 'odte' ? `Nothing cleared ${MODEL_WORD[1]} or ${MODEL_WORD[3]}.` : `Nothing cleared ${MODEL_WORD[1]}.`;
   const sentence = (
     <RichRead text={
       serverLine
@@ -319,7 +321,7 @@ const Board = () => {
                 <Fact label="Cleared" testId="best" title="Names on this sleeve whose best contract cleared the line. A call still needs a seat.">
                   {bests.size ? cleared.toLocaleString('en-US') : '—'}
                 </Fact>
-                <Fact label="Seats" testId="fading" title={`Roots the ${BOOK_NAME.A} and ${BOOK_NAME.B} books have called today. Five at most.`}>
+                <Fact label="Seats" testId="fading" title={`Roots ${MODEL_WORD[1]} has called today. Five at most.`}>
                   <span className={seats >= SEAT_CAP ? 'text-bear' : 'text-textPrimary'}>{seats} of {SEAT_CAP}</span>
                 </Fact>
               </>
@@ -331,7 +333,7 @@ const Board = () => {
                   value={offered}
                   options={expiryOptions}
                   onChange={next => setCompassView({ sleeve: next === 'weekly' ? 'weekly' : 'odte' })}
-                  title={`0DTE includes ${BOOK_NAME.C}. 1–7 DTE uses ${BOOK_NAME.A} and ${BOOK_NAME.B}.`}
+                  title={`0DTE includes ${MODEL_WORD[3]}. 1–7 DTE uses ${MODEL_WORD[1]} and ${MODEL_WORD[2]}.`}
                   ink={CARD_INK.expiry}
                   testId="compass-expiry"
                   /* a phone's half-width card: the choice whole ("0DTE · Nov 2"), its name in the title */
