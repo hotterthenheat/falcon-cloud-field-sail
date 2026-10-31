@@ -1159,13 +1159,13 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   );
 
   /* The Stock/Premium door in the strip's SECOND slot, the setup page's grammar — it used to sit at the far right
-     and say Contract. Premium needs a picked contract; with none picked the door stays on Stock. */
+     and say Contract. Premium needs a picked contract; with none picked the door stays on Stock, greyed, and says so. */
   const lensTabs = (
     <CardTabs
       ariaLabel="Chart view"
       options={[
         { value: 'stock', label: 'Stock' },
-        { value: 'contract', label: 'Premium' },
+        { value: 'contract', label: 'Premium', disabled: !selected, title: selected ? "The picked contract's premium" : 'Pick a contract first' },
       ]}
       value={lens}
       onChange={v => (v === 'contract' ? selected && patch({ lens: 'contract' }) : patch({ lens: 'stock' }))}
@@ -1323,17 +1323,29 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
        own time and the hours its options trade (core/session.ts) */
     const root = chain.optRoot || ticker;
     if (optionsOpen(root) && Date.now() - at < 120_000) return `Live · ${fmtDay(chain.expiry.date)} · ${stamp(at)} ET`;
-    return `${fmtDay(chain.expiry.date)} · quotes as of ${etClock(at)}${optionsOpen(root) ? '' : ` · ${productHours(optionProductOf(root), sessionAt(Date.now()).isEarlyClose)}`}`;
+    return `${fmtDay(chain.expiry.date)} · quotes as of ${etClock(at)}`;
   })();
+  /* the hours the root's options trade, outside them: a tail the narrow head leaves to the words' title */
+  const chainFeedHours = (() => {
+    if (chain.offline || listed === null || (chainWait && !chain.rows.length) || (chain.kept && chain.takenAt) || !listed.rows.length || !chain.rows.length) return '';
+    const at = chain.quotedAt || chain.takenAt || 0;
+    const root = chain.optRoot || ticker;
+    if (!at || (optionsOpen(root) && Date.now() - at < 120_000) || optionsOpen(root)) return '';
+    return productHours(optionProductOf(root), sessionAt(Date.now()).isEarlyClose);
+  })();
+  /* a head narrower than one row (a phone, a half-width card): the words wrap under the name rather than run off the
+     card's edge, and the trading hours wait in their title */
+  const chainNarrow = chainW > 0 && chainW < CHAIN_ONE_ROW_PX;
   const chainMove = (
-    <span className="inline-flex items-center gap-2">
+    <span className={chainNarrow ? 'flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0' : 'inline-flex items-center gap-2'}>
       {chain.expectedMovePct > 0 && (
         <span className="font-mono text-t9 tnum text-textMuted whitespace-nowrap" title={`One standard move (1σ) the at-the-money options charge for by this expiry, ${fmtDay(chain.expiry.date)}, off this chain's own quotes (the calendar days to it included) — Pinpoint's "one move" and Terrain's cone read their own vol and clock, so they can differ by a few hundredths`} data-chain-move>
           ±{chain.expectedMovePct.toFixed(1)}% 1σ
         </span>
       )}
-      <span className={`font-mono text-t9 uppercase tracking-widest whitespace-nowrap ${chain.offline ? 'text-bear' : 'text-textMuted'}`} data-chain-feed={chain.offline ? 'offline' : chain.kept ? 'kept' : 'live'} title={chain.offline ? 'Live data is not answering. The chain is the last one it gave.' : undefined}>
+      <span className={`font-mono text-t9 uppercase tracking-widest ${chainNarrow ? 'min-w-0 whitespace-normal break-words' : 'whitespace-nowrap'} ${chain.offline ? 'text-bear' : 'text-textMuted'}`} data-chain-feed={chain.offline ? 'offline' : chain.kept ? 'kept' : 'live'} title={chain.offline ? 'Live data is not answering. The chain is the last one it gave.' : chainNarrow && chainFeedHours ? `${chainFeedWords} · ${chainFeedHours}` : undefined}>
         {chainFeedWords}
+        {chainFeedHours && !chainNarrow ? ` · ${chainFeedHours}` : ''}
       </span>
     </span>
   );

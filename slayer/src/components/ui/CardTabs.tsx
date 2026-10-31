@@ -11,7 +11,8 @@ const CardTabs = <V extends string>({
   ariaLabel,
   size = 'sm',
 }: {
-  options: readonly { value: V; label: string }[];
+  /** `disabled`: the tab stands, greyed, and says why in its `title` (a tab that cannot act yet never looks live) */
+  options: readonly { value: V; label: string; disabled?: boolean; title?: string }[];
   value: V;
   onChange: (v: V) => void;
   ariaLabel?: string;
@@ -28,12 +29,15 @@ const CardTabs = <V extends string>({
           return (
             <button
               key={opt.value}
+              type="button"
               aria-pressed={active}
-              onClick={() => onChange(opt.value)}
+              aria-disabled={opt.disabled || undefined}
+              title={opt.title}
+              onClick={() => !opt.disabled && onChange(opt.value)}
               /* hit-24: the tab's hit area reaches 24px at a desk and 44 on a phone; the drawn tab is unchanged */
               className={size === 'title' ? 'hit-24 relative pb-0.5 text-t15 font-semibold leading-tight transition-colors' : 'hit-24 relative py-1 font-mono text-t10 uppercase tracking-widest transition-colors'}
             >
-              <span className={active ? 'text-textPrimary' : 'text-tabRest hover:text-textPrimary'}>{opt.label}</span>
+              <span className={active ? 'text-textPrimary' : opt.disabled ? 'text-textMuted opacity-50 cursor-not-allowed' : 'text-tabRest hover:text-textPrimary'}>{opt.label}</span>
               {active && (
                 <motion.span
                   layoutId="card-tab-line"
