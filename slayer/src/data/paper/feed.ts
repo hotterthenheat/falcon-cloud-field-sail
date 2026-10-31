@@ -8,6 +8,7 @@ import type { Candle } from '../../types/market';
 import type { DeskChain, DeskContract } from '../weigherDesk';
 import { isTradingDay, expiryFor, sessionCloseMinOn } from '../../core/calendar';
 import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
+import { calendarYears, sigmaToExpiry } from '../../core/volClock';
 import { longLeg, spreadBook, spreadSizes, bookMark, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
 import { bookCandles, ensureBook } from '../uwBook';
 import { dateAt, lastTradeDayOf, nyAt, sessionFrom, tradingEndsAt, yearsToExpiry, OPEN_MIN } from './clock';
@@ -126,7 +127,42 @@ export const optionQuote = (c: ContractId, ms: number, spot = spotOf(c.ticker)):
   };
 };
 
-/** The name's at-the-money IV now, from the nearest expiry five days out or more that is loaded — 0 until one is */
+/** The at-the-money IV of a chain: each strike's IV the average of its call's and its put's (either alone where only one
+    is known), taken at the two listed strikes either side of the name and drawn straight between them, by strike. Past
+    the strikes loaded, the nearest one's. NaN with none known. The same rule as the Weigher's `atmIvAt`
+    (data/weigherChain.ts) — written here until the two can share one helper. */
+export function atmIvAt(rows: { strike: number; call: { iv: number }; put: { iv: number } }[], spot: number): number {
+  const ivAt = (r: { call: { iv: number }; put: { iv: number } }) => {
+    const v = [r.call.iv, r.put.iv].filter(x => Number.isFinite(x) && x > 0);
+    return v.length ? v.reduce((x, y) => x + y, 0) / v.length : NaN;
+  };
+  const known = rows.map(r => ({ k: r.strike, iv: ivAt(r) })).filter(r => Number.isFinite(r.iv)).sort((x, y) => x.k - y.k);
+  if (!known.length || !(spot > 0)) return NaN;
+  if (spot <= known[0].k) return known[0].iv;
+  if (spot >= known[known.length - 1].k) return known[known.length - 1].iv;
+  let i = 0;
+  while (i < known.length - 1 && known[i + 1].k < spot) i++;
+  const lo = known[i];
+  const hi = known[i + 1];
+  if (hi.k === lo.k) return lo.iv;
+  return lo.iv + ((hi.iv - lo.iv) * (spot - lo.k)) / (hi.k - lo.k);
+}
+/** The one-sigma move to the expiry's close as a share of the name, percent — through core/volClock `sigmaToExpiry`, the
+    one expected-move formula. The desk's IV is solved on the trading clock (yearsToExpiry), so it is put on the calendar
+    year first with the variance kept (σ_cal² · T_cal = σ_trade² · T_trade): S·σ·√T on either clock is the same move. */
+export function expectedMovePctOf(spot: number, ivTradePct: number, c: { ticker: string; expiry: string }, ms: number): number {
+  if (!(spot > 0) || !(ivTradePct > 0)) return 0;
+  const expiry = lastTradeDayOf(c);
+  const tTrade = yearsToExpiry(expiry, ms);
+  const tCal = calendarYears(expiry, ms);
+  if (!(tTrade > 0) || !(tCal > 0)) return 0;
+  const sigmaCal = (ivTradePct / 100) * Math.sqrt(tTrade / tCal);
+  const move = sigmaToExpiry(spot, sigmaCal, expiry, ms);
+  return move != null && move > 0 ? (move / spot) * 100 : 0;
+}
+
+/** The name's at-the-money IV now, from the nearest expiry five days out or more that is loaded — 0 until one is: the
+    calls' and puts' IVs at the two strikes either side of the name, drawn straight between them (atmIvAt) */
 export function ivOf(ticker: string, ms = Date.now()): number {
   const spot = spotOf(ticker);
   if (!(spot > 0)) return 0;
@@ -134,8 +170,11 @@ export function ivOf(ticker: string, ms = Date.now()): number {
   const exp = (exps.find(e => e.dte >= 5) ?? exps[0])?.iso;
   const b = exp ? bookOf(ticker, exp) : null;
   if (!b || !b.strikes.length) return 0;
-  const k = b.strikes.reduce((best, x) => (Math.abs(x - spot) < Math.abs(best - spot) ? x : best), b.strikes[0]);
-  return legQuote({ ticker, strike: k, right: 'C', expiry: exp! }, spot, ms).iv;
+  const below = b.strikes.filter(x => x <= spot).slice(-1);
+  const above = b.strikes.filter(x => x > spot).slice(0, 1);
+  const rows = [...below, ...above].map(k => ({ strike: k, call: { iv: legQuote({ ticker, strike: k, right: 'C', expiry: exp! }, spot, ms).iv }, put: { iv: legQuote({ ticker, strike: k, right: 'P', expiry: exp! }, spot, ms).iv } }));
+  const iv = atmIvAt(rows, spot);
+  return Number.isFinite(iv) ? iv : 0;
 }
 
 /* The what-if: one leg's Black-Scholes value with the name at `spot`, at the IV its live mid implies */
@@ -230,14 +269,12 @@ export function liveDeskChain(ticker: string, expiry: string, ms: number, each =
     for (let i = 0; i < b.strikes.length; i++) if (Math.abs(b.strikes[i] - mid) < Math.abs(b.strikes[at] - mid)) at = i;
   }
   const strikes = b.strikes.slice(Math.max(0, at - each), at + each + 1);
-  const ivs: number[] = [];
   const contract = (strike: number, right: 'C' | 'P'): DeskContract => {
     const q = legQuote({ ticker, strike, right, expiry }, spot, ms);
     const raw = legQuoteOf(ticker, expiry, strike, right);
     if (!raw) return blankContract(strike, right, spot);
     const intrinsic = spot > 0 ? Math.max(0, right === 'C' ? spot - strike : strike - spot) : NaN;
     const even = raw.ask > 0 ? (right === 'C' ? strike + raw.ask : strike - raw.ask) : NaN;
-    if (q.iv > 0) ivs.push(q.iv * 100);
     return {
       ...blankContract(strike, right, spot),
       mark: Number.isFinite(q.mark) ? q.mark : NaN,
@@ -260,8 +297,8 @@ export function liveDeskChain(ticker: string, expiry: string, ms: number, each =
   };
   const rows = strikes.map(strike => ({ strike, call: contract(strike, 'C'), put: contract(strike, 'P') }));
   const gaps = strikes.slice(1).map((k, i) => k - strikes[i]).filter(g => g > 1e-9).sort((x, y) => x - y);
-  const atmIv = ivs.length ? ivs[Math.floor(ivs.length / 2)] : NaN;
-  const t = yearsToExpiry(lastTradeDayOf({ ticker, expiry }), ms);
+  /* the at-the-money IV at the name, between the strikes either side of it — not the middle of an unsorted list */
+  const atmIv = atmIvAt(rows, spot);
   const dte = Math.max(0, Math.round((dateAt(expiry).getTime() - dateAt(nyAt(ms).date).getTime()) / 86400000));
   return {
     ticker,
@@ -269,7 +306,7 @@ export function liveDeskChain(ticker: string, expiry: string, ms: number, each =
     step: gaps.length ? gaps[Math.floor(gaps.length / 2)] : 1,
     rows,
     expiry: expiryFor(dte),
-    expectedMovePct: Number.isFinite(atmIv) ? atmIv * Math.sqrt(t) : 0,
+    expectedMovePct: Number.isFinite(atmIv) ? expectedMovePctOf(spot, atmIv, { ticker, expiry }, ms) : 0,
     source: 'live',
     quotedAt: Math.max(0, ...rows.flatMap(r => [r.call.quotedAt ?? 0, r.put.quotedAt ?? 0])),
     expiryIso: expiry,
