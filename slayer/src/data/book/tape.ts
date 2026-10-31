@@ -19,7 +19,8 @@ const INDEX_CASH_TO = 16 * 60 + 15;
 export const INDEX_TAPE = new Set(['SPX', 'RUT', 'NDX', 'VIX', 'XSP']);
 
 function ymdNY(ms: number): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms)).replace(/-/g, '');
+  /* core/nyTime's cached parts, not a formatter per call */
+  return nyIsoDate(ms).replace(/-/g, '');
 }
 
 /** How far the cash chart runs. A stock's 16:00 bar is the closing print. An index's close can print until 16:15. */

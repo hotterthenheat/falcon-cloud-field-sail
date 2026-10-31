@@ -1876,7 +1876,7 @@ export function useStockMinutes(ticker: string | null, dateIso: string | null = 
       return rows
         .map(r => {
           const c = clock(r.start_time || r.time || r.date);
-          const nyDay = c.ms > 0 ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(c.ms)) : '';
+          const nyDay = c.ms > 0 ? nyDateOf(c.ms) : '';
           return { time: c.epoch, close: num(r.close), minute: c.minute, extended: c.minute < SESSION_OPEN || c.minute >= 960, volume: num(r.volume), day: nyDay };
         })
         .filter(r => r.time > 0 && r.close > 0 && r.day === day)
@@ -1983,7 +1983,7 @@ export function useMarkNow(marks: { key: string; kind: string; ticker: string; s
             const t = liveTrades(await getRows(`/option-contract/${encodeURIComponent(occ)}/flow?limit=5`))[0];
             if (t) {
               const p = tradeToPrint(t);
-              v.trade = { fill: p.fill, volume: p.volume, oi: p.oi, time: p.time, day: p.epochMs ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(p.epochMs)) : '', extended: !!p.extended };
+              v.trade = { fill: p.fill, volume: p.volume, oi: p.oi, time: p.time, day: p.epochMs ? nyDateOf(p.epochMs) : '', extended: !!p.extended };
             }
           } catch {
             v.trade = hit?.v.trade ?? null;
