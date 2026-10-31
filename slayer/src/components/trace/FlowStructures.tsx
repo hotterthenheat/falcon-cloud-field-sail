@@ -1,9 +1,11 @@
 /* The tape's structures: the rolls found in the prints in hand (data/flowRolls.ts) and the working orders — one
    contract hit again and again on one side (data/flowRepeats.ts). Both read only the prints the tape holds, so the
-   panel names that window. Its body keeps one height whatever it holds, so the tape below never jumps as reads land. */
+   panel names that window. Folded it is one line of counts (TapeFold); open, its body keeps one height whatever it holds,
+   so the tape below never jumps as reads land. */
 
 import type { ReactNode } from 'react';
 import { expiryLabel } from '../../core/format';
+import TapeFold from './TapeFold';
 import { nyClock } from '../../core/nyTime';
 import { fmtCount as num, usd as fmtUsd } from '../../data/traceLive';
 import { ROLL_INFERRED_MIN_SIZE, ROLL_WINDOW_MS, type RollEvent, type RollKind, type RollLeg } from '../../data/flowRolls';
@@ -124,23 +126,28 @@ export interface FlowStructuresProps {
 const FlowStructures = ({ rolls, repeats, prints, span, reading, open, onToggle, onOpenPrint }: FlowStructuresProps) => {
   const orders = repeats.clusters.length;
   const strips = repeats.strips.length;
-  const counts = reading ? '…' : `${num(rolls.length)} roll${rolls.length === 1 ? '' : 's'} · ${num(orders)} working order${orders === 1 ? '' : 's'}${strips ? ` · ${num(strips)} strip${strips === 1 ? '' : 's'}` : ''}`;
+  /* a phone's line says "orders": the title above it already says working */
+  const counts = (word: string) => (reading ? '…' : `${num(rolls.length)} roll${rolls.length === 1 ? '' : 's'} · ${num(orders)} ${word}${orders === 1 ? '' : 's'}${strips ? ` · ${num(strips)} strip${strips === 1 ? '' : 's'}` : ''}`);
   return (
-    <div className="px-5 py-3 border-t border-borderSubtle" data-flow-structures data-open={open || undefined}>
-      <div className="flex items-baseline gap-2 min-w-0">
-        <span className="shrink-0 font-mono text-t11 uppercase tracking-widest text-textPrimary"><span className="sm:hidden">Rolls &amp; orders</span><span className="max-sm:hidden">Rolls &amp; working orders</span></span>
-        <span className="min-w-0 truncate text-t11 text-textMuted" title="Read from the prints the tape holds, not the whole day; older prints join as you scroll or jump back">
+    <TapeFold
+      title="Rolls & working orders"
+      shortTitle="Rolls & orders"
+      noun="the rolls and working orders"
+      summary={
+        <>
           <span className="font-mono tnum text-textSecondary" data-flow-counts>
-            {counts}
+            <span className="sm:hidden">{counts('order')}</span>
+            <span className="max-sm:hidden">{counts('working order')}</span>
           </span>
-          {!reading && prints > 0 && <> · in these {num(prints)} prints{span ? `, ${span} ET` : ''}</>}
-        </span>
-        <button type="button" onClick={onToggle} aria-expanded={open} className="ml-auto shrink-0 font-mono text-t11 uppercase tracking-wider text-textMuted hover:text-textPrimary py-1 -my-1 max-sm:py-3 max-sm:-my-3" data-flow-toggle>
-          {open ? 'Hide' : 'Show'}
-        </button>
-      </div>
-      {open && (
-        <div className="mt-2 grid gap-x-8 gap-y-3 md:grid-cols-2">
+          {!reading && prints > 0 && <span className="max-sm:hidden"> · in these {num(prints)} prints{span ? `, ${span} ET` : ''}</span>}
+        </>
+      }
+      summaryTitle="Read from the prints the tape holds, not the whole day; older prints join as you scroll or jump back"
+      open={open}
+      onToggle={onToggle}
+      testId="flow-structures"
+    >
+        <div className="grid gap-x-8 gap-y-3 md:grid-cols-2">
           <Column title="Rolls" tip={ROLLS_TIP} count={reading ? '…' : num(rolls.length)} testId="rolls">
             {reading ? (
               <Empty>Reading the tape…</Empty>
@@ -186,8 +193,7 @@ const FlowStructures = ({ rolls, repeats, prints, span, reading, open, onToggle,
             )}
           </Column>
         </div>
-      )}
-    </div>
+    </TapeFold>
   );
 };
 

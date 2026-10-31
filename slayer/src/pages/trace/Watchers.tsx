@@ -17,7 +17,7 @@ import { contractKey, watchContract } from '../../context/WatchContext';
 import LeanCell from '../../components/trace/LeanCell';
 import RichRead from '../../components/ui/RichRead';
 import BookDrill from '../../components/trace/BookDrill';
-import ContractCell, { OtmCell, otmSortValue } from '../../components/trace/ContractCell';
+import ContractCell, { OtmCell } from '../../components/trace/ContractCell';
 import { earnMarks, weightInk } from '../../components/trace/earnedInk';
 import { LiveHold, SessionMark } from '../../components/trace/LiveHold';
 import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
@@ -52,8 +52,9 @@ const PIN_RIGHT = ['clipprem'];
 const WATCHER_CUTS = createViewStore('slayer_watchers_cuts_v1');
 const TOOLTIPS: Record<string, string> = {
   reason: 'Why the contract is here — the desk’s reasons, or yours (hollow ring)',
-  time: 'When the contract last printed, New York',
-  clip: "The contract's last fill",
+  time: 'When the contract last printed, New York, over its last fill',
+  contract: 'Strike and side over the expiry, the days left and the distance out of the money',
+  vol: "The day's volume over the open interest the session opened on",
   clipprem: "The contract's premium today — every print",
   sideCol: 'The side holding 55%+ of the sided contracts, with half the day on a side',
   voloi: 'Volume over the open interest the session opened on; 1.5+ means positions built today',
@@ -207,12 +208,18 @@ const Watchers = () => {
     () => [
       {
         key: 'time',
-        header: 'Time ET',
+        header: 'Time · fill',
         sortValue: a => a.minute,
+        /* the last print's time over its fill: one column, not the time said twice */
         render: a => (
           <span className="inline-flex items-center gap-1.5">
             <WatchStar k={contractKey(a.row)} make={() => watchContract(a.row, 'watchers')} />
-            <span className="text-t11 text-textPrimary">{a.time}</span>
+            <span className="inline-flex flex-col items-start gap-[3px] leading-none align-middle">
+              <span className="text-t11 text-textPrimary">{a.time}</span>
+              <span className="font-mono text-t11 tnum text-textSecondary" title="The contract's last fill">
+                ${a.last.toFixed(2)}
+              </span>
+            </span>
           </span>
         ),
       },
@@ -227,8 +234,24 @@ const Watchers = () => {
           </span>
         ),
       },
-      { key: 'contract', header: 'Contract', align: 'right', sortValue: a => a.row.strike, render: a => <ContractCell strike={a.row.strike} right={a.row.right} expiry={a.row.expiry} stack /> },
-      { key: 'dte', header: 'DTE', align: 'right', sortValue: a => a.row.dte, render: a => <span className="text-textPrimary">{a.row.dte}d</span> },
+      {
+        key: 'contract',
+        header: 'Contract',
+        align: 'right',
+        sortValue: a => a.row.strike,
+        /* the days left beside the side, the distance on the expiry's line: the DTE and OTM columns fold in */
+        render: a => (
+          <ContractCell
+            strike={a.row.strike}
+            right={a.row.right}
+            expiry={a.row.expiry}
+            dte={a.row.dte}
+            stack
+            stackDte
+            stackTail={<OtmCell otmPct={a.row.otmPct} ticker={a.row.ticker} className="" />}
+          />
+        ),
+      },
       {
         key: 'reason',
         header: 'Reason',
@@ -253,19 +276,6 @@ const Watchers = () => {
           );
         },
       },
-      {
-        key: 'clip',
-        header: 'Last fill',
-        align: 'right',
-        sortValue: a => a.last,
-        /* the fill over its time: the column is the figure's width, not the two side by side */
-        render: a => (
-          <span className="inline-flex flex-col items-end align-middle leading-tight text-textPrimary whitespace-nowrap">
-            <span>${a.last.toFixed(2)}</span>
-            <span className="text-t11 text-textSecondary">{a.time}</span>
-          </span>
-        ),
-      },
       { key: 'clipprem', header: 'Day $', align: 'right', sortValue: a => a.premium, render: a => <span className={weightInk(a.premium, marks.prem)}>{fmtUsd(a.premium)}</span> },
       {
         key: 'sideCol',
@@ -274,10 +284,22 @@ const Watchers = () => {
         sortValue: a => a.row.askPct,
         render: a => (a.row.sideVol ? <LeanCell askPct={a.row.askPct} split={a.row.sideVol} legsPct={a.row.multiPct} crossPct={a.row.crossPct} /> : <span className={`text-t11 ${a.side === 'EVEN' || a.side === 'MID' || a.side === 'LEGS' ? 'text-textMuted' : 'text-textPrimary'}`}>{bookLeanWords(a.row)}</span>),
       },
-      { key: 'vol', header: 'Vol', align: 'right', sortValue: a => a.row.volume, render: a => <span className={weightInk(a.row.volume, marks.vol)}>{num(a.row.volume)}</span> },
-      { key: 'oi', header: 'OI', align: 'right', sortValue: a => a.row.oi, render: a => <span className={weightInk(a.row.oi, marks.oi)}>{num(a.row.oi)}</span> },
+      {
+        key: 'vol',
+        header: 'Vol · OI',
+        align: 'right',
+        sortValue: a => a.row.volume,
+        /* the day's volume over the open interest it is read against */
+        render: a => (
+          <span className="inline-flex flex-col items-end align-middle leading-tight whitespace-nowrap">
+            <span className={weightInk(a.row.volume, marks.vol)}>{num(a.row.volume)}</span>
+            <span className={`text-t11 ${weightInk(a.row.oi, marks.oi)}`} title="Open interest">
+              oi {num(a.row.oi)}
+            </span>
+          </span>
+        ),
+      },
       { key: 'voloi', header: 'Vol/OI', align: 'right', sortValue: a => a.row.volOverOI, render: a => <span className={`inline-flex flex-col items-end gap-[2px] leading-none align-middle [&>[data-likely-opening]]:ml-0 ${a.row.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={a.row.volOverOI > 0 || !(a.row.volume > 0) ? undefined : 'No open interest before the session — a new contract'}>{volOiText(a.row)}<OpeningTag flag={a.row.likelyOpening} volume={a.row.volume} oi={a.row.oi} /></span> },
-      { key: 'otm', header: 'OTM %', align: 'right', sortValue: a => otmSortValue(a.row.otmPct), render: a => <OtmCell otmPct={a.row.otmPct} ticker={a.row.ticker} /> },
       {
         key: 'earn',
         header: 'Earnings',

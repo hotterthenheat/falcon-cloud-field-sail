@@ -7,7 +7,7 @@ import { useSearchParams } from 'react-router-dom';
 import { filtersToParams, paramsToFilters, screenerCuts } from '../../data/screenerViews';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { useTicker } from '../../context/MarketDataContext';
-import { fmtCount as num, pairOiFor, useContracts, usd as fmtUsd } from '../../data/traceLive';
+import { fmtCount as num, indexRoot, pairOiFor, useContracts, usd as fmtUsd } from '../../data/traceLive';
 import { FeedFallback, TickFigure } from '../../components/ui/liveRead';
 import { applyFilters, bookFacts, bookLeanWords, crossHint, doiTail, floorPackaged, SPREAD_LEG_PCT, FRESH_VOL_OI, notABet, spreadLegHint, stockLike, volOiText, FLOW_SCREENS, runScreen, type BookFilters, type ScreenKey } from '../../data/flowBook';
 import { SLEEVES, type SleeveKey } from '../../types/compass';
@@ -18,7 +18,7 @@ import RichRead from '../../components/ui/RichRead';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownMulti from '../../components/ui/DropdownMulti';
 import BookDrill from '../../components/trace/BookDrill';
-import ContractCell, { OtmCell, otmSortValue } from '../../components/trace/ContractCell';
+import ContractCell, { OtmCell } from '../../components/trace/ContractCell';
 import { earnMarks, weightInk } from '../../components/trace/earnedInk';
 import FlowSearch, { CONTRACT_FORMATS, matchesContract, normSymbol, searchedName, useSearchedName } from '../../components/trace/FlowSearch';
 import { LiveHold, SessionMark, useHold } from '../../components/trace/LiveHold';
@@ -104,15 +104,14 @@ const snap = (v: number, steps: number[]) => steps.reduce((best, s) => (s <= v ?
 const WIDTHS: Record<string, number> = { time: 76, ticker: 84, contract: 132, dte: 56, otm: 70, last: 140, vol: 84, oi: 80, doi: 120, prem: 84, iv: 92, voloi: 66, sweep: 60, floor: 64, multi: 64, sector: 176, lean: 132 };
 const TOOLTIPS: Record<string, string> = {
   time: 'When the contract last printed, New York',
-  contract: 'Strike, side and expiry — click the row for the card',
-  otm: 'Out of the money by this much of the spot, calls and puts alike',
+  contract: 'Strike and side over the expiry and the distance out of the money (calls and puts alike) — click the row for the card',
+  ticker: 'The name, and the stock (or the index level) under it',
+  prem: "The day's premium, over the day's volume as of the last fill",
   voloi: 'Volume over the open interest the session opened on; 1.5+ means positions built today',
-  vol: "The screener's day volume, as of the last fill",
   last: 'The last fill and the change on the previous close; its New York time is the row’s Time',
-  sweep: 'Share of the volume swept across exchanges',
+  lean: 'The side holding 55%+ of the sided contracts, with half the day on a side; under it the share of the volume swept across exchanges',
   floor: 'Share that printed on the floor',
   multi: 'Share that traded as legs of multi-leg orders',
-  lean: 'The side holding 55%+ of the sided contracts, with half the day on a side',
   iv: 'Implied volatility, and its change on the day',
 };
 
@@ -236,16 +235,23 @@ const OptionsScreener = () => {
         key: 'ticker',
         header: 'Ticker',
         sortValue: r => r.ticker,
+        /* the stock under its name, the distance under the contract: the OTM column folds into the two */
         render: r => (
-          <span className="inline-flex items-center gap-1.5">
-            <CompanyLogo ticker={r.ticker} size={15} />
-            <span className="font-bold text-textPrimary">{r.ticker}</span>
+          <span className="inline-flex flex-col items-start gap-[3px] leading-none align-middle">
+            <span className="inline-flex items-center gap-1.5">
+              <CompanyLogo ticker={r.ticker} size={15} />
+              <span className="font-bold text-textPrimary">{r.ticker}</span>
+            </span>
+            {r.spot > 0 && (
+              <span className="pl-[21px] font-mono text-t11 tnum text-textSecondary whitespace-nowrap" title={indexRoot(r.ticker) ? 'The index level, whole points' : 'The stock'}>
+                {indexRoot(r.ticker) ? Math.round(r.spot).toLocaleString('en-US') : `$${r.spot.toFixed(2)}`}
+              </span>
+            )}
           </span>
         ),
       },
-      { key: 'contract', header: 'Contract', align: 'right', sortValue: r => r.strike, render: r => <ContractCell strike={r.strike} right={r.right} expiry={r.expiry} stack /> },
+      { key: 'contract', header: 'Contract', align: 'right', sortValue: r => r.strike, render: r => <ContractCell strike={r.strike} right={r.right} expiry={r.expiry} stack stackTail={<OtmCell otmPct={r.otmPct} ticker={r.ticker} spot={r.spot} className="" />} /> },
       { key: 'dte', header: 'DTE', align: 'right', sortValue: r => r.dte, render: r => <span className="text-textPrimary">{r.dte}d</span> },
-      { key: 'otm', header: 'OTM %', align: 'right', sortValue: r => otmSortValue(r.otmPct), render: r => <OtmCell otmPct={r.otmPct} ticker={r.ticker} spot={r.spot} /> },
       {
         key: 'last',
         header: 'Fill · Chg',
@@ -260,7 +266,6 @@ const OptionsScreener = () => {
           </span>
         ),
       },
-      { key: 'vol', header: 'Vol', align: 'right', sortValue: r => r.volume, render: r => <span className={weightInk(r.volume, marks.vol)}>{num(r.volume)}</span> },
       { key: 'oi', header: 'OI', align: 'right', sortValue: r => r.oi, render: r => <span className={weightInk(r.oi, marks.oi)} title={oiRowTitle(r)}>{num(r.oi)}</span> },
       {
         key: 'doi',
@@ -291,7 +296,23 @@ const OptionsScreener = () => {
           );
         },
       },
-      { key: 'prem', header: 'Prem', align: 'right', sortValue: r => r.premium, render: r => <span className={weightInk(r.premium, marks.prem)}><TickFigure value={r.premium}>{fmtUsd(r.premium)}</TickFigure></span> },
+      {
+        key: 'prem',
+        header: 'Prem · vol',
+        align: 'right',
+        sortValue: r => r.premium,
+        /* the day's premium over the contracts it bought: the Vol column folds in */
+        render: r => (
+          <span className="inline-flex flex-col items-end align-middle leading-tight whitespace-nowrap">
+            <span className={weightInk(r.premium, marks.prem)}>
+              <TickFigure value={r.premium}>{fmtUsd(r.premium)}</TickFigure>
+            </span>
+            <span className={`text-t11 ${weightInk(r.volume, marks.vol)}`} title="The day's volume, as of the last fill">
+              {num(r.volume)} ct
+            </span>
+          </span>
+        ),
+      },
       {
         key: 'iv',
         header: 'IV · chg',
@@ -312,10 +333,23 @@ const OptionsScreener = () => {
           ),
       },
       { key: 'voloi', header: 'Vol/OI', align: 'right', sortValue: r => r.volOverOI, render: r => <span className={`inline-flex flex-col items-end gap-[2px] leading-none align-middle [&>[data-likely-opening]]:ml-0 font-mono tnum ${r.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={r.volOverOI > 0 || !(r.volume > 0) ? undefined : 'No open interest before the session — a new contract'}>{volOiText(r)}<OpeningTag flag={r.likelyOpening} volume={r.volume} oi={r.oi} /></span> },
-      { key: 'sweep', header: 'Sweep', align: 'right', sortValue: r => r.sweepPct, render: r => <span className={r.sweepPct >= 40 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{Math.round(r.sweepPct)}%</span> },
       { key: 'floor', header: 'Floor', align: 'right', sortValue: r => r.floorPct, render: r => (r.floorPct === 0 ? <span className="text-textSecondary">—</span> : <span className={r.floorPct >= 50 ? 'text-textPrimary font-bold' : 'text-textPrimary'}>{Math.round(r.floorPct)}%</span>) },
       { key: 'multi', header: 'Multi', align: 'right', sortValue: r => r.multiPct, render: r => <span className={r.multiPct >= 30 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{Math.round(r.multiPct)}%</span> },
-      { key: 'lean', header: 'Lean', align: 'right', sortValue: r => r.askPct, render: r => <LeanCell askPct={r.askPct} split={r.sideVol} legsPct={r.multiPct} crossPct={r.crossPct} /> },
+      {
+        key: 'lean',
+        header: 'Lean · sweep',
+        align: 'right',
+        sortValue: r => r.askPct,
+        /* the side over how much of the day was swept: the Sweep column folds in */
+        render: r => (
+          <span className="inline-flex flex-col items-end gap-[3px] leading-none align-middle">
+            <LeanCell askPct={r.askPct} split={r.sideVol} legsPct={r.multiPct} crossPct={r.crossPct} />
+            <span className={`font-mono text-t11 tnum ${r.sweepPct >= 40 ? 'font-semibold text-textPrimary' : 'text-textSecondary'}`} title="Share of the volume swept across exchanges">
+              swept {Math.round(r.sweepPct)}%
+            </span>
+          </span>
+        ),
+      },
       { key: 'sector', header: 'Sector', sortValue: r => r.sector ?? '', render: r => <SectorName sector={r.sector} /> },
     ],
     [marks, oiCover]

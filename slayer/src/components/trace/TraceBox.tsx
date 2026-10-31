@@ -7,7 +7,7 @@ import { type BodyScrollEvent, type ColDef, type ICellRendererParams, type Pagin
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME } from '../ui/houseGrid';
 import { PageBar } from '../ui/PageBar';
-import { useIsPhone } from '../ui/useMediaQuery';
+import { useIsPhone, useMediaQuery } from '../ui/useMediaQuery';
 import type { Column } from '../ui/DataTable';
 import TraceBox from './traceFrame';
 
@@ -15,6 +15,12 @@ export { CONTROLS_LINE, Champion, Fact, PhoneRow } from './traceFrame';
 
 /** The tape's rows: 39px on a 32px head (the house grid's feed pages run 44 on 30) */
 const TRACE_GRID_THEME = GRID_THEME.withParams({ rowHeight: 39, headerHeight: 32, fontSize: 12 });
+/** Under a 1440 screen the cells keep 8px a side, not 12, and under 1100 6px: every column gives the room back and
+    the tables fit their box at 1280 and 1024 (the type stays its size) */
+const TRACE_GRID_THEME_TIGHT = TRACE_GRID_THEME.withParams({ cellHorizontalPadding: 8 });
+const TRACE_GRID_THEME_TIGHTER = TRACE_GRID_THEME.withParams({ cellHorizontalPadding: 6 });
+const TIGHT_QUERY = '(max-width: 1439.98px)';
+const TIGHTER_QUERY = '(max-width: 1099.98px)';
 /** A phone's row: two lines, the contract over its figures (see PhoneRow) */
 const TRACE_PHONE_THEME = GRID_THEME.withParams({ rowHeight: 58, headerHeight: 0, fontSize: 12 });
 
@@ -22,11 +28,13 @@ const TRACE_PHONE_THEME = GRID_THEME.withParams({ rowHeight: 58, headerHeight: 0
 
 /** A words column's floor: it gives way to the figures first, wrapping to two lines with its full words in a title */
 const PROSE_FLOOR = 120;
+/** …and under 1100, where every figure column is already as narrow as its figures */
+const PROSE_FLOOR_TIGHT = 92;
 
 /** A page's Column<T> definitions as AG Grid columns — the cells, inks and doors untouched. `fit` is the width a
     column's widest figure and its header were measured to need (TraceGrid's fit pass): the column's floor, so no
     figure is ever cut, and a column with room to spare can give it up before the box runs out. */
-function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, widths: Record<string, number> = {}, tooltips: Record<string, string> = {}, flexes: Record<string, number> = {}, lock = false, fit: Record<string, number> = {}, prose: Set<string> = new Set()): ColDef<T>[] {
+function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, widths: Record<string, number> = {}, tooltips: Record<string, string> = {}, flexes: Record<string, number> = {}, lock = false, fit: Record<string, number> = {}, prose: Set<string> = new Set(), proseFloor = PROSE_FLOOR): ColDef<T>[] {
   return columns.map(c => {
     const set = widths[c.key] ?? (c.width ? parseInt(c.width, 10) : undefined);
     const need = prose.has(c.key) ? undefined : fit[c.key];
@@ -48,7 +56,7 @@ function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, widths: 
        is its width times its flex, and its floor gives way first */
     if (fixed) {
       def.width = fixed;
-      def.minWidth = prose.has(c.key) ? Math.min(fixed, PROSE_FLOOR) : need ?? fixed;
+      def.minWidth = prose.has(c.key) ? Math.min(fixed, proseFloor) : need ?? fixed;
       def.flex = fixed * (flexes[c.key] ?? 1);
       if (lock) {
         def.resizable = false;
@@ -168,6 +176,9 @@ interface EndlessFeed {
 export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColumns = false, prose, tooltips, rowKey, onRowClick, selectedKey, height, autoHeight = false, initialSort, rowClass, animate = true, emptyText = 'Nothing on this cut', pinLeft, pinRight, phoneRow, endless, onDeep, topSignal, onVisible, reading = false, testId }: TraceGridProps<T>) => {
   const gridRef = useRef<AgGridReact<T>>(null);
   const phone = useIsPhone() && !!phoneRow;
+  const tightQ = useMediaQuery(TIGHT_QUERY);
+  const tighterQ = useMediaQuery(TIGHTER_QUERY);
+  const tight = tighterQ ? 2 : tightQ ? 1 : 0;
   const hiddenSet = useMemo(() => hidden ?? new Set<string>(), [hidden]);
   const endlessOn = !!endless;
   const proseKey = (prose ?? []).join(',');
@@ -176,6 +187,12 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
      "Swe…". A floor only rises (a live tick never makes the columns breathe); it passes the page's set width only when
      a figure would otherwise be cut. Words columns are left to wrap. */
   const [fit, setFit] = useState<Record<string, number>>({});
+  /* the floors include the cells' padding: a window crossing 1440 measures them afresh */
+  const [fitTight, setFitTight] = useState(tight);
+  if (fitTight !== tight) {
+    setFitTight(tight);
+    setFit({});
+  }
   const fitTimer = useRef(0);
   const setWidthOf = (key: string): number | undefined => {
     const c = columns.find(x => x.key === key);
@@ -186,6 +203,9 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
     fitTimer.current = window.setTimeout(() => {
       const wrap = wrapRef.current;
       if (!wrap || phone || lockColumns) return;
+      /* no rows yet: a head alone sets a floor only where it is cut. Its plain width would be a pinned column's wall,
+         narrower than the rows will want, and the grid would slide sideways twice as they land */
+      const anyCell = !!wrap.querySelector('.ag-cell[col-id]');
       const need: Record<string, number> = {};
       /* the content's own width, to the subpixel: scrollWidth rounds, and a 0.1px overflow still paints an ellipsis */
       const range = document.createRange();
@@ -215,6 +235,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
         const w = contentW(text);
         /* cut (a sort arrow took the room): what it has plus what it lacks; else the cell around its label and the words */
         const cut = w > shown + 0.01;
+        if (!anyCell && !cut) return;
         want(head.getAttribute('col-id'), cut ? head.offsetWidth + (w - shown) + 1 : head.offsetWidth - label.getBoundingClientRect().width + w + 1, cut);
       });
       setFit(prev => {
@@ -230,7 +251,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
       /* one column, the row in two lines */
       return [{ colId: 'phone', headerName: '', flex: 1, sortable: false, resizable: false, suppressMovable: true, cellRenderer: (p: ICellRendererParams<T>) => (p.data ? phoneRow(p.data) : null) } as ColDef<T>];
     }
-    const defs = columnsToColDefs(columns, hiddenSet, widths, tooltips, flexes, lockColumns, fit, proseSet);
+    const defs = columnsToColDefs(columns, hiddenSet, widths, tooltips, flexes, lockColumns, fit, proseSet, tight === 2 ? PROSE_FLOOR_TIGHT : PROSE_FLOOR);
     const lastPinRight = [...defs].reverse().find(d => !d.hide && pinRight?.includes(d.colId ?? ''))?.colId;
     for (const d of defs) {
       /* a pinned column is a wall at its widest figure (its floor), else at its set width */
@@ -256,7 +277,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
     }
     return defs;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns, hiddenSet, widths, tooltips, flexes, lockColumns, phone, phoneRow, pinLeft, pinRight, endlessOn, fit, proseSet]);
+  }, [columns, hiddenSet, widths, tooltips, flexes, lockColumns, phone, phoneRow, pinLeft, pinRight, endlessOn, fit, proseSet, tight]);
   const defaultColDef = useMemo<ColDef<T>>(() => ({ sortable: true, resizable: true, suppressMovable: true }), []);
   /* A cut (the search cleared, a card turned) is a crossfade: the rows dim, the new list lands while they stand still,
      then they come up. A re-rank still glides; a few rows coming or going pass straight through. */
@@ -528,7 +549,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
       <AgGridProvider modules={GRID_MODULES}>
         <AgGridReact<T>
           ref={gridRef}
-          theme={phone ? TRACE_PHONE_THEME : TRACE_GRID_THEME}
+          theme={phone ? TRACE_PHONE_THEME : tight === 2 ? TRACE_GRID_THEME_TIGHTER : tight === 1 ? TRACE_GRID_THEME_TIGHT : TRACE_GRID_THEME}
           domLayout={autoHeight && !paged && !windowed ? 'autoHeight' : undefined}
           rowData={gridRows}
           columnDefs={columnDefs}
