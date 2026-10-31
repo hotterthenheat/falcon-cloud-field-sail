@@ -143,9 +143,10 @@ const TRADEFUNDRR: PropFirm = {
   asOf: AS_OF,
   about: 'A $25K options program, intraday only (09:30–15:55 ET). Rules from its current help-center articles; some details are not published for these programs, and are marked.',
   plans: [
-    /* each step is its own $3,000 drawdown from the balance it starts at (the audit of 2026-10-31: the Prop step is a
-       fresh step, not the Pre-Prop step's floor carried on) */
-    ...program({ firm: 'TradeFundrr', slug: 'tf-preprop', name: 'Pre-Prop', source: 'https://tradefundrr.freshdesk.com/support/solutions/articles/202000125619-what-is-the-profit-target-', phases: ['Pre-Prop step', 'Prop step'], rows: [[25_000, [1_250, 1_250], 3_000]], rules: { ...TF_RULES, drawdown: { ...ddOf('eod', 0, 'balance'), perPhase: true } }, notModelled: TF_NOTES }),
+    /* each step is its own $3,000 drawdown from the balance it starts at: the firm's options page says passing Pre-Prop
+       "promotes you to a funded Prop account" (a new $25K account, sold separately), so the Prop step starts fresh rather
+       than carrying the Pre-Prop floor on. The firm does not state it in so many words; it is marked below. */
+    ...program({ firm: 'TradeFundrr', slug: 'tf-preprop', name: 'Pre-Prop', source: 'https://tradefundrr.freshdesk.com/support/solutions/articles/202000125619-what-is-the-profit-target-', phases: ['Pre-Prop step', 'Prop step'], rows: [[25_000, [1_250, 1_250], 3_000]], rules: { ...TF_RULES, drawdown: { ...ddOf('eod', 0, 'balance'), perPhase: true } }, notModelled: [...TF_NOTES, 'the Prop step starts a fresh $3,000 drawdown from $25,000: passing Pre-Prop opens a new Prop account; the firm does not say in so many words that the loss limit resets'] }),
     ...program({ firm: 'TradeFundrr', slug: 'tf-prop', name: 'Prop', source: 'https://tradefundrr.freshdesk.com/support/solutions/articles/202000125619-what-is-the-profit-target-', phases: ['Payout qualification'], rows: [[25_000, [1_250], 3_000]], rules: TF_RULES, notModelled: TF_NOTES }),
   ],
 };
