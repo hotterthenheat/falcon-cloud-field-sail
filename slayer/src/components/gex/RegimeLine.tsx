@@ -39,16 +39,15 @@ function regimeSentence(lv: TickerLevels | null): { lead: string; rest: string; 
         : flip > lv.spot
           ? `until ${t} gets back above ${fmtK(flip)} (the flip)`
           : `until ${t} crosses ${fmtK(flip)} (the flip), where that changes`;
-    return { lead: 'Dealers are short gamma', rest: `: moves tend to run rather than be absorbed, ${until}.`, tone: 'SHORT' };
+    return { lead: 'Short gamma', rest: `: moves tend to extend — dealers' hedging trades with the move, ${until}.`, tone: 'SHORT' };
   }
-  const near = Math.abs(lv.supreme - lv.spot) / lv.spot <= 0.02 ? ` near ${fmtK(lv.supreme)} (the supreme)` : '';
   const until =
     flip == null
       ? 'with no flip within 10%'
       : flip < lv.spot
         ? `while ${t} holds above ${fmtK(flip)} (the flip)`
         : `until ${t} crosses ${fmtK(flip)} (the flip)`;
-  return { lead: 'Dealers are long gamma', rest: `: moves tend to be absorbed and price tends to pin${near}, ${until}.`, tone: 'LONG' };
+  return { lead: 'Long gamma', rest: `: moves tend to be damped — dealers' hedging trades against the move, ${until}.`, tone: 'LONG' };
 }
 
 /** `stamp` false leaves the kept-copy "as of" to the page under the strip (the Board says one for every name) */
@@ -88,6 +87,12 @@ const RegimeLine = ({ ticker, stamp = true }: { ticker: string | null | undefine
         <span className="font-mono text-t11 font-semibold" style={ink ? { color: ink } : undefined} data-regime-word={tone ?? 'pending'}>
           {said ? (tone === 'SHORT' ? 'Short gamma' : 'Long gamma') : name ? 'Reading…' : '…'}
         </span>
+        {said && (
+          /* what the regime was tested to mean (research/physics REPORT.md #2): a vol regime, not a magnet */
+          <span className="text-t11 text-textSecondary" title="Tested on SPY and QQQ: on long-gamma days the market moved about 15% less than forecast, relative to short-gamma days. It says how far moves tend to run, not where price goes." data-regime-meaning>
+            {tone === 'SHORT' ? 'moves tend to extend' : 'moves tend to be damped'}
+          </span>
+        )}
         {lv?.complete && (
           /* the net re-priced at spot — the figure the regime word is the sign of, so the two never disagree */
           <span className={`font-mono text-t11 tnum ${lv.netAtSpot > 0 ? 'text-bull' : lv.netAtSpot < 0 ? 'text-bear' : 'text-textMuted'}`} title="Net dealer gamma re-priced at the current price — its sign is the regime" data-regime-net>

@@ -1,7 +1,7 @@
 /* Every widget a Pulse desk can hold, by group: its size and limits, its settings and controls, and the page its
    door opens. */
 
-import { BookOpenText, Briefcase, CalendarClock, CandlestickChart, Clock, Compass, GitCompareArrows, Grid3x3, Landmark, LineChart, Milestone, Newspaper, Rows3, TableProperties, Target } from 'lucide-react';
+import { Activity, BookOpenText, Briefcase, CalendarClock, CandlestickChart, Clock, Compass, GitCompareArrows, Grid3x3, Landmark, LineChart, Milestone, Newspaper, Rows3, TableProperties, Target } from 'lucide-react';
 import { writeLedgerView } from '../../components/gex/ledgerView';
 import { isoDate, expiryFor } from '../../core/calendar';
 import { ChartTileSkeleton, FigureTileSkeleton, RowsTileSkeleton } from './pulseSkeletons';
@@ -11,6 +11,7 @@ import { BookTile, HeadingTile, LevelsTile, PairTile, TargetsTile, bookControls,
 import { EarningsTile, FilingsTile, NewsTile, StocksTile, earningsControls, filingsControls, filingsPath, newsControls, stocksControls } from './tiles/market';
 import { ChainTile, PositionsTile, SetupsTile, chainControls, chainDteOf, positionsControls, setupsControls } from './tiles/trade';
 import { ClockTile } from './tiles/you';
+import { VolOutlookTile } from './tiles/vol';
 
 const rows = (n?: number, heads = true) => () => <RowsTileSkeleton rows={n} heads={heads} />;
 const figure = () => <FigureTileSkeleton />;
@@ -35,6 +36,24 @@ export const WIDGETS: WidgetDef[] = [
     page: { path: '/terrain', label: 'Terrain', state: (state, ctx) => ({ chart: { ticker: ctx.ticker, timeframe: chartTf(state) } }) },
     Body: ChartTile,
     skeleton: () => <ChartTileSkeleton />,
+  },
+  {
+    key: 'vol',
+    /* it reads the name's own minute bars and its chain, never the dealer book */
+    bookless: true,
+    title: 'Vol outlook',
+    group: 'Market',
+    icon: Activity,
+    says: 'Realised vol forecast for the next session and the next hour, its shock half-life, and the options’ implied vol against it',
+    w: 4,
+    h: 5,
+    minW: 3,
+    minH: 3,
+    maxH: 7,
+    named: true,
+    page: { path: '/weigher', label: 'the Weigher', state: (_state, ctx) => ({ weigh: { ticker: ctx.ticker } }) },
+    Body: VolOutlookTile,
+    skeleton: figure,
   },
   {
     key: 'news',

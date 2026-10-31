@@ -43,11 +43,11 @@ export const TERMS = {
   Priority:
     'The strike’s structural weight today, and WHY: the bar is split into its reasons, always in this order — net GEX, open interest, volume, neighbor ratio, distance from spot. A longer segment is a bigger reason. The scale behind the bar is internal.',
   'Ranked by': 'The lens the ladder is ordered through — the composite priority, or one of its reasons alone. Rank numbers follow the lens; the bar stays the composite.',
-  Class: 'What dealer hedging does at this strike — a cushion under price, resistance above it, or a magnet that pins.',
+  Class: 'What dealer hedging does at this strike — a cushion under price, resistance above it, or a strike where moves are damped.',
   'Call wall': 'The strike with the most call gamma, either side of price. Above price dealers long gamma there sell into rallies, so they often stall at it; once price is through it, it can act as support.',
   'Put wall': 'The strike with the most put gamma, either side of price. Below price it is support while it holds; above price it is overhead put hedging, not a floor.',
   'Gamma flip': 'The price where dealer hedging switches sides — on one side of it their hedging absorbs moves, on the other it amplifies them. Which side is which depends on the book: the side price is on wears the regime shown beside it.',
-  Pin: 'The max-open-interest strike that price tends to gravitate toward into expiry.',
+  Pin: 'The strike with the most open interest, where the chain is heaviest. Not a level price is drawn to: tested on SPY and QQQ, the close did not settle toward it.',
   Supreme: 'The single largest gamma strike on the whole book — the level that matters most today.',
   // ---- the Map's profile panel ----
   'Size at a strike': 'How much dealer hedging sits at this one strike. The longer the capsule, the more. Blue pushes back against a move here; orange pushes it along.',
@@ -136,7 +136,7 @@ export const TERMS = {
   'Timeframe trend':
     'Where price sits on each interval against its own EMA21 and VWAP. Above both reads up, below both reads down, and between them reads flat — the timeframes disagreeing is itself the signal.',
   'Max pain':
-    'The settlement price that pays option holders the least in total — the OI-weighted pin. The theory: the price with the least to pay out is the one the book drifts toward into expiry.',
+    'The settlement price that pays option holders the least in total. A popular theory says price drifts toward it into expiry; our tests of the open-interest and gamma strikes found no such pull.',
   'Gamma pin':
     'Where the book’s hedging mass centres — every strike’s gamma dollars, magnitude-weighted, averaged into one price. Different from max pain because gamma and open interest can sit on different strikes.',
   'GEX percentile':

@@ -161,7 +161,7 @@ function darkNear(rows: readonly DarkPoolPrint[], spot: number): DarkPoolPrint[]
 /** A key level's rung as the nodes' edge tag names it: long words on a wide pane, short on a narrow one, and how much it
     matters when the edge is crowded */
 const EDGE_SHORT: Record<KeyLevelKey, string> = {
-  callWall: 'CW', putWall: 'PW', flip: 'Flip', supreme: 'S', pin: 'Pin', maxPain: 'MP',
+  callWall: 'CW', putWall: 'PW', flip: 'Flip', supreme: 'S', pin: 'OI', maxPain: 'MP',
   coneHigh: 'Cone↑', coneLow: 'Cone↓', moveHigh: 'Move↑', moveLow: 'Move↓', sigmaHigh: '1σ↑', sigmaLow: '1σ↓',
   nextHigh: '1σ↑', nextLow: '1σ↓', twoHigh: '2σ↑', twoLow: '2σ↓',
 };

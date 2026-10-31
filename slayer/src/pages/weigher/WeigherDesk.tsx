@@ -27,6 +27,7 @@ import { closeMoveTitle, signedPct } from '../../data/dayChange';
 import { buildPrints, fmtUsd } from '../../data/gex';
 import { useLevelsFor } from '../../data/levelsFor';
 import { paneLevels } from '../terrain/paneLevels';
+import ExpiryDensity from '../../components/weigher/ExpiryDensity';
 import { useLevelsScope } from '../../data/levelsScope';
 import { etClock, keepTheta, keptTheta, offlineWords, useThetaDown } from '../../data/thetaFeed';
 import { thetaUseHere } from '../../data/theta';
@@ -1909,6 +1910,14 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
             data-weigher-sash
           />
         )}
+      </div>
+
+      {/* WHERE IT MAY FINISH: the chain's own risk-neutral distribution of the close, the walls' touch odds and the
+          implied vol against the realised-vol forecast — under the desk, the width of both columns */}
+      <div className="shrink-0 mt-2.5" data-finish-card>
+        <DeskCard title="Where it may finish">
+          <ExpiryDensity chain={chain} levels={levels} ticker={ticker} />
+        </DeskCard>
       </div>
 
       {/* Portal, not a plain fixed div: the cards' backdrop-blur creates a containing block for position:fixed, so
