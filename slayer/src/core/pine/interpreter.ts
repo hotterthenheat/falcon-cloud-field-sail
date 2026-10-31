@@ -10,6 +10,7 @@ import type { Program } from './ast';
 import { PineError, type AlertOut, type Bar, type FillOut, type HLineOut, type PlotOut, type RunOptions, type RunResult, type ShapeOut, type Tuple, type UserFunction, type Value } from './types';
 import type { ShapeLocation, ShapeStyle } from './types';
 import type { ScriptPlotStyle } from '../../types/scripts';
+import { nyParts, nyTradingDay } from '../nyTime';
 
 interface Scope {
   path: string;
@@ -39,7 +40,7 @@ export class Runner {
   private funcs = new Map<string, UserFunction>();
   private module: Scope = { path: '', names: new Map(), parent: null };
   private depth = 0;
-  private dateCache: { b: number; d: Date } | null = null;
+  private dateCache: { b: number; d: ReturnType<typeof nyParts> } | null = null;
   private readonly budget: number;
   private readonly t0: number;
   private warnings: string[] = [];
@@ -292,14 +293,16 @@ export class Runner {
     }
   }
 
+  /** The bar's trading day on New York's clock (core/nyTime nyTradingDay) — a fixed UTC−5 put 23:00–24:00 EDT on the next day
+      for half the year and cut the overnight at 19:00. The chart's own VWAP anchors on the same key. */
   private dayKey(b: number): string {
-    const t = this.bars[b].time;
-    return String(Math.floor((t - 5 * 3600) / 86400));
+    return String(nyTradingDay(this.bars[b].time * 1000));
   }
 
-  private date(): Date {
+  /** The bar's clock in the exchange's zone (New York), as Pine's year/month/hour read it — never the reader's own zone */
+  private date(): ReturnType<typeof nyParts> {
     if (this.dateCache && this.dateCache.b === this.b) return this.dateCache.d;
-    const d = new Date(this.bars[this.b].time * 1000);
+    const d = nyParts(this.bars[this.b].time * 1000);
     this.dateCache = { b: this.b, d };
     return d;
   }
@@ -381,23 +384,24 @@ export class Runner {
       case 'timenow':
         return Date.now();
       case 'year':
-        return this.date().getFullYear();
+        return this.date().year;
       case 'month':
-        return this.date().getMonth() + 1;
+        return this.date().month;
       case 'dayofmonth':
-        return this.date().getDate();
+        return this.date().day;
       case 'dayofweek':
-        return this.date().getDay() + 1;
+        return this.date().weekday + 1;
       case 'hour':
-        return this.date().getHours();
+        return this.date().hour;
       case 'minute':
-        return this.date().getMinutes();
+        return this.date().minute;
       case 'second':
-        return this.date().getSeconds();
+        return this.date().second;
       case 'weekofyear': {
         const d = this.date();
-        const start = new Date(d.getFullYear(), 0, 1);
-        return Math.ceil(((d.getTime() - start.getTime()) / 86400000 + start.getDay() + 1) / 7);
+        const day = Date.UTC(d.year, d.month - 1, d.day);
+        const start = Date.UTC(d.year, 0, 1);
+        return Math.ceil(((day - start) / 86400000 + new Date(start).getUTCDay() + 1) / 7);
       }
     }
     return undefined;

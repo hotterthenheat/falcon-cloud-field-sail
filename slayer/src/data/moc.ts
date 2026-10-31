@@ -1,6 +1,6 @@
 /* New York's session clock: the phase (pre-market, open, closing auction, after hours, closed), the wall clock, the minutes to the next turn. */
 
-import { MARKET_HOLIDAYS } from '../core/calendar';
+import { MARKET_HOLIDAYS, sessionCloseMinOn } from '../core/calendar';
 
 // ---- the session clock ----------------------------------------------------------
 
@@ -15,11 +15,11 @@ export interface SessionClock {
   phase: SessionPhase;
   /** Plain label for the phase */
   label: string;
-  /** Seconds until the 16:00 cross — 0 when there is no cross left today */
+  /** Seconds until the closing cross (16:00, 13:00 on an early close) — 0 when there is no cross left today */
   secondsToClose: number;
   /** H:MM:SS until the cross, or null when there isn't one coming */
   countdown: string | null;
-  /** True from 15:50 — when the book actually starts publishing */
+  /** True from ten minutes before the close (15:50, 12:50 on an early close) — when the book actually starts publishing */
   auctionOpen: boolean;
   auctionStatus: AuctionStatus;
   /** True on weekends and market holidays */
@@ -52,7 +52,8 @@ export function readSessionClock(now: Date = new Date()): SessionClock {
   const isoDay = `${parts.year}-${parts.month}-${parts.day}`;
 
   const mins = hour * 60 + minute;
-  const closeMins = 16 * 60;
+  /* the cross is at the cash close: 13:00 on an early close, its imbalance book from 12:50 */
+  const closeMins = sessionCloseMinOn(isoDay);
   const isWeekend = weekday === 'Sat' || weekday === 'Sun';
   const isHoliday = MARKET_HOLIDAYS.has(isoDay);
   const marketClosedToday = isWeekend || isHoliday;
@@ -62,7 +63,7 @@ export function readSessionClock(now: Date = new Date()): SessionClock {
   if (marketClosedToday) phase = 'CLOSED';
   else if (mins < 9 * 60 + 30) phase = 'PREMARKET';
   else if (mins >= closeMins) phase = 'AFTERHOURS';
-  else if (mins >= 15 * 60 + 50) phase = 'AUCTION';
+  else if (mins >= closeMins - 10) phase = 'AUCTION';
   else phase = 'OPEN';
 
   // Only a live session has a cross still ahead of it.

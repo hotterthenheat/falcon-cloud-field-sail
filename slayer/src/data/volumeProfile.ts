@@ -2,7 +2,9 @@ import { sessionStarts } from './indicators';
 import type { Candle } from '../types/market';
 
 /* Volume by price for the session: each bar's volume spread over the bins its range covers, by overlap. VPOC is the heaviest bin
-   (ties toward the last close); the value area grows from it by the heavier neighbour (ties up) to 70%; VAH/VAL are its outer edges. */
+   (ties toward the last close); the value area grows from it the standard (CBOT Market Profile) way — the two rows above against
+   the two rows below, the heavier PAIR annexed (ties up; one row where only one is left on that side) — to 70%; VAH/VAL are its
+   outer edges. */
 
 const VALUE_AREA_FRACTION = 0.7;
 /** Bin count the wrapper aims the session's range at. */
@@ -28,7 +30,7 @@ export interface VolumeProfile {
 const EMPTY: VolumeProfile = { bins: [], binSize: 0, totalVolume: 0, vpoc: null, vah: null, val: null };
 
 /** The current session's profile at an explicit bin size; `sessionVolumeProfile` picks the size. */
-function buildVolumeProfile(sessionBars: readonly Candle[], binSize: number): VolumeProfile {
+export function volumeProfileAt(sessionBars: readonly Candle[], binSize: number): VolumeProfile {
   if (sessionBars.length === 0 || !(binSize > 0)) return EMPTY;
   let lo = Infinity;
   let hi = -Infinity;
@@ -73,19 +75,23 @@ function buildVolumeProfile(sessionBars: readonly Candle[], binSize: number): Vo
     }
   }
 
-  /* The 70% area, annexed bin by bin from the VPOC — ties upward. */
+  /* The 70% area, annexed two rows at a time from the VPOC — the heavier pair, ties upward. */
   let loI = poc;
   let hiI = poc;
   let held = vols[poc];
   const target = total * VALUE_AREA_FRACTION;
   while (held < target && (loI > 0 || hiI < n - 1)) {
-    const up = hiI < n - 1 ? vols[hiI + 1] : -1;
-    const dn = loI > 0 ? vols[loI - 1] : -1;
-    if (up >= dn) {
-      hiI++;
+    const upN = Math.min(2, n - 1 - hiI);
+    const dnN = Math.min(2, loI);
+    let up = 0;
+    for (let k = 1; k <= upN; k++) up += vols[hiI + k];
+    let dn = 0;
+    for (let k = 1; k <= dnN; k++) dn += vols[loI - k];
+    if (upN > 0 && (dnN === 0 || up >= dn)) {
+      hiI += upN;
       held += up;
     } else {
-      loI--;
+      loI -= dnN;
       held += dn;
     }
   }
@@ -116,5 +122,5 @@ export function sessionVolumeProfile(bars1m: readonly Candle[], whole = false): 
   if (!(range >= 0)) return EMPTY;
   /* A one-price session still gets one bin rather than a zero division. */
   const binSize = range > 0 ? range / TARGET_BINS : Math.max(0.01, hi * 0.0005);
-  return buildVolumeProfile(sess, binSize);
+  return volumeProfileAt(sess, binSize);
 }
