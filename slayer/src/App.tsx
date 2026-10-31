@@ -63,6 +63,11 @@ const Moved = ({ to }: { to: (params: Record<string, string | undefined>, search
   const { search } = useLocation();
   return <Navigate to={to(params, search)} replace />;
 };
+/* A desk whose state belongs to the one account or session in its address (the contract in hand, a drawn order
+   waiting for its size, the expiry, the tab): a new address is a new desk. Without the key, the account card's switch
+   (or the sessions list) kept the last account's half-placed order on screen and placed it into the next account. */
+const PaperDeskAt = () => <PaperDesk key={useParams().accountId ?? ''} />;
+const ReviewDeskAt = () => <ReviewDesk key={useParams().id ?? ''} />;
 const withBook = (search: string): string => {
   const q = new URLSearchParams(search);
   q.set('book', 'backtest');
@@ -233,10 +238,10 @@ const App = () => {
             <Route path="/practice" element={<PracticeLayout />}>
               <Route index element={<Navigate to="/practice/paper" replace />} />
               <Route path="paper" element={<PaperAccounts />} />
-              <Route path="paper/:accountId" element={<PaperDesk />} />
+              <Route path="paper/:accountId" element={<PaperDeskAt />} />
               <Route path="backtest" element={<ReviewSessions />} />
               <Route path="futures" element={<Navigate to="/practice/backtest" replace />} />
-              <Route path="backtest/:id" element={<ReviewDesk />} />
+              <Route path="backtest/:id" element={<ReviewDeskAt />} />
               <Route path="backtest/:id/report" element={<ReviewReport />} />
               <Route path="journal" element={<PracticeJournal />} />
               <Route path="journal/:sessionId/:tradeId" element={<PracticeJournalTrade />} />
