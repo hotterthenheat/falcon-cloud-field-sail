@@ -15,7 +15,13 @@ import { timingSafeEqual } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { pathToFileURL } from 'node:url';
 import { sessionLost, thetaAllowed, thetaTtl } from '../shared/thetaPaths.mjs';
-import { WARM, superviseTheta, warmPath as quotePath } from './supervisor.mjs';
+import { WARM, superviseTheta, terminalState, warmPath as quotePath } from './supervisor.mjs';
+
+const LOGIN_FAILED = () => ({
+  status: 503,
+  body: Buffer.from(JSON.stringify({ error: 'ThetaData refused the login: check THETADATA_API_KEY on the machine that runs the terminal.', code: 'terminal_login' })),
+  type: 'application/json',
+});
 
 const TERMINAL = process.env.THETA_REST_BASE || 'http://127.0.0.1:25503';
 const PORT = Number(process.env.THETA_RELAY_PORT) || 25510;
@@ -94,9 +100,12 @@ async function upstream(p) {
       stats.lastSessionLostAt = Date.now();
       return { status: 503, body: Buffer.from(JSON.stringify({ error: 'The market data session is reconnecting.', code: 'session_lost' })), type: 'application/json' };
     }
+    if (r.status !== 200 && r.status !== 472 && terminalState().state === 'login_failed') return LOGIN_FAILED();
     return { status: r.status, body, type };
   } catch {
     stats.failures += 1;
+    /* the supervisor read "Invalid credentials" in the terminal's output: say so, not "not running" */
+    if (terminalState().state === 'login_failed') return LOGIN_FAILED();
     return { status: 503, body: Buffer.from(JSON.stringify({ error: 'The market data terminal is not running.', code: 'terminal_down' })), type: 'application/json' };
   } finally {
     release(p);
@@ -167,7 +176,8 @@ export function startRelay() {
       const up = Date.now() - stats.lastOkAt < 60_000;
       const lost = stats.lastSessionLostAt > stats.lastOkAt;
       res.setHeader('content-type', 'application/json');
-      res.end(JSON.stringify({ terminal: lost ? 'session_lost' : up ? 'up' : 'down', busy, queued: quick.length + slow.length, cached: cache.size, ...stats }));
+      const sup = terminalState().state;
+      res.end(JSON.stringify({ terminal: sup === 'login_failed' ? 'login_failed' : lost ? 'session_lost' : up ? 'up' : 'down', supervisor: sup, busy, queued: quick.length + slow.length, cached: cache.size, ...stats }));
       return;
     }
     if (req.method !== 'GET' || !authorized(req)) {
