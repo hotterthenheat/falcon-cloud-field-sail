@@ -59,7 +59,7 @@ const SignalCard = ({ s, tracked, onOpen }: { s: Signal; tracked: boolean; onOpe
       <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-borderSubtle">
         <ContractLabel contract={s.contract} right={s.right} logo={s.ticker} size="sm" />
         <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">Book {s.book}</span>
-        {s.how === 'late' && <span className="font-mono text-t10 text-warn border border-warn/40 rounded px-1.5 py-0.5" title="Scored after its mark from the quotes ThetaData recorded at the mark">Late</span>}
+        {s.how === 'late' && <span className="font-mono text-t10 text-warn border border-warn/40 rounded px-1.5 py-0.5" title="Scored after its mark from the recorded quotes at the mark">Late</span>}
         {tracked && <Bookmark className="w-3.5 h-3.5 text-textSecondary" aria-label="Tracked" />}
         <span className={`ml-auto font-mono text-t10 uppercase tracking-wider ${state.tone}`}>{state.word}</span>
       </div>
@@ -100,7 +100,7 @@ const TrackedCard = ({ t, onOpen }: { t: TrackedSetup; onOpen: () => void }) => 
         <Cell label="Saved" value={nyClock(t.trackedAt, { zone: true })} />
       </div>
       <div className="px-3.5 py-2">
-        <p className="font-mono text-t10 text-textSecondary whitespace-normal">Saved from its page. Not a Book A, B or C call.</p>
+        <p className="font-mono text-t10 text-textSecondary whitespace-normal">Saved from its page. Not a Compass call.</p>
       </div>
     </button>
   );
@@ -133,7 +133,7 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
     : feed.status === 'kept' && feed.at
       ? `The record ${asOfText(feed.at)}. ${feed.error || 'Reconnecting to the Compass server.'}`
       : theta === 'down' && rows.live.length
-    ? `ThetaData offline — reconnecting. Paths as of ${readAt ? nyClock(readAt, { zone: true }) : 'the call'}.`
+    ? `Live data offline — reconnecting. Paths as of ${readAt ? nyClock(readAt, { zone: true }) : 'the call'}.`
     : rows.live.length
       ? `Paths read once a minute from the contract's own quotes${readAt ? `. Last read ${nyClock(readAt, { zone: true })}` : ''}.`
       : false;
@@ -170,7 +170,7 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
           ) : (
           <EmptyBox
             title="Nothing in play"
-            reason={backlogLine(feed.marks) || 'When the scan fires a Book A, B or C call it shows here with the quote it fired on, its fill and its path, until it closes.'}
+            reason={backlogLine(feed.marks) || 'When the scan fires a call it shows here with the quote it fired on, its fill and its path, until it closes.'}
             action={record.length > 0 ? (
               <button type="button" onClick={() => navigate('/compass/blotter')} className="slayer-chip uppercase tracking-wider tap-40">
                 Every earlier call is on the blotter

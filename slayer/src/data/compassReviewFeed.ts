@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { feedHeaders } from './feedGate';
 import type { SessionReview } from './compassReview';
 import type { PooledStudy, StudyResult } from './compassStudy';
+import type { Signal } from './compassLedger';
+import { userWords } from './compassParams';
 
 /** 'pooled' is every labelled session's study together (/api/compass/study?day=all; pass day 'all') */
 type Kind = 'review' | 'study' | 'pooled';
@@ -20,7 +22,7 @@ const KEEP = 'slayer_compass_doc_v1';
 
 function kept(key: string): unknown {
   try {
-    const all = JSON.parse(localStorage.getItem(KEEP) || '{}') as Record<string, unknown>;
+    const all = JSON.parse(userWords(localStorage.getItem(KEEP) || '{}')) as Record<string, unknown>;
     return all[key] ?? null;
   } catch {
     return null;
@@ -64,7 +66,7 @@ export function useCompassDoc<K extends Kind>(kind: K, day: string | null): DocS
       }
       try {
         const res = await fetch(kind === 'pooled' ? '/api/compass/study?day=all' : `/api/compass/${kind}?day=${day}`, { headers: { ...auth.headers, 'x-compass-soft': '1' } });
-        const body = (await res.json().catch(() => null)) as (Doc<K> & { code?: string; error?: string }) | null;
+        const body = (await res.text().then(t => JSON.parse(userWords(t))).catch(() => null)) as (Doc<K> & { code?: string; error?: string }) | null;
         if (dead) return;
         if ((res.status === 404 || res.status === 200) && body?.code === 'not_built') {
           memo.set(key, { at: Date.now(), doc: null, status: 'missing', error: body.error ?? '' });
@@ -84,6 +86,47 @@ export function useCompassDoc<K extends Kind>(kind: K, day: string | null): DocS
     };
   }, [key, kind, day]);
   return state;
+}
+
+const recordMemo = new Map<string, { at: number; calls: Signal[] }>();
+
+/** Every official call on record, every session (the Blotter's track record): /api/compass/days, then each session's
+    record (a past session's once; today's again after a minute). Null until the first read answers. */
+export function useAllCalls(today: string, rev: number): Signal[] | null {
+  const [calls, setCalls] = useState<Signal[] | null>(null);
+  useEffect(() => {
+    let dead = false;
+    void (async () => {
+      const auth = await feedHeaders();
+      if (!auth.ok) return;
+      try {
+        const res = await fetch('/api/compass/days', { headers: auth.headers });
+        const body = (await res.json()) as { days?: { day: string; calls: number }[] };
+        const days = (body.days ?? []).filter(d => d.calls > 0).map(d => d.day);
+        const out: Signal[] = [];
+        for (const d of days) {
+          const hit = recordMemo.get(d);
+          if (hit && (d < today || Date.now() - hit.at < 60_000)) {
+            out.push(...hit.calls);
+            continue;
+          }
+          const r = await fetch(`/api/compass/record?day=${d}`, { headers: auth.headers });
+          if (!r.ok) continue;
+          const doc = JSON.parse(userWords(await r.text())) as { calls?: Signal[] };
+          const got = Array.isArray(doc.calls) ? doc.calls : [];
+          recordMemo.set(d, { at: Date.now(), calls: got });
+          out.push(...got);
+        }
+        if (!dead) setCalls(out.sort((a, b) => b.firedAt - a.firedAt));
+      } catch {
+        /* the header keeps the record it has */
+      }
+    })();
+    return () => {
+      dead = true;
+    };
+  }, [today, rev]);
+  return calls;
 }
 
 /** The sessions on record, newest first. */

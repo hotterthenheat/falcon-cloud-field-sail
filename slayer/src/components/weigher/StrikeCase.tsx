@@ -7,7 +7,10 @@ import Fact from '../ui/Fact';
 import ContractLabel from '../ui/ContractLabel';
 import { readGate, thetaPerSessionHour } from '../../data/weigherGate';
 import { seatsNow, type LiveScore } from '../../data/compassModel';
-import { STOP_KEEP, TP1_STOP, TP2_STOP, TP3_STOP, TP4_TRAIL, DRIVE, weekdayDte } from '../../data/compassParams';
+import { MODEL_1_NAME, STOP_KEEP, TP1_STOP, TP2_STOP, TP3_STOP, TP4_TRAIL, DRIVE, weekdayDte } from '../../data/compassParams';
+
+/* the entry tree's name as the scan writes it (compassParams), and its old name in rows written before the rename */
+const MODEL_1_RE = new RegExp(`${MODEL_1_NAME}|Model 1`, 'i');
 import { odteDoneMin } from '../../data/compassSession';
 import { useEconCalendar } from '../../data/liveRecord';
 import { useNextReport } from '../../data/earningsFeed';
@@ -82,7 +85,7 @@ function speak(s: string): string | null {
   else if (/open is not in hand/i.test(s)) out = 'The opening price is not in yet, so the side is not named.';
   else if (/Flat root/i.test(s)) out = 'The stock is flat from the open. Neither side is named.';
   else if (/Needs 70\.67|has not scored|Short of the line|has not been read/i.test(s)) out = 'It does not clear.';
-  else if (/Model 1/i.test(s)) out = null;
+  else if (MODEL_1_RE.test(s)) out = null;
   else if (/does not send/i.test(s)) out = 'It clears. We do not call this name.';
   else if (/already sent/i.test(s)) out = 'This name already has one today.';
   else if (/seats are full/i.test(s)) out = 'Five are already out today.';
@@ -103,7 +106,7 @@ function speak(s: string): string | null {
   else if (/458/.test(s)) out = null;
   else if (/Book B/i.test(s)) out = 'This far strike has not cheapened enough.';
   else out = null;
-  if (out != null && /Book A|Model 1|70\.67|458|\bseat/i.test(out)) return null;
+  if (out != null && (MODEL_1_RE.test(out) || /Book A|70\.67|458|\bseat/i.test(out))) return null;
   return out;
 }
 

@@ -6,6 +6,7 @@ import { useGround } from '../ground';
 import { Eyebrow } from '../pieces';
 import TerminalWindow from '../TerminalWindow';
 import ProductPage, { Aside, Head, Pair, Picture, Room } from './ProductPage';
+import { BOOK_NAME } from '../../../data/compassParams';
 
 const SHOTS = '/landing/products/compass';
 
@@ -24,7 +25,7 @@ const CompassPage = () => (
     head={['Contracts picked off today’s levels.', 'With the reason for each.']}
     intro={
       <>
-        Compass scores the option chains on the ThetaData terminal’s live quotes with two trained models at every mark of every session a root trades — overnight, pre-market, from the 09:30 open every five minutes, and through the close — and keeps a board of the calls that clear the bar and the closest misses —
+        Compass scores the option chains on live quotes with two trained models at every mark of every session a root trades — overnight, pre-market, from the 09:30 open every five minutes, and through the close — and keeps a board of the calls that clear the bar and the closest misses —
         same day and one to seven days out. Every call goes to the blotter the moment it fires, with the quote it fired on, and is filled and closed by fixed rules on the quotes that follow. A call opens its own page:
         the live chart with the entry, the stop and the exits on it, the quote and its greeks.
       </>
@@ -40,7 +41,7 @@ const CompassPage = () => (
       </p>
       <p>
         A call needs the line at 70.67% or more, a bid over $0.15 and a spread at or under 8%. It fills at the ask of the first quote a full minute after the call, and closes on the stop, the take-profit, a reversal of the
-        underlying or the 15:55 ET flat — each read off a quote that printed. The Book A and Book B calls are marked unvalidated until the live model inputs are re-checked against training.
+        underlying or its session’s flat — each read off a quote that printed. The {BOOK_NAME.A} and {BOOK_NAME.B} calls are marked unvalidated until the live model inputs are re-checked against training.
       </p>
     </Aside>
 

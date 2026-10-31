@@ -11,7 +11,7 @@ import { useNotFoundHead } from '../notFound/NotFound';
 import { parseSetupId, setupIdOf } from '../../data/compass';
 import { liveSetup, liveSpot, useThetaBook } from '../../data/thetaBook';
 import { heldSetup, leftOf } from '../../data/compassModel';
-import { P1_MIN } from '../../data/compassParams';
+import { BOOK_NAME, P1_MIN } from '../../data/compassParams';
 import { COMPASS_SET } from '../../data/compassUniverse';
 import type { Setup } from '../../types/compass';
 import CampaignAnalysis from '../../components/compass/CampaignAnalysis';
@@ -140,7 +140,7 @@ const SetupPage = () => {
         <>
           {back}
           <div className="border border-borderSubtle rounded-md bg-panel px-5 py-6" data-setup-record={fired.key}>
-            <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">{fired.ticker} · Book {fired.book}</span>
+            <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">{fired.ticker} · {BOOK_NAME[fired.book]}</span>
             <p className="mt-1 text-t16 font-semibold text-textPrimary">{fired.contract}</p>
             <p className="mt-2 text-t12 text-textSecondary">Called {nyDay(fired.firedAt, { weekday: true })}, {nyClock(fired.firedAt, { zone: true })} on {fired.bid.toFixed(2)} × {fired.ask.toFixed(2)}. {result}</p>
             <Link to="/compass/blotter" className="mt-3 inline-flex slayer-chip uppercase tracking-wider">The blotter</Link>

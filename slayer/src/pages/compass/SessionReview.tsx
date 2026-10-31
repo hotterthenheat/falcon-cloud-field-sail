@@ -75,7 +75,7 @@ const SessionReview = () => {
           />
         </>
       }
-      sentence={doc ? <span>Built {new Date(doc.builtAt).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })} ET from ThetaData&apos;s recorded quotes. Causes come from repricing the mid step by step: the underlying&apos;s move, time, implied vol, the spread.</span> : false}
+      sentence={doc ? <span>Built {new Date(doc.builtAt).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false })} ET from the recorded quotes. Causes come from repricing the mid step by step: the underlying&apos;s move, time, implied vol, the spread.</span> : false}
     >
       <div className="border-t border-borderSubtle">
         {status === 'loading' && !doc ? (

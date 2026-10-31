@@ -13,7 +13,7 @@ import { bestByName, currentPicks, lastScanAt, scanBusy, scanReport, seatsNow } 
 import { backlogLine, compassFeed } from '../../data/compassFeed';
 import { daySummary } from '../../data/compassOutcome';
 import { asOfText } from '../../components/ui/states';
-import { MODELS_VALIDATED, P1_MIN, SEAT_CAP, inModelWindow } from '../../data/compassParams';
+import { BOOK_NAME, MODELS_VALIDATED, MODEL_2_NAME, P1_MIN, SEAT_CAP, inModelWindow } from '../../data/compassParams';
 import { nyClock, nyDay, nyIsoDate, nyMinutes, nyWallTime } from '../../core/nyTime';
 import { setCompassView, useCompassView, type BoardLayout } from '../../data/compassView';
 import { useScanClock } from '../../data/compassDoor';
@@ -174,12 +174,12 @@ const Board = () => {
       {
         value: 'odte',
         label: `0DTE · ${dayOf(same.date)}`,
-        hint: same.dte === 0 ? 'Stops today. Book C runs here.' : `Next session, ${same.weekday}.`,
+        hint: same.dte === 0 ? `Stops today. ${BOOK_NAME.C} runs here.` : `Next session, ${same.weekday}.`,
       },
       {
         value: 'weekly',
         label: `1–7 DTE · ${dayOf(week.date)}`,
-        hint: 'Same models as same-day. Book C does not run here.',
+        hint: `Same scores as same-day. ${BOOK_NAME.C} does not run here.`,
       },
     ];
   }, [sleeveDates]);
@@ -240,8 +240,8 @@ const Board = () => {
   const called = swings + wings + booksC;
   const caveat = MODELS_VALIDATED ? '' : ' Unvalidated models.';
   const calledLine = offered === 'odte'
-    ? `Book A ${swings}. Book B ${wings}. Book C ${booksC}.${near ? ` Closest ${near}.` : ''}${caveat}`
-    : `Book A ${swings}. Book B ${wings}. Book C is same-day only.${near ? ` Closest ${near}.` : ''}${caveat}`;
+    ? `${BOOK_NAME.A} ${swings}. ${BOOK_NAME.B} ${wings}. ${BOOK_NAME.C} ${booksC}.${near ? ` Closest ${near}.` : ''}${caveat}`
+    : `${BOOK_NAME.A} ${swings}. ${BOOK_NAME.B} ${wings}. ${BOOK_NAME.C} is same-day only.${near ? ` Closest ${near}.` : ''}${caveat}`;
   const scannedAt = lastScanAt(offered === 'weekly' ? 'weekly' : 'odte');
   const asOf = scannedAt
     ? `Last scan ${nyClock(scannedAt, { zone: true })}.`
@@ -259,14 +259,22 @@ const Board = () => {
     : live.feed === 'kept' && live.feedAt
       ? `The board ${asOfText(live.feedAt)}. ${live.feedError || 'Reconnecting to the Compass server.'}`
       : '';
-  const inWindow = inModelWindow(nyMinutes() - (9 * 60 + 30));
-  const windowLine = inWindow ? '' : ' Outside 09:45–15:00 ET the model’s minute input is outside the minutes it was trained on.';
+  const tNow = nyMinutes() - (9 * 60 + 30);
+  const inWindow = inModelWindow(tNow);
+  const windowLine = inWindow ? '' : ' Calls are made 09:45–15:00 ET; outside those minutes the scan scores the book but calls nothing.';
+  /* the runner tree's range input needs an hour of minutes: before 10:30 a call cannot ride */
+  const runnerLine = !scanOff && tNow >= 15 && tNow < 60 ? ` ${MODEL_2_NAME} is off before 10:30 ET (it needs an hour of minutes), so a call before then takes the 1.50× profit and does not ride.` : '';
+  const sessionDay = !scanOff && clock.phase !== 'halt' && !odteAsleep();
+  const preEntry = sessionDay && tNow >= -60 && tNow < 15 && !day.calls;
+  const nothingLine = preEntry
+    ? 'Compass scans from 09:45 ET; no calls yet today.'
+    : offered === 'odte' ? `Nothing cleared ${BOOK_NAME.A}, ${BOOK_NAME.B} or ${BOOK_NAME.C}.` : `Nothing cleared ${BOOK_NAME.A} or ${BOOK_NAME.B}.`;
   const sentence = (
     <RichRead text={
       serverLine
         ? serverLine
         : offline
-        ? `ThetaData offline — reconnecting. ${asOf}`
+        ? `Live data offline — reconnecting. ${asOf}`
         : dayOver
           ? 'Same-day calls are done for the session. A signal stays on the record until its stop, its target, the reversal, or the 15:55 flat.'
           : scanOff || clock.phase === 'halt'
@@ -277,7 +285,7 @@ const Board = () => {
                 ? reading
                 : called || near
                   ? `${calledLine} ${asOf}`
-                  : `${bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.')} ${asOf}`}${windowLine}${backlog ? ` ${backlog}` : ''}`
+                  : `${preEntry ? nothingLine : bestLine || nothingLine} ${asOf}`}${windowLine}${runnerLine}${backlog ? ` ${backlog}` : ''}`
     } />
   );
   const bests = bestByName(offered === 'weekly' ? 'weekly' : 'odte');
@@ -286,8 +294,8 @@ const Board = () => {
   const emptyLabel = live.feed === 'offline'
     ? serverLine
     : offline
-    ? `ThetaData offline — reconnecting. ${asOf}`
-    : bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.');
+    ? `Live data offline — reconnecting. ${asOf}`
+    : preEntry ? nothingLine : bestLine || nothingLine;
 
   return (
     <>
@@ -311,7 +319,7 @@ const Board = () => {
                 <Fact label="Cleared" testId="best" title="Names on this sleeve whose best contract cleared the line. A call still needs a seat.">
                   {bests.size ? cleared.toLocaleString('en-US') : '—'}
                 </Fact>
-                <Fact label="Seats" testId="fading" title="Roots Book A and Book B have called today. Five at most.">
+                <Fact label="Seats" testId="fading" title={`Roots the ${BOOK_NAME.A} and ${BOOK_NAME.B} books have called today. Five at most.`}>
                   <span className={seats >= SEAT_CAP ? 'text-bear' : 'text-textPrimary'}>{seats} of {SEAT_CAP}</span>
                 </Fact>
               </>
@@ -323,7 +331,7 @@ const Board = () => {
                   value={offered}
                   options={expiryOptions}
                   onChange={next => setCompassView({ sleeve: next === 'weekly' ? 'weekly' : 'odte' })}
-                  title="0DTE includes Book C. 1–7 DTE uses Book A and Book B."
+                  title={`0DTE includes ${BOOK_NAME.C}. 1–7 DTE uses ${BOOK_NAME.A} and ${BOOK_NAME.B}.`}
                   ink={CARD_INK.expiry}
                   testId="compass-expiry"
                 />
