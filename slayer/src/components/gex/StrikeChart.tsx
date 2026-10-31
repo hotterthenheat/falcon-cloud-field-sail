@@ -65,6 +65,8 @@ import { nyClock, nyMinutes, nyParts, nyWallTime } from '../../core/nyTime';
 import { beepAlert } from '../../data/alertSound';
 import { oiDoubled } from '../../data/oiWatch';
 import { chartGrain, extendChartTape, thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
+import { useThetaDown, useThetaLogin } from '../../data/thetaFeed';
+import { LIVE_LOGIN_FAILED } from '../../copy/feeds';
 import { barInTape, peekPrint, usePrintRev, useTapeRev } from '../../data/thetaTape';
 import { contractsLive } from '../../data/compassSession';
 import { sameName } from '../../data/spotGexBook';
@@ -1254,13 +1256,19 @@ const StrikeChart = ({
       stop = true;
     };
   }, [barsIn, quiet, ticker]);
-  /** A tape's note in the desk's words: no vendor named, a signed-out read asks for a sign-in, and a terminal that did
-      not answer in time is busy and being asked again — never "offline" */
+  /* The quotes terminal known down, and whether its login was refused: then the pane says so rather than "busy" */
+  const feedDown = useThetaDown();
+  const feedLogin = useThetaLogin();
+  /** A tape's note in the desk's words: no vendor named, a signed-out read asks for a sign-in, a refused login says so,
+      a terminal known to be down is offline, and one that did not answer in time is busy and being asked again */
   const noteWords = (note: string | null | undefined): string | null => {
     if (!note) return null;
     if (signedOut) return 'Sign in to load prices';
     const asOf = note.match(/as of (.+)$/)?.[1];
-    if (/offline|did not answer|reconnecting/i.test(note)) return `Prices busy — retrying${asOf ? ` · as of ${asOf}` : ''}`;
+    const stamp = asOf ? ` · as of ${asOf}` : '';
+    if (feedLogin && /offline|did not answer|reconnecting|login failed/i.test(note)) return `${LIVE_LOGIN_FAILED}${stamp}`;
+    if (feedDown && /offline|reconnecting/i.test(note)) return note;
+    if (/offline|did not answer|reconnecting/i.test(note)) return `Prices busy — retrying${stamp}`;
     return note.replace(/ThetaData|Unusual Whales/g, 'the feed');
   };
   const [sessionNote, setSessionNote] = useState<string | null>(null);
@@ -1273,7 +1281,8 @@ const StrikeChart = ({
       if (barCountRef.current === 0 && (tapeRef.current || !thetaBars() || thetaChartNote(ticker, tfMinutes(timeframe), getDeskSession()) != null)) setQuiet(true);
     }, 1200);
     return () => window.clearTimeout(id);
-  }, [ticker, timeframe, barClock]);
+    /* the terminal going down (or its login refused) asks again: a known outage is said, not loaded forever */
+  }, [ticker, timeframe, barClock, feedDown, feedLogin]);
   /** The chart's box — what the rail's lists and the sheet are portalled into */
   const [boxEl, setBoxEl] = useState<HTMLDivElement | null>(null);
   /* The box's client rect for the per-move hit tests, read once and dropped when it can have moved. Read fresh on
@@ -4619,7 +4628,7 @@ const StrikeChart = ({
           <div className="absolute inset-0 z-[4] flex items-center justify-center pointer-events-none" data-chart-empty>
             <div className="max-w-[280px] rounded-md border border-borderSubtle bg-canvas/85 px-4 py-3 text-center">
               <p className="font-mono text-t11 text-textPrimary">{signedOut ? 'Sign in to load prices' : noteWords(tape?.note || sessionNote) || 'No bars for this name'}</p>
-              <p className="mt-1 font-mono text-t10 text-textMuted">{signedOut ? 'Prices load for a signed-in session.' : quote ? `Quote ${quote.bid.toFixed(2)} × ${quote.ask.toFixed(2)}${quote.current ? '' : `, ${asOfText(quote.at)}`}. No prints on this name${quote.current ? '' : ' this session'}.` : tape?.note && !/offline/i.test(tape.note) ? `${etWindow(session)}.` : 'This frame stays. Bars fill it when the tape answers.'}</p>
+              <p className="mt-1 font-mono text-t10 text-textMuted">{signedOut ? 'Prices load for a signed-in session.' : quote ? `Quote ${quote.bid.toFixed(2)} × ${quote.ask.toFixed(2)}${quote.current ? '' : `, ${asOfText(quote.at)}`}. No prints on this name${quote.current ? '' : ' this session'}.` : tape?.note && !/offline|login failed/i.test(tape.note) ? `${etWindow(session)}.` : 'This frame stays. Bars fill it when the tape answers.'}</p>
             </div>
           </div>
         )}

@@ -63,14 +63,25 @@ const downStatus = (status: number) => status === 503 || status === 474 || statu
 /* While the terminal is down every call would fail the same way: hold them all, 15 s at first and up to a minute. */
 let downUntil = 0;
 let downFor = 0;
-const noteDown = () => {
+/* Why the terminal is down, when it is: its login was refused (the supervisor's login_failed, which the proxy answers as
+   terminal_login), or anything else. Its own state, so the page can say "login failed" instead of "offline"; the breaker
+   treats both alike. */
+let loginRefused = false;
+const noteDown = (login = false) => {
+  loginRefused = login;
   downFor = Math.min(60_000, downFor ? downFor * 2 : 15_000);
   downUntil = Date.now() + downFor;
 };
 const noteUp = () => {
+  loginRefused = false;
   downFor = 0;
   downUntil = 0;
 };
+/** The terminal is down because its login was refused (the data key), not merely not answering. */
+export const thetaLoginRefused = (): boolean => loginRefused;
+/** A down answer, marked when the login was the reason. The error stays `terminal_down` for every reader that keys on
+    it; `reason` says why. */
+const downAnswer = (status: number, login: boolean): ThetaAnswer => ({ status, data: null, error: 'terminal_down', ...(login ? { reason: 'login' as const } : {}) });
 
 /** A down terminal is the code, never the server's sentence. */
 function faultText(status: number, parsed: unknown, text: string): string {
@@ -84,6 +95,10 @@ function faultText(status: number, parsed: unknown, text: string): string {
   const msg = raw.replace(/\s+/g, ' ').trim().slice(0, 180);
   return msg || `unavailable ${status}`;
 }
+
+/** The proxy's answer names a refused login (terminal_login) */
+const loginCode = (parsed: unknown): boolean =>
+  !!parsed && typeof parsed === 'object' && !Array.isArray(parsed) && (parsed as { code?: unknown }).code === 'terminal_login';
 
 /* What ThetaData may be asked for on the page in view (the owner's rules, docs/DATA_SOURCES.md):
    Trace and the Dossier read Unusual Whales only; Pinpoint reads its greeks, exposure and levels from Unusual Whales
@@ -111,7 +126,7 @@ export const thetaAllowedHere = (path: string): boolean => {
 export const optionPath = (path: string): string =>
   path.startsWith('/option/') ? path.replace(/([?&](?:symbol|root)=)([A-Z]{1,4})(?:\.|%2E)([A-Z])(?=&|$)/gi, '$1$2$3') : path;
 
-type ThetaAnswer = { status: number; data: unknown; error: string | null };
+type ThetaAnswer = { status: number; data: unknown; error: string | null; reason?: 'login' };
 
 /* A name's daily rows are one read a page: the price store (prior closes) and the tape store (the print's prior close)
    both ask the same address within a second of each other. One read is in flight at a time, and its good answer serves
@@ -154,7 +169,7 @@ async function thetaRead(path: string, jump = false): Promise<ThetaAnswer> {
   if (!thetaAllowedHere(path)) return { status: 0, data: null, error: 'uw_only' };
   const auth = await feedHeaders();
   if (!auth.ok) return { status: 401, data: null, error: auth.code };
-  if (Date.now() < downUntil) return { status: 503, data: null, error: 'terminal_down' };
+  if (Date.now() < downUntil) return downAnswer(503, loginRefused);
   await take(jump);
   try {
     const res = await fetch(`/api/theta${path}`, { headers: { ...auth.headers, 'x-theta-soft': '1' }, signal: AbortSignal.timeout(thetaWaitMs(path)) });
@@ -177,8 +192,9 @@ async function thetaRead(path: string, jump = false): Promise<ThetaAnswer> {
     if (outage === 'terminal_down' || outage === 'terminal_login' || outage === 'session_lost' || outage === 'terminal_unavailable') {
       /* A stolen session is one read. The terminal is still up and the next read usually lands — a 15s blackout
          is what left the rail saying offline while quotes were answering. A dead terminal still backs off. */
-      if (outage !== 'session_lost') noteDown();
-      return { status: 503, data: null, error: 'terminal_down' };
+      const login = outage === 'terminal_login';
+      if (outage !== 'session_lost') noteDown(login);
+      return downAnswer(503, login);
     }
     if (outage === 'no_data') {
       noteUp();
@@ -186,7 +202,11 @@ async function thetaRead(path: string, jump = false): Promise<ThetaAnswer> {
     }
     if (!res.ok) {
       const error = faultText(res.status, parsed, text);
-      if (error === 'terminal_down') noteDown();
+      if (error === 'terminal_down') {
+        const login = loginCode(parsed);
+        noteDown(login);
+        return { status: res.status, data, error, ...(login ? { reason: 'login' as const } : {}) };
+      }
       return { status: res.status, data, error };
     }
     noteUp();

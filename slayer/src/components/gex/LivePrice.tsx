@@ -8,7 +8,8 @@ import { changeInk } from '../../data/book/day';
 import { closeMoveTitle } from '../../data/dayChange';
 import { extTag } from '../../core/session';
 import { nyStamp } from '../../core/nyTime';
-import { LIVE_OFFLINE, LIVE_RECONNECTING } from '../../copy/feeds';
+import { LIVE_LOGIN_FAILED, LIVE_OFFLINE, LIVE_RECONNECTING } from '../../copy/feeds';
+import { useThetaLogin } from '../../data/thetaFeed';
 
 /* One name's reading: asked every second while the terminal answers it, every fifteen seconds while it does not, every
    half minute while it is down — a list of prices must not ask once a second a name into a terminal that is not answering */
@@ -44,23 +45,26 @@ export function LivePrice({ ticker, levelsAt, compact = false }: { ticker: strin
   const { held, status } = useHeldPrice(ticker);
   const move = held ? thetaMove(held.value) : null;
   const offline = status === 'down' || (held != null && !held.live);
+  /* a refused login says so, in place of "offline" */
+  const login = useThetaLogin();
+  const downLine = login ? LIVE_LOGIN_FAILED : LIVE_RECONNECTING;
   const levelsTitle = levelsAt != null && levelsAt > 0 ? `The levels are read at ${levelsAt.toFixed(2)}, the price the feed marked its rows at.` : '';
   if (!held) {
     return (
-      <span className="inline-flex items-baseline gap-1.5 font-mono tnum whitespace-nowrap" title={[offline ? `${LIVE_RECONNECTING}. No price kept on this browser yet.` : 'Reading the price…', levelsTitle].filter(Boolean).join(' ')} data-live-price={offline ? 'offline' : 'pending'}>
+      <span className="inline-flex items-baseline gap-1.5 font-mono tnum whitespace-nowrap" title={[offline ? `${downLine}. No price kept on this browser yet.` : 'Reading the price…', levelsTitle].filter(Boolean).join(' ')} data-live-price={offline ? 'offline' : 'pending'}>
         <span className="text-textMuted">—</span>
-        {offline && !compact && <span className="text-t9 uppercase tracking-widest text-warn">{LIVE_OFFLINE}</span>}
+        {offline && !compact && <span className="text-t9 uppercase tracking-widest text-warn">{login ? LIVE_LOGIN_FAILED : LIVE_OFFLINE}</span>}
         {!compact && levelsAt != null && levelsAt > 0 && <span className="text-t10 text-textMuted">levels at {levelsAt.toFixed(2)}</span>}
       </span>
     );
   }
   const p = held.value;
   return (
-    <span className="inline-flex items-baseline gap-1.5 font-mono tnum whitespace-nowrap" title={[held.live ? `${move && move.regDate ? `Last trade${move.ext != null ? `, ${move.extWord}` : ''}` : 'Live quote'} · printed ${nyStamp(p.at, { seconds: true, zone: true })}` : `${LIVE_RECONNECTING}. Last print kept at ${nyStamp(p.read, { zone: true })}.`, levelsTitle].filter(Boolean).join(' ')} data-live-price={!held.live ? 'kept' : move && move.regDate ? 'last' : 'live'}>
+    <span className="inline-flex items-baseline gap-1.5 font-mono tnum whitespace-nowrap" title={[held.live ? `${move && move.regDate ? `Last trade${move.ext != null ? `, ${move.extWord}` : ''}` : 'Live quote'} · printed ${nyStamp(p.at, { seconds: true, zone: true })}` : `${downLine}. Last print kept at ${nyStamp(p.read, { zone: true })}.`, levelsTitle].filter(Boolean).join(' ')} data-live-price={!held.live ? 'kept' : move && move.regDate ? 'last' : 'live'}>
       <span className="text-textPrimary">{p.price.toFixed(2)}</span>
       {move && move.pct != null && <span style={{ color: changeInk(move.pct) }} title={closeMoveTitle(move)} data-live-change>{pctWords(move.pct)}</span>}
       {move && move.ext != null && !compact && <span className="text-t10 text-textMuted" title={closeMoveTitle(move)} data-live-ext>{extTag(move.extWord)} {pctWords(move.ext)}</span>}
-      {!held.live && <span className="text-t9 uppercase tracking-widest text-warn">{compact ? nyStamp(p.read, { zone: true }) : `offline · ${nyStamp(p.read, { zone: true })}`}</span>}
+      {!held.live && <span className="text-t9 uppercase tracking-widest text-warn">{compact ? nyStamp(p.read, { zone: true }) : `${login ? 'login failed' : 'offline'} · ${nyStamp(p.read, { zone: true })}`}</span>}
     </span>
   );
 }
@@ -68,10 +72,11 @@ export function LivePrice({ ticker, levelsAt, compact = false }: { ticker: strin
 /** One note for a list of compact prices: the terminal is down, so the prices are the last ones kept (or dashes) */
 export function ThetaOfflineNote() {
   const status = useThetaStatus();
+  const login = useThetaLogin();
   if (status !== 'down') return null;
   return (
-    <span className="font-mono text-t9 uppercase tracking-widest text-warn" title="Live prices are not answering. Each name shows its last kept print, stamped, or a dash." data-theta-offline>
-      {LIVE_OFFLINE} · prices are the last kept
+    <span className="font-mono text-t9 uppercase tracking-widest text-warn" title={`${login ? `${LIVE_LOGIN_FAILED}.` : 'Live prices are not answering.'} Each name shows its last kept print, stamped, or a dash.`} data-theta-offline={login ? 'login' : ''}>
+      {login ? LIVE_LOGIN_FAILED : LIVE_OFFLINE} · prices are the last kept
     </span>
   );
 }

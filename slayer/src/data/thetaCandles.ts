@@ -6,7 +6,7 @@
 import type { Candle } from '../types/market';
 import type { DeskSession } from './deskSession';
 import { aggregateCandles } from './timeframe';
-import { offlineWords } from './thetaFeed';
+import { offlineWords, thetaDown } from './thetaFeed';
 import { nyParts } from '../core/nyTime';
 import { extendTape, grainStep, paintPrint, peekPrint, peekTape, tapeOpenMinute, tapeReach, wantPrint, wantTape, type TapeGrain, type TapeRead } from './thetaTape';
 
@@ -163,7 +163,9 @@ export function thetaChartNote(ticker: string, mins: number, _session: DeskSessi
   const sessions: readonly DeskSession[] = cashGrain(grain) ? ['rth'] : CHART_SESSIONS;
   const reads = sessions.map(s => peekTape(ticker, grain, s));
   if (reads.some(t => t.bars.length > 0)) return null;
-  if (reads.some(t => t.state === 'loading' || t.takenAt === 0)) return null;
+  /* still reading — except a read the terminal refused while it is known to be down (or its login refused): that is
+     the outage, said as one, not "Loading bars…" for as long as it lasts */
+  if (reads.some(t => t.state === 'loading' || (t.takenAt === 0 && !(t.state === 'offline' && thetaDown())))) return null;
   const down = reads.find(t => t.state === 'offline');
   if (down) return offlineWords(down.takenAt);
   return 'No prints on this name.';
