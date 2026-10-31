@@ -35,6 +35,7 @@ import PageGlyph from '../ui/PageGlyph';
 import Wordmark from '../../brand/Wordmark';
 import Signature, { SignatureDot } from '../../brand/Signature';
 import { readMarketState } from '../../data/marketState';
+import { useMediaQuery } from '../ui/useMediaQuery';
 
 const SILVER = 'rgb(var(--silver))';
 const COLLAPSED_KEY = 'slayer_sidenav_collapsed';
@@ -89,7 +90,15 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const placeholder = profile.name === SAMPLE_PROFILE.name && profile.handle === SAMPLE_PROFILE.handle && profile.email === SAMPLE_PROFILE.email;
   const guest = signedOut || placeholder;
   const { pathname } = useLocation();
-  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const [storedCollapsed, setCollapsed] = useState(readCollapsed);
+  /* 768–1023 px (a tablet, a narrow window): the open panel would take a quarter of the page, so the rail folds to icons
+     there whatever was saved; opening it there lasts until the window leaves that band and is never written */
+  const narrow = useMediaQuery('(min-width: 768px) and (max-width: 1023.98px)');
+  const [narrowOpen, setNarrowOpen] = useState(false);
+  useEffect(() => {
+    if (!narrow) setNarrowOpen(false);
+  }, [narrow]);
+  const collapsed = narrow ? !narrowOpen : storedCollapsed;
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const [clock, setClock] = useState(() => readSessionClock());
@@ -124,6 +133,11 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
     const next = collapsed ? SIDENAV_W : SIDENAV_RAIL_W;
     const to = main ? { mainWidth: main.getBoundingClientRect().width + (width - next) } : null;
     beginGlide(700, 'frame', to);
+    setTip(null);
+    if (narrow) {
+      setNarrowOpen(o => !o);
+      return;
+    }
     setCollapsed(c => {
       if (!EMBEDDED) {
         try {
