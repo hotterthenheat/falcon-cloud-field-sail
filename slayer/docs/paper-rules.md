@@ -430,3 +430,14 @@ Every rule below has a known-number check in `scripts/paper-proof.ts` (paper) an
   at 3.00: average **2.00**, banked **$100**, open **$200** (equity +$300 either way; the old lifetime average said 1.67,
   $33.33 and $266.67, and the balance a firm's target and drawdown read was $66.67 short). A closed trade's `avgIn` is
   still the average of every way in (what the trade paid), and its P&L is its cash, unchanged.
+- **Early closes** (`core/calendar` EARLY_CLOSES: the day after Thanksgiving, July 3, December 24). The options session
+  ends at **13:00**: the bell (`clock.ts bellOf`) is 13:00, a contract expiring that day settles then, the session stops
+  taking fills (`feed.ts optionsOpen`), and a late name's window runs to 13:15 (catch-up replays to there, not 16:15).
+  **Time to expiry** is the trading clock's: session minutes left today plus each later session's own minutes (210 on an
+  early close) over 390 × 252 — no five-minute floor, 0 at the close. A contract expiring 2026-11-27 has 210/390 of a
+  session before that open; from the Wednesday before, 390 + 210 = 600 minutes.
+  **A quote is fresh** when it was read in the last 8 seconds, is not a kept one, carries today's stamp, and — past the
+  day's close — changed after the close. A snapshot read at 13:30 that answers with the 12:59 quote is frozen and fills
+  nothing. **A plan's times** written against the 16:00 bell keep their distance from the real close: flat by 15:55 →
+  12:55, 15:59 → 12:59, the 16:10 close → 13:10; a time between 13:00 and 15:00 is 12:59; a time before 13:00 stands.
+  The words on the page still say the plan's own time (a UI follow-up).

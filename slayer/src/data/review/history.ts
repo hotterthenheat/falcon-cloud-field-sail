@@ -5,7 +5,7 @@
    Each answer is loaded once (in memory, and kept in this browser's store, since a past day never changes) and then
    read synchronously by the engine and the desk. */
 
-import { isTradingDay, isoDate, MONTHS } from '../../core/calendar';
+import { isTradingDay, isoDate, sessionLengthOn, MONTHS } from '../../core/calendar';
 import { nyParts } from '../../core/nyTime';
 import { thetaCall } from '../theta';
 import { readSaved, save as keep } from '../uwStore';
@@ -208,12 +208,14 @@ export const underOf = (ticker: string): string => {
 export function parseBars(day: string, rows: Row[]): DayBars | null {
   const at = new Array<Candle | null>(DAY_MIN).fill(null);
   let closePrint = NaN;
+  /* the session's length that day: 390, 210 on a 13:00 early close (nothing after the close is a session minute) */
+  const len = sessionLengthOn(day);
   for (const r of rows) {
     const m = minuteOfStamp(r.timestamp);
     const close = num(r.close ?? r.price);
-    /* the 16:00:00 row is not a minute of the session: it is the closing print */
-    if (m === DAY_MIN && close > 0) closePrint = close;
-    if (!(m >= 0 && m < DAY_MIN) || !(close > 0)) continue;
+    /* the 16:00:00 row (13:00:00 on an early close) is not a minute of the session: it is the closing print */
+    if (m === len && close > 0) closePrint = close;
+    if (!(m >= 0 && m < len) || !(close > 0)) continue;
     const open = num(r.open);
     const high = num(r.high);
     const low = num(r.low);
@@ -328,7 +330,7 @@ export const printClock = (minute: number): string => {
 export function closeBasisOf(ticker: string, day: string): { price: number; print: string } | null {
   const d = bars.get(`bars|${underOf(ticker)}|${day}`);
   if (!d) return null;
-  if (d.closePrint != null && d.closePrint > 0) return { price: d.closePrint, print: '16:00' };
+  if (d.closePrint != null && d.closePrint > 0) return { price: d.closePrint, print: printClock(sessionLengthOn(day)) };
   const list = dayBars(ticker, day);
   const last = list[list.length - 1];
   if (!last || !(last.close > 0)) return null;
