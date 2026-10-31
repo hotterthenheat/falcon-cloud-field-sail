@@ -1,5 +1,6 @@
 import { sessionBars } from './levelview';
-import { levelFlip, regimeOfNet } from './flipLevel';
+import { levelFlip, levelNetPath, regimeOfNet } from './flipLevel';
+import { LEVEL_BAND, levelCrossings } from './levelRecord';
 import { recordDay, sessionBook } from './bookWindow';
 import type { Candle, MarketSnapshot } from '../types/market';
 import { nyIsoDate, nyMinutes } from '../core/nyTime';
@@ -41,24 +42,40 @@ const tooEarly = (bars: readonly Candle[]): boolean => coveredMinutes(bars) < GA
 
 /** Times price crossed the flip, one definition for the Board and the Map: a one-minute close on the other side from the last close
     not on it. A close exactly on the flip changes nothing. The Map's report counts tests beside this. */
-/** A close within this share of the flip has not crossed it */
-const CROSS_BAND = 0.0002;
-
 export function flipCrossings(bars: readonly Candle[], flip: number): number {
-  /* Counted at the printed flip (to the cent); a close inside ±0.02% of it is on neither side, so a chop on the flip is
-     one crossing, not dozens. */
+  /* Counted at the printed flip (to the cent); a close inside ±0.02% of it (levelRecord LEVEL_BAND) is on neither side,
+     so a chop on the flip is one crossing, not dozens. The test rule is levelRecord's. */
   const level = Math.round(flip * 100) / 100;
-  const band = level * CROSS_BAND;
-  let side = 0;
-  let n = 0;
+  const band = level * LEVEL_BAND;
+  return levelCrossings(i => {
+    const c = Math.round(bars[i].close * 100) / 100;
+    return c > level + band ? 1 : c < level - band ? -1 : 0;
+  }, bars.length);
+}
+
+/** Crossings of the flip AS IT STOOD AT EACH BAR — no look-ahead: the levels' contracts re-priced at each one-minute
+    close with the time to expiry that minute had (flipLevel.ts levelNetPath), so a flip that drifted through the day
+    is crossed where it was then, not where it ended. A bar is on a side when the net has one sign across its close's
+    ±LEVEL_BAND (the flip is not inside the band); the side is the sign of the net. Null when the book cannot be
+    re-priced (the caller counts against the printed flip instead). */
+export function flipCrossingsAsOf(snapshot: MarketSnapshot, chain: MarketSnapshot['chain'], bars: readonly Candle[]): number | null {
+  if (!snapshot.liveBook || !bars.length) return null;
+  const prices: number[] = [];
+  const times: number[] = [];
   for (const b of bars) {
-    const c = Math.round(b.close * 100) / 100;
-    const s = c > level + band ? 1 : c < level - band ? -1 : 0;
-    if (s === 0) continue;
-    if (side !== 0 && s !== side) n++;
-    side = s;
+    /* the bar's close is the minute's last print: the clock one minute after the bar opens */
+    const t = b.time * 1000 + 60_000;
+    prices.push(b.close * (1 - LEVEL_BAND), b.close * (1 + LEVEL_BAND));
+    times.push(t, t);
   }
-  return n;
+  const read = levelNetPath(snapshot, chain, prices, times);
+  if (!read) return null;
+  const p = read.path;
+  return levelCrossings(i => {
+    const lo = Math.sign(p[2 * i]);
+    const hi = Math.sign(p[2 * i + 1]);
+    return lo !== 0 && lo === hi ? (lo as -1 | 1) : 0;
+  }, bars.length);
 }
 
 export function buildFlipGauge(snapshot: MarketSnapshot): FlipGauge {
@@ -76,10 +93,11 @@ export function buildFlipGauge(snapshot: MarketSnapshot): FlipGauge {
     bars: 0,
   };
 
-  /* Crossed today is the Map's count: the same flip, cash-session bars and test rule (levelRecord levelTicks). */
+  /* Crossed today: the cash-session bars against the flip as it stood at each of them (no look-ahead), by the one test
+     rule (levelRecord levelCrossings); the printed flip only when the book cannot be re-priced. */
   const candles = sessionBars(ticker) ?? [];
   if (flip === null || tooEarly(candles)) return { ...base, bars: candles.length };
-  return { ...base, crossings: flipCrossings(candles, flip), bars: candles.length };
+  return { ...base, crossings: flipCrossingsAsOf(snapshot, chain, candles) ?? flipCrossings(candles, flip), bars: candles.length };
 }
 
 /** Today's session against the flip of the book it ran on (bookWindow sessionBook); null with `why` when that book is gone. */
@@ -122,7 +140,7 @@ export function sessionFlipCrossings(snapshot: MarketSnapshot, scope: 'ALL' | '0
   else if (tooEarly(candles)) out = { crossings: null, flip: read.flip, label: sb.label, why: null, complete: read.complete, early: true };
   /* the side rule the Map's report uses (WallReportCard: flip ≥ spot is tested from below) */
   /* closes changing side of the flip, on one-minute bars (flipCrossings) — the Map's flip row prints the same count */
-  else out = { crossings: flipCrossings(candles, read.flip), flip: read.flip, label: sb.label, why: null, complete: read.complete };
+  else out = { crossings: flipCrossingsAsOf(book, book.chain, candles) ?? flipCrossings(candles, read.flip), flip: read.flip, label: sb.label, why: null, complete: read.complete };
   /* kept once the whole session is in (its last bar at 15:55 or later) and the book's dates have all landed */
   if (closed && read.complete && nyMinutes(last.time * 1000) >= 15 * 60 + 55) {
     if (frozenCross.size > 200) frozenCross.clear();

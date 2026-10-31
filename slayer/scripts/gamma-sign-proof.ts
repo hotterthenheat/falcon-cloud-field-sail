@@ -327,6 +327,23 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
   check(`call-only book: put wall ${vc.read.putWall.price} (${vc.read.putWall.distPct}%), flip ${vc.read.flip.price} — not 100 "0.00% away"`, Number.isNaN(vc.read.putWall.price) && Number.isNaN(vc.read.putWall.distPct) && Number.isNaN(vc.read.flip.price) && vc.read.callWall.price === 100);
 }
 
+/* 15 — one test rule (levelRecord levelTicks): a visit is one test however many bars it sits on the level. A call wall
+   at 100: three bars on it then away below (one test, held), back up and a close at 100.5 (a second test, broke), back
+   under, then a close at 100.01 (inside the ±0.02% band: not beyond). The old ticks read 5 tests and 2 breaks (every
+   bar on the level a test, the 100.01 close a break); the wall card counted 3 visits — the Map's report disagreed. */
+{
+  const { levelTicks, levelTests } = await import('../src/data/levelRecord');
+  const { testEvents } = await import('../src/data/wall');
+  const { flipCrossings } = await import('../src/data/flipGauge');
+  const bar = (time: number, low: number, high: number, close: number) => ({ time, open: close, high, low, close, volume: 0 });
+  const bars = [bar(1, 99.5, 100.2, 99.9), bar(2, 99.6, 100.1, 99.8), bar(3, 99.7, 100.05, 99.9), bar(4, 99.0, 99.5, 99.2), bar(5, 99.4, 100.6, 100.5), bar(6, 99.3, 99.9, 99.5), bar(7, 99.6, 100.1, 100.01)];
+  const ticks = levelTicks(bars, 100, 'call');
+  const t = levelTests(bars, 100, 'call');
+  const w = testEvents(bars, 100, 'call');
+  check(`one rule: ${ticks.map(x => `${x.kind}@${x.i}`).join(' ')} — ${t.tests} tests, ${t.held} held, ${t.broke} broke; the wall card reads the same (${w.tests}/${w.held}/${w.broke})`, JSON.stringify(ticks.map(x => [x.kind, x.i])) === JSON.stringify([['held', 3], ['broke', 4], ['held', 6]]) && JSON.stringify(t) === JSON.stringify(w) && t.tests === 3);
+  check(`the flip's crossings on the same bars at 100: ${flipCrossings(bars, 100)} (up through 100.5, back under; 100.01 is inside the band)`, flipCrossings(bars, 100) === 2);
+}
+
 if (fail) {
   console.log(`\n${fail} failed`);
   process.exit(1);
