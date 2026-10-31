@@ -161,12 +161,18 @@ const side = closes[first] > mid ? 1 : -1;
 const handCross = closes.findIndex((c, i) => i > first && (side === 1 ? c <= mid : c >= mid));
 expectEqual(`level alert at ${mid}: armed ${side > 0 ? 'above' : 'below'} on bar ${first}, fires on the cross (bar ${handCross})`, walk({ id: 'l', kind: 'level', level: 'flip', side: 0, firedAt: 0 } as never, i => ctxOf(closes[i], { levels: { callWall: null, putWall: null, flip: mid, supreme: null, coneHigh: null, coneLow: null } })), handCross);
 
-/* the 9-bar average cross: hand EMA (k = 2/10, seeded at the first close), armed on the first bar off it */
+/* the 9-bar average cross: hand EMA (k = 2/10) seeded, as Pine's ta.ema is, from the simple average of the first nine
+   closes on bar 8 (no value before it), armed on the first bar with a value that is off it */
 const ema: number[] = [];
-for (const c of closes) ema.push(ema.length ? c * 0.2 + ema[ema.length - 1] * 0.8 : c);
+closes.forEach((c, i) => {
+  if (i < 8) ema.push(NaN);
+  else if (i === 8) ema.push(closes.slice(0, 9).reduce((s, x) => s + x, 0) / 9);
+  else ema.push(c * 0.2 + ema[i - 1] * 0.8);
+});
 const app = emaSeries(bars, 9);
+expectEqual('EMA9 has no value before bar 8', app.slice(0, 8).every(v => v == null), true);
 expectNear('EMA9 on the last bar against the hand series', app[app.length - 1], ema[ema.length - 1], 1e-12);
-const eFirst = closes.findIndex((c, i) => c !== ema[i]);
+const eFirst = closes.findIndex((c, i) => i >= 8 && c !== ema[i]);
 const eSide = closes[eFirst] > ema[eFirst] ? 1 : -1;
 const handEma = closes.findIndex((c, i) => i > eFirst && (eSide === 1 ? c <= ema[i] : c >= ema[i]));
 expectEqual(`EMA9 alert: armed on bar ${eFirst}, fires on the first cross (bar ${handEma})`, walk({ id: 'e', kind: 'indicator', source: 'ema9', tf: '1m', side: 0, threshold: 0, firedAt: 0 } as never, i => ctxOf(closes[i], { tf: '1m', values: { ema9: app[i] } })), handEma);
