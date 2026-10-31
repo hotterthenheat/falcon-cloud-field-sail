@@ -1,0 +1,182 @@
+/*
+  The rebuilt past day (src/data/book/exposureHist.ts): a hand example, the rules a reading follows (the vol grid in time
+  and strike, open interest that never moves inside the day, a leg gone at its close), and the close of Friday Oct 30
+  2026 against the vendor's own book for SPY — the book the live path reads (spot-exposures, call_gamma_oi + put_gamma_oi).
+    npx tsx scripts/exposure-hist-proof.ts
+
+  The stated tolerance, at 16:14 (the vendor stamps its close book 16:15), strikes 735-780:
+  - every expiry still trading after the close (the whole book less the day's own expiry): net within 15%, and the
+    strikes' mean absolute error within 15% of their mean absolute size (measured: −8.1B against −9.3B, 11%: the
+    vendor's far expiries carry vols and open interest of their own);
+  - the next expiry alone (11-02): net within 10%, mean absolute error within 12% (measured: −966M against −902M, 9%).
+  The day's own expiry is left out of the comparison: the rebuild drops it at 16:00, when it expires, while the vendor's
+  after-close book still carries it at its own frozen clock (its 10-30 rows sum to −7.9B at 16:15).
+*/
+import { readFileSync } from 'node:fs';
+import { HIST_FORMAT, lastVols, nyStampMs, readBars, readIv, readOi, rebuildDay, type HistInputs } from '../src/data/book/exposureHist';
+import { ALL } from '../src/data/book/exposureSegs';
+import { nyWallTime } from '../src/core/nyTime';
+import { getCarry } from '../src/core/carry';
+
+let fail = 0;
+const check = (what: string, ok: boolean, detail = '') => {
+  if (!ok) fail++;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}${detail ? ` — ${detail}` : ''}`);
+};
+const close = (a: number, b: number, rel = 1e-9) => Math.abs(a - b) <= rel * Math.max(1, Math.abs(b));
+const at = (segs: number[], t: number) => {
+  for (let i = 0; i < segs.length; i += 4) if (segs[i] === t) return segs[i + 2];
+  return NaN;
+};
+
+/* ---- a hand example ---------------------------------------------------------------------------------------- */
+/* One name, one day (Fri 2026-10-30), two bars at 10:00 and 10:01, one strike (100) with a call (OI 1,000) and a put
+   (OI 400) expiring Fri 2026-11-06 at 16:00. Vols: the call's grid says 20% at 09:30 and 30% at 10:30; the put's 25% at
+   both. At 10:00 S = 100 (at the money: the call is the out-of-the-money side), at 10:01 S = 101. */
+{
+  const t930 = nyWallTime(2026, 10, 30, 9, 30);
+  const t1030 = nyWallTime(2026, 10, 30, 10, 30);
+  const b0 = nyWallTime(2026, 10, 30, 10, 0);
+  const b1 = nyWallTime(2026, 10, 30, 10, 1);
+  const inp: HistInputs = {
+    format: HIST_FORMAT,
+    ticker: 'XYZ',
+    day: '2026-10-30',
+    oi: [
+      ['2026-11-06', 100, 'C', 1000],
+      ['2026-11-06', 100, 'P', 400],
+    ],
+    iv: [
+      ['2026-11-06', 100, 'C', [t930, t1030], [0.2, 0.3], [100, 100]],
+      ['2026-11-06', 100, 'P', [t930, t1030], [0.25, 0.25], [100, 100]],
+    ],
+    bars: [
+      [b0, 100],
+      [b1, 101],
+    ],
+  };
+  /* by hand: Γ = e^{−qT} φ(d1) / (S σ √T), d1 = (ln(S/K) + (r − q + σ²/2) T) / (σ √T); a contract's dollars per 1% =
+     Γ × 100 × S² × 0.01; the dealer is long the call (+) and short the put (−) */
+  const { r, q } = getCarry();
+  const expiryClose = nyWallTime(2026, 11, 6, 16, 0);
+  const hand = (S: number, t: number) => {
+    const T = (expiryClose - (t + 59_999)) / (365 * 86_400_000);
+    /* 10:00 is halfway from 09:30 to 10:30: the call's vol is 25%; 10:01 is 31/60 of the way: 25.1667% */
+    const sigma = 0.2 + 0.1 * ((t - t930) / (t1030 - t930));
+    const d1 = (Math.log(S / 100) + (r - q + (sigma * sigma) / 2) * T) / (sigma * Math.sqrt(T));
+    const gamma = (Math.exp(-q * T) * Math.exp(-(d1 * d1) / 2)) / Math.sqrt(2 * Math.PI) / (S * sigma * Math.sqrt(T));
+    return (1000 - 400) * gamma * 100 * S * S * 0.01;
+  };
+  const got = rebuildDay(inp, 'book');
+  check('hand example: one strike, two bars, the whole book', got.series.length === 1 && got.series[0][0] === ALL && got.series[0][1] === 100 && got.series[0][2].length === 8);
+  const segs = got.series[0][2];
+  check('hand example: 10:00 is side × OI × Γ × 100 × S² × 0.01 at the call\'s vol halfway along its grid', Math.abs(segs[2] - hand(100, b0)) <= 1, `${segs[2]} vs ${hand(100, b0).toFixed(1)}`);
+  check('hand example: 10:01 reprices S and the vol, the open interest unchanged', Math.abs(segs[6] - hand(101, b1)) <= 1, `${segs[6]} vs ${hand(101, b1).toFixed(1)}`);
+  check('hand example: one segment a bar, a minute long, flow = open interest (no trades are guessed)', segs[0] === b0 && segs[1] === b0 + 59_999 && segs[3] === segs[2] && segs[4] === b1);
+  const oneExpiry = rebuildDay(inp, '2026-11-06');
+  check('a date cut keeps that expiry under its own name', oneExpiry.series[0][0] === '2026-11-06' && oneExpiry.series[0][2][2] === segs[2]);
+  check('another expiry\'s cut is empty', rebuildDay(inp, '2026-11-13').series.length === 0);
+
+  /* before the grid: the session before's last vol, carried; after it: the last */
+  const early = nyWallTime(2026, 10, 30, 8, 0);
+  const pre = rebuildDay({ ...inp, bars: [[early, 100]] }, 'book', { '2026-11-06|100': 0.4 });
+  const preNo = rebuildDay({ ...inp, bars: [[early, 100]] }, 'book');
+  const preHand = (sigma: number) => {
+    const T = (expiryClose - (early + 59_999)) / (365 * 86_400_000);
+    const d1 = (Math.log(1) + (r - q + (sigma * sigma) / 2) * T) / (sigma * Math.sqrt(T));
+    return (600 * Math.exp(-q * T) * Math.exp(-(d1 * d1) / 2)) / Math.sqrt(2 * Math.PI) / (100 * sigma * Math.sqrt(T)) * 100 * 100 * 100 * 0.01;
+  };
+  check('pre-market holds the session before\'s last vol', Math.abs(pre.series[0][2][2] - preHand(0.4)) <= 1, `${pre.series[0][2][2]} vs ${preHand(0.4).toFixed(1)}`);
+  check('with none carried, pre-market holds the day\'s first', Math.abs(preNo.series[0][2][2] - preHand(0.2)) <= 1);
+  const late = nyWallTime(2026, 10, 30, 19, 0);
+  const post = rebuildDay({ ...inp, bars: [[late, 100]] }, 'book');
+  check('after the last grid point the vol holds (the call\'s 30%)', post.series[0][2].length === 4 && post.series[0][2][2] > 0);
+  check('the day\'s last vols carry to the next day', lastVols(inp)['2026-11-06|100'] === 0.3);
+
+  /* the out-of-the-money side: with the underlying at 102 on the grid, strike 100 is below the money and the put's vol
+     (35%) prices it, not the call's (25% at 10:00) */
+  const putSide: HistInputs = {
+    ...inp,
+    iv: [
+      ['2026-11-06', 100, 'C', [t930, t1030], [0.2, 0.3], [102, 102]],
+      ['2026-11-06', 100, 'P', [t930, t1030], [0.35, 0.35], [102, 102]],
+    ],
+    bars: [[b0, 102]],
+  };
+  const below = rebuildDay(putSide, 'book').series[0][2][2];
+  const hand102 = (() => {
+    const S = 102;
+    const sigma = 0.35;
+    const T = (expiryClose - (b0 + 59_999)) / (365 * 86_400_000);
+    const d1 = (Math.log(S / 100) + (r - q + (sigma * sigma) / 2) * T) / (sigma * Math.sqrt(T));
+    return (600 * Math.exp(-q * T) * Math.exp(-(d1 * d1) / 2)) / Math.sqrt(2 * Math.PI) / (S * sigma * Math.sqrt(T)) * 100 * S * S * 0.01;
+  })();
+  check('a strike below the price takes the put\'s vol, the out-of-the-money side', Math.abs(below - hand102) <= 1, `${below} vs ${hand102.toFixed(1)}`);
+
+  /* a strike off the vol grid takes its nearest neighbour's; a leg is gone at its expiry's close */
+  const off = rebuildDay({ ...inp, oi: [['2026-11-06', 101, 'C', 1000]] }, 'book');
+  check('a strike off the grid takes the nearest strike\'s vol', off.series.length === 1 && off.series[0][2][2] > 0);
+  const lastDay = rebuildDay({ ...inp, oi: [['2026-10-30', 100, 'C', 1000]], iv: [['2026-10-30', 100, 'C', [t930], [0.2], [100]]], bars: [[nyWallTime(2026, 10, 30, 15, 59), 100], [nyWallTime(2026, 10, 30, 16, 0), 100]] }, 'book');
+  check('a leg in its expiry\'s last minute prices; from its close it is gone', lastDay.series[0][2].length === 4 && lastDay.series[0][2][0] === nyWallTime(2026, 10, 30, 15, 59));
+  check('an empty day rebuilds nothing', rebuildDay({ ...inp, bars: [] }, 'book').series.length === 0 && rebuildDay({ ...inp, oi: [] }, 'book').series.length === 0);
+}
+
+/* ---- reading the terminal's answers -------------------------------------------------------------------------- */
+{
+  const toMs = (s: string) => nyStampMs(s, nyWallTime);
+  check('a terminal stamp is New York wall time', toMs('2026-10-30T09:30:00.000') === nyWallTime(2026, 10, 30, 9, 30));
+  const oi = readOi({ response: [{ contract: { strike: 750, right: 'PUT', expiration: '2026-11-02' }, data: [{ open_interest: 1234 }] }, { contract: { strike: 751, right: 'CALL', expiration: '2026-11-02' }, data: [{ open_interest: 0 }] }] });
+  check('open interest: a contract with none is left out', oi.length === 1 && oi[0][0] === '2026-11-02' && oi[0][2] === 'P' && oi[0][3] === 1234);
+  const iv = readIv({ response: [{ contract: { strike: 750, right: 'CALL', expiration: '2026-11-02' }, data: [{ implied_vol: 0.14, underlying_price: 755, timestamp: '2026-10-30T10:00:00.000' }, { implied_vol: 0, timestamp: '2026-10-30T10:30:00.000' }] }] }, toMs);
+  check('vols: a zero (no quote) is not a vol', iv.length === 1 && iv[0][3].length === 1 && iv[0][4][0] === 0.14);
+  const bars = readBars({ response: [{ timestamp: '2026-10-30T04:00:00.000', open: 760, high: 761, low: 759, close: 760.5, volume: 10 }, { timestamp: '2026-10-30T04:01:00.000', open: 0, high: 0, low: 0, close: 0 }] }, toMs);
+  check('bars: a minute that did not trade is not a price', bars.length === 1 && bars[0][1] === 760.5);
+}
+
+/* ---- the close of 2026-10-30 against the vendor's book ------------------------------------------------------- */
+{
+  const fx = JSON.parse(readFileSync(new URL('./fixtures/spy-exposure-hist-2026-10-30.json', import.meta.url), 'utf8')) as {
+    inputs: HistInputs;
+    vendor: Record<string, Record<string, number>>;
+  };
+  const t = nyWallTime(2026, 10, 30, 16, 14);
+  const compare = (cut: string, want: (k: number) => number) => {
+    const got = rebuildDay(fx.inputs, cut);
+    let net = 0;
+    let vnet = 0;
+    let err = 0;
+    let size = 0;
+    let n = 0;
+    for (const [, k, segs] of got.series) {
+      const v = at(segs, t);
+      if (v !== v || k < 735 || k > 780) continue;
+      const w = want(k);
+      net += v;
+      vnet += w;
+      err += Math.abs(v - w);
+      size += Math.abs(w);
+      n++;
+    }
+    return { net, vnet, err: err / size, n };
+  };
+  const vendor = (cut: string) => (k: number) => fx.vendor[cut][String(k.toFixed(1))] ?? 0;
+  /* every expiry still trading after the close: the whole book less the day's own */
+  const live = compare('book', k => vendor('book')(k) - vendor('2026-10-30')(k));
+  const M = (v: number) => `${(v / 1e6).toFixed(0)}M`;
+  console.log(`     the whole book less 10-30 at 16:14, ${live.n} strikes: rebuilt ${M(live.net)}, vendor ${M(live.vnet)}, mean abs error ${(live.err * 100).toFixed(1)}%`);
+  check('the close, every expiry still trading: net within 15% of the vendor\'s', Math.abs(live.net - live.vnet) <= 0.15 * Math.abs(live.vnet));
+  check('the close, every expiry still trading: strikes within 15% (mean absolute error over mean size)', live.err <= 0.15);
+  const next = compare('2026-11-02', vendor('2026-11-02'));
+  console.log(`     the 11-02 expiry at 16:14, ${next.n} strikes: rebuilt ${M(next.net)}, vendor ${M(next.vnet)}, mean abs error ${(next.err * 100).toFixed(1)}%`);
+  check('the close, the next expiry: net within 10%', Math.abs(next.net - next.vnet) <= 0.1 * Math.abs(next.vnet));
+  check('the close, the next expiry: strikes within 12%', next.err <= 0.12);
+  const day = rebuildDay(fx.inputs, 'book');
+  check('the rebuild spans every bar it was handed (15:30–16:14)', day.bars === 45 && day.series.every(s => s[2].length / 4 >= 44));
+  check('the day\'s own expiry is gone from 16:00', (() => {
+    const own = rebuildDay(fx.inputs, '2026-10-30');
+    return own.series.every(s => s[2][s[2].length - 4] < nyWallTime(2026, 10, 30, 16, 0));
+  })());
+}
+
+console.log(fail ? `\n${fail} FAILED` : '\nexposure rebuild: all ok');
+process.exit(fail ? 1 : 0);
