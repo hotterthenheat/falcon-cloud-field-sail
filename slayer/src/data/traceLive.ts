@@ -943,6 +943,8 @@ async function stockLastOf(name: string): Promise<StockLast> {
     return { price: 0, vol: 0, at: 0 };
   }
 }
+/* last_trade.vol is the day's running share volume as of the last trade, not that trade's size (verified live, AAPL
+   Oct 30: last_trade.vol 67,841,550 beside stock-state total_volume 67,846,959) — pre-market and after hours included */
 async function dayVolumeOf(name: string): Promise<number> {
   return (await stockLastOf(name)).vol;
 }
@@ -1795,12 +1797,40 @@ export function useDayTopContracts(limit = 5, enabled = true): LivePack<BookCont
 /** The day's largest flow alerts: the vendor's alerts of `minPremium` and up, filed before `untilMs` (the close), largest
     first, in (or outside) the regular session */
 export function useDayBigAlerts(sinceMs: number, untilMs: number | null, session: 'regular' | 'extended', minPremium = 5_000_000, limit = 200, enabled = true): LivePack<FlowPrint[]> {
-  return useLive(`day-alerts:${sinceMs}:${untilMs ?? 'live'}:${session}:${minPremium}`, () => readDayAlerts(sinceMs, untilMs, session, minPremium, limit), [], enabled);
+  return useLive<FlowPrint[]>(`day-alerts:${sinceMs}:${untilMs ?? 'live'}:${session}:${minPremium}`, () => readDayAlerts(sinceMs, untilMs, session, minPremium, limit), [], enabled);
 }
-/** The day's alerts of `minPremium` and up from `sinceMs` (the route reaches back days), largest first */
-export async function readDayAlerts(sinceMs: number, untilMs: number | null, session: 'regular' | 'extended', minPremium: number, limit: number): Promise<FlowPrint[]> {
-  const rows = markAlertPackages(await mapWithIndex(await getRows(`/option-trades/flow-alerts?limit=${limit}&min_premium=${minPremium}&newer_than=${new Date(sinceMs).toISOString()}${untilMs ? `&older_than=${new Date(untilMs).toISOString()}` : ''}`), alertToPrint));
-  return rows.filter(p => (session === 'regular' ? !p.extended : !!p.extended)).sort((a, b) => b.premium - a.premium);
+/** Pages of the day's big alerts walked back before the list says it holds only the newest */
+const DAY_ALERT_PAGES = 3;
+/** The day's alerts of `minPremium` and up from `sinceMs` (the route reaches back days), largest first. The route sends
+    the newest first and orders by nothing else, so a full page is walked back (older_than, at most DAY_ALERT_PAGES) until
+    the day is in hand: the largest are then the day's largest. `complete` false says the list is the largest of the
+    newest DAY_ALERT_PAGES × `limit` only. */
+export async function readDayAlerts(sinceMs: number, untilMs: number | null, session: 'regular' | 'extended', minPremium: number, limit: number): Promise<FlowPrint[] & { complete: boolean }> {
+  const raw: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  let older: number | null = untilMs;
+  let complete = false;
+  for (let page = 0; page < DAY_ALERT_PAGES; page++) {
+    const got = await getRows(`/option-trades/flow-alerts?limit=${limit}&min_premium=${minPremium}&newer_than=${new Date(sinceMs).toISOString()}${older ? `&older_than=${new Date(older).toISOString()}` : ''}`);
+    let oldest = 0;
+    for (const r of got) {
+      const k = String(r.id ?? `${r.option_chain ?? ''}|${r.created_at ?? ''}|${r.total_premium ?? ''}`);
+      const t = Date.parse(String(r.created_at ?? ''));
+      if (Number.isFinite(t) && (!oldest || t < oldest)) oldest = t;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      raw.push(r);
+    }
+    if (got.length < limit || !oldest || oldest <= sinceMs) {
+      complete = true;
+      break;
+    }
+    /* older_than is strict: the next page starts at the oldest instant in hand (its repeats are dropped by id) */
+    if (older != null && oldest + 1 >= older) break;
+    older = oldest + 1;
+  }
+  const rows = markAlertPackages(await mapWithIndex(raw, alertToPrint));
+  return Object.assign(rows.filter(p => (session === 'regular' ? !p.extended : !!p.extended)).sort((a, b) => b.premium - a.premium), { complete });
 }
 
 /* ---- a stock's whole day of one-minute bars, extended hours included (the cross card) --------------------------- */
