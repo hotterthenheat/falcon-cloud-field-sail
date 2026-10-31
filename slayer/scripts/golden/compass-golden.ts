@@ -214,6 +214,24 @@ expectEqual('flat at 15:55', [o.exit?.why, o.exit?.px, o.exit?.at], ['15:55 flat
 /* Early close (13:00 ET, minute 780): the flat is the first quote at or after 12:55 */
 o = settleSignal({ book: 'A', right: 'C', runner: false, firedAt: fired, closeMin: 780 }, [q(10, 31, 1.21, 1.25), q(12, 54, 1.3, 1.34), q(12, 55, 1.31, 1.35)], [], after);
 expectEqual('early close: flat at 12:55', [o.exit?.why, o.exit?.px, o.exit?.at], ['12:55 flat', 1.31, at(12, 55)]);
+/* 1-second quotes inside a minute that crossed the stop: minute quotes alone sell at the 10:40 bid 0.40 (the stop
+   0.58475 was crossed somewhere in 10:39–10:40); the seconds put the touch at 10:39:20, bid 0.58 */
+{
+  const { fineWindows } = await import('../../src/data/compassOutcome');
+  const sigA = { book: 'A' as const, right: 'C' as const, runner: false, firedAt: fired };
+  const mins = [q(10, 31, 1.21, 1.25), q(10, 35, 1.0, 1.04), q(10, 39, 0.9, 0.94), q(10, 40, 0.4, 0.44)];
+  expectEqual('fine windows: the stop crossed only in 10:39–10:40', fineWindows(sigA, mins), [[at(10, 39), at(10, 40)]]);
+  const fine = [q(10, 39, 0.8, 0.84, 10), q(10, 39, 0.58, 0.62, 20), q(10, 39, 0.5, 0.54, 40)];
+  const coarse = settleSignal(sigA, mins, [], after);
+  const sharp = settleSignal(sigA, [...mins, ...fine], [], after);
+  expectEqual('stop from minute quotes (the old read)', [coarse.exit?.px, coarse.exit?.at], [0.4, at(10, 40)]);
+  expectEqual('stop from the seconds (was 0.40 at 10:40)', [sharp.exit?.why, sharp.exit?.px, sharp.exit?.at, sharp.pnl], ['Stop', 0.58, at(10, 39, 20), -68.08]);
+  /* a target touched inside a minute: 1.875 crossed in 10:49–10:50; the seconds sell it at 10:49:30 */
+  const tpMins = [q(10, 31, 1.21, 1.25), q(10, 49, 1.7, 1.74), q(10, 50, 1.9, 1.94)];
+  expectEqual('fine windows: the 1.50× target crossed in 10:49–10:50 (and 1.25× crossed in 10:31–10:49)', fineWindows(sigA, tpMins), [[at(10, 31), at(10, 49)], [at(10, 49), at(10, 50)]]);
+  const tp = settleSignal(sigA, [...tpMins, q(10, 49, 1.88, 1.92, 30)], [], after);
+  expectEqual('take-profit from the seconds', [tp.exit?.why, tp.exit?.px, tp.exit?.at], ['Take profit 1.50×', 1.88, at(10, 49, 30)]);
+}
 /* Book C: 3× the 0.50 fill (1.50) inside 120 seconds sells at 1.50 */
 const firedC = at(15, 20, 5);
 o = settleSignal({ book: 'C', right: 'C', runner: false, firedAt: firedC }, [q(15, 21, 0.45, 0.5), q(15, 21, 1.2, 1.3, 40), q(15, 22, 1.55, 1.6, 30)], [], after);
@@ -302,10 +320,19 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   const { seatsNow } = await import('../../src/data/compassModel');
   expectEqual('late: no official call, no card, no seat taken (the five later seats stay five)', [signals().length, pick, seatsNow().seats], [0, null, 5]);
   let outcome: ReturnType<typeof settleSignal> | null = null;
+  let fineGot: { windows: number; exit: { px: number; why: string; at: number } | null } | null = null;
   if (sig) {
     const quotes = await contractPath(sig, null);
     const under = await underCloses('RUTW', '20261029');
     if (quotes) outcome = settleSignal(sig, quotes, under, Date.now());
+    if (quotes) {
+      /* the same call with its stop and target minutes read to the second (recorded 1-second quotes) */
+      const { withFineExits } = await import('../../src/data/compassLedger');
+      const { fineWindows } = await import('../../src/data/compassOutcome');
+      const sharp = settleSignal(sig, await withFineExits(sig, quotes), under, Date.now());
+      fineGot = { windows: fineWindows(sig, quotes).length, exit: sharp.exit ? { px: sharp.exit.px, why: sharp.exit.why, at: sharp.exit.at } : null };
+      if (REPORT || process.env.GOLDEN_RECORD === '1') console.log(`REPORT fine exit ${JSON.stringify(fineGot)}`);
+    }
   }
   const got = {
     rows: snap.rows,
@@ -333,6 +360,9 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
     expectEqual('late: RUTW 2845C would have called (Book A), marked late, at its mark', [got.called, got.late, got.firedAt], [want.called, want.late, mark]);
     expectEqual('late: fill at the first quote a full minute after the mark', [got.fill, got.fillAt], [want.fill, want.fillAt]);
     expectEqual('late: exit by the same rules from its mark', got.exit, want.exit);
+    /* read to the second, the break-even stop (16.90 + fees) was touched at 11:45:56, bid 16.30, inside a minute the
+       one-a-minute quotes saw above it; the minute read exits at 11:59, bid 15.10 */
+    expectEqual('late: the stop judged on 1-second quotes', fineGot, { windows: 9, exit: { px: 16.3, why: 'Stop', at: nyWallTime(2026, 10, 29, 11, 45) + 56_000 } });
   } else {
     console.log(`RECORDED ${LATE_SET}: ${JSON.stringify(got)}. Check it against the raw rows, then write ${lateExpected}.`);
   }
