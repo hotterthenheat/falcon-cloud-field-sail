@@ -277,11 +277,32 @@ export default function NewsWindow<T>({ box, items, keyOf, estimate, head, initi
     holding.current?.();
   });
 
-  /* a new width rewraps every headline: the kept heights are stale, measure again (the drawn rows at once) */
+  /* Every row is measured before the frame that first shows it is painted. The virtualizer measures a row as it
+     mounts, but skips that while it thinks the window is scrolling (a re-read's hold scrolls it) and leaves the row to
+     its resize observer a frame later — a frame painted at the estimate, a two-line headline over the row under it.
+     A row this window has not read yet is read here, in the same commit, and the virtualizer redraws at once. */
+  const sizedRef = useRef(new WeakMap<Element, number>());
+  useLayoutEffect(() => {
+    const sized = sizedRef.current;
+    v.elementsCache.forEach(node => {
+      if (!node.isConnected || sized.has(node)) return;
+      const i = v.indexFromElement(node);
+      if (!(i >= 0 && i < itemsRef.current.length)) return;
+      const h = node.getBoundingClientRect().height;
+      if (!(h > 0)) return;
+      sized.set(node, h);
+      const at = v.measurementsCache[i];
+      if (!at || Math.abs(at.size - h) >= 0.5) v.resizeItem(i, Math.round(h));
+    });
+  });
+
+  /* a new width rewraps every headline: the kept heights are stale, measure again (the drawn rows at once, before the
+     rewrapped rows are painted over each other) */
   const widthSeen = useRef(width);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (widthSeen.current === width) return;
     widthSeen.current = width;
+    sizedRef.current = new WeakMap();
     v.measure();
     v.elementsCache.forEach(el => v.measureElement(el));
   }, [width, v]);

@@ -1142,7 +1142,7 @@ const News = () => {
             <span className="max-[1799.98px]:hidden" title="What sort of story it is, read from the headline">Kind</span>
             <span className="max-[1799.98px]:hidden" title={NEWS_FLAG_TIP}>Flag</span>
             <span>Headline</span>
-            <span className="text-right" title="How the named stock had moved on the session when the story crossed — a snapshot at publish, not today's move now">At publish</span>
+            <span className="text-right whitespace-nowrap" title="How the named stock had moved on the session when the story crossed — a snapshot at publish, not today's move now">At publish</span>
             <span className="text-right max-[1799.98px]:hidden" title="The other stocks the headline names">Also</span>
           </div>}
           {/* the window stands at its full height from the first frame; while the wire is read it holds the rows' shape */}

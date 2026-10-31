@@ -288,7 +288,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
             <ImpactLegend />
           </span>
         </span>
-        <span className="text-right" title="How the named stock had moved at publish — a fact, not a forecast">At publish</span>
+        <span className="text-right whitespace-nowrap" title="How the named stock had moved at publish — a fact, not a forecast">At publish</span>
         <span className="text-right max-lg:hidden" title="The other stocks the headline names">Also</span>
       </div>}
       {printed.map(p => (
