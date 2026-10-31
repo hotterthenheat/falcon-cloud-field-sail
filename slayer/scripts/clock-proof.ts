@@ -2,6 +2,7 @@ import { dollarGammaPerContract } from '../src/core/gammaFlip';
 import { nyWallTime } from '../src/core/nyTime';
 import { tradingYears } from '../src/core/tradingYear';
 import { calendarYears, dealerInventory, flowConfidence, flowFirm, flowImbalance, markGap, quoteMaxAge, smoothSmile, usableMid, vendorIvOnTradingClock } from '../src/core/volClock';
+import { fmtElapsed, measureSpan } from '../src/data/measure';
 import { holdBand, morningMiss, nodeMark, noteNodes, peakStrikes, priceTag } from '../src/data/nodeScore';
 
 const exp = '2026-10-27';
@@ -85,5 +86,22 @@ if (soon.flowHeld !== 0 || soon.flowBroke !== 0) throw new Error('a hold was sco
 const later = noteNodes('PROOF', 100.01, [100], [], 0.39, HOLD_WAIT);
 if (later.flowHeld !== 1) throw new Error(`held ${later.flowHeld}`);
 void early;
+
+/* the measure tool reads trading time: Friday 15:00 → Monday 10:00 on 5m is 90 trading minutes (18 bars), not 67 hours */
+{
+  const fri = nyWallTime(2026, 10, 23, 15, 0) / 1000;
+  const mon = nyWallTime(2026, 10, 26, 10, 0) / 1000;
+  const m = measureSpan(fri, 100, mon, 101, 5);
+  if (m.tradingMin !== 90 || m.bars !== 18 || fmtElapsed(m.tradingMin) !== '1h 30m') throw new Error(`measure Fri→Mon ${m.tradingMin} min, ${m.bars} bars, "${fmtElapsed(m.tradingMin)}" (was "10d 3h")`);
+  if (Math.abs((m.annualizedPct ?? 0) - 1 / Math.sqrt(90 / (252 * 390))) > 1e-9 || Math.abs((m.annualizedPct ?? 0) - 33.04) > 0.01) throw new Error(`measure annualised ${m.annualizedPct} (truth ≈ 33.0%, was 4.9%)`);
+  /* by index: the chart's bars between the two, whatever the clock says */
+  const times = [fri, fri + 300, fri + 600, mon - 300, mon];
+  if (measureSpan(fri, 100, mon, 101, 5, times).bars !== 4) throw new Error('bars by index');
+  /* a 1D bar is its session: Wed → Fri is two sessions (780 minutes), one of them early on 2026-11-27 (Thu holiday, Fri 210) */
+  const d1 = measureSpan(nyWallTime(2026, 10, 21, 16, 0) / 1000, 100, nyWallTime(2026, 10, 23, 16, 0) / 1000, 102, 1440);
+  if (d1.bars !== 2 || d1.tradingMin !== 780) throw new Error(`1D measure ${d1.bars} bars, ${d1.tradingMin} min (was 2880)`);
+  const tg = measureSpan(nyWallTime(2026, 11, 25, 16, 0) / 1000, 100, nyWallTime(2026, 11, 27, 13, 0) / 1000, 101, 1440);
+  if (tg.bars !== 1 || tg.tradingMin !== 210) throw new Error(`Thanksgiving week 1D measure ${tg.bars} bars, ${tg.tradingMin} min`);
+}
 
 console.log('clock proof ok', { timeRatio, gRatio, twist });
