@@ -39,7 +39,7 @@ jobs:
           set -e
           for f in trace-moneyness-proof gamma-sign-proof lgbm-parity-proof chart-proof clock-proof contract-quote-proof \
             fixture-proof higher-proof paper-proof replay-proof review-engine-proof \
-            review-journal-proof spx-book-proof terrain-contract-proof terrain-setups-proof exposure-recorder-proof pine-proof; do
+            review-journal-proof spx-book-proof terrain-contract-proof terrain-setups-proof exposure-recorder-proof pine-proof vol-outlook-proof weigher-density-proof; do
             echo "::group::$f"
             npx tsx "scripts/$f.ts"
             echo "::endgroup::"
