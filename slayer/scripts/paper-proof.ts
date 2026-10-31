@@ -7,9 +7,10 @@
   Run: npx tsx scripts/paper-proof.ts (npm run review:proof runs it with the backtest's).
 */
 
-import { addDays, dayBeginsAt, dayEndsAt, nyAt, nyInstant, tradingDayOf, yearsToExpiry } from '../src/data/paper/clock';
+import { addDays, bellOf, dayBeginsAt, dayEndsAt, nyAt, nyInstant, sessionTimeOn, tradingDayOf, yearsToExpiry } from '../src/data/paper/clock';
+import { isFresh } from '../src/data/paper/thetaFeed';
 import { bankedOf, closeStale, comboNatural, comboRefusal, endAccount, flattenAll, futBookOf, newAccount, optBookOf, optCancel, optClose, optPlace, optPlaceCombo, optRefusal, retireFutures, tick, viewOf, type PaperAccount, type PaperMarket } from '../src/data/paper/engine';
-import { NO_RULES, floorOf, readRules, ruleRefusal, type PaperPlan, type PropRules } from '../src/data/paper/rules';
+import { NO_RULES, flatTimeOf, floorOf, readRules, ruleRefusal, type PaperPlan, type PropRules } from '../src/data/paper/rules';
 import { CUSTOM_DEFAULTS, PROP_FIRMS, customPlan, planById } from '../src/data/paper/propFirms';
 import { marginOf } from '../src/data/paper/margin';
 import { OPTIONS_FUNDING_WHITELIST } from '../src/data/paper/whitelists';
@@ -847,6 +848,24 @@ const fixed = (price: () => number, t = now): PaperMarket => ({
   ok('running average cost: buy 2 @ 1, sell 1 @ 2, buy 1 @ 3 — the 1 left (avg 1) and the new 1 (3) average 2.00', pos?.avg === 2 && pos.qty === 2, `avg ${pos?.avg}`);
   ok('…the piece sold banked 100 (2 − 1 on 1 contract), not 33.33', pos?.banked === 100, `banked ${pos?.banked}`);
   ok('…marked at 3.00 the open P&L is 200, the balance start + 100, equity start + 300', w.openPnl === 200 && w.balance === 10_100 && w.equity === 10_300, `open ${w.openPnl} · balance ${w.balance} · equity ${w.equity}`);
+}
+
+{
+  /* 2. early closes: 2026-11-27 (the day after Thanksgiving) closes at 13:00 */
+  const EC = '2026-11-27';
+  ok('early close: the bell of 2026-11-27 is 13:00 New York', nyAt(bellOf(EC)).minutes === 13 * 60);
+  ok('…before its open a contract expiring that day has 210 of a 390-minute session left (210 / 390 / 252)', near(yearsToExpiry(EC, nyInstant(EC, 8 * 60)), 210 / 390 / 252, 1e-12), `${yearsToExpiry(EC, nyInstant(EC, 8 * 60)) * 252 * 390}`);
+  ok('…at 13:00 it has none; at 12:00, 60 minutes', yearsToExpiry(EC, nyInstant(EC, 13 * 60)) === 0 && near(yearsToExpiry(EC, nyInstant(EC, 12 * 60)) * 252 * 390, 60, 1e-9));
+  ok('…from Wednesday 11-25 before the open: 390 + (Thanksgiving shut) + 210 = 600 minutes', near(yearsToExpiry(EC, nyInstant('2026-11-25', 8 * 60)) * 252 * 390, 600, 1e-9));
+  ok('…the options session is shut at 13:30 that day, open at 12:30', !optionsOpen(nyInstant(EC, 13 * 60 + 30)) && optionsOpen(nyInstant(EC, 12 * 60 + 30)));
+  const t1330 = nyInstant(EC, 13 * 60 + 30);
+  ok('a quote read fresh at 13:30 but stamped 12:59 is frozen — it does not fill', !isFresh(t1330 - 1000, false, t1330, nyInstant(EC, 12 * 60 + 59)));
+  ok('…stamped after the close (a late name’s 13:05 quote, read 13:05) it is live; in the session any stamp from today is', isFresh(nyInstant(EC, 13 * 60 + 5), false, nyInstant(EC, 13 * 60 + 5) + 500, nyInstant(EC, 13 * 60 + 5)) && isFresh(nyInstant(EC, 11 * 60), false, nyInstant(EC, 11 * 60) + 500, nyInstant(EC, 9 * 60 + 40)));
+  ok('…a quote stamped on another day is frozen', !isFresh(nyInstant(EC, 10 * 60), false, nyInstant(EC, 10 * 60) + 500, nyInstant('2026-11-25', 15 * 60)));
+  const tf = newAccount({ id: 'tfec', kind: 'evaluation', name: 'tf', startCash: 0, plan: planById('tf-preprop-25k')!, now: nyInstant(EC, 10 * 60) });
+  const fl = flatTimeOf(tf, EC, null, {});
+  ok('a plan’s flat by 15:55 is 12:55 on a 13:00 close (the same five minutes before the real close)', !!fl && nyAt(fl.at).minutes === 12 * 60 + 55, fl ? `${nyAt(fl.at).minutes}` : 'none');
+  ok('…15:59 → 12:59, 16:10 → 13:10; a full day keeps them', sessionTimeOn(EC, 15 * 60 + 59) === 12 * 60 + 59 && sessionTimeOn(EC, 16 * 60 + 10) === 13 * 60 + 10 && sessionTimeOn('2026-11-25', 15 * 60 + 55) === 15 * 60 + 55);
 }
 
 console.log(`\n${passed} held · ${failed} missed`);

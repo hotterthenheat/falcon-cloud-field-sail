@@ -6,11 +6,11 @@
 
 import type { Candle } from '../../types/market';
 import type { DeskChain, DeskContract } from '../weigherDesk';
-import { isTradingDay, expiryFor } from '../../core/calendar';
+import { isTradingDay, expiryFor, sessionCloseMinOn } from '../../core/calendar';
 import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
 import { longLeg, spreadBook, bookMark, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
 import { bookCandles, ensureBook } from '../uwBook';
-import { bellOf, dateAt, nyAt, sessionFrom, yearsToExpiry, OPEN_MIN, BELL_MIN } from './clock';
+import { bellOf, dateAt, nyAt, sessionFrom, yearsToExpiry, OPEN_MIN } from './clock';
 import { paperIndex } from './products';
 import { bookOf, feedOffline, isFresh, legQuoteOf, listedExpiries, nameQuote } from './thetaFeed';
 
@@ -56,10 +56,10 @@ export const barNowOf = (ticker: string): number => {
   return bars?.length ? bars[bars.length - 1].time : Math.floor(Date.now() / 1000);
 };
 
-/** The options session: a trading day, 09:30 to 16:00 New York */
+/** The options session: a trading day, 09:30 to 16:00 New York — 13:00 on an early close */
 export function optionsOpen(ms: number): boolean {
   const t = nyAt(ms);
-  return isTradingDay(dateAt(t.date)) && t.minutes >= OPEN_MIN && t.minutes < BELL_MIN;
+  return isTradingDay(dateAt(t.date)) && t.minutes >= OPEN_MIN && t.minutes < sessionCloseMinOn(t.date);
 }
 
 /* ---- an option ---- */
@@ -88,7 +88,7 @@ function legQuote(c: ContractId, spot: number, ms: number): Quote {
     vega: g ? g.vega : 0,
     rho: g ? (c.right === 'C' ? g.rhoCall : g.rhoPut) : 0,
     intrinsic: cents(intrinsic),
-    dead: q.bid <= 0 || !isFresh(q.takenAt, q.kept, ms),
+    dead: q.bid <= 0 || !isFresh(q.takenAt, q.kept, ms, q.at),
     spot: s,
   };
 }
@@ -281,6 +281,6 @@ export function optionFresh(c: ContractId, ms: number): boolean {
   const legs = c.short == null ? [longLeg(c)] : [longLeg(c), { ...longLeg(c), strike: c.short }];
   return legs.every(k => {
     const q = legQuoteOf(k.ticker, k.expiry, k.strike, k.right);
-    return !!q && isFresh(q.takenAt, q.kept, ms);
+    return !!q && isFresh(q.takenAt, q.kept, ms, q.at);
   });
 }

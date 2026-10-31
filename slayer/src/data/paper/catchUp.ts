@@ -4,10 +4,10 @@
    tick and the backtest: the first minute that would have filled fills, at that minute's ask or bid, stamped with that
    minute's end. Where the history cannot be had, the order stays working and says which minutes went unjudged. */
 
-import { isTradingDay, isoDate } from '../../core/calendar';
+import { isTradingDay, isoDate, sessionCloseMinOn, sessionLengthOn } from '../../core/calendar';
 import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
 import { thetaAllowedHere, thetaCall } from '../theta';
-import { LAST_MIN, LATE_QUOTE_MIN, barTime, flatRows, legKey, parseBars, parseQuotes, rowAt, standingAt } from '../review/history';
+import { barTime, flatRows, legKey, parseBars, parseQuotes, rowAt, standingAt } from '../review/history';
 import { bookMark, contractKey, longLeg, spreadBook, type ContractId, type Quote } from '../review/quotes';
 import { dateAt, nyAt, nyInstant, yearsToExpiry, OPEN_MIN } from './clock';
 import { gapOf, judgeOrders, type OptOrder, type PaperAccount, type PaperMarket } from './engine';
@@ -21,6 +21,13 @@ const cents = (v: number) => Math.round(v * 100) / 100;
 
 /** Can the page in view read the history a replay needs */
 export const canCatchUp = (): boolean => thetaAllowedHere('/option/history/quote?symbol=SPY');
+
+/** A day's last session minute (389; 209 on a 13:00 early close), and its late close's last stamp (+15: 16:15 / 13:15) */
+const lastMinOn = (day: string): number => sessionLengthOn(day) - 1;
+const lateMinOn = (day: string): number => lastMinOn(day) + 15;
+/** The instant a day's late close ends: 16:15, 13:15 on an early close — and its session's close */
+const lateEndOn = (day: string): number => nyInstant(day, sessionCloseMinOn(day) + 15);
+const closeOn = (day: string): number => nyInstant(day, sessionCloseMinOn(day));
 
 /** Sessions from the day of `from` to the day of `to`, both in */
 function sessionsOf(from: number, to: number): string[] {
@@ -52,8 +59,8 @@ function gapsOf(a: PaperAccount, now: number): Gap[] {
   for (const o of a.opt.orders) {
     const from = gapOf(o, now);
     if (from == null) continue;
-    let to = Math.min(now, nyInstant(o.contract.expiry, 16 * 60 + 15));
-    if (o.tif === 'day') to = Math.min(to, nyInstant(nyAt(o.placed.at).date, 16 * 60 + 15));
+    let to = Math.min(now, lateEndOn(o.contract.expiry));
+    if (o.tif === 'day') to = Math.min(to, lateEndOn(nyAt(o.placed.at).date));
     out.push({ order: o, from, to, days: to > from ? sessionsOf(from, to) : [] });
   }
   return out;
@@ -124,7 +131,7 @@ function recorded(c: ContractId, day: string, m: number, f: Fetched, at: number)
   }
   const leg = (k: ContractId): Quote => {
     const d = f.quotes.get(`${legKey(k)}|${day}`);
-    const q = d ? (m > LAST_MIN ? rowAt(d, m) : standingAt(d, m)) : null;
+    const q = d ? (m > lastMinOn(day) ? rowAt(d, m) : standingAt(d, m)) : null;
     const intrinsic = spot > 0 ? Math.max(0, k.right === 'C' ? spot - k.strike : k.strike - spot) : 0;
     if (!q || !(q.ask > 0) || !(q.bid > 0)) return { bid: 0, ask: 0, mark: NaN, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic, dead: true, spot };
     const mid = (q.bid + q.ask) / 2;
@@ -148,7 +155,7 @@ function tradesLate(f: Fetched, c: ContractId, day: string): boolean {
   return legs.some(k => {
     const d = f.quotes.get(`${legKey(k)}|${day}`);
     if (!d) return false;
-    for (let m = LAST_MIN + 1; m <= LATE_QUOTE_MIN; m++) if (rowAt(d, m)) return true;
+    for (let m = lastMinOn(day) + 1; m <= lateMinOn(day); m++) if (rowAt(d, m)) return true;
     return false;
   });
 }
@@ -164,7 +171,7 @@ export function replayGaps(a: PaperAccount, f: Fetched, now: number, life: strin
   for (const g of ok)
     for (const day of g.days) {
       const open = nyInstant(day, OPEN_MIN);
-      for (let m = 0; m <= LATE_QUOTE_MIN; m++) {
+      for (let m = 0, last = lateMinOn(day); m <= last; m++) {
         const end = open + (m + 1) * 60_000;
         if (end <= g.from || end > g.to) continue;
         const e = ends.get(end) ?? { day, m, keys: new Set<string>() };
@@ -185,8 +192,8 @@ export function replayGaps(a: PaperAccount, f: Fetched, now: number, life: strin
       const st = progress.get(g.order.id);
       if (!st || st.blocked) continue;
       const q = quote(g.order.contract);
-      const lateMin = e.m > LAST_MIN;
-      const lateOpen = now < nyInstant(e.day, 16 * 60 + 15);
+      const lateMin = e.m > lastMinOn(e.day);
+      const lateOpen = now < lateEndOn(e.day);
       if (lateMin && q.dead && tradesLate(f, g.order.contract, e.day) && lateOpen) {
         st.blocked = true;
         continue;
@@ -224,7 +231,7 @@ export function replayGaps(a: PaperAccount, f: Fetched, now: number, life: strin
         if (fail) return { ...o, unjudged: { from: g.from, to: now, why: fail.why }, judgedTo: fail.again ? o.judgedTo : now };
         const st = progress.get(o.id);
         const placedDay = nyAt(o.placed.at).date;
-        const dayEnd = nyInstant(placedDay, tradesLate(f, o.contract, placedDay) ? 16 * 60 + 15 : 16 * 60);
+        const dayEnd = tradesLate(f, o.contract, placedDay) ? lateEndOn(placedDay) : closeOn(placedDay);
         const judgedTo = st?.blocked ? st.to : Math.max(st?.to ?? 0, now);
         if (o.tif === 'day' && now >= dayEnd) return { ...o, judgedTo, status: 'cancelled' as const, done: { at: dayEnd, day: o.placed.day }, why: 'the day ended' };
         return { ...o, judgedTo, unjudged: undefined };
