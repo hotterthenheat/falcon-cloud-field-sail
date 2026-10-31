@@ -19,7 +19,7 @@ import path from 'node:path';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { nyIsoDate, nyWallTime } from '../core/nyTime';
 import { isTradingDay } from '../core/calendar';
-import { HIST_FORMAT, IV_STEP_MIN, IV_STRIKES, lastVols, nyStampMs, readBars, readIv, readOi, rebuildDay, type HistInputs } from './book/exposureHist';
+import { HIST_FORMAT, IV_STEP_MIN, IV_STRIKES, closeTerm, lastVols, nyStampMs, readBars, readIv, readOi, rebuildDay, type HistInputs } from './book/exposureHist';
 import { ALL, type KeptSeries } from './book/exposureSegs';
 
 /** History reads in flight at once, across every name */
@@ -51,6 +51,8 @@ export interface HistAnswer {
   /** 'recorded': the recorder's own readings; 'reconstructed': rebuilt from the day's open interest and quotes */
   source: 'recorded' | 'reconstructed';
   series: KeptSeries[];
+  /** the day's at-the-money vol by expiry at its last bar (a rebuilt day only): the cone's term when nothing is live */
+  term?: { expiry: string; iv: number }[];
 }
 
 export interface HistService {
@@ -159,7 +161,7 @@ export function createExposureHist(o: HistOptions): HistService {
       const inp = await inputs(t, day);
       if (!inp) return { status: 404, gz: pack({ format: HIST_FORMAT, ticker: t, day, cut, source: 'reconstructed', series: [] }) };
       const rebuilt = rebuildDay(inp, cut, carriedFor(t, day));
-      const gz = pack({ format: HIST_FORMAT, ticker: t, day, cut, source: 'reconstructed', series: rebuilt.series });
+      const gz = pack({ format: HIST_FORMAT, ticker: t, day, cut, source: 'reconstructed', series: rebuilt.series, term: closeTerm(inp) });
       keepAnswer(key, gz);
       return { status: 200, gz };
     },

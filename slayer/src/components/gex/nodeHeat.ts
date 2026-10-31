@@ -22,11 +22,11 @@ const DARK_LONG: Rgb[] = [
   [206, 234, 246],
 ];
 const DARK_SHORT: Rgb[] = [
-  [28, 20, 20],
-  [66, 38, 30],
-  [132, 74, 36],
-  [206, 142, 50],
-  [252, 220, 132],
+  [24, 20, 30],
+  [72, 40, 50],
+  [152, 82, 42],
+  [216, 150, 54],
+  [252, 224, 142],
 ];
 /* on paper the ramps run the other way: from the paper down to the inks' deep cuts (tokens.css light --glacier/--ember) */
 const LIGHT_LONG: Rgb[] = [
@@ -78,10 +78,10 @@ export function heatInks(light: boolean): HeatInks {
   for (let s = 0; s < HEAT_STEPS; s++) {
     const t = (s + 0.5) / HEAT_STEPS;
     /* the lit strikes: present from the first step, never opaque, so a candle over the brightest cell still reads */
-    const a = (light ? 0.16 : 0.2) + (light ? 0.4 : 0.42) * Math.pow(t, 0.9);
+    const a = (light ? 0.1 : 0.1) + (light ? 0.5 : 0.56) * Math.pow(t, 1.15);
     /* the rest: context only */
     /* the rest: context only — the ramp's lower third, lifted enough to read as terrain, never as a level */
-    const q = (light ? 0.08 : 0.2) + (light ? 0.14 : 0.2) * Math.pow(t, 0.8);
+    const q = (light ? 0.06 : 0.1) + (light ? 0.12 : 0.18) * Math.pow(t, 0.9);
     [long, short].forEach((stops, side) => {
       const c = rampAt(stops, 0.12 + 0.88 * t);
       lit[side].push(`rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`);

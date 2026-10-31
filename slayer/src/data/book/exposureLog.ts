@@ -705,6 +705,19 @@ interface HistDay {
   format: string;
   source: 'recorded' | 'reconstructed';
   series: KeptSeries[];
+  term?: { expiry: string; iv: number }[];
+}
+
+/** The newest rebuilt day's at-the-money vols by expiry, per name: the expected-move cone's term when the terminal has
+    no live quote (data/coneFeed.ts) */
+const histTerms = new Map<string, { day: string; rows: { expiry: string; iv: number }[] }>();
+const termListeners = new Set<(ticker: string) => void>();
+export function rebuiltTerm(ticker: string): { day: string; rows: { expiry: string; iv: number }[] } | null {
+  return histTerms.get(rootOf(ticker)) ?? null;
+}
+export function onRebuiltTerm(fn: (ticker: string) => void): () => void {
+  termListeners.add(fn);
+  return () => termListeners.delete(fn);
 }
 
 /** The server's day for a cut: recorded where the recorder holds it, else rebuilt. False when the server has none. */
@@ -719,6 +732,11 @@ async function pullHist(t: string, cut: FieldCut, day: string): Promise<boolean>
     if (!body || body.format !== 'exposure-hist/1' || !Array.isArray(body.series) || !body.series.length) return false;
     replaceDay(t, seriesOf(cut), day, body.series);
     daySource.set(`${t}|${day}`, body.source);
+    const term = Array.isArray(body.term) ? body.term.filter(r => r && /^\d{4}-\d{2}-\d{2}$/.test(r.expiry) && r.iv > 0) : [];
+    if (term.length && day > (histTerms.get(t)?.day ?? '')) {
+      histTerms.set(t, { day, rows: term });
+      termListeners.forEach(fn => fn(t));
+    }
     const log = logOf(t);
     log.rev += 1;
     return true;

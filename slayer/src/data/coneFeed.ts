@@ -8,6 +8,7 @@ import { nyIsoDate } from '../core/nyTime';
 import { thetaGet } from './thetaFeed';
 import { thetaUseHere } from './theta';
 import { uwCall } from './whales';
+import { onRebuiltTerm, rebuiltTerm } from './book/exposureLog';
 
 interface Row {
   expiry: string;
@@ -146,6 +147,26 @@ async function fromTheta(ticker: string): Promise<Surface | null> {
   return { at: Date.now(), rows, source: 'theta' };
 }
 
+/** With no live quote (a weekend, a holiday), the at-the-money vols of the newest finished day the field rebuilt from
+    the terminal's quotes (data/book/exposureHist.ts closeTerm): the same terminal's vols, as of that close */
+function fromRebuilt(ticker: string): Surface | null {
+  const term = rebuiltTerm(ticker);
+  if (!term) return null;
+  const today = nyIsoDate();
+  const rows: Row[] = term.rows
+    .filter(r => r.expiry >= today)
+    .slice(0, 3)
+    .map(r => ({ expiry: r.expiry, dte: Math.max(0, Math.round((Date.parse(`${r.expiry}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000)), iv: r.iv, move: 0 }));
+  return rows.length ? { at: Date.now(), rows, source: 'theta' } : null;
+}
+/* a rebuilt day's vols landing after the cone gave up: ask again */
+onRebuiltTerm(ticker => {
+  const key = keyOf(ticker.toUpperCase());
+  if (cache.has(key)) return;
+  missed.delete(key);
+  ensureCone(ticker);
+});
+
 /** One surface per name and source: a page that reads ThetaData never draws the one read on an Unusual Whales page. */
 const keyOf = (ticker: string) => `${ticker.toUpperCase()}|${thetaUseHere() === 'all' ? 'theta' : 'uw'}`;
 
@@ -160,7 +181,7 @@ export function ensureCone(ticker: string): void {
     try {
       /* ThetaData's at-the-money IV where it is the page's source (Terrain, Weigher, Compass); Unusual Whales' term
          structure on Pinpoint, Trace and the Dossier. Neither stands in for the other. */
-      const surface = thetaUseHere() === 'all' ? await fromTheta(name) : await fromUw(name);
+      const surface = thetaUseHere() === 'all' ? (await fromTheta(name)) ?? fromRebuilt(name) : await fromUw(name);
       if (surface) {
         cache.set(key, surface);
         missed.delete(key);

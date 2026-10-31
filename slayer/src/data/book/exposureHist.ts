@@ -224,6 +224,22 @@ export function lastVols(inp: HistInputs): CarriedVol {
   return out;
 }
 
+/** Each expiry's at-the-money vol at the day's last bar (the strike nearest the close, its last grid value): the term
+    the expected-move cone is drawn from when the terminal has no live quote (a weekend, a holiday) */
+export function closeTerm(inp: HistInputs): { expiry: string; iv: number }[] {
+  const last = inp.bars[inp.bars.length - 1];
+  if (!last) return [];
+  const S = last[1];
+  const out: { expiry: string; iv: number }[] = [];
+  for (const [expiry, { strikes, paths }] of volPaths(inp.iv)) {
+    if (closeOf(expiry) <= last[0]) continue;
+    const i = nearestIndex(strikes, S);
+    if (Math.abs(strikes[i] - S) > S * 0.01) continue;
+    out.push({ expiry, iv: paths[i].vs[paths[i].vs.length - 1] });
+  }
+  return out.sort((a, b) => a.expiry.localeCompare(b.expiry));
+}
+
 /* ---- the rebuild -------------------------------------------------------------------------------------------- */
 
 export interface Rebuilt {

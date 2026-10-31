@@ -937,7 +937,9 @@ const StrikeChart = ({
         /* A day bar is the cash session. The desk clock being after hours must not blank the field. */
         const p = nyParts(b.time * 1000);
         if (!contractsLive(name, cut, nyWallTime(p.year, p.month, p.day, 9, 30))) continue;
-      } else if (!contractsLive(name, cut, b.time * 1000)) continue;
+      } else if (!contractsLive(name, cut, b.time * 1000) && trailsRef.current?.concept !== 'heat') continue;
+      /* the dev-only heat (nodeConcept.ts) keeps every bar with a price: a reading in the pre-market or after hours (the
+         recorder's, or a rebuilt day's) is a cell, and a session with none stays empty in the grid */
       times.push(b.time);
     }
     if (!times.length) return [];

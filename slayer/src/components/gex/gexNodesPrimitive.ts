@@ -115,7 +115,7 @@ const RASTER_MY = 0.25;
 const SETTLE_MS = 120;
 
 /** The heat's seam between two strikes' bands, device px, by the row's height */
-const heatInset = (h: number): number => (h >= 8 ? Math.round(h * 0.2) : h >= 4 ? 1 : 0);
+const heatInset = (h: number): number => (h >= 10 ? Math.round(h * 0.14) : h >= 5 ? 1 : 0);
 
 /** The cell under the pointer, as the card reads it */
 export interface BeadHit {
@@ -461,7 +461,7 @@ class FieldRenderer {
                 /* its own ink, lifted toward the ramp's top */
                 bctx.fillStyle = hInk.solid[runSide][STEPS - 1].replace('rgb(', 'rgba(').replace(')', `,${light ? 0.28 : 0.24})`);
                 bctx.fillRect(runL, yT, runR - runL, yB - yT);
-                bctx.fillStyle = `rgba(${crown[0]},${crown[1]},${crown[2]},${light ? 0.75 : 0.8})`;
+                bctx.fillStyle = `rgba(${crown[0]},${crown[1]},${crown[2]},${light ? 0.7 : 0.62})`;
                 bctx.fillRect(runL, yT, runR - runL, lw);
                 bctx.fillRect(runL, yB - lw, runR - runL, lw);
               }
