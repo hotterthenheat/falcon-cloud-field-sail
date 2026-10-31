@@ -45,6 +45,7 @@ const PROOFS = [
   'carry-proof',
   'rate-proof',
   'forward-proof',
+  'holidays-proof',
   'weigher-gamma-proof',
   'node-strikes-proof',
   'proxy-auth-proof.mjs',

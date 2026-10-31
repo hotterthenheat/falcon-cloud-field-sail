@@ -1,0 +1,16 @@
+{
+	"response": [
+		{"date":"2027-01-01","type":"full_close","close":null,"open":null},
+		{"date":"2027-01-18","type":"full_close","close":null,"open":null},
+		{"date":"2027-02-15","type":"full_close","close":null,"open":null},
+		{"date":"2027-03-26","type":"full_close","close":null,"open":null},
+		{"date":"2027-05-31","type":"full_close","close":null,"open":null},
+		{"date":"2027-06-18","type":"full_close","close":null,"open":null},
+		{"date":"2027-07-05","type":"full_close","close":null,"open":null},
+		{"date":"2027-09-06","type":"full_close","close":null,"open":null},
+		{"date":"2027-11-25","type":"full_close","close":null,"open":null},
+		{"date":"2027-11-26","type":"early_close","close":"13:00:00","open":"09:30:00"},
+		{"date":"2027-12-24","type":"full_close","close":null,"open":null}
+	]
+}
+
