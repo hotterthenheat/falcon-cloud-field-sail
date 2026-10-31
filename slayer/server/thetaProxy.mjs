@@ -111,9 +111,18 @@ async function loadNow(reqPath) {
 
 /* One shared copy per request for every viewer (server/hub.mjs). A snapshot is refreshed about once a second while
    anyone watches it, whatever the number of viewers; the terminal's eight slots are far from full at that rate. */
+/* ThetaData's own 47x codes are mostly about the terminal, not the request (the v3 jar: 471 PERMISSION, 472 NO_DATA,
+   473 UNAUTHENTICATED, 475 TERMINAL_PARSE; older terminals and the relay also send 474 DISCONNECTED, 476 WRONG_IP,
+   477 NO_PAGE_FOUND, 478 INVALID_SESSION_ID). Only 472 ("this contract has no data that day") is an answer worth keeping:
+   a 474 kept during an outage was served for six hours (a past day's TTL) after the terminal came back. 471 is not
+   kept either: a refusal from a terminal that has not finished logging in must not be pinned for hours. */
+export const thetaKeepable = (status) =>
+  status === 200 || status === 472 || (status >= 400 && status < 500 && !(status >= 470 && status <= 479) && ![401, 403, 408, 429].includes(status));
+
 const hub = createHub({
   name: 'theta',
   fetch: (p) => load(p).catch(failed),
+  keepable: thetaKeepable,
   ttl: (p) => Math.max(thetaTtl(p), /\/snapshot\//.test(p) ? 900 : 0),
   refreshPerSec: Number(process.env.THETA_HUB_REFRESH_PER_SEC) || 25,
 });
