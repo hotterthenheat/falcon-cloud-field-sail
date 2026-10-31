@@ -30,7 +30,8 @@ const RecordLayout = () => {
   return (
     <>
       <header className="flex items-start gap-6 flex-wrap pb-3 max-sm:pb-2 border-b border-borderSubtle" data-shell data-record-shell={page.label}>
-        <div className="min-w-0 flex-1 basis-full sm:basis-0">
+        {/* its own width as its basis: the session tag never runs under the source, the source wraps below it instead */}
+        <div className="min-w-0 flex-1 basis-full sm:basis-auto">
           <div className="h-6 flex items-center gap-2.5" data-shell-page>
             <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0" aria-hidden="true">
               <PageIcon className="w-3.5 h-3.5" />

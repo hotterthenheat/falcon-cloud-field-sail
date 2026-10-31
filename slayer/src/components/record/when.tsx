@@ -32,9 +32,17 @@ export const whenParts = (daysAgo: number, from: Date = now()): WhenParts => {
   return { date, ago: agoWords(daysAgo), long: `${WEEKDAY[d.getDay()]} ${date}` };
 };
 
-/** The date and its distance, as one cell: "09/11 · 2d ago" */
-export const When = ({ days, size = 11 }: { days: number; size?: 10 | 11 }) => {
+/** The date and its distance, as one cell: "09/11 · 2d ago" — or, `stack`ed, the date over its distance, so a grid's
+    date column is half as wide */
+export const When = ({ days, size = 11, stack = false }: { days: number; size?: 10 | 11; stack?: boolean }) => {
   const w = whenParts(days);
+  if (stack)
+    return (
+      <span className="inline-flex flex-col leading-tight font-mono tnum whitespace-nowrap" title={w.long} data-when={w.date} data-when-ago={days}>
+        <span className={`text-textPrimary ${size === 11 ? 'text-t11' : 'text-t10'}`}>{w.date}</span>
+        <span className="text-t10 text-textMuted">{w.ago}</span>
+      </span>
+    );
   return (
     <span className={`font-mono tnum whitespace-nowrap ${size === 11 ? 'text-t11' : 'text-t10'}`} title={w.long} data-when={w.date} data-when-ago={days}>
       <span className="text-textPrimary">{w.date}</span>

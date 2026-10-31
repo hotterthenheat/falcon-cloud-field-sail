@@ -71,7 +71,7 @@ const typeInk = (t: CongressTrade) => (t.type === 'Purchase' ? 'text-bull' : t.t
 /* ---- cells: the house grammar inside the grid ------------------------------------ */
 
 /* the dates, then how far back */
-const FiledCell = ({ data }: ICellRendererParams<CongressTrade>) => (data ? <When days={data.filedDaysAgo} /> : null);
+const FiledCell = ({ data }: ICellRendererParams<CongressTrade>) => (data ? <When days={data.filedDaysAgo} stack /> : null);
 
 const MemberCell = ({ data }: ICellRendererParams<CongressTrade>) =>
   data ? (
@@ -140,14 +140,14 @@ export const AssetCell = ({ data }: ICellRendererParams<CongressTrade>) => {
 
 const TypeCell = ({ data }: ICellRendererParams<CongressTrade>) =>
   data ? (
-    <span className={`font-mono text-t11 tnum ${typeInk(data)}`}>
+    <span className={`inline-flex flex-col leading-tight font-mono text-t11 tnum ${typeInk(data)}`}>
       {typeWord(data)}
-      {data.type === 'Sale (Partial)' && <span className="text-textMuted"> · partial</span>}
+      {data.type === 'Sale (Partial)' && <span className="text-t10 text-textMuted">partial</span>}
     </span>
   ) : null;
 
 const OwnerCell = ({ data }: ICellRendererParams<CongressTrade>) =>
-  data ? <span className={`font-mono text-t8 uppercase tracking-widest ${data.owner === 'Self' ? 'text-textPrimary' : 'text-textMuted'}`}>{ownerWord(data.owner)}</span> : null;
+  data ? <span className={`inline-block whitespace-normal leading-tight font-mono text-t8 uppercase tracking-widest ${data.owner === 'Self' ? 'text-textPrimary' : 'text-textMuted'}`}>{ownerWord(data.owner)}</span> : null;
 
 /** The ten rungs as a ladder, the disclosed one lit — never a midpoint */
 const Ladder = ({ bracket }: { bracket: number }) => (
@@ -162,27 +162,28 @@ const AmountCell = ({ data }: ICellRendererParams<CongressTrade>) => {
   if (data.bracket === null) return <span className="font-mono text-t10 text-textMuted">not disclosed</span>;
   if (data.amountOver != null)
     return (
-      <span className="inline-flex items-center gap-2.5" title="An open-ended amount as filed — no upper bound">
+      <span className="inline-flex flex-col items-start gap-1" title={`Over $${data.amountOver.toLocaleString('en-US')} — an open-ended amount as filed, no upper bound`}>
         <Ladder bracket={data.bracket} />
-        <span className="font-mono text-t11 tnum text-textPrimary whitespace-nowrap">Over ${data.amountOver.toLocaleString('en-US')}</span>
+        <span className="font-mono text-t11 leading-tight tnum text-textPrimary whitespace-nowrap">{amountShort(data)}</span>
       </span>
     );
   return (
-    <span className="inline-flex items-center gap-2.5 min-w-0" title={`${bracketLabel(data.bracket)} · rung ${AMOUNT_BRACKETS[data.bracket].column} of ${AMOUNT_BRACKETS.length}`}>
+    /* the ladder over the figure: the column is the figure's width, not the two side by side */
+    <span className="inline-flex flex-col items-start gap-1 min-w-0" title={`${bracketLabel(data.bracket)} · rung ${AMOUNT_BRACKETS[data.bracket].column} of ${AMOUNT_BRACKETS.length}`}>
       <Ladder bracket={data.bracket} />
       {/* the short form fits the column; the filed figures on hover */}
-      <span className="font-mono text-t11 tnum text-textPrimary whitespace-nowrap">{bracketShort(data.bracket)}</span>
+      <span className="font-mono text-t11 leading-tight tnum text-textPrimary whitespace-nowrap">{bracketShort(data.bracket)}</span>
     </span>
   );
 };
 
-const TradedCell = ({ data }: ICellRendererParams<CongressTrade>) => (data ? <When days={data.tradedDaysAgo} /> : null);
+const TradedCell = ({ data }: ICellRendererParams<CongressTrade>) => (data ? <When days={data.tradedDaysAgo} stack /> : null);
 
 const LagCell = ({ data }: ICellRendererParams<CongressTrade>) => {
   if (!data) return null;
-  if (data.lagDays < 0) return <span className="font-mono text-t10 text-textMuted" title="Filed before the trade date — a filing artefact real feeds carry">before the trade</span>;
+  if (data.lagDays < 0) return <span className="inline-block whitespace-normal leading-tight font-mono text-t10 text-textMuted" title="Filed before the trade date — a filing artefact real feeds carry">before the trade</span>;
   return (
-    <span className="inline-flex items-center gap-2 font-mono text-t11 tnum">
+    <span className="inline-flex flex-col leading-tight font-mono text-t11 tnum">
       <span className={data.late ? 'text-bear font-semibold' : data.lagDays > 30 ? 'text-textPrimary' : 'text-textSecondary'}>{data.lagDays}d</span>
       {data.late && <span className="text-t8 uppercase tracking-widest text-bear">late</span>}
     </span>
@@ -440,27 +441,27 @@ const Congress = () => {
       {
         headerName: 'Filed',
         field: 'filedDaysAgo',
-        width: 146,
+        width: 80,
         cellRenderer: FiledCell,
         sort: 'desc',
         comparator: (a: number, b: number, na: IRowNode<CongressTrade>, nb: IRowNode<CongressTrade>) => b - a || (nb.data?.tradedDaysAgo ?? 0) - (na.data?.tradedDaysAgo ?? 0) || String(nb.data?.id ?? '').localeCompare(String(na.data?.id ?? '')),
         headerTooltip: 'The day the report was filed, and how far back that is — newest first',
       },
-      { headerName: 'Member', field: 'member', cellDataType: false, flex: 1.7, minWidth: 196, cellRenderer: MemberCell, comparator: (a: CongressTrade['member'], b: CongressTrade['member']) => a.name.localeCompare(b.name), headerTooltip: 'A row opens this member’s book' },
-      { headerName: 'Asset', field: 'ticker', flex: 1.3, minWidth: 170, cellRenderer: AssetCell, headerTooltip: 'The stock the report names' },
-      { headerName: 'Type', field: 'type', flex: 0.6, minWidth: 110, cellRenderer: TypeCell, headerTooltip: 'Purchase, sale (full or partial), or an exchange' },
-      { headerName: 'Owner', field: 'owner', flex: 0.9, minWidth: 124, cellRenderer: OwnerCell, headerTooltip: "Whose holding the report covers — the member's own, their spouse's, a joint account or a dependent's" },
+      { headerName: 'Member', field: 'member', cellDataType: false, flex: 1.7, minWidth: 120, cellRenderer: MemberCell, comparator: (a: CongressTrade['member'], b: CongressTrade['member']) => a.name.localeCompare(b.name), headerTooltip: 'A row opens this member’s book' },
+      { headerName: 'Asset', field: 'ticker', flex: 1.3, minWidth: 108, cellRenderer: AssetCell, headerTooltip: 'The stock the report names' },
+      { headerName: 'Type', field: 'type', flex: 0.6, minWidth: 84, cellRenderer: TypeCell, headerTooltip: 'Purchase, sale (full or partial), or an exchange' },
+      { headerName: 'Owner', field: 'owner', flex: 0.9, minWidth: 100, cellRenderer: OwnerCell, headerTooltip: "Whose holding the report covers — the member's own, their spouse's, a joint account or a dependent's" },
       {
-        headerName: 'Amount disclosed',
+        headerName: 'Amount',
         field: 'bracket',
         flex: 1.6,
-        minWidth: 196,
+        minWidth: 96,
         cellRenderer: AmountCell,
         comparator: (a: number | null, b: number | null) => (a ?? -1) - (b ?? -1),
         headerTooltip: 'The bracket the member disclosed, as a rung on the ten-rung ladder — never a midpoint; some scanned filings carry none',
       },
-      { headerName: 'Traded', field: 'tradedDaysAgo', width: 146, cellRenderer: TradedCell, headerTooltip: 'The day the trade itself happened, and how far back that is' },
-      { headerName: 'Lag', field: 'lagDays', width: 100, cellRenderer: LagCell, headerTooltip: `Days from the trade to the filing — past ${STOCK_ACT_DEADLINE_DAYS} it is late` },
+      { headerName: 'Traded', field: 'tradedDaysAgo', width: 80, cellRenderer: TradedCell, headerTooltip: 'The day the trade itself happened, and how far back that is' },
+      { headerName: 'Lag', field: 'lagDays', width: 66, cellRenderer: LagCell, headerTooltip: `Days from the trade to the filing — past ${STOCK_ACT_DEADLINE_DAYS} it is late` },
     ],
     []
   );

@@ -76,7 +76,8 @@ const fmtInt = (n: number) => Math.round(n).toLocaleString('en-US');
 /* ---- cells --------------------------------------------------------------------- */
 
 /* the date, then how far back */
-const WhenCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <When days={data.daysAgo} /> : null);
+/* the date over its distance: the column is half as wide, so the grid fits a 1280 screen without a sideways scroll */
+const WhenCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <When days={data.daysAgo} stack /> : null);
 
 
 const NameCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
@@ -112,7 +113,7 @@ const TradeCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
       </span>
     );
   return (
-    <span className="font-mono text-t10 text-textMuted" title={meta.note}>
+    <span className="inline-block whitespace-normal leading-tight font-mono text-t10 text-textMuted" title={meta.note}>
       {meta.label}
     </span>
   );
@@ -172,7 +173,7 @@ const StakeCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
 const PlanCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
   if (!data) return null;
   if (!TX_CODES[data.code].openMarket) return <span className="font-mono text-t10 text-textMuted">—</span>;
-  if (data.plan === 'plan') return <span className="font-mono text-t8 uppercase tracking-widest text-textMuted" title="Planned: the trade ran off a 10b5-1 plan — a schedule the insider fixed months earlier, so it carries no view on the day it happened">planned · 10b5-1</span>;
+  if (data.plan === 'plan') return <span className="inline-block whitespace-normal leading-tight font-mono text-t8 uppercase tracking-widest text-textMuted" title="Planned: the trade ran off a 10b5-1 plan — a schedule the insider fixed months earlier, so it carries no view on the day it happened">planned · 10b5-1</span>;
   if (data.plan === 'unknown') return <span className="font-mono text-t8 uppercase tracking-widest text-textMuted" title="The filing carried no plan box either way — not counted as chosen buying in the sums above">unstated</span>;
   if (isCorporateTrade(data))
     return (
@@ -410,23 +411,23 @@ const Insiders = () => {
 
   const columnDefs = useMemo<ColDef<InsiderTrade>[]>(
     () => [
-      { headerName: 'When', field: 'daysAgo', width: 146, cellRenderer: WhenCell, sort: 'desc', comparator: byRecency, headerTooltip: 'The day the trade happened, and how far back that is — newest first' },
-      { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 150, cellRenderer: NameCell, headerTooltip: 'The company' },
-      { headerName: 'Who', field: 'person', flex: 1.4, minWidth: 160, cellRenderer: WhoCell, headerTooltip: 'A row opens this person’s book' },
-      { headerName: 'Trade', field: 'code', flex: 0.9, minWidth: 120, cellRenderer: TradeCell, headerTooltip: 'Bought or sold in the market; with Every filing on, the grants, conversions and withholdings are named for what they are' },
-      { headerName: 'Shares', field: 'shares', width: 100, cellRenderer: SharesCell, type: 'rightAligned', headerTooltip: 'Shares in the transaction' },
-      { headerName: 'Price', field: 'price', width: 96, cellRenderer: PriceCell, type: 'rightAligned', headerTooltip: 'The filed price per share' },
-      { headerName: 'Value', field: 'value', width: 104, cellRenderer: ValueCell, type: 'rightAligned', headerTooltip: 'Shares times the filed price' },
-      { headerName: 'Of holding', field: 'stakePct', width: 132, cellRenderer: StakeCell, type: 'rightAligned', headerTooltip: "The share of the insider's holding this trade was; 'of account' marks a trust or fund line, that account alone" },
+      { headerName: 'When', field: 'daysAgo', width: 80, cellRenderer: WhenCell, sort: 'desc', comparator: byRecency, headerTooltip: 'The day the trade happened, and how far back that is — newest first' },
+      { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 120, cellRenderer: NameCell, headerTooltip: 'The company' },
+      { headerName: 'Who', field: 'person', flex: 1.4, minWidth: 130, cellRenderer: WhoCell, headerTooltip: 'A row opens this person’s book' },
+      { headerName: 'Trade', field: 'code', flex: 0.9, minWidth: 92, cellRenderer: TradeCell, headerTooltip: 'Bought or sold in the market; with Every filing on, the grants, conversions and withholdings are named for what they are' },
+      { headerName: 'Shares', field: 'shares', width: 88, cellRenderer: SharesCell, type: 'rightAligned', headerTooltip: 'Shares in the transaction' },
+      { headerName: 'Price', field: 'price', width: 84, cellRenderer: PriceCell, type: 'rightAligned', headerTooltip: 'The filed price per share' },
+      { headerName: 'Value', field: 'value', width: 92, cellRenderer: ValueCell, type: 'rightAligned', headerTooltip: 'Shares times the filed price' },
+      { headerName: 'Of holding', field: 'stakePct', width: 100, cellRenderer: StakeCell, type: 'rightAligned', headerTooltip: "The share of the insider's holding this trade was; 'of account' marks a trust or fund line, that account alone" },
       {
         headerName: 'Chose to?',
         field: 'plan',
-        width: 148,
+        width: 116,
         cellRenderer: PlanCell,
         comparator: (a: InsiderTrade['plan'], b: InsiderTrade['plan']) => ['discretionary', 'unknown', 'plan'].indexOf(a) - ['discretionary', 'unknown', 'plan'].indexOf(b),
         headerTooltip: 'Chosen: the insider decided. Planned: a 10b5-1 schedule set months earlier. Unstated: no box ticked',
       },
-      { headerName: 'Others', field: 'clusterCount', width: 84, cellRenderer: OthersCell, headerTooltip: 'How many distinct filers did the same in this name inside 30 days — a cluster is a stronger read than one' },
+      { headerName: 'Others', field: 'clusterCount', width: 80, cellRenderer: OthersCell, headerTooltip: 'How many distinct filers did the same in this name inside 30 days — a cluster is a stronger read than one' },
     ],
     []
   );
@@ -544,7 +545,7 @@ export const InsiderFile = () => {
   const planned = rows.filter(t => t.plan === 'plan').length;
   const cols = useMemo<ColDef<InsiderTrade>[]>(
     () => [
-      { headerName: 'When', field: 'daysAgo', width: 146, cellRenderer: WhenCell, sort: 'desc', comparator: byRecency, headerTooltip: 'The day of the trade, and how long ago' },
+      { headerName: 'When', field: 'daysAgo', width: 80, cellRenderer: WhenCell, sort: 'desc', comparator: byRecency, headerTooltip: 'The day of the trade, and how long ago' },
       {
         headerName: 'Name',
         headerTooltip: 'The company',
