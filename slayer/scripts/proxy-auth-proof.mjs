@@ -46,8 +46,15 @@ const supa = http.createServer((req, res) => {
   res.statusCode = 404;
   res.end();
 });
-const terminal = http.createServer((_req, res) => {
+/* the terminal stand-in answers 474 (DISCONNECTED) for the outage path while `outage` is set */
+let outage = false;
+const terminal = http.createServer((req, res) => {
   res.setHeader('content-type', 'application/json');
+  if (req.url.includes('OUTAGE') && outage) {
+    res.statusCode = 474;
+    res.end('DISCONNECTED');
+    return;
+  }
   res.end('{"response":[]}');
 });
 await new Promise((r) => supa.listen(0, '127.0.0.1', r));
@@ -90,6 +97,16 @@ const TH = '/api/theta/calendar/today';
 for (const k of ['SUPABASE_URL', 'VITE_SUPABASE_URL', 'SUPABASE_ANON_KEY', 'VITE_SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'VERCEL', 'UW_PROXY_OPEN']) delete process.env[k];
 check('dev, no Supabase: uw passes the gate', show(await call(proxyUw, UW)), '503');
 check('dev, no Supabase: theta passes the gate', show(await call(proxyTheta, TH)), '200');
+
+/* a 474 during an outage is not kept as the answer to a past day's request (that would be six hours) */
+{
+  const PAST = '/api/theta/option/history/quote?symbol=OUTAGE&expiration=20261016&date=20261015&format=json';
+  outage = true;
+  const during = show(await call(proxyTheta, PAST));
+  outage = false;
+  const after = show(await call(proxyTheta, PAST));
+  check('theta 474 during an outage, then the terminal is back: the next ask answers', `${during} then ${after}`, '474 then 200');
+}
 
 /* encoded dot segments never reach the allowlist */
 check('uw %2e%2e rejected', show(await call(proxyUw, '/api/uw/stock/%2e%2e/info')), '404');
