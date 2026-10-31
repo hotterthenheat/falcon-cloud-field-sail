@@ -32,6 +32,7 @@ import { nyMinutes, nyParts } from '../core/nyTime';
 import { keepTheta, keptTheta, noData, thetaGet, type ThetaAnswer } from './thetaFeed';
 import { feedHeaders } from './feedGate';
 import { flatRows, sessionsBack, spansOf } from './thetaTape';
+import { RTH_WINDOW } from './thetaEligible';
 import { isCashIndex } from './symbolDirectory';
 import { listLiveExpiries, loadLiveChain } from './weigherDesk';
 import { vendorIvOnTradingClock } from '../core/volClock';
@@ -181,7 +182,7 @@ export function minuteBarsOfRows(data: unknown): Map<string, MinuteBar[]> {
 /** The request the chart's own minute tape makes for the regular session (thetaTape pullIntraday), so the server's
     cache answers both */
 export const minutePath = (ticker: string, from: string, to: string): string =>
-  `/${isCashIndex(ticker) ? 'index' : 'stock'}/history/ohlc?symbol=${encodeURIComponent(ticker)}&start_date=${from}&end_date=${to}&interval=1m&start_time=09:30:00&end_time=15:59:59.999&format=json`;
+  `/${isCashIndex(ticker) ? 'index' : 'stock'}/history/ohlc?symbol=${encodeURIComponent(ticker)}&start_date=${from}&end_date=${to}&interval=1m&start_time=${RTH_WINDOW.start}&end_time=${RTH_WINDOW.end}&format=json`;
 
 /* ------------------------------------------------------------------ least squares */
 

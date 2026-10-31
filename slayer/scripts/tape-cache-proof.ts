@@ -62,5 +62,29 @@ for (const s of names('Q', 1, 20)) wantPrint(s)();
 check('a print still wanted survives twenty newer ones', heldPrintNames().includes('P01') && heldPrintNames().length === 12 && same(heldPrintNames().filter(n => n.startsWith('Q')), names('Q', 10, 20)), heldPrintNames().join(' '));
 pinned();
 
+/* 8. one regular-session window for every reader of minute bars (audit §10 DL7): the chart's tape, the Weigher's, the
+   book's day tape and the vol outlook ask the same start and end, so a name's day is one request in the hub's cache.
+   The book's tape used to end at 16:15:59.999 and the chart's at 15:59:59.999: two requests for the same minutes. */
+{
+  const { readFileSync } = await import('node:fs');
+  const { RTH_WINDOW, EXT_WINDOWS } = await import('../src/data/thetaEligible');
+  const { minutePath } = await import('../src/data/volOutlook');
+  const readers = ['src/data/thetaTape.ts', 'src/data/weigherTape.ts', 'src/data/book/tape.ts', 'src/data/volOutlook.ts'];
+  const root = new URL('..', import.meta.url);
+  const spelled = readers.filter(f => {
+    const code = readFileSync(new URL(f, root), 'utf8')
+      .split('\n')
+      .filter(l => !/^\s*(\/\/|\/\*|\*)/.test(l))
+      .join('\n');
+    return /end:\s*'1[56]:(59|15):59\.999'|end_time=1[56]:/.test(code) || /start:\s*'09:30:00'/.test(code);
+  });
+  check('no reader of minute bars spells its own regular-session window; all take RTH_WINDOW', spelled.length === 0, spelled.join(', ') || readers.length + ' readers');
+  check('the window ends on 15:59\'s last millisecond, the post window opens on 16:00', RTH_WINDOW.start === '09:30:00' && RTH_WINDOW.end === '15:59:59.999' && EXT_WINDOWS.post.start === '16:00:00');
+  const p = minutePath('SPY', '20261029', '20261029');
+  check('the vol outlook\'s read carries the shared window', p.includes(`start_time=${RTH_WINDOW.start}&end_time=${RTH_WINDOW.end}`), p);
+  const book = readFileSync(new URL('src/data/book/tape.ts', root), 'utf8');
+  check('the book\'s day tape asks RTH_WINDOW first and keeps the post window for the 16:00–16:15 index tail', /const windows = \[\s*RTH_WINDOW,\s*EXT_WINDOWS\.pre,\s*EXT_WINDOWS\.post,/.test(book));
+}
+
 console.log(fail ? `\n${fail} FAILED` : '\ntape cache proof: all checks pass');
 process.exit(fail ? 1 : 0);

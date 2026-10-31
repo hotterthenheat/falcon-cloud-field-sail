@@ -266,17 +266,84 @@ function writeAtomic(file: string, text: string | Buffer): void {
   renameRetrying(tmp, file);
 }
 
-/** Takes the folder's recorder lock, or says who holds it. A lock not refreshed for two minutes is stale. */
-export function takeLock(dir: string, now = Date.now()): { ok: true } | { ok: false; pid: number } {
+/** Takes the folder's recorder lock, or says who holds it. A lock not refreshed for two minutes, or left by a process
+    that is gone, is stale.
+    Only one create can win: the lock is taken by creating the file with open(…, 'wx'), which fails when it exists. A
+    stale lock is first moved aside by rename, and removed only when the file moved is the very lock judged stale; if
+    another process wrote a fresh lock in between, that file is linked back and this round is lost. A lock that cannot
+    be read yet (another process mid-write) counts as held until its file is as old as a stale lock. The holder
+    refreshes its own lock in place. */
+export function takeLock(dir: string, now = Date.now(), race?: { afterRead?: () => void }): { ok: true } | { ok: false; pid: number } {
   const file = path.join(dir, 'recorder.lock');
-  try {
-    const held = JSON.parse(fs.readFileSync(file, 'utf8')) as { pid: number; at: number };
-    if (held.pid !== process.pid && alive(held.pid) && now - held.at < LOCK_STALE_MS) return { ok: false, pid: held.pid };
-  } catch {
-    /* no lock yet */
+  const mine = JSON.stringify({ pid: process.pid, at: now });
+  let holder = 0;
+  for (let round = 0; round < 3; round++) {
+    try {
+      fs.writeFileSync(file, mine, { flag: 'wx' });
+      return { ok: true };
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    }
+    let text: string;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch {
+      continue; // gone between the create and the read: create again
+    }
+    /* the proof's hook: another process acting between this read and what follows (scripts/exposure-recorder-proof.ts) */
+    race?.afterRead?.();
+    let held: { pid: number; at: number } | null = null;
+    try {
+      held = JSON.parse(text) as { pid: number; at: number };
+    } catch {
+      held = null;
+    }
+    if (held && held.pid === process.pid) {
+      writeAtomic(file, mine);
+      return { ok: true };
+    }
+    if (held && alive(held.pid) && now - held.at < LOCK_STALE_MS) return { ok: false, pid: held.pid };
+    if (!held) {
+      /* half-written, or not a lock this process can read: held until its file is as old as a stale lock */
+      let age = Infinity;
+      try {
+        age = now - fs.statSync(file).mtimeMs;
+      } catch {
+        continue;
+      }
+      if (age < LOCK_STALE_MS) return { ok: false, pid: 0 };
+    }
+    holder = held?.pid ?? 0;
+    const aside = `${file}.${process.pid}.stale`;
+    try {
+      fs.renameSync(file, aside);
+    } catch {
+      continue; // another process moved it first
+    }
+    let moved = '';
+    try {
+      moved = fs.readFileSync(aside, 'utf8');
+    } catch {
+      /* gone */
+    }
+    if (moved !== text) {
+      /* a fresh lock landed between the read and the move: put it back (the link fails if yet another took the name) */
+      try {
+        fs.linkSync(aside, file);
+      } catch {
+        /* someone holds the name now */
+      }
+      fs.rmSync(aside, { force: true });
+      continue;
+    }
+    fs.rmSync(aside, { force: true });
   }
-  writeAtomic(file, JSON.stringify({ pid: process.pid, at: now }));
-  return { ok: true };
+  try {
+    holder = (JSON.parse(fs.readFileSync(file, 'utf8')) as { pid: number }).pid;
+  } catch {
+    /* as last seen */
+  }
+  return { ok: false, pid: holder };
 }
 
 function dropLock(dir: string): void {

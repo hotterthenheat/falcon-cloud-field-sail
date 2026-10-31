@@ -183,6 +183,12 @@ export const EXT_WINDOWS: { pre: Window; post: Window } = {
   pre: { start: '04:00:00', end: '09:29:59.999' },
   post: { start: '16:00:00', end: '19:59:59.999' },
 };
+/** The regular session's window as ThetaData is asked for it, by every reader of one-minute bars: the chart's tape
+    (thetaTape), the Weigher's, the book's day tape (book/tape) and the vol outlook (volOutlook minutePath). One string
+    for all, so the same name and day is one request in the hub's cache, never two. It ends on the last millisecond
+    of 15:59 (an end of 15:59:59 leaves out the prints stamped 15:59:59.xxx; 16:00:00 would open the 16:00 bar). An
+    index's tail to 16:15 is the post window's first quarter hour, asked apart where a reader wants it (book/tape). */
+export const RTH_WINDOW: Window = { start: '09:30:00', end: '15:59:59.999' };
 
 const pastReads = new Map<string, { at: number; got: Promise<Held | null> }>();
 const todayReads = new Map<string, { day: string; held: Held | null; at: number; busy: Promise<void> | null }>();

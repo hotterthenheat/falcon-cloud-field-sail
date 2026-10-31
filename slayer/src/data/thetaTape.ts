@@ -12,7 +12,7 @@ import { phaseAt, sessionAt } from '../core/session';
 import { etClock, keepTheta, keptTheta, noData, offlineWords, pageHidden, thetaDown, thetaGet } from './thetaFeed';
 import { thetaUseHere } from './theta';
 import { isCashIndex } from './symbolDirectory';
-import { EXT_WINDOWS, cleanExtendedBars, saneStockBars } from './thetaEligible';
+import { EXT_WINDOWS, RTH_WINDOW, cleanExtendedBars, saneStockBars } from './thetaEligible';
 import { saneBars } from './barSanity';
 import { InUseLru } from './boundedMap';
 
@@ -30,7 +30,7 @@ export type TapeGrain = '15s' | '1m' | '5m' | '15m' | '30m' | '1h' | 'day' | 'we
 /* Each window ends on its last millisecond: an end of 15:59:59 leaves out every print stamped 15:59:59.xxx (on SPY
    2026-10-29, 14,897 shares of the 15:59 bar and its 769.66 high), and 16:00:00 would open the 16:00 bar. */
 const WINDOWS: Record<DeskSession, { start: string; end: string }[]> = {
-  rth: [{ start: '09:30:00', end: '15:59:59.999' }],
+  rth: [RTH_WINDOW],
   pre: [EXT_WINDOWS.pre],
   post: [EXT_WINDOWS.post],
   overnight: [
