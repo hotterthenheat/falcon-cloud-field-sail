@@ -54,6 +54,9 @@ const LANE_OPTIONS: DropdownOption<'prints' | 'alerts'>[] = [
 ];
 /* the two panels above the tape fold to one line each; the viewer's choice is kept (TapeFold) */
 const DAY_FOLD_KEY = 'slayer_tape_day_panel';
+/** The screener rows the day's heaviest bets are read from, and the deeper read when none of those is a bet */
+const DAY_TOP_READ = 100;
+const DAY_TOP_DEEP = 200;
 const STRUCT_FOLD_KEY = 'slayer_tape_structures_panel';
 /** Ordering is one axis, direction (the Lean card) another — they compose */
 type TapeView = 'STREAM' | 'NOTABLE' | 'PREMIUM' | 'SIZE';
@@ -715,8 +718,12 @@ const LiveTape = () => {
   const dayWanted = showDay || dayFirst;
   /* the tide is the folded line's figure too: read whenever the prints lane stands */
   const dayTide = useTide('market', '', lane === 'prints');
-  /* twenty, so three bets remain after the packages are set apart */
-  const dayTop = useDayTopContracts(20, dayWanted);
+  /* the day's heaviest contracts are mostly packages, spread legs and crosses (the screener's top 20 can be all of
+     them): a hundred, so the bets remain once those are set apart, and two hundred when even a hundred hold none */
+  const dayTopShallow = useDayTopContracts(DAY_TOP_READ, dayWanted);
+  const dayTopNoBet = !dayTopShallow.waiting && dayTopShallow.rows.length >= DAY_TOP_READ && !dayTopShallow.rows.some(c => !notABet(c));
+  const dayTopDeep = useDayTopContracts(DAY_TOP_DEEP, dayWanted && dayTopNoBet);
+  const dayTop = dayTopNoBet && (dayTopDeep.rows.length > 0 || dayTopDeep.waiting) ? dayTopDeep : dayTopShallow;
   const dayAlerts = useDayBigAlerts(dayOpenMs, anchor?.closeMs ?? null, regularOnly ? 'regular' : 'extended', 5_000_000, 200, dayWanted);
   /* the alert pages walked back did not reach the day's start (traceLive readDayAlerts `complete`): the largest of the newest only */
   const dayAlertsPartial = (dayAlerts.rows as FlowPrint[] & { complete?: boolean }).complete === false;
@@ -1039,8 +1046,8 @@ const LiveTape = () => {
           {dayTopBet.right} · {fmtUsd(dayTopBet.premium)}
         </Champion>
       ) : (
-        <Fact label="Most premium" testId="day-top" reserve="min-w-[9.25rem] max-sm:min-h-[2lh]" title={dayTop.waiting ? "The day's heaviest single bet" : "None of the screener's heaviest contracts has a clear side — packages and legs are not bets"}>
-          <span className="text-textMuted">{dayTop.waiting ? '…' : '—'}</span>
+        <Fact label="Most premium" testId="day-top" reserve="min-w-[9.25rem] max-sm:min-h-[2lh]" title={dayTop.waiting ? "The day's heaviest single bet" : dayTop.rows.length ? `None of the screener's ${num(dayTop.rows.length)} heaviest contracts is a bet — packages, spread legs and crosses are not` : "The screener has no contract for the day"}>
+          <span className="text-textMuted">{dayTop.waiting ? '…' : dayTop.rows.length ? `no bet in the top ${num(dayTop.rows.length)}` : '—'}</span>
         </Fact>
       )}
       {dayAlertTop ? (
