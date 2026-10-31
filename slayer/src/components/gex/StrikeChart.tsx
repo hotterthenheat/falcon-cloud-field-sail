@@ -31,7 +31,7 @@ import { peekDaySigma, peekIv } from '../../data/book/move';
 import { bookStatus, peekEntry, useBookRev } from '../../data/book/store';
 import { snapshotFor } from '../../data/book/feed';
 import { useBookMinutes } from '../../data/book/minutes';
-import { alignLatestColumn, ensureFieldCloses, ensureFieldCut, exposureGrid, gridColumns, heldStrikes, useExposureLogRev } from '../../data/book/exposureLog';
+import { alignLatestColumn, ensureFieldCloses, ensureFieldCut, exposureGrid, fieldSourceWords, gridColumns, heldStrikes, useExposureLogRev } from '../../data/book/exposureLog';
 import { useFieldMode } from '../../data/fieldMode';
 import { useSessionQuote } from '../../data/sessionQuote';
 import { asOfText } from '../ui/states';
@@ -5241,6 +5241,8 @@ const StrikeChart = ({
                 {markWord && <CardRow k="Node" v={markWord} />}
                 {tagWord && <CardRow k="Price" v={tagWord} />}
                 <span className="col-span-2 text-textMuted">{b.value >= 0 ? 'Holds a move back' : 'Pushes a move on'}</span>
+                {/* recorded live, or rebuilt from that day's open interest and quotes (data/book/exposureHist.ts) */}
+                {fieldSourceWords(ticker, b.time * 1000) && <span className="col-span-2 text-textMuted leading-snug">{fieldSourceWords(ticker, b.time * 1000)}</span>}
               </>
             );
             const foot = <span className="text-textMuted">{kept ? letGoWords() : 'click to keep'}</span>;

@@ -32,6 +32,9 @@ import { isTradingDay } from '../core/calendar';
 import { phaseAt, sessionAt } from '../core/session';
 import { ALL, closeOf, placeSeg, readAnswer, spanOf, type KeptSeries } from './book/exposureSegs';
 
+/* the rebuilt past day is served by the same mount (server/exposureApi.mjs): one module to load */
+export { createExposureHist, histRoute } from './exposureHistServer';
+
 export const EXPOSURE_FORMAT = 'exposure-day/1';
 /** The house's names: Terrain's opening desk first, then the most-watched index and megacap names */
 export const HOUSE_NAMES = ['SPY', 'QQQ', 'AAPL', 'NVDA', 'SPX', 'IWM', 'TSLA', 'MSFT', 'AMZN', 'META'];
