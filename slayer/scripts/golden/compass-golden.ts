@@ -25,7 +25,7 @@ import { done, expectEqual, expectNear, freezeClock, installUwFixtures } from '.
 import { CHAIN, CONTRACT, DAY, MINUTE, PRIOR, curveBars, pinBook, sessionBars } from './compassScenario';
 import { atmPair, curveFrom, features, yearsLeft } from '../../src/data/compassFeatures';
 import { optionScanOpen } from '../../src/data/compassSession';
-import { f32, bookAPass, bookBPass, entryTimeOk, flatTOf, onScanGrid, sessionScanOpen, spreadPass, strikeDistance, strikeSpan, thetaBurns, P1_MIN } from '../../src/data/compassParams';
+import { MODEL_1_NAME, MODEL_2_NAME, f32, bookAPass, bookBPass, entryTimeOk, flatTOf, onScanGrid, sessionScanOpen, spreadPass, strikeDistance, strikeSpan, thetaBurns, P1_MIN } from '../../src/data/compassParams';
 import { parseBoosters, predict } from '../../src/data/lgbm';
 import { settleSignal, type PathQuote } from '../../src/data/compassOutcome';
 import { nyWallTime } from '../../src/core/nyTime';
@@ -173,7 +173,19 @@ expectEqual('Book B not half (0.42 vs 0.80)', bookBPass(60, 9, 4, 0, 0.4, 0.42, 
 expectEqual('Book B too near (7 out)', bookBPass(60, 7, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), false);
 /* the time-of-day gate (was: any mark on the grid, so 15:55, the curb to 16:55 and the overnight could call): t 15 to
    330, and 55 minutes before the flat (t 385 on a full day; 205 on a 13:00 close, so the last entry is t 150, 12:00) */
-expectEqual('Book A at 09:45 and 15:00, not 09:40, 15:05, 15:55, 16:55, 21:00', [15, 330, 10, 335, 385, 445, 690].map(t => bookAPass(t, 2, 4, 0, 1.2, 1.24, 0.8)), [true, true, false, false, false, false, false]);
+/* the gate is session by session (owner, 2026-10-31): 15 minutes into the mark's own session and 55 before that
+   session's flat. 21:00 is 45 minutes into the overnight index session with 740 to its 09:20 flat: it calls (was not) */
+expectEqual('Book A at 09:45, 15:00 and 21:00 overnight; not 09:40, 15:05, 15:55, 16:55', [15, 330, 10, 335, 385, 445, 690].map(t => bookAPass(t, 2, 4, 0, 1.2, 1.24, 0.8)), [true, true, false, false, false, false, true]);
+/* overnight (index roots): 20:15 opens, 20:30 the first call, 08:25 the last (55 before 09:20); an equity root has no
+   overnight session; its pre-market opens 07:30: 07:45 the first call, 08:25 the last */
+const tOf = (h: number, m: number) => h * 60 + m - 570;
+expectEqual('overnight gate: 20:25 no, 20:30 yes, 00:30 yes, 08:25 yes, 08:30 no', [tOf(20, 25), tOf(20, 30), tOf(0, 30), tOf(8, 25), tOf(8, 30)].map(t => entryTimeOk(t, 385, true)), [false, true, true, true, false]);
+expectEqual('equity pre-market gate: 21:00 no, 07:40 no, 07:45 yes, 08:25 yes, 08:30 no', [tOf(21, 0), tOf(7, 40), tOf(7, 45), tOf(8, 25), tOf(8, 30)].map(t => entryTimeOk(t, 385, false)), [false, false, true, true, false]);
+{
+  const { minutesToFlat, sessionKindOf, inModelWindow } = await import('../../src/data/compassParams');
+  expectEqual('sessions and minutes to the flat: 21:00 overnight 740, 08:00 pre 80, 10:00 regular 355, 16:30 curb 25', [[sessionKindOf(tOf(21, 0)), minutesToFlat(tOf(21, 0))], [sessionKindOf(tOf(8, 0), 385, false), minutesToFlat(tOf(8, 0), 385, false)], [sessionKindOf(30), minutesToFlat(30)], [sessionKindOf(420), minutesToFlat(420)]], [['overnight', 740], ['pre', 80], ['regular', 355], ['curb', 25]]);
+  expectEqual('outside trained hours: 21:00 and 08:00 are, 10:00 is not', [inModelWindow(690), inModelWindow(tOf(8, 0)), inModelWindow(30)], [false, false, true]);
+}
 expectEqual('Book B gated the same: 15:00 yes, 15:05 no', [bookBPass(330, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), bookBPass(335, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8)], [true, false]);
 expectEqual('early close 13:00: flat t 205, last entry t 150', [flatTOf(780), flatTOf(null), bookAPass(150, 2, 4, 0, 1.2, 1.24, 0.8, flatTOf(780)), bookAPass(155, 2, 4, 0, 1.2, 1.24, 0.8, flatTOf(780))], [205, 385, true, false]);
 expectEqual('entry gate in words', [entryTimeOk(15), entryTimeOk(14), entryTimeOk(330, 385), entryTimeOk(331, 385)], [true, false, true, false]);
@@ -730,10 +742,10 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   expectNear('scoreRow on the reference row = both models', plain.p1 ?? NaN, ref.entry, 1e-9);
   expectNear('scoreRow on the reference row, Model 2', plain.prun ?? NaN, ref.runner, 1e-9);
   const noCompress = scoreRow(row.map((v, i) => (i === 9 ? NaN : v)));
-  expectEqual('compression undefined: Model 1 scores (NaN is missing to it), Model 2 does not (was: read as 0)', [noCompress.p1 != null, noCompress.prun, /Model 2 not scored: range compression \(input 9\)/.test(noCompress.why)], [true, null, true]);
+  expectEqual('compression undefined: Model 1 scores (NaN is missing to it), Model 2 does not (was: read as 0)', [noCompress.p1 != null, noCompress.prun, new RegExp(`^${MODEL_2_NAME} not scored: range compression \\(input 9\\)`).test(noCompress.why)], [true, null, true]);
   expectEqual('gamma/|theta| undefined: Model 2 not scored', scoreRow(row.map((v, i) => (i === 41 ? NaN : v))).prun, null);
   const noVol = scoreRow(row.map((v, i) => (i === 7 ? NaN : v)));
-  expectEqual('realised vol undefined: neither model scores (Model 1 never saw it missing either)', [noVol.p1, noVol.prun, /Model 1 not scored: realised vol, 30 min \(input 7\)/.test(noVol.why)], [null, null, true]);
+  expectEqual('realised vol undefined: neither model scores (Model 1 never saw it missing either)', [noVol.p1, noVol.prun, new RegExp(`^${MODEL_1_NAME} not scored: realised vol, 30 min \\(input 7\\)`).test(noVol.why)], [null, null, true]);
   /* x5, place in the day range: the price at the mark above the high of minutes 0..t-1 was 2.0, now 1 (training max) */
   const flat = Array.from({ length: 30 }, (_, k) => ({ d: '20261030', m: 570 + k, o: 100, h: 101, l: 99, c: 100, v: 10 }));
   const x5 = features(stub(100, 'C', 1, 1.04, 103), 600, flat, flat, null, NaN, NaN, [], null, null, { m5: NaN, m15: NaN })?.[5];
@@ -777,6 +789,151 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   expectEqual('nearest weekly expiry 1 to 7 sessions out', await weeklyExpiry('TLT', m12), '2026-11-02');
   await atMark('TLT', m12, 'weekly');
   expectEqual('the weekly read asks Book B\'s band (strike_range 17, was 4)', paths.filter(p => p.startsWith('/option/at_time/quote')).map(p => /strike_range=(\d+)/.exec(p)?.[1]), ['17']);
+}
+
+/* ---- 13. the review of 2026-10-31: each check failed before its fix ---------------------------------------- */
+{
+  const { setCompassHost } = await import('../../src/data/compassHost');
+  const { thetaAnswer } = await import('../../src/data/compassServer');
+  const scan = await import('../../src/data/compassScan');
+  const model = await import('../../src/data/compassModel');
+  const ledger = await import('../../src/data/compassLedger');
+  const { settleSignal } = await import('../../src/data/compassOutcome');
+  const { optionScanOpen } = await import('../../src/data/compassSession');
+  const { BOOK_NAME, userWords } = await import('../../src/data/compassParams');
+  const { trackRecord, trackLine, sessionOfSignal } = await import('../../src/data/compassTrack');
+  type Answer = { status: number; data: unknown; error: string | null };
+  let answer: (p: string) => Answer | Promise<Answer> = () => ({ status: 472, data: null, error: 'no_data' });
+  const asked: string[] = [];
+  setCompassHost({ server: true, theta: async p => { asked.push(p); return answer(p); }, asset: async () => null, econ: () => [] });
+
+  /* a. the terminal's empty 200 (seen on option/at_time/quote: 0 bytes, then 18 kB a second later) is a fault to ask
+        again, not an empty chain; a busy terminal and a 5xx are not "no quotes" either (each used to mark the name
+        not scored for good: ok, no rows) */
+  expectEqual('empty 200 is a fault (was: no error, no rows)', thetaAnswer(200, '', 'application/json').error, 'empty');
+  const mk = nyWallTime(2026, 10, 29, 10, 15);
+  const okOf = async (a: Answer) => {
+    answer = p => (p.startsWith('/option/at_time/quote') ? a : { status: 472, data: null, error: 'no_data' });
+    return (await scan.atMark('SPY', mk, 'odte')).ok;
+  };
+  expectEqual('at a mark: empty 200, busy and 500 stay pending; 472 and a 400 are answers', [
+    await okOf({ status: 200, data: null, error: 'empty' }),
+    await okOf({ status: 429, data: null, error: 'busy' }),
+    await okOf({ status: 500, data: null, error: 'unavailable 500' }),
+    await okOf({ status: 472, data: null, error: 'no_data' }),
+    await okOf({ status: 400, data: null, error: 'bad request' }),
+  ], [false, false, false, true, true]);
+  /* the weekly expiry listing: a failed answer is not an empty listing memoised for an hour (was: every weekly late mark
+     of the name read "no quotes" for the hour) */
+  let lists = 0;
+  answer = p => {
+    if (!p.startsWith('/option/list/expirations')) return { status: 472, data: null, error: 'no_data' };
+    lists += 1;
+    return lists === 1 ? { status: 500, data: null, error: 'unavailable 500' } : { status: 200, data: [{ expiration: '2026-10-30' }, { expiration: '2026-11-02' }], error: null };
+  };
+  expectEqual('expirations: a 500 then listed, asked again (was: an empty list memoised, null for an hour)', [await scan.weeklyExpiry('ZZQX', mk), await scan.weeklyExpiry('ZZQX', mk)], [null, '2026-10-30']);
+
+  /* b. the late sweep (Book C) calls five at most, like the live one (was: one would-call per root, every root), and
+        the five go in the book's order, not the order the terminal answers in (was: whoever answered first) */
+  model.importModelState({ day: '20261029' }, null);
+  ledger.importWould([]);
+  const sweepAt = nyWallTime(2026, 10, 29, 15, 20) + 15_000;
+  const names = scan.odteBook(sweepAt).filter(n => optionScanOpen(n, 0, sweepAt));
+  answer = async p => {
+    const sym = /symbol=([A-Z]+)/.exec(p)?.[1] ?? '';
+    if (p.startsWith('/option/list/expirations')) return { status: 200, data: [{ expiration: '2026-10-29' }], error: null };
+    if (p.startsWith('/option/at_time/quote')) {
+      /* the first names of the book answer last */
+      await new Promise(res => setTimeout(res, 5 * (names.length - names.indexOf(sym))));
+      const k = sym === 'SPXW' || sym === 'NDXP' || sym === 'RUTW' ? 1000 : 100;
+      return { status: 200, data: [{ contract: { symbol: sym, strike: k, right: 'CALL', expiration: '2026-10-29' }, data: [{ bid: 0.5, ask: 0.52, timestamp: '2026-10-29T15:20:05.000', underlying_price: k }] }], error: null };
+    }
+    if (p.includes('/history/ohlc')) return { status: 200, data: [{ open: 100, high: 100, low: 100, close: 100, volume: 1, timestamp: '2026-10-29T15:20:00.000' }], error: null };
+    return { status: 472, data: null, error: 'no_data' };
+  };
+  await scan.lotterySweep(sweepAt, true);
+  const swept = model.exportModelState().wouldRoot?.C ?? [];
+  expectEqual(`late sweep: five would-calls of ${names.length} roots, the book's first five`, [swept.length, swept], [5, names.slice(0, 5)]);
+
+  /* c. a would-call holds its seat for the later late marks, and one root takes one book (was: the official seats
+        only, so a missed morning listed more than five would-calls, and Book A and Book B on one root) */
+  model.importModelState({ day: '20261029', rootA: ['AAPL'], rootAt: [['AAPL', nyWallTime(2026, 10, 29, 10, 0)]] }, null);
+  const stubAt = (ticker: string, m: number) => ({ id: `${ticker}-1-C-top-setups-odte`, ticker, contract: `${ticker} 1C`, mark: nyWallTime(2026, 10, 29, 10, m) }) as unknown as Setup;
+  model.noteWould(stubAt('MSFT', 0), 'A');
+  model.noteWould(stubAt('NVDA', 30), 'A');
+  expectEqual('would seats: at 10:15 AAPL (official) and MSFT (would 10:00), not NVDA (would 10:30)', [...model.heldSeatsAt(nyWallTime(2026, 10, 29, 10, 15), true)].sort(), ['AAPL', 'MSFT']);
+  expectEqual('one root, one book: MSFT has a Book A would-call, so no Book B one', model.noteWould({ ...stubAt('MSFT', 5), id: 'MSFT-9-P-top-setups-odte' } as Setup, 'B'), false);
+
+  /* d. settlement: a path that does not answer does not stop the other calls' settlement (was: return) */
+  const sigOf = (contract: string, strike: number) => ({ key: `2026-10-29|${contract}`, id: contract, day: '2026-10-29', book: 'A' as const, ticker: 'SPY', contract, right: 'C' as const, strike, expiry: '2026-10-29', sleeve: 'odte' as const, firedAt: nyWallTime(2026, 10, 29, 10, 15), quoteAt: nyWallTime(2026, 10, 29, 10, 15), bid: 1, ask: 1.02, spot: 500, p1: 0.8, prun: null, runner: false, outcome: null, pathAt: 0, spark: [], how: 'live' as const, mark: nyWallTime(2026, 10, 29, 10, 15) });
+  ledger.importSignals([sigOf('SPY 501C', 501), sigOf('SPY 500C', 500)].map((s, i) => ({ ...s, firedAt: s.firedAt - i })));
+  answer = p => {
+    if (p.includes('strike=501')) return { status: 500, data: null, error: 'unavailable 500' };
+    if (p.includes('strike=500') && p.includes('interval=1m')) return { status: 200, data: [{ bid: 1.0, ask: 1.02, timestamp: '2026-10-29T10:16:00.000' }, { bid: 1.6, ask: 1.62, timestamp: '2026-10-29T10:20:00.000' }], error: null };
+    return { status: 472, data: null, error: 'no_data' };
+  };
+  for (let i = 0; i < 20 && ledger.signals().some(s => s.contract === 'SPY 500C' && !s.outcome); i++) {
+    await ledger.settleOpen(Date.now());
+    await new Promise(res => setTimeout(res, 20));
+  }
+  expectEqual('settlement goes on past a failing path: SPY 500C settled behind SPY 501C', ledger.signals().map(s => [s.contract, s.outcome?.status ?? null]), [['SPY 501C', null], ['SPY 500C', 'closed']]);
+
+  /* e. 24/7: the index roots' same-day sleeve trades the overnight session from 20:15 (was: skipped to midnight, the
+        calendar day's contract read as done), and the late fill starts at the session's 20:15 (was: 09:30) */
+  expectEqual('overnight 0DTE: SPXW and XSP at 21:00 Thursday (Friday\'s contract), not SPY', ['SPXW', 'XSP', 'SPY'].map(n => optionScanOpen(n, 0, nyWallTime(2026, 10, 29, 21, 0))), [true, true, false]);
+  expectEqual('overnight 0DTE after midnight still on (it was)', optionScanOpen('SPXW', 0, nyWallTime(2026, 10, 30, 1, 0)), true);
+  expectEqual('session opens: Thursday 10-29 at Wednesday 20:15, Monday 11-02 at Sunday 20:15', [scan.sessionOpenAt('2026-10-29'), scan.sessionOpenAt('2026-11-02')], [nyWallTime(2026, 10, 28, 20, 15), nyWallTime(2026, 11, 1, 20, 15)]);
+
+  /* f. an overnight call flats at its session's 09:20, on the next calendar day (was: closed at the first quote after
+        midnight as a "15:55 flat"), and its path is read through the flat's date */
+  const night = { book: 'A' as const, right: 'C' as const, runner: false, firedAt: nyWallTime(2026, 10, 28, 21, 0) + 5_000, flatAt: nyWallTime(2026, 10, 29, 9, 20) };
+  const path = [
+    { t: nyWallTime(2026, 10, 28, 21, 1), bid: 1.0, ask: 1.04 },
+    { t: nyWallTime(2026, 10, 29, 0, 1), bid: 1.05, ask: 1.09 },
+    { t: nyWallTime(2026, 10, 29, 9, 19), bid: 1.1, ask: 1.14 },
+    { t: nyWallTime(2026, 10, 29, 9, 20), bid: 1.12, ask: 1.16 },
+  ];
+  const o = settleSignal(night, path, [], nyWallTime(2026, 10, 29, 12, 0));
+  expectEqual('overnight call: filled 21:01, out at the 09:20 flat next morning', [o.fill?.at, o.exit?.at, o.exit?.why, o.exit?.px], [nyWallTime(2026, 10, 28, 21, 1), nyWallTime(2026, 10, 29, 9, 20), '09:20 flat', 1.12]);
+  asked.length = 0;
+  answer = () => ({ status: 472, data: null, error: 'no_data' });
+  await ledger.contractPath({ ticker: 'SPXW', expiry: '2026-10-29', strike: 7700, right: 'C', day: '2026-10-28', book: 'A', flatAt: night.flatAt }, null);
+  expectEqual('overnight path read through the flat\'s date', /start_date=20261028&end_date=20261029/.test(asked[0] ?? ''), true);
+
+  /* g. the track record is the sum of its rows: every slice adds up to the whole, to the cent */
+  const closedAt = (contract: string, book: 'A' | 'B' | 'C', pnl: number, ret: number, fees: number, extra: Record<string, unknown> = {}) => ({ ...sigOf(contract, 1), book, outcome: { status: 'closed' as const, fill: null, exit: null, peak: 0, stop: 0, last: null, ret, pnl, fees, heldMin: 1 }, ...extra }) as unknown as Signal;
+  const rows = [
+    closedAt('SPY 500C', 'A', 87.91, 50, 1.09),
+    closedAt('TLT 82P', 'A', -0.08, 1.8, 1.08, { outsideTrained: true }),
+    closedAt('RUTW 2850P', 'B', -591.1, -53.6, 1.1),
+    closedAt('XSP 770C', 'C', 29.92, 44.9, 1.08),
+    closedAt('SPXW 7700C', 'A', 12.5, 10, 1.1, { tapeSession: 'overnight', mark: nyWallTime(2026, 10, 28, 21, 0) }),
+    { ...sigOf('QQQ 700C', 700), outcome: null } as unknown as Signal,
+  ];
+  const tr = trackRecord(rows);
+  const sum = (xs: number[]) => Math.round(xs.reduce((a, b) => a + b, 0) * 100) / 100;
+  expectEqual('track: all = rows (calls, won, lost, open, pnl, worst)', [tr.all.calls, tr.all.won, tr.all.lost, tr.all.open, tr.all.pnl, tr.all.worst?.pnl], [6, 3, 2, 1, sum([87.91, -0.08, -591.1, 29.92, 12.5]), -591.1]);
+  expectEqual('track: the books add up to all', [sum(Object.values(tr.byBook).map(l => l.pnl)), Object.values(tr.byBook).reduce((a, l) => a + l.calls, 0)], [tr.all.pnl, tr.all.calls]);
+  expectEqual('track: the sessions add up to all', [sum(Object.values(tr.bySession).map(l => l.pnl)), Object.values(tr.bySession).reduce((a, l) => a + l.calls, 0), tr.bySession.overnight.calls], [tr.all.pnl, tr.all.calls, 1]);
+  expectEqual('track: hit rate and average return of the closed rows', [tr.byBook.A.hitRate, tr.byBook.A.avgRet, tr.all.outsideTrained, trackLine([]).hitRate], [2 / 3, Number(((50 + 1.8 + 10) / 3).toFixed(2)), 1, null]);
+  expectEqual('track: a call\'s session from its mark when the field is absent', [sessionOfSignal({ ticker: 'SPY', firedAt: 0, mark: nyWallTime(2026, 10, 29, 8, 0) }), sessionOfSignal({ ticker: 'SPXW', firedAt: 0, mark: nyWallTime(2026, 10, 29, 8, 0) }), sessionOfSignal({ ticker: 'SPY', firedAt: 0, mark: nyWallTime(2026, 10, 29, 10, 0) })], ['pre', 'overnight', 'regular']);
+
+  /* h. the names a viewer reads: no "Model 1/2", no "Book A/B/C", no vendor, in old records and new */
+  expectEqual('viewer words', [
+    userWords('Model 2 not scored: range compression'),
+    userWords('Book A 2. Book B 0. Book C 5.'),
+    userWords('Each Book A, B or C call'),
+    userWords('Roots Book A and Book B have called'),
+    userWords('ThetaData offline — reconnecting.'),
+    userWords('the quotes ThetaData recorded at the mark'),
+  ], [
+    'Runner score not scored: range compression',
+    `${BOOK_NAME.A} 2. ${BOOK_NAME.B} 0. ${BOOK_NAME.C} 5.`,
+    `Each ${BOOK_NAME.A}, ${BOOK_NAME.B} or ${BOOK_NAME.C} call`,
+    `Roots ${BOOK_NAME.A} and ${BOOK_NAME.B} have called`,
+    'Live data offline — reconnecting.',
+    'the recorded quotes at the mark',
+  ]);
 }
 
 done();
