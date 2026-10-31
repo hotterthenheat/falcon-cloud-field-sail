@@ -7,8 +7,10 @@ import { sleeveForDte } from './compass';
 import { reasonMatches, reasonsSignature, type UserReason } from './flowReasons';
 import type { SleeveKey } from '../types/compass';
 import type { BookContract } from '../types/trace';
-import { dayLean, leanWords } from './traceLean';
-import { usd } from './traceRows';
+import { dayLean, FRESH_VOL_OI, leanWords, SPREAD_LEG_PCT, SWEEP_DAY_PCT } from './traceLean';
+
+export { FRESH_VOL_OI, SPREAD_LEG_PCT, SWEEP_DAY_PCT };
+import { advUsdOf, usd } from './traceRows';
 
 /** A New York minute of the day, spoken — "14:30" */
 const clockOf = (minute: number) => minuteLabel(minute);
@@ -72,11 +74,11 @@ export function runScreen(rows: BookContract[], key: ScreenKey): BookContract[] 
       return rows.filter(r => r.volOverOI >= FRESH_VOL_OI).sort((a, b) => b.volOverOI - a.volOverOI);
     case 'conviction-calls':
       return rows
-        .filter(r => r.right === 'C' && r.sweepPct >= 25 && r.otmPct >= 0)
+        .filter(r => r.right === 'C' && r.sweepPct >= SWEEP_DAY_PCT && r.otmPct >= 0)
         .sort((a, b) => b.premium - a.premium);
     case 'conviction-puts':
       return rows
-        .filter(r => r.right === 'P' && r.sweepPct >= 25 && r.otmPct >= 0) /* otmPct is + out of the money for calls and puts alike */
+        .filter(r => r.right === 'P' && r.sweepPct >= SWEEP_DAY_PCT && r.otmPct >= 0) /* otmPct is + out of the money for calls and puts alike */
         .sort((a, b) => b.premium - a.premium);
     case 'cheap':
       return rows.filter(r => r.right === 'C' && r.last <= 1.5 && r.otmPct >= 3).sort((a, b) => b.volume - a.volume);
@@ -142,8 +144,8 @@ export const WATCHERS: WatcherRule[] = [
     label: 'Big money',
     /* The contract's day premium, relative so it stays rare: the top tenth of the book's premium today, and $25M at
        the least */
-    reason: "In the top tenth of the book's premium in the session ($25M at the least)",
-    hint: "A contract whose day's premium is in the top 10% of the book's — and at least $25M",
+    reason: "In the top tenth of the book's premium in the session ($25M at the least, a thousandth of the name's average dollar day where that is more)",
+    hint: "A contract whose day's premium is in the top 10% of the book's — and at least $25M, or 0.1% of its name's average day's dollar volume when larger",
   },
   {
     key: 'into-earnings',
@@ -166,13 +168,13 @@ export const WATCHERS: WatcherRule[] = [
   {
     key: 'fresh-size',
     label: 'Fresh size',
-    reason: 'Volume 1.5× its open interest or more, on $300K or more',
+    reason: `Volume ${FRESH_VOL_OI}× its open interest or more, on $300K or more`,
     hint: 'Trading many times its open interest — positions built in the session',
   },
   {
     key: 'hammering',
     label: 'Hammering',
-    reason: '12,000 contracts or more, 30% of them swept',
+    reason: `12,000 contracts or more, ${SWEEP_DAY_PCT}% of them swept`,
     hint: 'One contract absorbing hit after hit all session',
   },
 ];
@@ -228,7 +230,6 @@ export function floorPackaged(r: Pick<BookContract, 'floorPct' | 'multiPct'>): b
 
 /** A spread-leg day: 50% or more of the contracts in multi-leg orders, so its side says how a package filled, not
     where money leans. Shown and counted as legs; never crowned, never given a lean. */
-export const SPREAD_LEG_PCT = 50;
 /** Mostly legs of multi-leg orders, and not a floor package (that has its own label) */
 export function spreadLegDay(r: Pick<BookContract, 'floorPct' | 'multiPct'>): boolean {
   return !floorPackaged(r) && r.multiPct >= SPREAD_LEG_PCT;
@@ -270,9 +271,6 @@ export function notABetLabel(rows: (Pick<BookContract, 'floorPct' | 'multiPct'> 
   return kinds.has('f') ? 'Floor packages' : kinds.has('l') ? 'Spread legs' : rows.length === 1 ? 'One cross' : 'Crosses';
 }
 
-/** One floor for "fresh" volume across Trace: volume at least this many times the open interest reads as positions
-    built in the session */
-export const FRESH_VOL_OI = 1.5;
 /** Vol/OI as a cell: "new" when there was no open interest to divide by */
 export function volOiText(r: Pick<BookContract, 'oi' | 'volume' | 'volOverOI'>): string {
   /* volOverOI is against the count at the session's open — a row may now show the newer count (usePairedOi), so the
@@ -296,25 +294,34 @@ export function stockLike(r: { otmPct: number; dte: number }): boolean {
 }
 export const STOCK_LIKE_HINT = '25% or more in the money with a month or more to run: it trades like the stock, likely a replacement or roll, not a bet';
 
+/** Big money's floor, for every name */
+export const BIG_MONEY_MIN = 25_000_000;
+/** …and, where the name's average day is known, a thousandth of its dollar volume (NVDA's ~$36B day: $36M) */
+export const BIG_MONEY_ADV_SHARE = 0.001;
 /** The book's big-money line: its 90th-percentile premium, $25M at the least */
 function bigMoneyLine(rows: BookContract[]): number {
-  if (!rows.length) return 25_000_000;
+  if (!rows.length) return BIG_MONEY_MIN;
   const s = rows.map(r => r.premium).sort((a, b) => a - b);
-  return Math.max(25_000_000, s[Math.min(s.length - 1, Math.floor(s.length * 0.9))]);
+  return Math.max(BIG_MONEY_MIN, s[Math.min(s.length - 1, Math.floor(s.length * 0.9))]);
+}
+/** One contract's big-money line: the book's, raised to a thousandth of its name's average dollar day when known */
+export function bigMoneyLineFor(r: Pick<BookContract, 'ticker'>, bookLine = BIG_MONEY_MIN): number {
+  const adv = advUsdOf(r.ticker);
+  return Math.max(bookLine, adv != null ? adv * BIG_MONEY_ADV_SHARE : 0);
 }
 
-function rulesFor(r: BookContract, bigLine = 25_000_000): WatcherKey[] {
+function rulesFor(r: BookContract, bigLine = BIG_MONEY_MIN): WatcherKey[] {
   const out: WatcherKey[] = [];
   // "Big enough to move the day" has to stay rare or the words mean nothing.
-  if (r.premium >= bigLine) out.push('big-money');
+  if (r.premium >= bigMoneyLineFor(r, bigLine)) out.push('big-money');
   if (r.earnDays != null && r.earnDays <= 5 && r.deltaOI > 0 && r.volume >= 3000) out.push('into-earnings');
   // Climbing and falling are mirror predicates — chasers vs sellers, same bar.
   /* a day of spread legs has no lean to chase or sell on */
   const lean = notABet(r) ? 'UNSIDED' : dayLean(r).lean;
-  if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct >= 8 && lean === 'ASK') out.push('climbing');
-  else if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct <= -8 && lean === 'BID') out.push('falling');
+  if (r.volume >= 6000 && r.sweepPct >= SWEEP_DAY_PCT && r.chgPct >= 8 && lean === 'ASK') out.push('climbing');
+  else if (r.volume >= 6000 && r.sweepPct >= SWEEP_DAY_PCT && r.chgPct <= -8 && lean === 'BID') out.push('falling');
   if (r.volOverOI >= FRESH_VOL_OI && r.premium >= 300_000) out.push('fresh-size');
-  if (r.volume >= 12000 && r.sweepPct >= 30) out.push('hammering');
+  if (r.volume >= 12000 && r.sweepPct >= SWEEP_DAY_PCT) out.push('hammering');
   return out;
 }
 
@@ -420,21 +427,23 @@ export type MoneynessKey = 'all' | 'itm' | 'otm' | 'atm';
 
 export const MONEYNESS: { key: MoneynessKey; label: string; hint: string }[] = [
   { key: 'all', label: 'All strikes', hint: 'Every strike in the cut' },
-  { key: 'itm', label: 'ITM', hint: 'In the money — intrinsic value now' },
-  { key: 'otm', label: 'OTM', hint: 'Out of the money — all time value' },
+  { key: 'itm', label: 'ITM', hint: 'In the money past 1% of the spot — intrinsic value now' },
+  { key: 'otm', label: 'OTM', hint: 'Out of the money past 1% of the spot — all time value' },
   { key: 'atm', label: 'ATM', hint: 'Within 1% of the spot' },
 ];
+/** The at-the-money band, % of the spot either way: inside it a strike is ATM and neither ITM nor OTM */
+export const ATM_BAND_PCT = 1;
 
 /* otmPct is the strike's distance past the stock, positive out of the money for calls and puts; a NaN distance is
-   neither in nor out. */
-const isInTheMoney = (r: Pick<BookContract, 'otmPct'>): boolean => Number.isFinite(r.otmPct) && r.otmPct < 0;
+   neither in nor out. The three bands do not overlap: ATM within ATM_BAND_PCT either way, ITM and OTM past it (a 0.5%
+   OTM strike was both OTM and ATM). */
 
 /** A contract's or a print's place against the stock — both carry the same two fields */
 export function moneynessFilter(r: Pick<BookContract, 'otmPct' | 'right'>, m: MoneynessKey): boolean {
   if (m === 'all') return true;
   if (!Number.isFinite(r.otmPct)) return false;
-  if (m === 'atm') return Math.abs(r.otmPct) <= 1;
-  return m === 'itm' ? isInTheMoney(r) : !isInTheMoney(r);
+  if (m === 'atm') return Math.abs(r.otmPct) <= ATM_BAND_PCT;
+  return m === 'itm' ? r.otmPct < -ATM_BAND_PCT : r.otmPct > ATM_BAND_PCT;
 }
 
 export type SpreadKind = 'vertical' | 'diagonal' | 'condor' | 'butterfly' | 'straddle' | 'strangle' | 'calendar' | 'ratio' | 'synthetic' | 'riskReversal' | 'custom';
@@ -691,11 +700,13 @@ export function bookFacts(rows: BookContract[]): { prem: number; callPct: number
   return { prem, callPct: Math.round((callPrem / Math.max(1, prem)) * 100), fresh, names: names.size, apartPrem, apart, bets: rows.length - apart };
 }
 
-/** The net-flow board's two ends summed: the bullish names' net, the bearish names' net, and the counts */
-export function boardSums(leaders: { ticker: string; net: number }[]): { calls: number; puts: number; gross: number; bullish: number; bearish: number } {
+/** The net-flow board's two ends summed: the bullish names' net, the bearish names' net, and the counts — a name at
+    exactly zero net is neither */
+export function boardSums(leaders: { ticker: string; net: number }[]): { calls: number; puts: number; gross: number; bullish: number; bearish: number; neutral: number } {
   const calls = leaders.reduce((a, l) => a + (l.net > 0 ? l.net : 0), 0);
   const puts = leaders.reduce((a, l) => a + (l.net < 0 ? l.net : 0), 0);
   const gross = leaders.reduce((a, l) => a + Math.abs(l.net), 0) || 1;
   const bullish = leaders.filter(l => l.net > 0).length;
-  return { calls, puts, gross, bullish, bearish: leaders.length - bullish };
+  const bearish = leaders.filter(l => l.net < 0).length;
+  return { calls, puts, gross, bullish, bearish, neutral: leaders.length - bullish - bearish };
 }

@@ -476,8 +476,51 @@ function contractsOf(ticker: string): { calls: ActiveContract[]; puts: ActiveCon
   return contracts.get(ticker);
 }
 
-/** Median premium a long straddle gave back, on prints the move did not pay for. Percent. */
-function crushOf(rows: SlotRow[]): number | null {
+/* A name's daily 30-day implied vol (/stock/{t}/iv-rank: `volatility`, a fraction, each date's close), read for the
+   name's page: the IV crush is read off it around each report */
+const ivDaysOf = new Map<string, { date: string; iv: number }[]>();
+async function pullIvHistory(ticker: string): Promise<void> {
+  if (ivDaysOf.has(ticker)) return;
+  try {
+    const res = await uwCall(`/stock/${encodeURIComponent(ticker)}/iv-rank?timespan=1y`, false, true);
+    const rows = (Array.isArray(res.data) ? res.data : []) as Record<string, unknown>[];
+    ivDaysOf.set(ticker, rows.map(r => ({ date: String(r.date || '').slice(0, 10), iv: num(r.volatility) })).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d.date) && d.iv > 0).sort((a, b) => a.date.localeCompare(b.date)));
+  } catch {
+    ivDaysOf.set(ticker, []);
+  }
+}
+
+/** The IV crush: for each past report inside the IV history, the drop of the name's implied vol from the last close
+    before the number to the first close after it ((pre − post) / pre, a before-open report straddles its own day's close,
+    an after-close or untimed one the next day's), the median over the reports, whole percent. Null without a report
+    covered on both sides. */
+export function ivCrushOf(rows: SlotRow[], ivDays: readonly { date: string; iv: number }[] | undefined): { pct: number; points: number; n: number } | null {
+  if (!ivDays?.length) return null;
+  const drops: { pct: number; points: number }[] = [];
+  for (const r of rows) {
+    const iso = (r.report_date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || r.actual_eps == null) continue;
+    const pre_ = String(r.report_time || '').toLowerCase() === 'premarket';
+    const pre = [...ivDays].reverse().find(d => (pre_ ? d.date < iso : d.date <= iso));
+    const post = ivDays.find(d => (pre_ ? d.date >= iso : d.date > iso));
+    if (!pre || !post || post.date === pre.date) continue;
+    /* a week's gap either side is no longer "around the report" */
+    if (daysApart(pre.date, iso) > 7 || daysApart(iso, post.date) > 7) continue;
+    drops.push({ pct: ((pre.iv - post.iv) / pre.iv) * 100, points: (pre.iv - post.iv) * 100 });
+  }
+  if (!drops.length) return null;
+  const mid = (xs: number[]) => {
+    const s = [...xs].sort((a, b) => a - b);
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+  return { pct: Math.round(mid(drops.map(d => d.pct))), points: Number(mid(drops.map(d => d.points)).toFixed(1)), n: drops.length };
+}
+const daysApart = (a: string, b: string) => Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 86_400_000);
+
+/** Median premium a long straddle gave back by the next session, on prints the move did not pay for — the straddle loss,
+    an option's loss, not an IV drop. Percent. */
+function straddleLossOf(rows: SlotRow[]): number | null {
   const quiet: number[] = [];
   const any: number[] = [];
   for (const r of rows) {
@@ -506,7 +549,7 @@ function occOf(symbol: string): { expiry: string; right: 'CALL' | 'PUT'; strike:
   return { expiry: `20${m[1]}-${m[2]}-${m[3]}`, right: m[4] === 'C' ? 'CALL' : 'PUT', strike };
 }
 
-function contractsFrom(ticker: string, rows: Record<string, unknown>[], spot: number, spotWord?: string): { calls: ActiveContract[]; puts: ActiveContract[] } {
+export function contractsFrom(ticker: string, rows: Record<string, unknown>[], spot: number, spotWord?: string): { calls: ActiveContract[]; puts: ActiveContract[] } {
   const calls: ActiveContract[] = [];
   const puts: ActiveContract[] = [];
   const today = nyToday();
@@ -538,7 +581,8 @@ function contractsFrom(ticker: string, rows: Record<string, unknown>[], spot: nu
       volume,
       oi,
       volOverOi: oi > 0 ? Number((volume / oi).toFixed(2)) : 0,
-      ivPct: Math.round((iv > 3 ? iv : iv * 100)),
+      /* the vendor's IV is always a fraction: a same-day contract's 3.4 is 340%, never 3% */
+      ivPct: Math.round(iv * 100),
       fromSpotPct: Number(fromSpot.toFixed(1)),
       spotWord,
       breakevenPct: Number(Math.max(0, need).toFixed(1)),
@@ -621,7 +665,7 @@ export const reportDayLabelYear = (iso: string): string => {
   return day.slice(0, 4) === nyToday().slice(0, 4) ? labelFor(day) : `${labelFor(day)}/${day.slice(2, 4)}`;
 };
 
-export function dossierFromRows(ticker: string, rows: SlotRow[]): EarningsDossier | null {
+export function dossierFromRows(ticker: string, rows: SlotRow[], ivDays: readonly { date: string; iv: number }[] | undefined = ivDaysOf.get(ticker.toUpperCase())): EarningsDossier | null {
   const today = nyToday();
   const sym = ticker.toUpperCase();
   const stamped = rows.map(r => ({ ...r, symbol: r.symbol || sym }));
@@ -674,19 +718,24 @@ export function dossierFromRows(ticker: string, rows: SlotRow[]): EarningsDossie
   const priced = knownMoves.filter(q => q.impliedPct != null && q.impliedPct > 0);
   const inside = priced.length ? { n: priced.filter(q => Math.abs(q.movePct) <= q.impliedPct!).length, of: priced.length } : null;
   const up = knownMoves.length ? { n: knownMoves.filter(q => q.movePct > 0).length, of: knownMoves.length } : null;
-  const crush = crushOf(stamped);
+  /* two figures, never one number twice: the straddle's loss (the vendor's long_straddle_1d) and the IV's own drop */
+  const loss = straddleLossOf(stamped);
+  const ivCrush = ivCrushOf(stamped, ivDays);
   const book = contractsOf(sym);
   return {
     event,
     quarters,
     inside,
     up,
-    ivCrushPct: crush ?? 0,
-    premiumLostPct: crush ?? 0,
+    ivCrushPct: ivCrush?.pct ?? 0,
+    ivCrushPoints: ivCrush?.points ?? 0,
+    ivCrushKnown: ivCrush != null,
+    straddleLossPct: loss ?? 0,
+    premiumLostPct: loss ?? 0,
     activeCalls: book?.calls ?? [],
     activePuts: book?.puts ?? [],
     live: true,
-    crushKnown: crush != null,
+    crushKnown: loss != null,
     contractsReady: contracts.has(sym),
     nextAfter: afterRow?.report_date
       ? {
@@ -1120,6 +1169,9 @@ export function useLiveDossier(ticker: string): { status: 'loading' | 'live' | '
     if (!sym) return;
     let dead = false;
     void pullIv(sym, true).then(() => {
+      if (!dead) emit();
+    });
+    void pullIvHistory(sym).then(() => {
       if (!dead) emit();
     });
     void pullHistory(sym, true).then(rows => {

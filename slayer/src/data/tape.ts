@@ -2,8 +2,8 @@
    order, and the summary a view's head reads. */
 
 import type { BookContract, FlowPrint, PrintSentiment, TapeSummary } from '../types/trace';
-import { dayLean } from './traceLean';
-import { hashId } from './traceRows';
+import { dayLean, SPREAD_LEG_PCT, SWEEP_DAY_PCT } from './traceLean';
+import { coversOf, hashId, type NetCovers } from './traceRows';
 
 /** A day-book row as a print for the contract card. The anchor is the clip the caller hands in (a flow alert's print, or
     the contract's real last trade); without one the card speaks for the day — never an invented print. */
@@ -21,8 +21,9 @@ export function bookRowToPrint(
   const size = clip?.size ?? row.volume;
   const bidPct = Number.isFinite(dl.bid) && row.sideVol ? Math.round((row.sideVol.bid / Math.max(1, row.sideVol.ask + row.sideVol.bid)) * 100) : 100 - row.askPct;
   /* a real clip says what it was; the day's multi-leg or sweep share speaks only when the card stands for the day */
-  const multi = clip ? !!clip.multi : row.multiPct >= 30;
-  const sweep = clip ? !!clip.sweep : row.sweepPct >= 40;
+  /* the book's own cuts (traceLean): a day of spread legs at half its volume in multi-leg orders, swept at a quarter */
+  const multi = clip ? !!clip.multi : row.multiPct >= SPREAD_LEG_PCT;
+  const sweep = clip ? !!clip.sweep : row.sweepPct >= SWEEP_DAY_PCT;
 
   return {
     id: hashId(`${row.key}-anchor`),
@@ -94,11 +95,14 @@ export function rankNotable(prints: FlowPrint[]): FlowPrint[] {
     .map(([, p]) => p);
 }
 
-/* A block is size in one print: one leg, BLOCK_MIN_SIZE contracts or BLOCK_MIN_PREMIUM dollars. A flow alert of several
-   prints is a burst unless its largest single trade is known to clear that line. */
+/* A block is size in one print: one leg of BLOCK_MIN_SIZE contracts or more AND BLOCK_MIN_PREMIUM dollars or more —
+   both, so a 100-lot at $0.05 ($500) is not a block, nor a 20-lot at $150. A flow alert of several prints is a burst
+   unless its largest single trade is known to clear that line. */
 export type PrintKind = 'SWEEP' | 'BLOCK' | 'MULTI' | 'SINGLE' | 'COMPRESSION' | 'BURST';
 export const BLOCK_MIN_SIZE = 100;
-export const BLOCK_MIN_PREMIUM = 250_000;
+export const BLOCK_MIN_PREMIUM = 50_000;
+/** Size and money in one print (both lines) */
+export const isBlockSized = (t: { size: number; premium: number }) => t.size >= BLOCK_MIN_SIZE && t.premium >= BLOCK_MIN_PREMIUM;
 export function printKind(p: Pick<FlowPrint, 'sweep' | 'legs' | 'strat' | 'size' | 'premium'> & Partial<Pick<FlowPrint, 'compression' | 'trades' | 'largestTrade' | 'floorPackage'>>): PrintKind {
   if (p.compression) return 'COMPRESSION';
   if (p.floorPackage) return 'MULTI';
@@ -106,13 +110,15 @@ export function printKind(p: Pick<FlowPrint, 'sweep' | 'legs' | 'strat' | 'size'
   if (p.legs > 1 || p.strat !== '—') return 'MULTI';
   if (p.trades != null && p.trades > 1) {
     const L = p.largestTrade;
-    return L && (L.size >= BLOCK_MIN_SIZE || L.premium >= BLOCK_MIN_PREMIUM) ? 'BLOCK' : 'BURST';
+    return L && isBlockSized(L) ? 'BLOCK' : 'BURST';
   }
-  if (p.size >= BLOCK_MIN_SIZE || p.premium >= BLOCK_MIN_PREMIUM) return 'BLOCK';
+  if (isBlockSized(p)) return 'BLOCK';
   return 'SINGLE';
 }
 
-export function summarizeTape(prints: FlowPrint[]): TapeSummary {
+/** The tape's net is the prints in hand, bought less sold: spread legs, crosses, compression and mid prints are in no
+    lean; after-hours prints are said left out when none is in the set */
+export function summarizeTape(prints: FlowPrint[], afterHoursOut = !prints.some(p => p.extended)): TapeSummary & { covers: NetCovers } {
   let bull = 0;
   let bear = 0;
   let callCount = 0;
@@ -176,7 +182,8 @@ export function summarizeTape(prints: FlowPrint[]): TapeSummary {
     callPremium,
     putCount,
     putPremium,
-    pcRatio: callPremium > 0 ? Number((putPremium / callPremium).toFixed(2)) : 0,
+    /* no call premium is no ratio — NaN (TapeSummary types it a number), never a 0 that reads "no puts" */
+    pcRatio: callPremium > 0 ? Number((putPremium / callPremium).toFixed(2)) : NaN,
     sweeps,
     blocks,
     multi,
@@ -185,5 +192,9 @@ export function summarizeTape(prints: FlowPrint[]): TapeSummary {
     crosses: { count: crossCount, premium: crossPremium },
     spreadLegs: { count: legCount, premium: legPremium },
     largest: largest ? { ticker: largest.ticker, strike: largest.strike, right: largest.right, premium: largest.premium } : null,
+    covers: {
+      ...coversOf(prints.map(p => ({ time: p.epoch ?? 0 })), 'the prints in hand'),
+      leaves: ['spread legs', 'crosses', 'compression', 'mid prints', ...(afterHoursOut ? ['after hours'] : [])],
+    },
   };
 }

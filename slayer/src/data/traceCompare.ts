@@ -4,9 +4,9 @@
 import type { SleeveKey } from '../types/compass';
 import type { BookContract, FlowPrint } from '../types/trace';
 import { sleeveForDte } from './compass';
-import { floorPackaged, FRESH_VOL_OI, moneynessFilter, notABet, type MoneynessKey, type SpreadTrade } from './flowBook';
+import { floorPackaged, FRESH_VOL_OI, moneynessFilter, notABet, SPREAD_LEG_PCT, type MoneynessKey, type SpreadTrade } from './flowBook';
 import type { ExpiryFlow } from './traceLive';
-import { fmtCount as num, usd as fmtUsd } from './traceRows';
+import { fmtCount as num, usd as fmtUsd, type NetCovers } from './traceRows';
 import { leanOfSides } from './traceLean';
 
 export interface TraceSide {
@@ -18,6 +18,9 @@ export interface TraceSide {
   net: number;
   netCall: number;
   netPut: number;
+  /** What the headline net covers: the flow-by-expiry route on every strike, or — on a moneyness cut — the cut's own
+      contracts on the book (premium × their ask-less-bid share of contracts, ≈) */
+  netCovers: NetCovers;
   /** Set by the page while the expiry route has not answered: 'loading', or 'none' when it failed */
   netPending?: 'loading' | 'none';
   /** The same figures off the minute ticks (every expiry, regular session), the series the panes draw; a secondary line */
@@ -60,6 +63,24 @@ export interface TraceSide {
 
 const onClock = (dte: number, tenor: SleeveKey | 'all') => tenor === 'all' || sleeveForDte(dte) === tenor;
 
+/** A set of contracts' net premium, ask less bid: each row's premium times its (ask − bid) share of its contracts (the
+    screener carries contracts by side, not dollars) — an estimate, said ≈. Rows with no side split add nothing. */
+export function cutNet(rows: readonly BookContract[]): { calls: number; puts: number; rows: number } {
+  let calls = 0;
+  let puts = 0;
+  let n = 0;
+  for (const r of rows) {
+    const sv = r.sideVol;
+    const all = sv ? sv.ask + sv.bid + sv.mid : 0;
+    if (!sv || !(all > 0)) continue;
+    const net = r.premium * ((sv.ask - sv.bid) / all);
+    if (r.right === 'C') calls += net;
+    else puts += net;
+    n++;
+  }
+  return { calls, puts, rows: n };
+}
+
 /** Volume-weighted average of one per-contract share */
 const weighted = (rows: BookContract[], pick: (r: BookContract) => number, volume: number) =>
   volume > 0 ? rows.reduce((a, r) => a + pick(r) * r.volume, 0) / volume : 0;
@@ -78,10 +99,15 @@ export function buildTraceSide(
   /* a contract that expired at today's bell no longer stands */
   const own = book.filter(r => r.ticker === ticker && !r.expired);
   const rows = own.filter(r => onClock(r.dte, tenor) && moneynessFilter(r, mny)).sort((a, b) => b.premium - a.premium);
-  /* net calls: call premium at the ask less on the bid, summed over the clock's expiries, every strike */
+  /* net calls: call premium at the ask less on the bid, summed over the clock's expiries — every strike from the
+     flow-by-expiry route; on a moneyness cut that route cannot say, so the cut's own contracts on the book (cutNet) */
   const onTenor = expiries.filter(e => onClock(e.dte, tenor));
-  const netCall = onTenor.reduce((a, e) => a + e.callNet, 0);
-  const netPut = onTenor.reduce((a, e) => a + e.putNet, 0);
+  const byCut = mny !== 'all' ? cutNet(rows) : null;
+  const netCall = byCut ? byCut.calls : onTenor.reduce((a, e) => a + e.callNet, 0);
+  const netPut = byCut ? byCut.puts : onTenor.reduce((a, e) => a + e.putNet, 0);
+  const netCovers: NetCovers = byCut
+    ? { since: '09:30', until: 'the last print', source: "the book's contracts", leaves: [`strikes not ${mny.toUpperCase()}`, `contracts past the book's ${rows.length}`], approx: true }
+    : { since: '09:30', until: 'the last print', source: 'flow by expiry', leaves: tenor === 'all' ? [] : ['expiries off the clock'] };
   /* the rows' own session date, not the wall's: before the open the data is still the previous session's */
   const rowsDay = expiries.find(e => e.date)?.date ?? todayIso;
   const today = expiries.find(e => e.expiry === rowsDay) ?? null;
@@ -108,6 +134,7 @@ export function buildTraceSide(
     net: netCall - netPut,
     netCall,
     netPut,
+    netCovers,
     odte: today
       ? { net: today.callNet - today.putNet, calls: today.callNet, puts: today.putNet, vol: today.callVol + today.putVol, trades: today.trades, has: true }
       : { net: 0, calls: 0, puts: 0, vol: 0, trades: 0, has: false },
@@ -126,7 +153,7 @@ export function buildTraceSide(
         return Math.round(weighted(pool, r => r.iv, pool.reduce((a, r) => a + r.volume, 0)));
       })(),
       ivLater: bets.some(r => r.dte >= 1 && r.iv > 0),
-      apart: { count: out.length, premium: out.reduce((a, r) => a + r.premium, 0), floor: out.filter(r => floorPackaged(r)).length, legs: out.filter(r => !floorPackaged(r) && r.multiPct >= 50).length, crosses: out.filter(r => !floorPackaged(r) && r.multiPct < 50).length },
+      apart: { count: out.length, premium: out.reduce((a, r) => a + r.premium, 0), floor: out.filter(r => floorPackaged(r)).length, legs: out.filter(r => !floorPackaged(r) && r.multiPct >= SPREAD_LEG_PCT).length, crosses: out.filter(r => !floorPackaged(r) && r.multiPct < SPREAD_LEG_PCT).length },
       builtToday: bets.filter(r => r.oi > 0 && r.volOverOI >= FRESH_VOL_OI).length,
     },
     /* the same contracts as the book figures: bets only */
@@ -188,7 +215,7 @@ export function buildTraceCompare(a: TraceSide, b: TraceSide, tapeWindow = 'over
   const heavier = a.book.premium <= 0 && b.book.premium <= 0 ? null : a.book.premium >= b.book.premium ? a : b;
   /* both tapes are cut at the same instant, so equal counts name nobody */
   const busier = a.tape.prints > b.tape.prints ? a : b.tape.prints > a.tape.prints ? b : null;
-  const lean = (s: TraceSide) => (s.netPending ? (s.netPending === 'loading' ? ' — its net is loading' : ' — its net did not load') : ` leans ${s.net >= 0 ? 'bullish' : 'bearish'} at ${signedUsd(s.net)}${s === b ? ' (net by expiry, the whole day)' : ''}`);
+  const lean = (s: TraceSide) => (s.netPending && !s.netCovers?.approx ? (s.netPending === 'loading' ? ' — its net is loading' : ' — its net did not load') : ` leans ${s.net >= 0 ? 'bullish' : 'bearish'} at ${s.netCovers?.approx ? '≈' : ''}${signedUsd(s.net)}${s === b ? (s.netCovers?.approx ? ` (the cut's contracts on the book, the whole day)` : ' (net by expiry, the whole day)') : ''}`);
   const showTape = regular && (busier ? busier.tape.prints > 0 : a.tape.prints > 0);
   const parts: SentencePart[] = [
     { name: a.ticker },

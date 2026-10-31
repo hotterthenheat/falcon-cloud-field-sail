@@ -10,7 +10,7 @@ import type { DarkPoolPrint, DarkPoolView } from '../types/darkpool';
 import { marketPhase } from '../core/marketPhase';
 import { nyParts } from '../core/nyTime';
 import type { MoneynessKey, NetFlowSegment, SpreadTrade } from './flowBook';
-import { alertToPrint, byNewest, clock, contractRow, dteFrom, ensureIndexLevels, extendedOf, heldFresh, indexRoot, lastRegularClose, liveSpotOf, liveTrades, mapBook, mapWithIndex, markAlertPackages, nextSessionIso, num, nyDateOf, nyIsoToday, prevSessionIso, printCondition, quoteNoReadOf, rowsOf, SESSION_OPEN, sessionEndMin, sideOfTags, tapeSessionIso, tickerOfRow, tradeToPrint } from './traceRows';
+import { alertToPrint, byNewest, clock, contractRow, coversOf, dteFrom, ensureIndexLevels, ensureSpots, extendedOf, heldFresh, indexRoot, lastRegularClose, likelyOpeningOf, liveSpotOf, liveTrades, mapBook, mapWithIndex, markAlertPackages, nextSessionIso, num, nyDateOf, nyIsoToday, prevSessionIso, printCondition, printKeyOf, printSideOf, rowsOf, SESSION_OPEN, sessionEndLabel, sessionEndMin, tapeSessionIso, type NetCovers, tickerOfRow, tradeToPrint } from './traceRows';
 import { dedupeSpreads, settleSpreadWith, spreadOf } from './traceSpreads';
 import { type DarkDay, darkDayOf, darkLevels, darkPrint, darkView, mergeDark } from './traceDark';
 
@@ -296,8 +296,7 @@ export function useContractLast(occ: string | null | undefined): LivePack<Contra
       const rows = liveTrades(got);
       const r = rows.find(x => !extendedOf(x)) ?? rows[0];
       if (!r) return null;
-      const noRead = quoteNoReadOf(r, num(r.price), num(r.nbbo_bid), num(r.nbbo_ask), Date.parse(String(r.executed_at ?? '')));
-      const side = noRead ? 'MID' : sideOfTags(r.tags, num(r.price), num(r.nbbo_bid), num(r.nbbo_ask));
+      const side = printSideOf(r, num(r.price), num(r.nbbo_bid), num(r.nbbo_ask), Date.parse(String(r.executed_at ?? '')));
       const { multi, sweep } = printCondition(r);
       return { size: num(r.size), fill: num(r.price), side, time: clock(r.executed_at).time, bid: num(r.nbbo_bid), ask: num(r.nbbo_ask), premium: num(r.premium), multi, sweep, extended: extendedOf(r), theta: r.theta != null && r.theta !== '' ? num(r.theta) : undefined, volume: num(r.volume) || undefined };
     },
@@ -377,20 +376,49 @@ function tapeQueryString(q: TapeQuery, extra?: { newerThan?: number; olderThan?:
 
 /** One page of the option tape: its prints (cancelled ones dropped), whether the vendor sent a full page, and the
     oldest fill on it (the next page's cursor) */
-export async function readTapePage(q: TapeQuery, cursor: { newerThan?: number; olderThan?: number }, limit = TAPE_PAGE, low = false): Promise<{ prints: FlowPrint[]; full: boolean; oldest: number }> {
+export async function readTapePage(q: TapeQuery, cursor: { newerThan?: number; olderThan?: number }, limit = TAPE_PAGE, low = false): Promise<{ prints: FlowPrint[]; full: boolean; oldest: number; cancelled: string[] }> {
   const path = `/option-trades?${tapeQueryString(q, { ...cursor, limit })}`;
   const got = low ? await getRowsLow(path) : await getRows(path);
   const live = liveTrades(got);
+  /* a print the vendor has since cancelled is retracted from every list that already merged it (retractCancelled) */
+  const cancelled = noteCancelled(got);
   await ensureIndexLevels(live.map(tickerOfRow));
   let oldest = 0;
   for (const r of got) {
     const t = Date.parse(String(r.executed_at || ''));
     if (Number.isFinite(t) && (oldest === 0 || t < oldest)) oldest = t;
   }
-  return { prints: live.map(tradeToPrint), full: got.length >= limit, oldest };
+  return { prints: live.map(r => tradeToPrint(r)), full: got.length >= limit, oldest, cancelled };
 }
 
 const printId = (r: FlowPrint) => r.vendorId || String(r.id);
+
+/* Prints the vendor sent as cancelled, by identity (printKeyOf), the newest CANCEL_CAP kept: a cancel that lands after
+   its print was merged takes the print back out of the tape, the shelf and every buffer that merges again */
+const CANCEL_CAP = 20_000;
+const cancelledIds = new Set<string>();
+let cancelRev = 0;
+/** Note the cancelled rows of a page; returns their identities */
+export function noteCancelled(rows: readonly Record<string, unknown>[]): string[] {
+  const out: string[] = [];
+  for (const r of rows) {
+    if (r.canceled !== true && r.canceled !== 'true') continue;
+    const k = printKeyOf(r);
+    out.push(k);
+    if (!cancelledIds.has(k)) {
+      cancelledIds.add(k);
+      cancelRev++;
+    }
+  }
+  if (cancelledIds.size > CANCEL_CAP) for (const k of [...cancelledIds].slice(0, cancelledIds.size - CANCEL_CAP)) cancelledIds.delete(k);
+  return out;
+}
+/** The list with every print since cancelled taken out (the same array when none was) */
+export function retractCancelled<T extends { vendorId?: string; id: number | string }>(list: T[]): T[] {
+  if (!cancelledIds.size) return list;
+  const out = list.filter(r => !cancelledIds.has(r.vendorId || String(r.id)));
+  return out.length === list.length ? list : out;
+}
 
 /** One list, newest first, no print twice (by the vendor's trade id) */
 function dedupe(batch: FlowPrint[]): FlowPrint[] {
@@ -403,7 +431,8 @@ function dedupe(batch: FlowPrint[]): FlowPrint[] {
   });
 }
 
-function mergePrints(prev: FlowPrint[], incoming: FlowPrint[], where: 'front' | 'back'): FlowPrint[] {
+export function mergePrints(prev0: FlowPrint[], incoming: FlowPrint[], where: 'front' | 'back'): FlowPrint[] {
+  const prev = retractCancelled(prev0);
   const seen = new Set(prev.map(printId));
   const fresh = incoming.filter(r => {
     const k = printId(r);
@@ -453,10 +482,15 @@ function publishPrints(rows: readonly FlowPrint[]): void {
   }
   let changed = false;
   for (const [name, incoming] of by) {
-    const prev = tapeShelf.get(name) ?? [];
+    const had = tapeShelf.get(name) ?? [];
+    const prev = retractCancelled(had);
+    if (prev !== had) changed = true;
     const seen = new Set(prev.map(p => p.vendorId || String(p.id)));
-    const fresh = incoming.filter(p => !seen.has(p.vendorId || String(p.id)));
-    if (!fresh.length) continue;
+    const fresh = retractCancelled(incoming).filter(p => !seen.has(p.vendorId || String(p.id)));
+    if (!fresh.length) {
+      if (prev !== had) tapeShelf.set(name, prev);
+      continue;
+    }
     const next = fresh.concat(prev);
     next.sort((a, b) => (b.epochMs ?? 0) - (a.epochMs ?? 0));
     tapeShelf.set(name, next.length > SHELF_CAP ? next.slice(0, SHELF_CAP) : next);
@@ -670,8 +704,14 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
       if (untilMs || !newest.current || polling || holdsPaused > 0 || tabHidden() || trimmedRef.current) return beat();
       polling = true;
       try {
+        const revBefore = cancelRev;
         const { batch, joined } = await newerThan(newest.current - LATE_MS, lastCount >= STREAM_IDLE_PAGE ? TAPE_PAGE : STREAM_IDLE_PAGE);
         lastCount = batch.length;
+        /* a cancel on this poll's pages takes its print back out even when nothing new landed */
+        if (!stop && cancelRev !== revBefore && !batch.length) {
+          setRows(prev => retractCancelled(prev));
+          setPending(prev => retractCancelled(prev));
+        }
         if (!stop && !batch.length) {
           setKept(false);
           setAt(Date.now());
@@ -741,7 +781,8 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
       .then(got => {
         const keep = keepRef.current;
         const batch = keep ? got.prints.filter(keep) : got.prints;
-        setRows(prev => {
+        setRows(prev0 => {
+          const prev = retractCancelled(prev0);
           const seen = new Set(prev.map(printId));
           const fresh = batch.filter(r => !seen.has(printId(r)));
           if (!fresh.length) return prev;
@@ -817,8 +858,11 @@ export function useAccumTape(kind: 'dark' | 'lit', limit: number, enabled = true
   return useLive(
     `accum:${path}`,
     async () => {
-      const batch = (await getRows(path)).filter(r => !r.canceled).map((r, i) => darkPrint(r, i, 0, kind)); // a cancelled print never traded
-      const next = mergeDark(accumRows.get(path) ?? [], batch);
+      const got = await getRows(path);
+      const batch = got.filter(r => !r.canceled).map((r, i) => darkPrint(r, i, 0, kind)); // a cancelled print never traded
+      /* and a cancel that lands after its print was merged takes it back out */
+      const gone = new Set(got.filter(r => r.canceled === true || r.canceled === 'true').map((r, i) => darkPrint(r, i, 0, kind).id));
+      const next = mergeDark(accumRows.get(path) ?? [], batch, gone);
       accumRows.set(path, next);
       return next;
     },
@@ -899,6 +943,8 @@ async function stockLastOf(name: string): Promise<StockLast> {
     return { price: 0, vol: 0, at: 0 };
   }
 }
+/* last_trade.vol is the day's running share volume as of the last trade, not that trade's size (verified live, AAPL
+   Oct 30: last_trade.vol 67,841,550 beside stock-state total_volume 67,846,959) — pre-market and after hours included */
 async function dayVolumeOf(name: string): Promise<number> {
   return (await stockLastOf(name)).vol;
 }
@@ -1007,10 +1053,12 @@ export function useNameDark(ticker: string | null, untilMs: number | null = null
       if (!(await tickerKnown(name))) return { view: null, lit: [] as DarkPoolPrint[], day: null, unknown: true };
       const [prints, levels, lit, quote, bars] = await Promise.all([
         getRows(`/darkpool/${encodeURIComponent(name)}?limit=200${cut}`),
+        /* (beside them, the name's screener row, cached a minute: its average day sizes the posture's prints) */
         getRows(`/darkpool/${encodeURIComponent(name)}/price-levels?date=${day0}`).catch(() => [] as Record<string, unknown>[]),
         getRows(`/lit-flow/${encodeURIComponent(name)}?limit=200${cut}`).catch(() => [] as Record<string, unknown>[]),
         stockLastOf(name),
         getRows(`/stock/${encodeURIComponent(name)}/ohlc/1m?date=${day0}&limit=1000`).catch(() => [] as Record<string, unknown>[]),
+        ensureSpots([name]),
       ]);
       /* the session's New York day, and only the session that was picked */
       const inSession = (p: DarkPoolPrint) => (session === 'regular' ? !p.extended : !!p.extended);
@@ -1174,9 +1222,11 @@ function usePairedOi(rows: BookContract[], only?: string): BookContract[] {
       const vol = volDayOf(r);
       const next = nextSessionIso(vol);
       const hit = r.optionSymbol ? newestOiCache.get(`${r.optionSymbol}:${next}`) : undefined;
-      if (!hit) return { ...r, volDay: vol, oiDay: prevSessionIso(vol), oiPending: !r.expired };
+      /* likelyOpening (likelyOpeningOf): a flag beside the row, its classifications untouched */
+      if (!hit) return { ...r, volDay: vol, oiDay: prevSessionIso(vol), oiPending: !r.expired, likelyOpening: likelyOpeningOf(r) };
       return {
         ...r,
+        likelyOpening: likelyOpeningOf(r, hit),
         oi: hit.oi,
         prevOI: hit.before,
         deltaOI: hit.oi - hit.before,
@@ -1644,7 +1694,7 @@ const minuteOf = (iso: unknown) => {
 
 /** The pane's lines are the vendor's minutes: a name's net-prem-ticks priced by its one-minute closes; a cut's
     /net-flow/expiry; a sector its own tide. */
-export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; mny: MoneynessKey; zeroDte: boolean; enabled: boolean }): LivePack<PaneFlowPoint[]> {
+export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; mny: MoneynessKey; zeroDte: boolean; enabled: boolean }): LivePack<PaneFlowPoint[]> & { covers: NetCovers } {
   const { ticker, seg, mny, zeroDte, enabled } = opts;
   const name = (ticker || '').trim().toUpperCase();
   const key = name ? `pane:${name}` : `pane:${seg}:${mny}:${zeroDte ? '0' : 'w'}`;
@@ -1655,7 +1705,19 @@ export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; 
   const bars = useLive(name ? `pane-bars:${name}` : 'pane-bars:off', async () => getRows(`/stock/${encodeURIComponent(name)}/ohlc/1m?limit=1000`).catch(() => [] as Record<string, unknown>[]), [] as Record<string, unknown>[], enabled && !!name, MINUTE_POLL_MS);
   const named = useMemo<PaneFlowPoint[]>(() => (name ? paneFromTicks(name, ticks.rows, bars.rows) : []), [name, ticks.rows, bars.rows]);
   const cut = useLive(name ? 'pane:cut:off' : key, () => readPaneCut(seg, mny, zeroDte), [] as PaneFlowPoint[], enabled && !name, MINUTE_POLL_MS);
-  return name ? { rows: named, at: ticks.at, fault: ticks.fault, waiting: ticks.waiting, kept: ticks.kept } : cut;
+  const covers = useMemo(() => (name ? paneCovers(name, named) : cutCovers(seg, mny, zeroDte, cut.rows)), [name, named, seg, mny, zeroDte, cut.rows]);
+  return name ? { rows: named, at: ticks.at, fault: ticks.fault, waiting: ticks.waiting, kept: ticks.kept, covers } : { ...cut, covers };
+}
+
+/** What a name's pane line covers: its regular session's minute ticks, every expiry and strike, from 09:30 — a cut's
+    line or the tide runs from the vendor's own day start (07:30), so the two are said apart */
+export function paneCovers(name: string, points: readonly PaneFlowPoint[]): NetCovers {
+  return coversOf(points, 'net-prem-ticks', ['pre-market', `after ${sessionEndLabel(name)}`]);
+}
+/** What a cut's line covers: the vendor's net flow by expiry (or a sector's tide) from its first minute */
+export function cutCovers(seg: NetFlowSegment, mny: MoneynessKey, zeroDte: boolean, points: readonly PaneFlowPoint[]): NetCovers {
+  if (seg.startsWith('sector:')) return coversOf(points, 'sector tide', []);
+  return coversOf(points, 'net flow by expiry', [...(mny !== 'all' ? [`strikes not ${mny.toUpperCase()}`] : []), zeroDte ? 'expiries after today' : 'expiries past the week']);
 }
 
 /** A name's running net call and put premium through its regular session, priced by its one-minute closes */
@@ -1737,12 +1799,40 @@ export function useDayTopContracts(limit = 5, enabled = true): LivePack<BookCont
 /** The day's largest flow alerts: the vendor's alerts of `minPremium` and up, filed before `untilMs` (the close), largest
     first, in (or outside) the regular session */
 export function useDayBigAlerts(sinceMs: number, untilMs: number | null, session: 'regular' | 'extended', minPremium = 5_000_000, limit = 200, enabled = true): LivePack<FlowPrint[]> {
-  return useLive(`day-alerts:${sinceMs}:${untilMs ?? 'live'}:${session}:${minPremium}`, () => readDayAlerts(sinceMs, untilMs, session, minPremium, limit), [], enabled);
+  return useLive<FlowPrint[]>(`day-alerts:${sinceMs}:${untilMs ?? 'live'}:${session}:${minPremium}`, () => readDayAlerts(sinceMs, untilMs, session, minPremium, limit), [], enabled);
 }
-/** The day's alerts of `minPremium` and up from `sinceMs` (the route reaches back days), largest first */
-export async function readDayAlerts(sinceMs: number, untilMs: number | null, session: 'regular' | 'extended', minPremium: number, limit: number): Promise<FlowPrint[]> {
-  const rows = markAlertPackages(await mapWithIndex(await getRows(`/option-trades/flow-alerts?limit=${limit}&min_premium=${minPremium}&newer_than=${new Date(sinceMs).toISOString()}${untilMs ? `&older_than=${new Date(untilMs).toISOString()}` : ''}`), alertToPrint));
-  return rows.filter(p => (session === 'regular' ? !p.extended : !!p.extended)).sort((a, b) => b.premium - a.premium);
+/** Pages of the day's big alerts walked back before the list says it holds only the newest */
+const DAY_ALERT_PAGES = 3;
+/** The day's alerts of `minPremium` and up from `sinceMs` (the route reaches back days), largest first. The route sends
+    the newest first and orders by nothing else, so a full page is walked back (older_than, at most DAY_ALERT_PAGES) until
+    the day is in hand: the largest are then the day's largest. `complete` false says the list is the largest of the
+    newest DAY_ALERT_PAGES × `limit` only. */
+export async function readDayAlerts(sinceMs: number, untilMs: number | null, session: 'regular' | 'extended', minPremium: number, limit: number): Promise<FlowPrint[] & { complete: boolean }> {
+  const raw: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  let older: number | null = untilMs;
+  let complete = false;
+  for (let page = 0; page < DAY_ALERT_PAGES; page++) {
+    const got = await getRows(`/option-trades/flow-alerts?limit=${limit}&min_premium=${minPremium}&newer_than=${new Date(sinceMs).toISOString()}${older ? `&older_than=${new Date(older).toISOString()}` : ''}`);
+    let oldest = 0;
+    for (const r of got) {
+      const k = String(r.id ?? `${r.option_chain ?? ''}|${r.created_at ?? ''}|${r.total_premium ?? ''}`);
+      const t = Date.parse(String(r.created_at ?? ''));
+      if (Number.isFinite(t) && (!oldest || t < oldest)) oldest = t;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      raw.push(r);
+    }
+    if (got.length < limit || !oldest || oldest <= sinceMs) {
+      complete = true;
+      break;
+    }
+    /* older_than is strict: the next page starts at the oldest instant in hand (its repeats are dropped by id) */
+    if (older != null && oldest + 1 >= older) break;
+    older = oldest + 1;
+  }
+  const rows = markAlertPackages(await mapWithIndex(raw, alertToPrint));
+  return Object.assign(rows.filter(p => (session === 'regular' ? !p.extended : !!p.extended)).sort((a, b) => b.premium - a.premium), { complete });
 }
 
 /* ---- a stock's whole day of one-minute bars, extended hours included (the cross card) --------------------------- */
