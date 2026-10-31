@@ -488,9 +488,11 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
       {/* THE STAGES — called, filled, the stop's rungs, out (or holding) */}
       {stages.length > 0 && <StageStrip stages={stages} />}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
-        {/* ONE SIDE: the contract's premium chart */}
-        <div className="min-w-0 h-[560px] max-lg:h-[440px] lg:sticky lg:top-3" data-theme="dark" data-setup-side="option">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
+        {/* ONE SIDE: the contract's premium chart, and under it the strikes' flow; the chart grows to the other side's
+            height so the two columns end together */}
+        <div className="min-w-0 flex flex-col gap-3" data-setup-side="option">
+          <div className="min-w-0 h-[440px] lg:h-auto lg:min-h-[560px] lg:flex-1" data-theme="dark">
           <ContractTrack
             setup={setup}
             revision={revision}
@@ -509,8 +511,10 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
             pathNote={traded == null ? (thetaDown ? 'Live data offline. No bars.' : 'Reading the bars.') : ''}
             multiples={setup.band === 'lottery' ? [2, 3] : undefined}
           />
+          </div>
+          {!isPast && <ContractFlow ticker={setup.ticker} strike={setup.strike} right={setup.right} expiryDate={setup.expiryDate} step={atmStep} session={desk} allSessions={setup.expiry === '0DTE'} />}
         </div>
-        {/* THE OTHER SIDE: the underlying, the trade card, the flow */}
+        {/* THE OTHER SIDE: the underlying and the trade card */}
         <div className="min-w-0 flex flex-col gap-3" data-setup-side="rest">
           <UnderlyingTrack
             ticker={setup.ticker}
@@ -522,7 +526,7 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
             exitAt={outcome?.exit?.at ?? null}
             spot={isPast ? 0 : spotPx}
           />
-          <div className="rounded-md border border-silver/40 bg-ink/[0.015] overflow-hidden flex flex-col shrink-0" data-setup-card data-card-tab={cardTab}>
+          <div className="rounded-md border border-silver/40 bg-ink/[0.015] overflow-hidden flex flex-col lg:flex-1" data-setup-card data-card-tab={cardTab}>
             <div className="px-3.5 pt-3 pb-2 flex items-center gap-2 flex-wrap">
               <ContractLabel contract={setup.contract} right={setup.right} logo={setup.ticker} />
               <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">{setup.expiry}</span>
@@ -688,7 +692,7 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
               </div>
             )}
 
-            <div className="px-3.5 h-7 flex items-center gap-x-3 border-t border-borderSubtle/60 font-mono text-t10 text-textMuted overflow-x-auto whitespace-nowrap" data-greeks-line>
+            <div className="mt-auto px-3.5 h-7 shrink-0 flex items-center gap-x-3 border-t border-borderSubtle/60 font-mono text-t10 text-textMuted overflow-x-auto whitespace-nowrap" data-greeks-line>
               <span>Delta <span className={`tnum ${gDelta >= 0 ? 'text-bull' : 'text-bear'}`}>{Number.isFinite(gDelta) ? gDelta.toFixed(2) : '—'}</span></span>
               <span>Theta <span className="tnum text-warn">{Number.isFinite(gTheta) ? dayDollars(gTheta) : '—'}</span></span>
               <span>IV <span className="tnum text-textPrimary">{greekOk ? `${ivPct.toFixed(0)}%` : '—'}</span></span>
@@ -697,6 +701,12 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
               <span>Rho <span className="tnum text-textSecondary">{Number.isFinite(gRho) ? gRho.toFixed(3) : '—'}</span></span>
               <span>Vanna <span className="tnum text-textSecondary">{Number.isFinite(higher.vanna) ? higher.vanna.toFixed(3) : '—'}</span></span>
               <span>Charm <span className="tnum text-textSecondary">{Number.isFinite(higher.charm) ? higher.charm.toFixed(3) : '—'}</span></span>
+              <span>Vomma <span className="tnum text-textSecondary">{!isPast && Number.isFinite(setup.vomma ?? NaN) ? (setup.vomma as number).toFixed(3) : '—'}</span></span>
+              <span>Veta <span className="tnum text-textSecondary">{!isPast && Number.isFinite(setup.veta ?? NaN) ? ((setup.veta as number) / 365).toFixed(3) : '—'}</span></span>
+              <span>Speed <span className="tnum text-textSecondary">{!isPast && Number.isFinite(setup.speed ?? NaN) ? (setup.speed as number).toFixed(4) : '—'}</span></span>
+              <span>Zomma <span className="tnum text-textSecondary">{!isPast && Number.isFinite(setup.zomma ?? NaN) ? (setup.zomma as number).toFixed(4) : '—'}</span></span>
+              <span>Color <span className="tnum text-textSecondary">{!isPast && Number.isFinite(setup.color ?? NaN) ? ((setup.color as number) / 365).toFixed(4) : '—'}</span></span>
+              <span>Ultima <span className="tnum text-textSecondary">{!isPast && Number.isFinite(setup.ultima ?? NaN) ? (setup.ultima as number).toFixed(4) : '—'}</span></span>
               <span className="ml-auto">{isPast ? 'At the call' : setup.expiry === '0DTE' ? '' : tape.word}</span>
             </div>
             <div className="border-t border-borderSubtle p-2" data-setup-action={verdict.word}>
@@ -748,7 +758,6 @@ const CampaignAnalysis = ({ setup, revision, spot, scanner, sleeve, gradedAt, on
               )}
             </div>
           </div>
-          {!isPast && <ContractFlow ticker={setup.ticker} strike={setup.strike} right={setup.right} expiryDate={setup.expiryDate} step={atmStep} session={desk} allSessions={setup.expiry === '0DTE'} />}
         </div>
       </div>
 

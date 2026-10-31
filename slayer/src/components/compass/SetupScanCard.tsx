@@ -96,8 +96,10 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
   const result = closedOut ? ((closedOut.pnl ?? 0) > 0 ? 'Win' : 'Loss') : '';
   const caveat = (setup.band === 'top' || setup.band === 'wing') ? [MODELS_VALIDATED ? '' : UNVALIDATED_WORD, setup.outsideTrained ? OUTSIDE_TRAINED_WORD : ''].filter(Boolean).join(' · ') : '';
   const hold = holdOf(setup, riding);
+  const sigma = setup.greeks.iv > 0 && setup.sigmaMovePct > 0 ? `1σ to expiry ±${setup.sigmaMovePct}%` : '';
   const when = [
     placeWord(setup),
+    sigma,
     ticket && setup.late && setup.seenAt ? `Scored late (${nyClock(setup.mark ?? setup.seenAt)} ET mark)` : '',
     ticket && !setup.late && setup.seenAt ? `Called ${nyClock(setup.seenAt, { zone: true })}` : '',
     setup.quotedAt || liveQuote?.at ? `Quote ${nyClock(liveQuote?.at || setup.quotedAt || 0, { seconds: true, zone: true })}` : '',
