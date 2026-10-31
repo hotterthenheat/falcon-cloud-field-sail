@@ -22,6 +22,8 @@ import { onGlide } from '../../core/glide';
 import { DOCK_ROOM } from '../../data/editorDock';
 import { useTicker } from '../../context/MarketDataContext';
 import { snapshotOf, useBookRev } from '../../data/uwBook';
+import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
+import { closeMoveTitle, signedPct } from '../../data/dayChange';
 import { buildPrints, fmtUsd } from '../../data/gex';
 import { useLevelsFor } from '../../data/levelsFor';
 import { paneLevels } from '../terrain/paneLevels';
@@ -820,7 +822,12 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const tape = useWeigherSpot(under);
   const weighed = useWeigherTape(under, timeframe, bookSession);
   const liveSpot = chain.source === 'live' && chain.spot > 0 ? chain.spot : tape && tape.spot > 0 ? tape.spot : 0;
-  const dayPct = tape && tape.prev > 0 && liveSpot > 0 ? (liveSpot / tape.prev - 1) * 100 : null;
+  /* The header speaks the app's one convention (data/dayChange.ts moveOffCloses), as the rail does: the last trade, the
+     day's change of the regular session, and outside it the extended move apart. The chain keeps its own quoted spot. */
+  const { held: headHeld } = useThetaPrice(under);
+  const headMove = thetaMove(headHeld?.value);
+  const headSpot = headHeld && headHeld.value.price > 0 ? headHeld.value.price : liveSpot;
+  const dayPct = headMove ? headMove.pct : null;
   const chartTape = useMemo(() => {
     const ivs = chain.rows
       .flatMap(r => [r.call.iv, r.put.iv])
@@ -1071,11 +1078,15 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     <span className="inline-flex items-center gap-2 select-none shrink-0">
       <TickerQuickPick ticker={ticker} onPick={pickTicker} />
       {/* Keyed by its subject, so switching from the stock to a contract mounts at the new value instead of rolling through every number between. */}
-      {liveSpot > 0 && <SpotPrice key={`spot:${ticker}`} value={liveSpot} />}
-      {dayPct != null && (
-        <span className={`font-mono text-[11px] font-semibold tnum ${dayPct >= 0 ? 'text-bull' : 'text-bear'}`}>
-          {dayPct >= 0 ? '\u25b2' : '\u25bc'} {dayPct >= 0 ? '+' : ''}
-          {dayPct.toFixed(2)}%
+      {headSpot > 0 && <SpotPrice key={`spot:${ticker}`} value={headSpot} />}
+      {dayPct != null && headMove && (
+        <span className={`font-mono text-[11px] font-semibold tnum ${dayPct >= 0 ? 'text-bull' : 'text-bear'}`} title={closeMoveTitle(headMove)} data-weigher-day>
+          {dayPct >= 0 ? '\u25b2' : '\u25bc'} {signedPct(dayPct)}
+        </span>
+      )}
+      {headMove && headMove.ext != null && (
+        <span className="font-mono text-[10px] tnum text-textMuted" title={closeMoveTitle(headMove)} data-weigher-ext>
+          {headMove.extWord === 'pre-market' ? 'PM' : 'AH'} {signedPct(headMove.ext)}
         </span>
       )}
     </span>

@@ -10,6 +10,7 @@ import { useWatch } from '../../context/WatchContext';
 import { useTracker } from '../../context/TrackerContext';
 import { useWatchlist } from '../../data/watchlist';
 import { peekThetaPrice, thetaMove, useThetaPrices, useThetaStatus } from '../../data/thetaQuote';
+import { closeMoveTitle, sessionWhen } from '../../data/dayChange';
 import { asOfText } from '../ui/states';
 import { OfflineLine, useUwOnlyRoute } from './NavQuote';
 import { peekQuote, sessionPrice, useDayMoves } from '../../data/liveQuote';
@@ -41,6 +42,10 @@ const grow = {
 interface NameRead {
   spot: number | null;
   change: number | null;
+  /** The extended-hours move from the last regular close, short ("AH +0.19%"), outside the session */
+  ext: string | null;
+  /** The hover of the change: which session and which closes */
+  changeTitle: string | null;
   /** The price is the terminal's this session; false: the last one it gave (stamped `at`) */
   live: boolean;
   at: number | null;
@@ -55,7 +60,13 @@ function readName(symbol: string, uwOnly: boolean): NameRead {
   const q = uwOnly ? peekQuote(symbol) : null;
   const held = uwOnly ? null : peekThetaPrice(symbol);
   const spot = uwOnly ? sessionPrice(q) : held ? held.value.price : null;
-  const change = uwOnly ? (q ? (q.phase === 'regular' ? q.changePct : q.extPct) : null) : thetaMove(held?.value)?.pct ?? null;
+  /* the day's change by the one convention (data/dayChange.ts): the regular session's, the extended move apart */
+  const mv = uwOnly ? null : thetaMove(held?.value);
+  const change = uwOnly ? (q ? q.changePct : null) : mv?.pct ?? null;
+  const extPct = uwOnly ? (q && q.phase !== 'regular' ? q.extPct : null) : mv?.ext ?? null;
+  const extPre = uwOnly ? q?.phase === 'pre' : mv?.extWord === 'pre-market';
+  const ext = extPct != null && Number.isFinite(extPct) ? `${extPre ? 'PM' : 'AH'} ${pctSigned(extPct)}` : null;
+  const changeTitle = mv ? closeMoveTitle(mv) : q && q.phase !== 'regular' ? `${sessionWhen(q.regDate) ?? 'The last'} regular-session change${q.extPct != null ? ` · ${q.phase === 'pre' ? 'pre-market' : 'after hours'} ${pctSigned(q.extPct)} since that close` : ''}` : null;
   const book = peekEntry(symbol);
   let near: NameRead['near'] = null;
   const walls = spot != null && spot > 0 && book?.status === 'live' ? scopeWalls(symbol, levelsForName(symbol)) : null;
@@ -70,7 +81,7 @@ function readName(symbol: string, uwOnly: boolean): NameRead {
       near = { ...n, pct: ((n.at - spot) / spot) * 100 };
     }
   }
-  return { spot, change: change != null && Number.isFinite(change) ? change : null, near, live: uwOnly ? !!q : !!held?.live, at: held && !held.live ? held.value.at : null };
+  return { spot, change: change != null && Number.isFinite(change) ? change : null, ext, changeTitle, near, live: uwOnly ? !!q : !!held?.live, at: held && !held.live ? held.value.at : null };
 }
 
 const IconButton = ({ onClick, label, title, pressed, children, testId }: { onClick: () => void; label: string; title?: string; pressed?: boolean; children: ReactNode; testId?: string }) => (
@@ -144,7 +155,8 @@ const NameRow = ({
           </span>
           <span className="ml-auto flex flex-col items-end leading-tight font-mono tnum">
             <span className={`text-t11 ${read.live ? 'text-textPrimary' : 'text-textSecondary'}`} title={read.at ? quoteStamp(asOfText(read.at)) : undefined}>{spot != null ? usd(spot) : '—'}</span>
-            {change != null && <span className={`text-t10 ${change >= 0 ? 'text-bull' : 'text-bear'}`}>{pctSigned(change)}</span>}
+            {change != null && <span className={`text-t10 ${change >= 0 ? 'text-bull' : 'text-bear'}`} title={read.changeTitle ?? undefined} data-watch-change>{pctSigned(change)}</span>}
+            {read.ext && <span className="text-t9 text-textMuted" title={read.changeTitle ?? undefined} data-watch-ext>{read.ext}</span>}
           </span>
         </button>
         <span className="flex items-center opacity-70 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
@@ -472,7 +484,7 @@ const WatchlistDrawer = () => {
                             section={s}
                             sections={list.sections}
                             on={n.symbol === activeTicker}
-                            read={reads.get(n.symbol) ?? { spot: null, change: null, near: null, live: false, at: null }}
+                            read={reads.get(n.symbol) ?? { spot: null, change: null, ext: null, changeTitle: null, near: null, live: false, at: null }}
                             onPick={pick}
                             onTake={() => take(n.symbol)}
                             links={linksFor(n.symbol)}
