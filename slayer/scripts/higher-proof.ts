@@ -59,6 +59,31 @@ if (rel(vommaDollars, vommaDollarsFd) > 0.03) throw new Error(`vomma dollars ${v
 if (higherGreeksExact(S, K, 0, v)) throw new Error('expired contract was priced');
 if (higherGreeksExact(S, K, t, 0)) throw new Error('missing vol was priced');
 
+/* ---- thetaPerSession (core/greeks): the price change over one trading session, spot and vol held ---- */
+{
+  const { thetaPerSession, blackScholesPrice } = await import('../src/core/greeks');
+  const { normCdf } = await import('../src/core/math');
+  const pdf = (x: number) => Math.exp((-x * x) / 2) / Math.sqrt(2 * Math.PI);
+  /* a year out it is the analytic θ per year ÷ 252 to first order: S 100, K 100, σ 20%, t 1, r 4.2%, q 1.3% */
+  const rr = 0.042, qq = 0.013, T1 = 1;
+  const d1 = (Math.log(S / K) + (rr - qq + (v * v) / 2) * T1) / (v * Math.sqrt(T1));
+  const d2 = d1 - v * Math.sqrt(T1);
+  const thetaYear = (-S * Math.exp(-qq * T1) * pdf(d1) * v) / (2 * Math.sqrt(T1)) - rr * K * Math.exp(-rr * T1) * normCdf(d2) + qq * S * Math.exp(-qq * T1) * normCdf(d1);
+  const perSession = thetaPerSession(S, K, T1, v, 'C', rr, qq);
+  if (rel(perSession, thetaYear / 252) > 0.005) throw new Error(`thetaPerSession a year out ${perSession} vs θ/252 ${thetaYear / 252}`);
+  /* known number: 7 sessions out, ATM call, r 4.2%, q 0 — V(6/252) − V(7/252) */
+  const seven = thetaPerSession(S, K, 7 / 252, v, 'C', 0.042, 0);
+  const sevenHand = blackScholesPrice(S, K, 6 / 252, v, 'C', 0.042, 0) - blackScholesPrice(S, K, 7 / 252, v, 'C', 0.042, 0);
+  if (Math.abs(seven - sevenHand) > 1e-12 || Math.abs(seven - -0.10696) > 5e-5) throw new Error(`thetaPerSession 7 sessions ${seven} vs ${sevenHand} (−0.10696)`);
+  /* the last session: the whole extrinsic, not θ/252 (which would overstate it by √ of the clock) */
+  const last = thetaPerSession(S, 102, 1 / 252, v, 'C', 0.042, 0);
+  const lastPrice = blackScholesPrice(S, 102, 1 / 252, v, 'C', 0.042, 0);
+  if (Math.abs(last + lastPrice) > 1e-12) throw new Error(`last-session theta ${last} vs −price ${-lastPrice}`);
+  const itmPut = thetaPerSession(S, 103, 1 / 252, v, 'P', 0.042, 0);
+  if (Math.abs(itmPut - (3 - blackScholesPrice(S, 103, 1 / 252, v, 'P', 0.042, 0))) > 1e-12) throw new Error(`ITM put last-session theta ${itmPut}`);
+  console.log('thetaPerSession ok', { yearOut: perSession.toFixed(5), sevenSessions: seven.toFixed(4), lastSession: last.toFixed(4) });
+}
+
 console.log('higher greeks ok', {
   color: g.color.toExponential(3),
   vomma: g.vomma.toExponential(3),

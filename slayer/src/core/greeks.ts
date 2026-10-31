@@ -105,3 +105,34 @@ export function impliedVolFromPrice(
   }
   return (lo + hi) / 2;
 }
+
+/** One trading session on the 252-session clock, in years. */
+export const SESSION_YEARS = 1 / 252;
+
+/** The price change, spot and vol held, over `dt` years of the option's own clock: V(t − dt) − V(t). When `dt` reaches the
+    expiry, the later value is the payoff at today's spot, so the last stretch's decay is the whole extrinsic. 0 for an
+    expired or unpriceable contract. */
+export function decayOver(
+  S: number,
+  K: number,
+  t: number,
+  v: number,
+  right: 'C' | 'P',
+  dt: number,
+  r?: number,
+  q?: number
+): number {
+  if (!(S > 0) || !(K > 0) || !(t > 0) || !(v > 0) || !(dt > 0)) return 0;
+  const now = blackScholesPrice(S, K, t, v, right, r, q);
+  const left = t - Math.min(dt, t);
+  const later = left > 1e-9 ? blackScholesPrice(S, K, left, v, right, r, q) : Math.max(0, right === 'C' ? S - K : K - S);
+  return later - now;
+}
+
+/** THE per-session theta: the price change over one trading session, spot and vol held, with `t` in trading years
+    (core/tradingYear tradingYears) and `v` on that clock (a vendor's calendar vol moved there by core/volClock
+    vendorIvOnTradingClock). Many sessions out this is θ_tradingYear / 252 to first order; inside the last session it is
+    minus the whole extrinsic. Negative for a long. */
+export function thetaPerSession(S: number, K: number, t: number, v: number, right: 'C' | 'P', r?: number, q?: number): number {
+  return decayOver(S, K, t, v, right, SESSION_YEARS, r, q);
+}
