@@ -76,7 +76,7 @@ function faultText(status: number, parsed: unknown, text: string): string {
   const o = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
   const code = o && typeof o.code === 'string' ? o.code : '';
   const raw = o ? String(o.error || o.message || '') : typeof parsed === 'string' ? parsed : text;
-  if (code === 'terminal_down' || code === 'session_lost' || code === 'terminal_unavailable' || status === 0 || downStatus(status) || /not running|invalid session/i.test(raw)) return 'terminal_down';
+  if (code === 'terminal_down' || code === 'terminal_login' || code === 'session_lost' || code === 'terminal_unavailable' || status === 0 || downStatus(status) || /not running|invalid session/i.test(raw)) return 'terminal_down';
   if (status === 472) return 'no_data';
   const msg = raw.replace(/\s+/g, ' ').trim().slice(0, 180);
   return msg || `unavailable ${status}`;
@@ -128,7 +128,7 @@ export async function thetaCall(path: string, jump = false): Promise<{ status: n
     const data = unwrap(parsed);
     /* an outage or a no-data answer the proxy sent as 200 (x-theta-soft) still carries its code */
     const outage = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as { code?: unknown }).code : undefined;
-    if (outage === 'terminal_down' || outage === 'session_lost' || outage === 'terminal_unavailable') {
+    if (outage === 'terminal_down' || outage === 'terminal_login' || outage === 'session_lost' || outage === 'terminal_unavailable') {
       /* A stolen session is one read. The terminal is still up and the next read usually lands — a 15s blackout
          is what left the rail saying offline while quotes were answering. A dead terminal still backs off. */
       if (outage !== 'session_lost') noteDown();
