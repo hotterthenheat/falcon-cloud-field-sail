@@ -4,7 +4,7 @@
 
 import { expiryFor, isoDate, isTradingDay, type Expiry, MONTHS as MONTHS_SHORT } from '../core/calendar';
 import { keepTheta, keptTheta, noData, thetaGet } from './thetaFeed';
-import { bsOnMark, yearFracLeft } from './weigherGate';
+import { atmIvAt, expectedMovePctOf, readContract } from './weigherGate';
 import { weekdayDte } from './compassParams';
 import { nameTape } from './compassSession';
 import { nyIsoDate, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
@@ -19,10 +19,19 @@ export interface DeskContract {
   mark: number;
   delta: number;
   gamma: number;
-  /** Per DAY, the convention every retail chain prints */
+  /** Per trading SESSION: the price change over one session on the trading clock, spot and vol held (core/greeks
+      thetaPerSession). Inside the last session it is minus the extrinsic. */
   theta: number;
+  /** The decay over the next trading hour (or what is left of the session), same clock. */
+  thetaHour?: number;
+  /** Per point of the quoted IV */
   vega: number;
+  /** Percent, quoted on the calendar year (the vendor's convention), whether the vendor sent it or it was solved */
   iv: number;
+  /** Where the IV came from */
+  ivFrom?: 'vendor' | 'mark';
+  /** A European price for an American put in the money: the UI says so (weigherGate EUROPEAN_NOTE) */
+  europeanApprox?: boolean;
   /** Risk-neutral odds the contract finishes in the money — N(d2) family */
   itmOdds: number;
   rho: number;
@@ -75,8 +84,12 @@ export interface DeskChain {
   step: number;
   rows: DeskChainRow[];
   expiry: Expiry;
-  /** The move the options are charging for by this expiry, ± percent */
+  /** The move the options are charging for by this expiry's close, ± percent: S·σ_ATM·√T_calendar (core/volClock
+      sigmaToExpiry) */
   expectedMovePct: number;
+  /** The IV at spot, percent on the calendar year, interpolated between the strikes around spot (weigherGate atmIvAt).
+      Absent on a chain that has none. */
+  atmIv?: number;
   /** Live is this contract's own NBBO. Simulated is the desk model, and it says so. */
   source: 'live' | 'simulated';
   /** Newest quote time on the chain, epoch ms. */
@@ -452,19 +465,26 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
   const byStrike = new Map<number, { call?: DeskContract; put?: DeskContract }>();
   let spot = 0;
   let quotedAt = 0;
-  const ivs: number[] = [];
-  const tYears = yearFracLeft(iso);
-  const feedGreeks: { row: DeskContract; theta: number | null; vega: number | null; solved: ReturnType<typeof bsOnMark> }[] = [];
+  const now = Date.now();
   /* The terminal did not answer: an empty chain that says so. The desk keeps the chain it had. */
   if (got.error && !noData(got)) return { ticker: name, spot: 0, step: 1, rows: [], expiry, expectedMovePct: 0, source: 'live', quotedAt: 0, expiryIso: iso, optRoot: symbol, offline: true };
   {
-    for (const item of snapRows(got.data)) {
+    const items = snapRows(got.data);
+    /* one spot for every row: the newest underlying print on the snapshot */
+    let spotAt = -1;
+    for (const item of items) {
+      const under = numOr(item.data.underlying_price);
+      const uAt = stampMs(item.data.underlying_timestamp) || 0;
+      if (under != null && under > 0 && uAt >= spotAt) {
+        spot = under;
+        spotAt = uAt;
+      }
+    }
+    for (const item of items) {
       const strike = numOr(item.contract.strike);
       const word = String(item.contract.right || '').toLowerCase();
       const right: OptionRight | null = word.startsWith('c') ? 'C' : word.startsWith('p') ? 'P' : null;
       if (!right || strike == null || !(strike > 0)) continue;
-      const under = numOr(item.data.underlying_price);
-      if (under != null && under > 0) spot = under;
       const key = contractKey(item.contract);
       const book = key ? nbbo.get(key) : undefined;
       const bid = book && Number.isFinite(book.bid) ? book.bid : numOr(item.data.bid);
@@ -473,14 +493,13 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
       const askN = ask == null ? NaN : ask;
       const at = (book && book.at) || stampMs(item.data.timestamp);
       if (at > quotedAt) quotedAt = at;
-      const solved = spot > 0 ? bsOnMark(spot, strike, right, bidN, askN, tYears) : null;
       const feed = (key: string) => numOr(item.data[key]);
+      /* ThetaData sends implied_vol as a fraction on the calendar year, always (0.2246 is 22.46%) */
       const feedIv = feed('implied_vol');
-      const ivPct = feedIv != null && feedIv > 0 ? (feedIv < 3 ? feedIv * 100 : feedIv) : solved ? solved.iv : NaN;
-      if (ivPct > 0) ivs.push(ivPct);
-      const feedTheta = feed('theta');
-      const feedVega = feed('vega');
-      const feedRho = feed('rho');
+      /* every model number in the row off one vol on one clock: the vendor's IV moved onto the trading clock, else the
+         mid's own (data/weigherGate readContract) */
+      const solved = spot > 0 ? readContract({ ticker: name, root: symbol, spot, strike, right, bid: bidN, ask: askN, expiryIso: iso, vendorIv: feedIv, now }) : null;
+      const ivPct = solved ? solved.iv : NaN;
       const feedDelta = feed('delta');
       const feedGamma = feed('gamma');
       const mark = bidN >= 0 && askN >= bidN && askN > 0 ? (bidN + askN) / 2 : NaN;
@@ -490,13 +509,16 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
         strike,
         right,
         mark: Number.isFinite(mark) ? Number(mark.toFixed(2)) : NaN,
-        delta: feedDelta != null ? Number(feedDelta.toFixed(4)) : solved ? Number(solved.delta.toFixed(4)) : NaN,
-        gamma: feedGamma != null ? Number(feedGamma.toFixed(4)) : solved ? Number(solved.gamma.toFixed(4)) : NaN,
+        delta: solved ? Number(solved.delta.toFixed(4)) : feedDelta != null ? Number(feedDelta.toFixed(4)) : NaN,
+        gamma: solved ? Number(solved.gamma.toFixed(4)) : feedGamma != null ? Number(feedGamma.toFixed(4)) : NaN,
         theta: solved ? Number(solved.theta.toFixed(4)) : NaN,
+        thetaHour: solved ? Number(solved.thetaHour.toFixed(4)) : NaN,
         vega: solved ? Number(solved.vega.toFixed(4)) : NaN,
         iv: Number.isFinite(ivPct) ? Number(ivPct.toFixed(2)) : NaN,
+        ivFrom: solved?.ivFrom,
+        europeanApprox: solved?.europeanApprox,
         itmOdds: solved ? Number(solved.itm.toFixed(2)) : NaN,
-        rho: feedRho != null ? Number((feedRho / 100).toFixed(4)) : solved ? Number(solved.rho.toFixed(4)) : NaN,
+        rho: solved ? Number(solved.rho.toFixed(4)) : NaN,
         bid: bidN,
         ask: askN,
         high: NaN,
@@ -519,21 +541,14 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
         profitOddsShort: solved ? Number(solved.profitShort.toFixed(2)) : NaN,
         quotedAt: at,
       };
-      feedGreeks.push({ row, theta: feedTheta, vega: feedVega, solved });
       const slot = byStrike.get(strike) ?? {};
       if (right === 'C') slot.call = row;
       else slot.put = row;
       byStrike.set(strike, slot);
     }
   }
-  /* The terminal's theta and vega in the chain's units (per calendar day, per vol point), the scale read off the chain
-     itself against Black-Scholes on each mark; with no agreement the mark's own greek stays */
-  const thetaScale = unitScale(feedGreeks.map(g => [g.theta, g.solved?.theta ?? null]));
-  const vegaScale = unitScale(feedGreeks.map(g => [g.vega, g.solved?.vega ?? null]));
-  for (const g of feedGreeks) {
-    if (g.theta != null && thetaScale) g.row.theta = Number((g.theta / thetaScale).toFixed(4));
-    if (g.vega != null && vegaScale) g.row.vega = Number((g.vega / vegaScale).toFixed(4));
-  }
+  /* The terminal's own theta (per calendar day, on its calendar clock) and vega are not shown: the row's theta is per
+     trading session and its vega per quoted vol point, both off the one vol above. */
   const strikes = [...byStrike.keys()].sort((a, b) => a - b);
   if (!strikes.length) {
     return {
@@ -562,14 +577,16 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
     const slot = byStrike.get(strike)!;
     return { strike, call: slot.call ?? blank(strike, 'C'), put: slot.put ?? blank(strike, 'P') };
   });
-  const atm = ivs.length ? ivs[Math.floor(ivs.length / 2)] : 0;
+  /* ATM IV at spot from the strikes around it (quoted convention), then S·σ·√T on the expiry's calendar clock */
+  const atm = atmIvAt(rows, spot);
   return {
     ticker: name,
     spot,
     step,
     rows,
     expiry,
-    expectedMovePct: atm > 0 ? Number((atm * Math.sqrt(Math.max(tYears, 1e-6))).toFixed(2)) : 0,
+    atmIv: atm > 0 ? Number(atm.toFixed(2)) : 0,
+    expectedMovePct: Number(expectedMovePctOf(spot, atm, iso, now).toFixed(2)),
     source: 'live',
     quotedAt,
     expiryIso: iso,
