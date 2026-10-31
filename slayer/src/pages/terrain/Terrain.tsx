@@ -13,7 +13,9 @@ import { thetaChartBars } from '../../data/thetaCandles';
 import { fmtUsd } from '../../data/gex';
 import { CALENDAR_DTES } from '../../data/exposureSurface';
 import { expiryFor, futuresPhaseAt, FUTURES_PHASE_WORDS } from '../../core/calendar';
-import { nyClock } from '../../core/nyTime';
+import { nyClock, nyIsoDate } from '../../core/nyTime';
+import { peekThetaPrice, thetaMove, useThetaPrice } from '../../data/thetaQuote';
+import { closeMoveTitle, sessionWhen, signedPct } from '../../data/dayChange';
 
 import DistanceUnitPicker from '../../components/ui/DistanceUnitPicker';
 import SessionBook from '../../components/ui/SessionBook';
@@ -491,7 +493,11 @@ const SESSION_EMPTY: Record<DeskSession, string> = {
   rth: 'No regular prints',
   post: 'No after-hours prints',
 };
-function headRead(ticker: string, session: DeskSession, cashClose: number | null): { px: number | null; at: number; move: number | null; note: string | null } {
+type HeadMv = ReturnType<typeof thetaMove>;
+/** The pane head's price and move. The regular session's head speaks the app's one convention (data/dayChange.ts
+    moveOffCloses): once that session is over its price is the official regular close (not the last minute bar's close),
+    its move the day's change; an extended session's move is from that same close. */
+function headRead(ticker: string, session: DeskSession, cashClose: number | null, mv: HeadMv = null): { px: number | null; at: number; move: number | null; note: string | null; closed: boolean } {
   const bars = thetaChartBars(ticker, 1, session);
   let last: { close: number; time: number } | null = null;
   for (let i = bars.length - 1; i >= 0; i--) {
@@ -505,18 +511,24 @@ function headRead(ticker: string, session: DeskSession, cashClose: number | null
     const tape = peekTape(ticker, '1m', session);
     const waiting = tape.bars.length === 0 && (tape.state === 'loading' || tape.takenAt === 0);
     const note = waiting ? null : SESSION_EMPTY[session];
-    return { px: null, at: 0, move: null, note };
+    return { px: null, at: 0, move: null, note, closed: false };
   }
+  const lastDay = nyIsoDate(last.time * 1000);
+  /* the regular close of the session this tape's last bar is in, when the closes have it */
+  const regClose = mv && mv.regClose != null && mv.regDate === lastDay ? mv.regClose : null;
+  if (session === 'rth' && regClose != null) return { px: regClose, at: last.time, move: mv?.pct ?? null, note: null, closed: true };
   const px = last.close;
   const print = peekPrint(ticker);
-  const base = session === 'post' || session === 'overnight' ? cashClose : print && print.prev > 0 ? print.prev : null;
-  return { px, at: last.time, move: px != null && base != null && base > 0 ? ((px - base) / base) * 100 : null, note: null };
+  const extBase = mv && mv.regClose != null && mv.regDate != null && mv.regDate <= lastDay ? mv.regClose : cashClose;
+  const base = session === 'post' || session === 'overnight' ? extBase : mv && mv.base != null && session === 'rth' ? mv.base : print && print.prev > 0 ? print.prev : null;
+  return { px, at: last.time, move: px != null && base != null && base > 0 ? ((px - base) / base) * 100 : null, note: null, closed: false };
 }
 /* Leaves, so a print (every second in the session) re-renders the number and not the pane */
 const HeadPrice = ({ ticker, session, className }: { ticker: string; session: DeskSession; className?: string }) => {
   usePrintRev();
   useTapeRev();
-  const { px, at, note } = headRead(ticker, session, null);
+  const mv = thetaMove(useThetaPrice(ticker).held?.value);
+  const { px, at, note, closed } = headRead(ticker, session, null, mv);
   const quote = useSessionQuote(ticker, session, session !== 'rth' && px == null && !note);
   if (px == null && note) {
     return (
@@ -529,21 +541,26 @@ const HeadPrice = ({ ticker, session, className }: { ticker: string; session: De
   if (px == null) return <span className="font-mono text-t11 text-textMuted">—</span>;
   const stale = at > 0 && Date.now() / 1000 - at > 120;
   return (
-    <span className="inline-flex items-baseline gap-1">
+    <span className="inline-flex items-baseline gap-1" data-head-price={closed ? 'close' : session}>
       <SpotPrice value={px} className={className} />
-      {stale && <span className="font-mono text-t10 text-textMuted" title="The last print on the tape. Nothing newer has printed.">{nyClock(at * 1000)}</span>}
+      {closed ? (
+        <span className="font-mono text-t10 text-textMuted" title={`The official regular close of ${sessionWhen(mv?.regDate) ?? 'today'}. The rail's price is the last trade, any session.`}>{sessionWhen(mv?.regDate) ? `${sessionWhen(mv?.regDate)!.slice(0, 3)} close` : 'close'}</span>
+      ) : (
+        stale && <span className="font-mono text-t10 text-textMuted" title="The last print on the tape. Nothing newer has printed.">{nyClock(at * 1000)}</span>
+      )}
     </span>
   );
 };
 const HeadMove = ({ ticker, session, cashClose, className = '' }: { ticker: string; session: DeskSession; cashClose: number | null; className?: string }) => {
   usePrintRev();
   useTapeRev();
-  const { move } = headRead(ticker, session, cashClose);
+  const mv = thetaMove(useThetaPrice(ticker).held?.value);
+  const { move, closed } = headRead(ticker, session, cashClose, mv);
   if (move == null) return null;
   return (
-    <span className={`${className} ${move >= 0 ? 'text-bull' : 'text-bear'}`} title={session === 'rth' ? undefined : 'From the regular close'}>
-      {move >= 0 ? '+' : ''}
-      {move.toFixed(2)}%
+    <span className={`${className} ${move >= 0 ? 'text-bull' : 'text-bear'}`} title={closed && mv ? closeMoveTitle(mv) : session === 'rth' ? 'Against the regular close before it' : `${session === 'pre' ? 'Pre-market' : 'After hours'}, from the regular close`} data-head-move>
+      {session === 'post' || session === 'overnight' ? 'AH ' : session === 'pre' ? 'PM ' : ''}
+      {signedPct(move)}
     </span>
   );
 };
@@ -1091,7 +1108,7 @@ const Pane = ({
       chart,
       panel,
       (() => {
-        const { px, move } = headRead(ticker, session, cashClose);
+        const { px, move } = headRead(ticker, session, cashClose, thetaMove(peekThetaPrice(ticker)?.value));
         return { ticker, timeframe, price: px != null ? px.toFixed(2) : '—', change: move == null ? '—' : `${move >= 0 ? '+' : '−'}${Math.abs(move).toFixed(2)}%`, up: (move ?? 0) >= 0, when };
       })(),
       panelEl ?? chartEl ?? box,

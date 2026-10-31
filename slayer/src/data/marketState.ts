@@ -56,6 +56,19 @@ const opensWhen = (today: Date, next: Date): string => {
   return `It opens ${when}at 8:30 AM CT${early}.`;
 };
 
+const DOW3 = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** When the next regular session opens, New York time, while the market is shut (null in the session): "Mon 09:30"
+    for the rail, "Mon Nov 2, 09:30 ET" for a hover. Today's own open when it is still ahead. */
+export function nextOpenWords(now: Date = new Date()): { short: string; long: string } | null {
+  const clock = readSessionClock(now);
+  if (clock.phase === 'OPEN' || clock.phase === 'AUCTION') return null;
+  const today = nyDate(now);
+  const next = isTradingDay(today) && clock.phase === 'PREMARKET' ? today : nextTradingDay(today);
+  const day = next.getTime() === today.getTime() ? 'today' : DOW3[next.getDay()];
+  return { short: `opens ${day} 09:30`, long: `${day === 'today' ? 'today' : `${DOW3[next.getDay()]} ${MON3[next.getMonth()]} ${next.getDate()}`}, 09:30 ET` };
+}
+
 /** Where the market is right now, as the brand says it */
 export function readMarketState(now: Date = new Date()): MarketState {
   const clock = readSessionClock(now);

@@ -607,11 +607,11 @@ const StockName = () => {
             title={
               live < pageSources.length
                 ? `Not live: ${pageSources.filter(x => x.status !== 'live').map(x => `${x.label} (${x.stamp})`).join('; ')}. The read itself — the trend, the numbers and the money — is scored off the screener row alone, so it does not wait on ${pageSources.length - live === 1 ? 'it' : 'them'}; the boxes that show ${pageSources.length - live === 1 ? 'it' : 'them'} say so.`
-                : 'Every source on the page is live. The read is scored off the screener row; the rest is shown beside it.'
+                : 'Every source on the page answered. Each box stamps when its figures are from; the read is scored off the screener row, the rest is shown beside it.'
             }
           >
-            {live} of {pageSources.length} sources live
-            {live < pageSources.length ? <span className="normal-case tracking-normal"> · {pageSources.filter(x => x.status !== 'live').map(x => x.label.toLowerCase()).join(', ')} not live · not in the read</span> : null}
+            {live} of {pageSources.length} sources answered
+            {live < pageSources.length ? <span className="normal-case tracking-normal"> · {pageSources.filter(x => x.status !== 'live').map(x => x.label.toLowerCase()).join(', ')} not in · not in the read</span> : null}
           </span>
         </div>
       </div>
@@ -1506,7 +1506,8 @@ function NameWithoutBook({ ticker, file, quote }: { ticker: string; file: StockF
   const today = nyIsoDate();
   const next = dates.find(d => d >= today) ?? null;
   const px = quote ? (quote.phase !== 'regular' && quote.extPrice != null && quote.extPrice > 0 ? quote.extPrice : quote.spot > 0 ? quote.spot : null) : null;
-  const pct = quote ? (quote.phase === 'regular' ? quote.changePct : quote.extPct) : null;
+  /* the day's change (data/dayChange.ts): the regular session's, never the after-hours move in its place */
+  const pct = quote && Number.isFinite(quote.changePct) ? quote.changePct : null;
   const filed = quarterFacts(file.quarters);
   return (
     <div className="border border-borderSubtle rounded-md bg-panel px-5 py-4" data-stock-empty={ticker}>
