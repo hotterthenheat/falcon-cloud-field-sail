@@ -19,6 +19,7 @@ import { isPaperIndex } from '../src/data/paper/products';
 import { optionRootOf } from '../src/data/paper/thetaFeed';
 import type { ContractId } from '../src/data/review/quotes';
 import { priceWith } from './paper-test-pricer';
+import { excursionOf } from '../src/data/review/excursion';
 import { replayGaps, type Fetched } from '../src/data/paper/catchUp';
 import { legKey } from '../src/data/review/history';
 import { gapOf } from '../src/data/paper/engine';
@@ -984,6 +985,31 @@ const fixed = (price: () => number, t = now): PaperMarket => ({
   const step2b = { ...step2, peak: 27_000 };
   ok('…below where it stops: 27,000 − 3,000 = 24,000', floorOf(step2b) === 24_000);
   ok('…a plan without it keeps one floor for every phase (Options Funding Growth: one phase, unchanged)', planById('of-growth-50k')!.rules.drawdown?.perPhase !== true);
+}
+
+{
+  /* 9. a paper short's ways out are its buy backs, priced the way it faces, fees on every leg */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  let p = 2;
+  const c: ContractId = { ticker: 'SPY', strike: 500, right: 'P', expiry: '2026-10-16' };
+  let x = newAccount({ id: 'ex9', kind: 'practice', name: 'ex9', startCash: 25_000, now: T0 });
+  x = optPlace(x, fixed(() => p, T0), { contract: c, side: 'sell', qty: 2, kind: 'market' });
+  x = optPlace(x, fixed(() => p, T0 + 1000), { contract: c, side: 'buy', qty: 1, kind: 'limit', price: 1 });
+  x = optPlace(x, fixed(() => p, T0 + 2000), { contract: c, side: 'buy', qty: 1, kind: 'stop', price: 3 });
+  p = 1.5;
+  x = optClose(x, fixed(() => p, T0 + 60_000), c, 2);
+  const t9 = optBookOf(x).trades[0];
+  const e9 = excursionOf({ key: `ex9:${t9.id}`, s: x, t: t9, fut: false, paper: true });
+  ok('a short’s target is the buy back under it: at 1.00, (2.00 − 1.00) × 100 − 0.65 × 2 = +98.70; the opening sell is not one', e9.targets.length === 1 && e9.targets[0].price === 1 && near(e9.targets[0].pnl ?? NaN, 98.7), JSON.stringify(e9.targets));
+  ok('…its stop the buy stop over it: at 3.00, −101.30', e9.stops.length === 1 && near(e9.stops[0].pnl ?? NaN, -101.3), JSON.stringify(e9.stops));
+  /* a debit spread: two legs, so the fee is 0.65 × 2 legs × 2 ways a set */
+  let y = newAccount({ id: 'ex9b', kind: 'practice', name: 'ex9b', startCash: 25_000, now: T0 });
+  const sp: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: '2026-10-16', short: 505 };
+  y = optPlace(y, fixed(() => 2, T0), { contract: sp, side: 'buy', qty: 1, kind: 'market', bracket: { target: 4 } });
+  y = optClose(y, fixed(() => 2.5, T0 + 60_000), sp, 1);
+  const ts = optBookOf(y).trades[0];
+  const es = excursionOf({ key: `ex9b:${ts.id}`, s: y, t: ts, fut: false, paper: true });
+  ok('a spread’s target at 4.00 is (4 − 2) × 100 − 0.65 × 2 legs × 2 = 197.40 — every leg’s fee', es.targets.length === 1 && near(es.targets[0].pnl ?? NaN, 197.4), JSON.stringify(es.targets));
 }
 
 console.log(`\n${passed} held · ${failed} missed`);

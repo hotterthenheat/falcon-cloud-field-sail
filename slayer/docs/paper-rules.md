@@ -476,3 +476,8 @@ Every rule below has a known-number check in `scripts/paper-proof.ts` (paper) an
   Pre-Prop, whose Prop step is a step of its own: begun at 26,300 and closed as high as 29,500, its floor is 26,300 —
   not the first step's 25,000. Every other plan keeps one floor across its phases. An account saved before this keeps
   the plan it was saved with.
+- **A trade's ways out in the journal** (`review/excursion.ts`) face the way the trade does: a long's are its sells, a
+  short's its buy backs (a buy limit under the entry its target, a buy stop over it its stop) — the order that opened a
+  short is never one. What each would have made is dir × (price − entry) × 100 × qty less the fee a contract each way
+  on **every leg** (a spread pays two). Short 2.00, target 1.00: +$98.70; a debit spread in at 2.00, target 4.00:
+  +$197.40.
