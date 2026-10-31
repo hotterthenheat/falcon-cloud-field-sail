@@ -1,7 +1,7 @@
 /* The one session rule (shared/marketSession.mjs, src/core/session.ts) at every boundary, and the modules that read it.
    Every instant is written as New York wall time (DST included) through nyInstant. */
 
-import { nyInstant, sessionAt, phaseAt, windowAt, feedMoving, nextChangeAt, type Product } from '../src/core/session';
+import { nyInstant, productOf, sessionAt, phaseAt, windowAt, feedMoving, nextChangeAt, type Product } from '../src/core/session';
 import { sessionBadge, extWordAt, printIsCurrent, whenWords } from '../src/core/session';
 import { sessionPhase, marketPhase } from '../src/core/marketPhase';
 import { nySessionPhase } from '../src/core/nyTime';
@@ -150,6 +150,21 @@ const preMv = moveOffCloses(758, ny('2026-11-02 05:00'), closes, ny('2026-11-02 
 check('a pre-market print is PM', preMv.extWord === 'pre-market' && preMv.phase === 'pre');
 const regMv = moveOffCloses(758, ny('2026-11-02 10:00'), closes, ny('2026-11-02 10:01'));
 check('in the session the day change is the live price off the last close', regMv.phase === 'regular' && regMv.extPct == null && Math.abs((regMv.dayPct ?? 0) - ((758 - 755.72) / 755.72) * 100) < 1e-9);
+
+/* options pre-market (seen trading 07:30–09:25 in ThetaData on 2026-10-30: SPY, QQQ, NVDA, AAPL, TSLA, AMD) */
+check('SPY options are extEtfOption', productOf('SPY', true) === 'extEtfOption');
+check('NVDA options are extEquityOption', productOf('NVDA', true) === 'extEquityOption');
+check('KO options are plain equityOption', productOf('KO', true) === 'equityOption');
+check('SPY options open 07:30 (pre)', open('2026-11-02 07:30', 'extEtfOption') && sessionAt(ny('2026-11-02 07:30'), 'extEtfOption').window?.kind === 'pre');
+check('SPY options closed 07:29', !open('2026-11-02 07:29', 'extEtfOption'));
+check('SPY options halt 09:25–09:29', !open('2026-11-02 09:26', 'extEtfOption'));
+check('SPY options open to 16:14, shut 16:15', open('2026-11-02 16:14', 'extEtfOption') && !open('2026-11-02 16:15', 'extEtfOption'));
+check('NVDA options pre 08:00', open('2026-11-02 08:00', 'extEquityOption'));
+check('NVDA options curb 16:00–16:14', sessionAt(ny('2026-11-02 16:05'), 'extEquityOption').window?.kind === 'curb');
+check('NVDA options shut 16:15', !open('2026-11-02 16:15', 'extEquityOption'));
+check('KO options closed 08:00', !open('2026-11-02 08:00', 'equityOption'));
+check('no options pre-market on a holiday (Thanksgiving)', !open('2026-11-26 08:00', 'extEtfOption'));
+check('early close: SPY options end 13:15, NVDA curb 13:00–13:14', open('2026-11-27 13:14', 'extEtfOption') && !open('2026-11-27 13:15', 'extEtfOption') && sessionAt(ny('2026-11-27 13:05'), 'extEquityOption').window?.kind === 'curb');
 
 if (failed) {
   console.log(`\n${failed} check(s) failed`);

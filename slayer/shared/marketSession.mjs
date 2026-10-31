@@ -17,7 +17,11 @@
   Products trade their own windows inside it:
     equity        the phase above
     equityOption  09:30–16:00 (13:00 on an early close); no extended session
-    etfOption     09:30–16:15 (13:15 on an early close): SPY, QQQ, IWM, DIA and the other broad index ETFs
+    extEquityOption  the single names with an options pre-market (AAPL, NVDA, TSLA, AMD, META, MSFT…): pre 07:30–09:25,
+                  regular 09:30–16:00, curb 16:00–16:15 (each seen trading in those windows in ThetaData, Oct 2026;
+                  the list is Compass's EXT_STOCK, scripts/compass-hours-check.ts)
+    etfOption     09:30–16:15 (13:15 on an early close): DIA and the other broad index ETFs
+    extEtfOption  SPY, QQQ, IWM, GLD: pre 07:30–09:25, regular 09:30–16:15
     indexOption   SPX/SPXW/XSP/VIX/RUT — Cboe Global Trading Hours 20:15 (the evening before) → 09:25, regular
                   09:30–16:15, curb 16:15–17:00. On an early close the regular session ends 13:15 and there is no curb.
                   GTH opens the evening before every session. Before a holiday Cboe's table runs GTH from 20:15 the
@@ -37,7 +41,7 @@ const EARLY = new Set(EARLY_CLOSE_DATES);
 const ONE_OFF = new Set(['2018-12-05', '2025-01-09']);
 
 export const PHASES = ['overnight', 'pre', 'regular', 'post', 'closed'];
-export const PRODUCTS = ['equity', 'equityOption', 'etfOption', 'indexOption'];
+export const PRODUCTS = ['equity', 'equityOption', 'extEquityOption', 'etfOption', 'extEtfOption', 'indexOption'];
 
 /* ---- New York's wall clock ---------------------------------------------------------------------------------- */
 
@@ -132,6 +136,12 @@ export function sessionDayAtOrBefore(iso) {
 
 /** The ETF classes whose options trade to 16:15 (Cboe: "ETF options that currently trade until 4:15 p.m.") */
 export const LATE_ETFS = new Set(['SPY', 'QQQ', 'IWM', 'DIA', 'MDY', 'EEM', 'EFA', 'GLD', 'SLV', 'TLT', 'XLE', 'XLF', 'XLK', 'SMH', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC', 'OEF', 'IVV', 'VOO']);
+/** Single names whose options trade a 07:30–09:25 pre-market and a 16:00–16:15 curb (Compass's EXT_STOCK) */
+export const EXT_STOCK_OPTIONS = new Set([
+  'AAPL', 'AMD', 'AMZN', 'AVGO', 'BABA', 'BAC', 'F', 'GOOG', 'GOOGL', 'HOOD', 'INTC', 'META', 'MRVL', 'MSFT', 'MU', 'NFLX', 'NVDA', 'ORCL', 'PFE', 'PLTR', 'TSLA', 'TSM',
+]);
+/** ETFs whose options trade the 07:30–09:25 pre-market and to 16:15 (Compass's EXT_ETF) */
+export const EXT_ETF_OPTIONS = new Set(['GLD', 'IWM', 'QQQ', 'SPY']);
 /** The index roots whose options trade Global Trading Hours */
 export const GTH_ROOTS = new Set(['SPX', 'SPXW', 'XSP', 'VIX', 'VIXW', 'RUT', 'RUTW']);
 /** Index symbols (prices, no shares): SPX, NDX, VIX… */
@@ -142,6 +152,8 @@ export function productOf(symbol, option = false) {
   const s = String(symbol ?? '').trim().toUpperCase();
   if (!option) return 'equity';
   if (GTH_ROOTS.has(s)) return 'indexOption';
+  if (EXT_ETF_OPTIONS.has(s)) return 'extEtfOption';
+  if (EXT_STOCK_OPTIONS.has(s)) return 'extEquityOption';
   if (INDEX_SYMBOLS.has(s) || LATE_ETFS.has(s)) return 'etfOption';
   return 'equityOption';
 }
@@ -171,6 +183,21 @@ function windowsStarting(iso, product) {
   }
   if (product === 'etfOption') {
     if (session) out.push({ kind: 'regular', from: at(iso, 570), to: at(iso, regularCloseMin(iso) + 15) });
+    return out;
+  }
+  if (product === 'extEtfOption') {
+    if (session) {
+      out.push({ kind: 'pre', from: at(iso, 450), to: at(iso, 565) });
+      out.push({ kind: 'regular', from: at(iso, 570), to: at(iso, regularCloseMin(iso) + 15) });
+    }
+    return out;
+  }
+  if (product === 'extEquityOption') {
+    if (session) {
+      out.push({ kind: 'pre', from: at(iso, 450), to: at(iso, 565) });
+      out.push({ kind: 'regular', from: at(iso, 570), to: at(iso, regularCloseMin(iso)) });
+      out.push({ kind: 'curb', from: at(iso, regularCloseMin(iso)), to: at(iso, regularCloseMin(iso) + 15) });
+    }
     return out;
   }
   /* indexOption */
@@ -219,7 +246,7 @@ export function phaseAt(ms) {
 /**
  * The session at an instant.
  * @param {number} ms
- * @param {'equity'|'equityOption'|'etfOption'|'indexOption'} [product]
+ * @param {'equity'|'equityOption'|'extEquityOption'|'etfOption'|'extEtfOption'|'indexOption'} [product]
  */
 export function sessionAt(ms, product = 'equity') {
   const wall = nyWall(ms);

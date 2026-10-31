@@ -124,6 +124,8 @@ export function sessionBadge(s: MarketSessionAt = sessionAt(Date.now())): string
 export function productHours(product: Product, earlyClose = false): string {
   if (product === 'equityOption') return earlyClose ? 'options trade 9:30 AM–1:00 PM ET today' : 'options trade 9:30 AM–4:00 PM ET';
   if (product === 'etfOption') return earlyClose ? 'options trade 9:30 AM–1:15 PM ET today' : 'options trade 9:30 AM–4:15 PM ET';
+  if (product === 'extEtfOption') return earlyClose ? 'options trade 7:30–9:25 AM and 9:30 AM–1:15 PM ET today' : 'options trade 7:30–9:25 AM and 9:30 AM–4:15 PM ET';
+  if (product === 'extEquityOption') return earlyClose ? 'options trade 7:30–9:25 AM and 9:30 AM–1:15 PM ET today' : 'options trade 7:30–9:25 AM and 9:30 AM–4:15 PM ET';
   if (product === 'indexOption') return 'index options trade 8:15 PM–9:25 AM, 9:30 AM–4:15 PM and 4:15–5:00 PM ET';
   return 'stocks trade 8:00 PM–4:00 AM overnight, 4:00 AM–8:00 PM ET';
 }

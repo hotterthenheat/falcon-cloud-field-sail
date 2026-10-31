@@ -594,6 +594,12 @@ const PaperDesk = () => {
           desk says when they trade rather than show a stale quote as live; index options say they are in global hours */}
       {(() => {
         const os = sessionAt(Date.now(), optionProductOf(name));
+        if (os.window?.kind === 'pre')
+          return (
+            <span className="text-t10 text-textMuted" title="This name's options trade a 7:30–9:25 AM ET pre-market. Orders fill in the regular session." data-paper-options-hours="pre">
+              Options · pre-market
+            </span>
+          );
         if (os.window?.kind === 'gth' || os.window?.kind === 'curb')
           return (
             <span className="text-t10 text-textMuted" title="Index options trade Cboe's global trading hours 8:15 PM–9:25 AM ET and the 4:15–5:00 PM curb. Orders fill in the regular session." data-paper-options-hours={os.window.kind}>

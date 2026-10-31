@@ -1,5 +1,5 @@
 export type Phase = 'overnight' | 'pre' | 'regular' | 'post' | 'closed';
-export type Product = 'equity' | 'equityOption' | 'etfOption' | 'indexOption';
+export type Product = 'equity' | 'equityOption' | 'extEquityOption' | 'etfOption' | 'extEtfOption' | 'indexOption';
 export type WindowKind = 'overnight' | 'pre' | 'regular' | 'post' | 'gth' | 'curb';
 export interface SessionWindow {
   kind: WindowKind;
@@ -47,6 +47,8 @@ export function postCloseMin(iso: string): number;
 export function gthHoliday(iso: string): boolean;
 export function nextSessionDay(iso: string): string;
 export function sessionDayAtOrBefore(iso: string): string;
+export const EXT_STOCK_OPTIONS: ReadonlySet<string>;
+export const EXT_ETF_OPTIONS: ReadonlySet<string>;
 export function productOf(symbol: string, option?: boolean): Product;
 export function windowAt(ms: number, product?: Product): SessionWindow | null;
 export function nextWindow(ms: number, product?: Product): SessionWindow | null;
