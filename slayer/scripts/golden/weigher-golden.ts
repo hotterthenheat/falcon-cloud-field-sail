@@ -299,9 +299,15 @@ if (existsSync(thetaDir) && readdirSync(thetaDir).some(f => f.endsWith('.json.gz
   const next = await loadLiveChain('SPY', 1, 12, 'SPY');
   globalThis.fetch = real;
   expectEqual('synthetic chain read', [next.expiryIso, next.spot, next.rows.length], [nextIso, 601, 5]);
-  expectNear('a vendor IV of 3.2 reads 320%', next.rows.find(r => r.strike === 560)!.put.iv, 320, 1e-9);
+  /* The synthetic book's own quotes imply a forward (put-call parity at 595/600/605: 600.50, 600.90, 600.90 → F 600.90
+     against S 601, an implied yield of r + 5.2%), and every vendor IV is restated on it: the vendor's q = 0 model price,
+     solved again on that carry (data/weigherGate readContract). So a 3.2 still reads as 320% — a fraction, not 3.2% — but
+     on the book's forward it is 319.53%, and the ATM IV 20.29% (both were the vendor's prints exactly before the
+     chain priced off its parity forward). */
+  expectNear('synthetic book: its parity forward', next.forward?.F ?? NaN, 600.9, 1e-5);
+  expectNear('a vendor IV of 3.2 reads 320% (restated on the book\'s forward: 319.53)', next.rows.find(r => r.strike === 560)!.put.iv, 320, 0.005);
   /* 600: (20 + 21)/2 = 20.5, 605: (19 + 20)/2 = 19.5, at 601: 20.5 − 0.2 = 20.3 (the old middle-of-the-list pick read 20) */
-  expectNear('synthetic ATM IV at 601 = 20.30', next.atmIv ?? NaN, 20.3, 1e-9);
+  expectNear('synthetic ATM IV at 601 = 20.30 (20.29 on the book\'s forward)', next.atmIv ?? NaN, 20.3, 0.001);
   const { sigmaToExpiry } = await import('../../src/core/volClock');
   expectNear('synthetic expected move = sigmaToExpiry / S', next.expectedMovePct, Number((((sigmaToExpiry(601, 0.203, nextIso) ?? 0) / 601) * 100).toFixed(2)), 1e-9);
 }

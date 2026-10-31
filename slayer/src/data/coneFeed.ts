@@ -10,7 +10,7 @@ import { thetaUseHere } from './theta';
 import { uwCall } from './whales';
 import { onRebuiltTerm, rebuiltTerm } from './book/exposureLog';
 
-interface Row {
+export interface Row {
   expiry: string;
   dte: number;
   iv: number;
@@ -88,9 +88,14 @@ async function fromUw(ticker: string): Promise<Surface | null> {
 async function atmIv(root: string, expiration: string): Promise<{ iv: number; under: number } | null> {
   const got = await thetaGet(`/option/snapshot/greeks/first_order?symbol=${encodeURIComponent(root)}&expiration=${expiration.replace(/-/g, '')}&strike_range=1&format=json`);
   if (got.error) return null;
+  return atmOf(asRows(got.data));
+}
+
+/** The at-the-money IV of one expiry's snapshot rows: the strike nearest the underlying, its call and put IV averaged */
+function atmOf(rows: readonly Record<string, unknown>[]): { iv: number; under: number } | null {
   let under = 0;
   const byStrike = new Map<number, { c: number; p: number }>();
-  for (const item of asRows(got.data)) {
+  for (const item of rows) {
     /* v3 answers flat rows; a grouped answer nests the contract and its quote */
     const contract = (item.contract as Record<string, unknown> | undefined) ?? item;
     const data = 'data' in item ? firstRecord(item.data) : item;
@@ -122,29 +127,67 @@ async function atmIv(root: string, expiration: string): Promise<{ iv: number; un
   return iv > 0 ? { iv, under } : null;
 }
 
-async function fromTheta(ticker: string): Promise<Surface | null> {
-  const root = CHAIN[ticker] ?? ticker;
+const isoOfExp = (raw: unknown): string => {
+  const exp = String(raw ?? '').slice(0, 10);
+  return /^\d{8}$/.test(exp) ? `${exp.slice(0, 4)}-${exp.slice(4, 6)}-${exp.slice(6, 8)}` : exp;
+};
+/** The cone's three expiries out of the listed ones (sorted, today on): the nearest, the first Friday, the next */
+export function conePicks(dates: readonly string[]): string[] {
+  const picked = [dates[0], dates.find(d => new Date(`${d}T12:00:00Z`).getUTCDay() === 5), dates[1]].filter((d): d is string => !!d);
+  return [...new Set(picked)].slice(0, 3);
+}
+const dteOf = (expiry: string, today: string) => Math.max(0, Math.round((Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000));
+
+/** The cone's expiries reach this far: two weeks covers the nearest, the first Friday (a holiday Friday's weekly is the
+    Thursday, so the next listed Friday is still under two weeks out) and the one after the nearest */
+export const CONE_MAX_DTE = 14;
+
+/** ONE request for every expiry (`expiration=*`, the strike either side of the money): the same rows the per-expiry
+    reads return (scripts/cone-feed-proof.ts), so the cone costs 1 request instead of the list and 3 snapshots. Null when
+    it answers nothing usable (a name whose nearest expiry is further out): the per-expiry reads take over. */
+export async function coneRowsAll(root: string, today = nyIsoDate()): Promise<Row[] | null> {
+  const got = await thetaGet(`/option/snapshot/greeks/first_order?symbol=${encodeURIComponent(root)}&expiration=*&max_dte=${CONE_MAX_DTE}&strike_range=1&format=json`);
+  if (got.error) return null;
+  const byExp = new Map<string, Record<string, unknown>[]>();
+  for (const item of asRows(got.data)) {
+    const contract = (item.contract as Record<string, unknown> | undefined) ?? item;
+    const exp = isoOfExp(contract.expiration);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(exp) || exp < today) continue;
+    const list = byExp.get(exp) ?? [];
+    list.push(item);
+    byExp.set(exp, list);
+  }
+  const rows: Row[] = [];
+  for (const expiry of conePicks([...byExp.keys()].sort())) {
+    const atm = atmOf(byExp.get(expiry) ?? []);
+    if (atm) rows.push({ expiry, dte: dteOf(expiry, today), iv: atm.iv, move: 0 });
+  }
+  return rows.length ? rows : null;
+}
+
+/** The per-expiry way, kept as the fallback: the listed expiries, then one snapshot for each of the three the cone draws */
+export async function coneRowsPerExpiry(root: string, today = nyIsoDate()): Promise<Row[] | null> {
   const got = await thetaGet(`/option/list/expirations?symbol=${encodeURIComponent(root)}&format=json`);
   if (got.error) return null;
-  const today = nyIsoDate();
   const dates: string[] = [];
   for (const row of asRows(got.data)) {
-    let exp = String(row.expiration ?? '').slice(0, 10);
-    if (/^\d{8}$/.test(exp)) exp = `${exp.slice(0, 4)}-${exp.slice(4, 6)}-${exp.slice(6, 8)}`;
+    const exp = isoOfExp(row.expiration);
     if (/^\d{4}-\d{2}-\d{2}$/.test(exp) && exp >= today) dates.push(exp);
   }
   dates.sort();
-  const picked = [dates[0], dates.find(d => new Date(`${d}T12:00:00Z`).getUTCDay() === 5), dates[1]].filter((d): d is string => !!d);
-  const unique = [...new Set(picked)].slice(0, 3);
   const rows: Row[] = [];
-  for (const expiry of unique) {
+  for (const expiry of conePicks(dates)) {
     const atm = await atmIv(root, expiry);
     if (!atm) continue;
-    const dte = Math.max(0, Math.round((Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000));
-    rows.push({ expiry, dte, iv: atm.iv, move: 0 });
+    rows.push({ expiry, dte: dteOf(expiry, today), iv: atm.iv, move: 0 });
   }
-  if (!rows.length) return null;
-  return { at: Date.now(), rows, source: 'theta' };
+  return rows.length ? rows : null;
+}
+
+async function fromTheta(ticker: string): Promise<Surface | null> {
+  const root = CHAIN[ticker] ?? ticker;
+  const rows = (await coneRowsAll(root)) ?? (await coneRowsPerExpiry(root));
+  return rows ? { at: Date.now(), rows, source: 'theta' } : null;
 }
 
 /** With no live quote (a weekend, a holiday), the at-the-money vols of the newest finished day the field rebuilt from

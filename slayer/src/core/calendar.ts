@@ -11,20 +11,74 @@ import { EARLY_CLOSE_DATES, HOLIDAY_DATES } from '../../shared/marketCalendar.mj
     closes are EARLY_CLOSES below. */
 export const MARKET_HOLIDAYS: ReadonlySet<string> = new Set(HOLIDAY_DATES);
 
-/* Holidays the Theta terminal reports for the live year. Additive: the
-   list above stays, so a replay that never hears from the terminal still
-   refuses Good Friday 2019. An empty set changes nothing. */
+/* Holidays the market-data terminal reports (/calendar/year_holidays, read once a day through the server's hub:
+   data/holidayFeed.ts → mergeLiveHolidays). Merged with the table above, THE TABLE WINNING on any disagreement: for a
+   year the table covers, a date the two disagree on is logged and the table's answer kept; only a year the table does not
+   cover takes the terminal's closures and early closes. An empty set changes nothing. */
 const LIVE_HOLIDAYS = new Set<string>();
+const LIVE_EARLY = new Set<string>();
+const TABLE_YEARS: ReadonlySet<string> = new Set(HOLIDAY_DATES.map(d => d.slice(0, 4)));
 
 /** Cash session ends at 1:00 PM ET (12:00 PM CT) on these dates, back to 2016 for the replay (the day after
     Thanksgiving, and July 3 and December 24 when they are weekdays and not themselves holidays). Not holidays, and not a
     reason to invent a bar. */
 export const EARLY_CLOSES: ReadonlySet<string> = new Set(EARLY_CLOSE_DATES);
 
-export const isEarlyClose = (iso: string): boolean => EARLY_CLOSES.has(iso);
+export const isEarlyClose = (iso: string): boolean => EARLY_CLOSES.has(iso) || LIVE_EARLY.has(iso);
 
 /** Minute of the New York day the cash session ends on a date (YYYY-MM-DD): 13:00 on an early close, else 16:00. */
-export const sessionCloseMinOn = (iso: string): number => (EARLY_CLOSES.has(iso) ? 13 * 60 : 16 * 60);
+export const sessionCloseMinOn = (iso: string): number => (isEarlyClose(iso) ? 13 * 60 : 16 * 60);
+
+/** One row of the terminal's year of holidays */
+export interface HolidayRow {
+  date: string;
+  /** 'full_close' or 'early_close' */
+  type: string;
+  close?: string | null;
+}
+export interface HolidayMerge {
+  /** Years the answer covered */
+  years: string[];
+  /** Dates taken from the terminal (a year the table does not cover) */
+  added: string[];
+  /** Where the terminal and the table disagree, in words; the table's answer is kept */
+  disagree: string[];
+}
+const said = new Set<string>();
+/** Merge the terminal's holidays into the calendar, the table winning on every disagreement (logged once each). */
+export function mergeLiveHolidays(rows: readonly HolidayRow[], log: (line: string) => void = line => console.warn(line)): HolidayMerge {
+  const out: HolidayMerge = { years: [], added: [], disagree: [] };
+  const byYear = new Map<string, { full: Set<string>; early: Set<string> }>();
+  for (const r of rows) {
+    const d = String(r?.date ?? '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+    const y = byYear.get(d.slice(0, 4)) ?? { full: new Set<string>(), early: new Set<string>() };
+    if (r.type === 'full_close') y.full.add(d);
+    else if (r.type === 'early_close' && String(r.close ?? '').startsWith('13:00')) y.early.add(d);
+    else if (r.type === 'early_close') out.disagree.push(`${d}: the terminal closes early at ${r.close}; only 13:00 closes are known here, so it is not used`);
+    byYear.set(d.slice(0, 4), y);
+  }
+  for (const [year, got] of [...byYear].sort((a, b) => a[0].localeCompare(b[0]))) {
+    out.years.push(year);
+    if (!TABLE_YEARS.has(year)) {
+      for (const d of got.full) if (!LIVE_HOLIDAYS.has(d)) (LIVE_HOLIDAYS.add(d), out.added.push(d));
+      for (const d of got.early) if (!LIVE_EARLY.has(d)) (LIVE_EARLY.add(d), out.added.push(`${d} (early close)`));
+      continue;
+    }
+    const tableFull = HOLIDAY_DATES.filter(d => d.startsWith(year));
+    const tableEarly = EARLY_CLOSE_DATES.filter(d => d.startsWith(year));
+    for (const d of got.full) if (!MARKET_HOLIDAYS.has(d)) out.disagree.push(`${d}: the terminal says the market is closed; the table says ${EARLY_CLOSES.has(d) ? 'it closes early' : 'it is open'} — the table is kept`);
+    for (const d of tableFull) if (!got.full.has(d)) out.disagree.push(`${d}: the table says the market is closed; the terminal says ${got.early.has(d) ? 'it closes early' : 'it is open'} — the table is kept`);
+    for (const d of got.early) if (!EARLY_CLOSES.has(d) && !MARKET_HOLIDAYS.has(d)) out.disagree.push(`${d}: the terminal says 13:00 early close; the table says a full session — the table is kept`);
+    for (const d of tableEarly) if (!got.early.has(d) && !got.full.has(d)) out.disagree.push(`${d}: the table says 13:00 early close; the terminal says a full session — the table is kept`);
+  }
+  for (const line of out.disagree) {
+    if (said.has(line)) continue;
+    said.add(line);
+    log(`[calendar] holidays disagree: ${line}`);
+  }
+  return out;
+}
 
 /** Cash-session minutes on a date: 210 on an early close, else 390. */
 export const sessionLengthOn = (iso: string): number => sessionCloseMinOn(iso) - (9 * 60 + 30);

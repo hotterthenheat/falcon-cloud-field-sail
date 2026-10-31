@@ -9,6 +9,7 @@ import type { DeskChain, DeskContract } from '../weigherDesk';
 import { isTradingDay, expiryFor, sessionCloseMinOn } from '../../core/calendar';
 import { sessionAt } from '../../core/session';
 import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
+import { carryFor } from '../../core/carry';
 import { calendarYears, sigmaToExpiry } from '../../core/volClock';
 import { longLeg, spreadBook, spreadSizes, thetaPerSession, bookMark, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
 import { bookCandles } from '../book/levels';
@@ -77,10 +78,12 @@ function legQuote(c: ContractId, spot: number, ms: number): Quote {
   if (!q || !(q.ask > 0) || !(q.bid >= 0) || q.ask < q.bid) return { ...deadQuote(s), intrinsic: cents(intrinsic) };
   const mid = (q.bid + q.ask) / 2;
   const t = Math.max(yearsToExpiry(lastTradeDayOf(c), ms), 1 / (252 * 390));
-  const iv = s > 0 ? impliedVolFromPrice(mid, s, c.strike, t, c.right) : null;
-  const g = iv != null ? blackScholesGreeks(s, c.strike, t, iv) : null;
+  /* the rate in use, and the expiry's implied yield where its parity forward is known today (core/carry carryFor) */
+  const { r, q: y } = carryFor(c.ticker, { expiry: c.expiry });
+  const iv = s > 0 ? impliedVolFromPrice(mid, s, c.strike, t, c.right, r, y) : null;
+  const g = iv != null ? blackScholesGreeks(s, c.strike, t, iv, r, y) : null;
   /* theta a day: what it loses over one trading session on the trading clock (quotes.ts thetaPerSession) */
-  const theta = iv != null ? thetaPerSession(s, c.strike, t, iv, c.right) : 0;
+  const theta = iv != null ? thetaPerSession(s, c.strike, t, iv, c.right, r, y) : 0;
   return {
     bid: q.bid,
     ask: q.ask,
@@ -185,7 +188,9 @@ function legWhatIf(c: ContractId, ms: number, spot: number): number {
   const live = legQuote(c, spotOf(c.ticker), ms);
   const t = Math.max(yearsToExpiry(lastTradeDayOf(c), ms), 1 / (252 * 390));
   if (!(live.iv > 0)) return NaN;
-  return blackScholesPrice(spot, c.strike, t, live.iv, c.right);
+  /* the carry the vol was solved on (legQuote) */
+  const { r, q: y } = carryFor(c.ticker, { expiry: c.expiry });
+  return blackScholesPrice(spot, c.strike, t, live.iv, c.right, r, y);
 }
 /** The contract's model bid with the name at `spot` — for drawing a line, never for a fill */
 export const optionQuoteAt = (c: ContractId, ms: number, spot: number): Quote => {
@@ -194,7 +199,8 @@ export const optionQuoteAt = (c: ContractId, ms: number, spot: number): Quote =>
   const px = Number.isFinite(v) ? cents(Math.max(0, v)) : 0;
   const live = legQuote(longLeg(c), spotOf(c.ticker), ms);
   const t = Math.max(yearsToExpiry(lastTradeDayOf(c), ms), 1 / (252 * 390));
-  const g = live.iv > 0 ? blackScholesGreeks(spot, c.strike, t, live.iv) : null;
+  const { r, q: y } = carryFor(c.ticker, { expiry: c.expiry });
+  const g = live.iv > 0 ? blackScholesGreeks(spot, c.strike, t, live.iv, r, y) : null;
   return { bid: px, ask: px, mark: px, iv: live.iv, delta: g ? (c.right === 'C' ? g.deltaCall : g.deltaPut) : 0, gamma: g?.gamma ?? 0, theta: 0, vega: g?.vega ?? 0, rho: 0, intrinsic: 0, dead: !(px > 0), spot };
 };
 

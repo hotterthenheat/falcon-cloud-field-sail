@@ -10,6 +10,12 @@ import { nameTape } from './compassSession';
 import { nyIsoDate, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { inRegular, productOf, sessionAt } from '../core/session';
 import type { OptionRight } from '../types/compass';
+import type { StrikeNode } from '../types/market';
+import { peekEntry } from './book/store';
+import { sameName } from './spotGexBook';
+import { carryFor, setForward, type ForwardRead } from '../core/carry';
+import { parityForward, type ParityPair } from '../core/parity';
+import { calendarYears } from '../core/volClock';
 
 // ---- the chain --------------------------------------------------------------
 
@@ -19,7 +25,11 @@ export interface DeskContract {
   /** Modeled mid, the same estimator every Compass surface prices with */
   mark: number;
   delta: number;
+  /** Per $1 of the underlying, per share. The options-flow vendor's own per-contract gamma (its option-contracts rows, the
+      ones the name's book already reads) where it has this contract, else the model's off the row's vol. */
   gamma: number;
+  /** Where the gamma came from */
+  gammaFrom?: 'vendor' | 'model';
   /** Per trading SESSION: the price change over one session on the trading clock, spot and vol held (core/greeks
       thetaPerSession). Inside the last session it is minus the extrinsic. */
   theta: number;
@@ -105,6 +115,9 @@ export interface DeskChain {
   takenAt?: number;
   /** This browser's copy from an earlier visit, shown until the terminal answers */
   kept?: boolean;
+  /** The expiry's implied forward from put-call parity on these quotes, when the book had enough of them: its contracts
+      are priced at the implied yield (core/carry carryFor) */
+  forward?: ForwardRead;
 }
 
 /** The expiry rail: requested horizons resolved to REAL sessions, deduped —
@@ -468,6 +481,7 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
   const byStrike = new Map<number, { call?: DeskContract; put?: DeskContract }>();
   let spot = 0;
   let quotedAt = 0;
+  let forward: ForwardRead | undefined;
   const now = Date.now();
   /* The terminal did not answer: an empty chain that says so. The desk keeps the chain it had. */
   if (got.error && !noData(got)) return { ticker: name, spot: 0, step: 1, rows: [], expiry, expectedMovePct: 0, source: 'live', quotedAt: 0, expiryIso: iso, optRoot: symbol, offline: true };
@@ -481,6 +495,30 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
       if (under != null && under > 0 && uAt >= spotAt) {
         spot = under;
         spotAt = uAt;
+      }
+    }
+    /* the expiry's implied forward from put-call parity on these same quotes (core/parity.ts), before any row is priced:
+       every contract of the expiry is then priced at its implied yield (core/carry carryFor with the expiry) */
+    if (spot > 0) {
+      const pairs = new Map<number, ParityPair>();
+      for (const item of items) {
+        const strike = numOr(item.contract.strike);
+        const word = String(item.contract.right || '').toLowerCase();
+        if (strike == null || !(strike > 0) || !/^[cp]/.test(word)) continue;
+        const key = contractKey(item.contract);
+        const book = key ? nbbo.get(key) : undefined;
+        const bid = book && Number.isFinite(book.bid) ? book.bid : (numOr(item.data.bid) ?? NaN);
+        const ask = book && Number.isFinite(book.ask) ? book.ask : (numOr(item.data.ask) ?? NaN);
+        const p = pairs.get(strike) ?? { strike, callBid: NaN, callAsk: NaN, putBid: NaN, putAsk: NaN };
+        if (word.startsWith('c')) Object.assign(p, { callBid: bid, callAsk: ask });
+        else Object.assign(p, { putBid: bid, putAsk: ask });
+        pairs.set(strike, p);
+      }
+      const t = calendarYears(iso, now);
+      const fwd = parityForward([...pairs.values()], spot, carryFor(name).r, t);
+      if (fwd) {
+        forward = { F: fwd.F, spot, b: fwd.b, t, n: fwd.n, lo: fwd.lo, hi: fwd.hi, at: now, day: nyIsoDate(now) };
+        setForward(name, iso, forward);
       }
     }
     for (const item of items) {
@@ -504,7 +542,6 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
       const solved = spot > 0 ? readContract({ ticker: name, root: symbol, spot, strike, right, bid: bidN, ask: askN, expiryIso: iso, vendorIv: feedIv, ivAt: at, now }) : null;
       const ivPct = solved ? solved.iv : NaN;
       const feedDelta = feed('delta');
-      const feedGamma = feed('gamma');
       const mark = bidN >= 0 && askN >= bidN && askN > 0 ? (bidN + askN) / 2 : NaN;
       const intrinsic = spot > 0 ? Math.max(0, right === 'C' ? spot - strike : strike - spot) : NaN;
       const breakeven = askN > 0 ? (right === 'C' ? strike + askN : strike - askN) : NaN;
@@ -513,7 +550,10 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
         right,
         mark: Number.isFinite(mark) ? Number(mark.toFixed(2)) : NaN,
         delta: solved ? Number(solved.delta.toFixed(4)) : feedDelta != null ? Number(feedDelta.toFixed(4)) : NaN,
-        gamma: solved ? Number(solved.gamma.toFixed(4)) : feedGamma != null ? Number(feedGamma.toFixed(4)) : NaN,
+        /* the model's gamma off the row's one vol; the vendor's own per-contract gamma replaces it once the book has
+           this expiry's contracts (withVendorGamma). The first-order snapshot sends no gamma, so none is read from it. */
+        gamma: solved ? Number(solved.gamma.toFixed(4)) : NaN,
+        gammaFrom: solved ? 'model' : undefined,
         theta: solved ? Number(solved.theta.toFixed(4)) : NaN,
         thetaHour: solved ? Number(solved.thetaHour.toFixed(4)) : NaN,
         vega: solved ? Number(solved.vega.toFixed(4)) : NaN,
@@ -594,7 +634,40 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
     quotedAt,
     expiryIso: iso,
     optRoot: symbol,
+    ...(forward ? { forward } : {}),
   };
+}
+
+/** The options-flow vendor's per-contract gamma for one expiry, strike by strike: the option-contracts rows the name's
+    book has already read for that date (data/book/load.ts fillExpiryFacts → book/scale.ts foldContracts, `row.gamma`
+    into callGamma / putGamma). Null until that date's rows are read; nothing is asked here. */
+export function vendorGammaRows(ticker: string, expiryIso: string): readonly StrikeNode[] | null {
+  const e = peekEntry(sameName(ticker));
+  if (!e || e.status !== 'live' || !expiryIso || !e.factsDates?.has(expiryIso)) return null;
+  const nodes = e.byDate[expiryIso];
+  return nodes?.length ? nodes : null;
+}
+
+/** The chain with each contract's gamma the vendor's own, where its row has one (callGamma / putGamma > 0); the model's
+    stays on the rest. The same chain object when nothing changes. */
+export function withVendorGamma(chain: DeskChain, nodes: readonly StrikeNode[] | null): DeskChain {
+  if (!nodes?.length || !chain.rows.length) return chain;
+  const by = new Map<number, StrikeNode>();
+  for (const n of nodes) by.set(Number(n.strike.toFixed(3)), n);
+  let changed = 0;
+  const lay = (c: DeskContract, g: number | undefined): DeskContract => {
+    if (!(g != null && g > 0) || (c.gammaFrom === 'vendor' && c.gamma === g)) return c;
+    changed += 1;
+    return { ...c, gamma: g, gammaFrom: 'vendor' };
+  };
+  const rows = chain.rows.map(r => {
+    const n = by.get(Number(r.strike.toFixed(3)));
+    if (!n) return r;
+    const call = lay(r.call, n.callGamma);
+    const put = lay(r.put, n.putGamma);
+    return call === r.call && put === r.put ? r : { strike: r.strike, call, put };
+  });
+  return changed ? { ...chain, rows } : chain;
 }
 
 /** Keep the slow fields (volume, open interest, yesterday) on a chain that just got a new quote. */
