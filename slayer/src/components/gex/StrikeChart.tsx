@@ -476,6 +476,11 @@ export interface ChartTape {
   native?: boolean;
   /** Why the frame is empty — a session with no prints, or a tape that did not answer. */
   note?: string | null;
+  /** The bars are an option contract's premium, not the name's price (Compass's contract page): nothing read off the
+      name — its quote, its expected move — is put on them. */
+  premium?: boolean;
+  /** The window the chart opens on, in place of the desk session's (unix seconds): a past call's trade */
+  view?: { from: number; to: number } | null;
 }
 /** What a host's layer is handed: the chart, and the series that carries price now (a style swap replaces it — ask
     each time, never keep it) */
@@ -1275,7 +1280,7 @@ const StrikeChart = ({
   const [sessionNote, setSessionNote] = useState<string | null>(null);
   const [sessionGap, setSessionGap] = useState<string | null>(null);
   const focusKeyRef = useRef('');
-  const quote = useSessionQuote(ticker, session, quiet && session !== 'rth');
+  const quote = useSessionQuote(ticker, session, quiet && session !== 'rth' && !tape?.premium);
   useEffect(() => {
     const id = window.setTimeout(() => {
       /* a ThetaData tape still being read (this browser's copy included) is not an empty one */
@@ -1702,14 +1707,16 @@ const StrikeChart = ({
       let min = range.minValue;
       let max = range.maxValue;
       const lv = levelsRef.current;
-      for (const v of [lv.spot, lv.putWall, lv.callWall, lv.flip, lv.supreme, focusPriceRef.current ?? NaN]) {
+      for (const v of [lv.spot, lv.putWall, lv.callWall, lv.flip, lv.supreme, focusPriceRef.current ?? NaN, ...roomRef.current]) {
         if (!(v > 0) || !Number.isFinite(v)) continue;
         if (v < min - room || v > max + room) continue;
         if (v < min) min = v;
         if (v > max) max = v;
       }
       const pad = Math.max((max - min) * 0.08, span * 0.02);
-      return { priceRange: { minValue: min - pad, maxValue: max + pad } };
+      /* a premium is never under zero: the scale stops at it */
+      const floor = tapeRef.current?.premium ? Math.max(0, min - pad) : min - pad;
+      return { priceRange: { minValue: floor, maxValue: max + pad } };
     },
     []
   );
@@ -2821,6 +2828,14 @@ const StrikeChart = ({
     if (tapeDecimals == null || tapeTick == null) return;
     candleSeriesRef.current?.applyOptions({ priceFormat: { type: 'price', precision: tapeDecimals, minMove: tapeTick } });
   }, [tapeDecimals, tapeTick, mainNonce]);
+  /* …and a premium has no price under zero: the axis room below the floor (the volume's band) carries no figures */
+  const tapePremium = !!tape?.premium;
+  useEffect(() => {
+    if (!tapePremium) return;
+    candleSeriesRef.current?.applyOptions({
+      priceFormat: { type: 'custom', minMove: 0.01, formatter: (p: number) => (p < -0.004 ? '' : Math.max(0, p).toFixed(2)) },
+    });
+  }, [tapePremium, mainNonce]);
 
   // Candle data + trails: full load on ticker/timeframe/theme change, incremental per tick (theme forces a reload
   // because volume bars carry per-bar colors)
@@ -2899,7 +2914,7 @@ const StrikeChart = ({
     drawingsRef.current?.setDistanceScales({
       atr: sessionAtr(base),
       /* The vendor's implied move first — the one expected move the pages share (uwBook peekDaySigma) */
-      sigma: peekDaySigma(ticker) ?? daySigmaOfIv(base.length ? base[base.length - 1].close : 0, nameIv() ?? 0),
+      sigma: (tapeRef.current?.premium ? null : peekDaySigma(ticker)) ?? daySigmaOfIv(base.length ? base[base.length - 1].close : 0, nameIv() ?? 0),
     });
 
     const loaded = loadedRef.current;
@@ -3023,9 +3038,11 @@ const StrikeChart = ({
     const all = barsFor(mins);
     if (!chart || !all.length) return;
     const world = `${ticker}|${timeframe}|${barClock}`;
-    const key = `${world}|${session}`;
+    /* a host's tape may name the window it opens on (a past call's trade): that window is the focus, not the session */
+    const hostView = tapeRef.current?.view ?? null;
+    const key = `${world}|${session}${hostView ? `|${hostView.from}-${hostView.to}` : ''}`;
     if (focusKeyRef.current === key) return;
-    const mine = all.filter(b => barOnDesk(b.time, session, ticker, mins));
+    const mine = hostView ? all.filter(b => b.time >= hostView.from && b.time <= hostView.to) : all.filter(b => barOnDesk(b.time, session, ticker, mins));
     if (!mine.length) {
       focusHoldRef.current = null;
       /* The other sessions stay on the chart. A pill that says this feed has no prints is a lie over a tape that
@@ -3079,7 +3096,7 @@ const StrikeChart = ({
     } catch {
       /* chart already gone */
     }
-  }, [session, ticker, timeframe, barClock, tapeRev, mainNonce, focusNonce, toMain, altSpec]);
+  }, [session, ticker, timeframe, barClock, tapeRev, mainNonce, focusNonce, toMain, altSpec, tapeStamp, tape?.view?.from, tape?.view?.to]);
 
   /* `compact` can change without the chart being rebuilt — a desktop window dragged across the phone line, a handset
      rotated. The mount effect read it once at create time, so apply later changes here. */

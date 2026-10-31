@@ -105,7 +105,8 @@ async function theta(path: string, jump = false): Promise<{ status: number; data
   return thetaCall(path, jump);
 }
 
-interface LiveBar { time: number; open: number; high: number; low: number; close: number }
+/** A contract's bar. `volume` is the contracts that traded in it, where the feed says (the chart's volume bars). */
+interface LiveBar { time: number; open: number; high: number; low: number; close: number; volume?: number }
 
 const barCache = new Map<string, { at: number; bars: LiveBar[] }>();
 
@@ -135,7 +136,7 @@ export function contractSpan(sessions: number, daily: boolean, nowMs = Date.now(
 
 /** A contract's EOD rows as daily bars at 16:00 New York, the day the row reports (`created`) */
 function readEodBars(data: unknown): LiveBar[] {
-  return readEod(asRows(data)).map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close }));
+  return readEod(asRows(data)).map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume > 0 ? b.volume : 0 }));
 }
 
 function readBars(data: unknown): LiveBar[] {
@@ -157,7 +158,7 @@ function readBars(data: unknown): LiveBar[] {
     const hasCount = b.count != null && b.count !== '';
     /* A minute the feed marks with no contracts traded is not a candle. */
     if ((hasVol || hasCount) && !(hasVol && num(b.volume) > 0) && !(hasCount && num(b.count) > 0)) continue;
-    out.push({ time, open, high, low, close });
+    out.push({ time, open, high, low, close, volume: hasVol && num(b.volume) > 0 ? num(b.volume) : 0 });
   }
   out.sort((a, b) => a.time - b.time);
   return out;
@@ -175,7 +176,7 @@ function barStamp(row: Record<string, unknown>): number {
 
 /** One candle per bucket that had a print. A minute with no trade is left out. */
 function barsFromTrades(data: unknown, step: number): LiveBar[] {
-  const ticks: { t: number; price: number }[] = [];
+  const ticks: { t: number; price: number; size: number }[] = [];
   for (const item of asRows(data)) {
     const row = item as { data?: unknown; price?: unknown };
     const flat = Array.isArray(row.data) ? (row.data as Record<string, unknown>[]) : [item as Record<string, unknown>];
@@ -184,7 +185,7 @@ function barsFromTrades(data: unknown, step: number): LiveBar[] {
       const size = num(b.size);
       const ms = barStamp(b);
       if (!(price > 0) || !(size > 0) || !(ms > 0)) continue;
-      ticks.push({ t: Math.floor(ms / 1000), price });
+      ticks.push({ t: Math.floor(ms / 1000), price, size });
     }
   }
   ticks.sort((a, b) => a.t - b.t);
@@ -192,11 +193,12 @@ function barsFromTrades(data: unknown, step: number): LiveBar[] {
   for (const tick of ticks) {
     const time = Math.floor(tick.t / step) * step;
     const had = buckets.get(time);
-    if (!had) buckets.set(time, { time, open: tick.price, high: tick.price, low: tick.price, close: tick.price });
+    if (!had) buckets.set(time, { time, open: tick.price, high: tick.price, low: tick.price, close: tick.price, volume: tick.size });
     else {
       had.high = Math.max(had.high, tick.price);
       had.low = Math.min(had.low, tick.price);
       had.close = tick.price;
+      had.volume = (had.volume ?? 0) + tick.size;
     }
   }
   return [...buckets.values()].sort((a, b) => a.time - b.time);
@@ -242,7 +244,7 @@ export function useContractBars(ticker: string, expiration: string, strike: numb
         rows = trades.error ? [] : barsFromTrades(trades.data, stepSec(spec.interval));
         if (ohlc.error && trades.error) return;
       } else if (!rows.length && ohlc.error && !noData(ohlc)) return;
-      const shaped = shapeBars(rows.map(b => ({ ...b, volume: 0 })), spec.minutes, 'rth', ticker).map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close }));
+      const shaped = shapeBars(rows.map(b => ({ ...b, volume: b.volume ?? 0 })), spec.minutes, 'rth', ticker).map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume }));
       barCache.set(key, { at: Date.now(), bars: shaped });
       setBars(shaped);
     };

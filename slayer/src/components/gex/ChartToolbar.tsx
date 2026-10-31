@@ -85,6 +85,9 @@ interface ChartToolbarProps {
   /** Restrict the Overlays menu to these keys — a chart that can't draw a
       layer must not offer its toggle (campaign map: levels + volume only). */
   overlayKeys?: (keyof ChartOverlays)[];
+  /** Restrict the Indicators menu the same way: a tape that is not the name's price (an option contract's premium) has
+      no book to weight by, so "From the book" is not offered on it. */
+  indicatorKeys?: (keyof ChartIndicators)[];
   /** Expected move is one overlay. Its horizon lives in that menu, not on the desk. */
   coneHorizon?: 'session' | 'week' | 'next';
   onConeHorizon?: (next: 'session' | 'week' | 'next') => void;
@@ -575,6 +578,7 @@ const ChartToolbar = ({
   minimal = false,
   candles = false,
   overlayKeys,
+  indicatorKeys,
   coneHorizon,
   onConeHorizon,
   trailGreek,
@@ -1123,8 +1127,9 @@ const ChartToolbar = ({
             >
               <div className="p-1.5 flex flex-col gap-0.5 w-[min(300px,80vw)]">
                 {(() => {
-                  const firstSub = INDICATOR_ITEMS.findIndex(i => i.sub);
-                  return INDICATOR_ITEMS.map((item, idx) => {
+                  const items = indicatorKeys ? INDICATOR_ITEMS.filter(i => indicatorKeys.includes(i.key)) : INDICATOR_ITEMS;
+                  const firstSub = items.findIndex(i => i.sub);
+                  return items.map((item, idx) => {
                   const on = indicators[item.key];
                   const subsOn = SUB_PANE_ORDER.filter(k => indicators[k]).length;
                   /* The third sub-pane is refused, not shrunk into — the same
@@ -1135,7 +1140,7 @@ const ChartToolbar = ({
                      says why instead of ticking a line that is not there. */
                   const heldByClock = (barClock ?? 'time') !== 'time' && (item.key === 'vwap' || item.key === 'vwapBands' || item.group === 'book');
                   const capped = (!!item.sub && !on && subsOn >= MAX_SUB_PANES) || heldByClock;
-                  const prev = INDICATOR_ITEMS[idx - 1];
+                  const prev = items[idx - 1];
                   return (
                     <div key={item.key} className="flex flex-col">
                     {item.group === 'book' && prev?.group !== 'book' && (
