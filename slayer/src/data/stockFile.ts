@@ -11,7 +11,7 @@ import { darkSizedFloor } from './traceDark';
 import { hashId, otmOf } from './traceRows';
 import { alertSides, darkPrintKey } from './sidesRule';
 import { uwCall, whalesAnalysts, whalesBars, whalesDailyLong, whalesEarnings, whalesFinancials, whalesOptionContracts, whalesScreener, whalesStock, type UwDaily } from './whales';
-import { nyClock, nyIsoDate, nyMinutes as nyMinuteOf, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
+import { nyClock, nyCloseMin, nyIsoDate, nyMinutes as nyMinuteOf, SESSION_OPEN_MIN } from '../core/nyTime';
 import { noteBarCloses, peekRegularCloses, regularCloses } from './dayChange';
 import { BoundedMap, body, createStore, keepFresh, keptRead, type Get, type KeptRead } from './feedStore';
 
@@ -592,7 +592,7 @@ async function loadTapes(ticker: string, headP: Promise<StockFile | null>): Prom
     if (!time || !(close > 0)) continue;
     const at = time * 1000;
     const m = nyMinuteOf(at);
-    if (nyIsoDate(at) !== session || m < SESSION_OPEN_MIN || m >= SESSION_CLOSE_MIN) continue;
+    if (nyIsoDate(at) !== session || m < SESSION_OPEN_MIN || m >= nyCloseMin(at)) continue;
     minutes.push({ time, open: num(b.open) || close, high: num(b.high) || close, low: num(b.low) || close, close, volume: num(b.volume) });
   }
   minutes.sort((a, b) => a.time - b.time);
@@ -604,7 +604,7 @@ async function loadTapes(ticker: string, headP: Promise<StockFile | null>): Prom
     const hi = Math.max(...minutes.map(c => c.high));
     const lo = Math.min(...minutes.map(c => c.low));
     const lastMin = minutes[minutes.length - 1];
-    const open = nyIsoDate() === session && nyMinuteOf(Date.now()) < SESSION_CLOSE_MIN;
+    const open = nyIsoDate() === session && nyMinuteOf(Date.now()) < nyCloseMin(Date.now());
     days2 = [...head.days.slice(0, -1), { ...lastDay, high: hi, low: lo, close: open ? lastMin.close : lastDay.close, open: minutes[0].open || lastDay.open }];
     if (open) rangeAsOf = clock(new Date((lastMin.time + 60) * 1000).toISOString());
   }

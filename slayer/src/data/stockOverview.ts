@@ -8,7 +8,7 @@ import { peekQuote, extendedLine, priceWords, screenerRead, screenerNeedsCloses 
 import { peekLive, peekTickerNews } from './liveRecord';
 import { peekStockFile, quarterFacts, type EarnRow, type StockFile } from './stockFile';
 import { lastSessionIso, nyTodayIso } from './nyDate';
-import { nyClock, nyIsoDate, nyMinutes, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
+import { nyClock, nyCloseMin, nyIsoDate, nyMinutes, SESSION_OPEN_MIN } from '../core/nyTime';
 import { peekRegularCloses } from './dayChange';
 import { epsResultOf, nextReportRow, reportDayLabel, reportDayLabelYear, tradingDaysUntil } from './earningsFeed';
 import type { GeoNewsEvent } from './newsroom';
@@ -341,7 +341,7 @@ function pacedRelVolume(raw: number | null | undefined, rowDate: string | null |
   const today = nyIsoDate(at);
   const m = nyMinutes(at);
   const sameDay = !rowDate || String(rowDate).slice(0, 10) === today;
-  if (!sameDay || m >= SESSION_CLOSE_MIN) return { value: raw, raw, basis: 'full', share: 1, inRead: true, label: `${raw.toFixed(2)}× full day` };
+  if (!sameDay || m >= nyCloseMin(at)) return { value: raw, raw, basis: 'full', share: 1, inRead: true, label: `${raw.toFixed(2)}× full day` };
   if (m < SESSION_OPEN_MIN) return { value: null, raw, basis: 'premarket', share: 0, inRead: false, label: `${raw.toFixed(2)}× before the open` };
   const into = m - SESSION_OPEN_MIN;
   const share = sessionVolumeShare(into);
@@ -806,7 +806,7 @@ const moneyFor = (ticker: string, spot: number, blocks: Candle[][], file: StockF
   const sessionMinutes = (file.minutes ?? []).filter(c => {
     const at = c.time * 1000;
     const m = nyMinutes(at);
-    return (!file.session || nyIsoDate(at) === file.session) && m >= SESSION_OPEN_MIN && m <= SESSION_CLOSE_MIN;
+    return (!file.session || nyIsoDate(at) === file.session) && m >= SESSION_OPEN_MIN && m <= nyCloseMin(at);
   });
   const today = (sessionMinutes.length > 1 ? sessionMinutes : lastBlock && lastBlock.length > 1 ? lastBlock : []).map(c => ({ time: c.time, close: c.close }));
   /* where the session's last regular minute sits in that session's own high–low */

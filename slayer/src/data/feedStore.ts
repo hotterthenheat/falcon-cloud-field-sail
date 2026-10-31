@@ -4,7 +4,7 @@
 
 import { useSyncExternalStore } from 'react';
 import { isTradingDay, today as nyToday } from '../core/calendar';
-import { nyMinutes, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
+import { nyCloseMin, nyMinutes, SESSION_OPEN_MIN } from '../core/nyTime';
 import { uwCall, uwKept } from './whales';
 const NY_DAY_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
 
@@ -121,7 +121,7 @@ export type Session = 'open' | 'extended' | 'closed';
 export function sessionNow(at: number = Date.now()): Session {
   if (!isTradingDay(nyToday())) return 'closed';
   const m = nyMinutes(at);
-  if (m >= SESSION_OPEN_MIN && m < SESSION_CLOSE_MIN) return 'open';
+  if (m >= SESSION_OPEN_MIN && m < nyCloseMin(at)) return 'open';
   return m >= 4 * 60 && m < 20 * 60 ? 'extended' : 'closed';
 }
 

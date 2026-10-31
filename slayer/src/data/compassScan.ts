@@ -304,7 +304,7 @@ function draftOf(item: Record<string, unknown>, symbol: string, now: number, fre
         theta: perDay(finite(row.quote.theta)),
         vega: perPoint(finite(row.quote.vega)),
         rho: perPoint(finite(row.quote.rho)),
-        iv: iv > 0 && iv < 3 ? iv * 100 : iv,
+        iv: iv > 0 ? iv * 100 : iv,
         lambda: finite(row.quote.lambda),
         epsilon: finite(row.quote.epsilon),
       }

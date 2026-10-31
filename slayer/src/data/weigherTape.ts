@@ -74,9 +74,21 @@ async function contractBars(symbol: string, exp: string, strike: number, right: 
   const end = ymd();
   const mins = tfMinutes(tf);
   if (mins >= 1440) {
-    const got = await thetaGet(`/option/history/eod?${leg}&start_date=${ymd(Date.now() - 5 * 365 * 86_400_000)}&end_date=${end}&format=json`);
-    if (got.error) return { bars: [], offline: !noData(got) };
-    const days = readEod(got.data);
+    /* ThetaData answers at most 365 days of EOD rows per request: walk back a year at a time, newest first, until a
+       year comes back empty (the contract was not listed yet) or five years are read */
+    const days: Candle[] = [];
+    for (let k = 0; k < 5; k++) {
+      const to = ymd(Date.now() - k * 365 * 86_400_000);
+      const from = ymd(Date.now() - ((k + 1) * 365 - 1) * 86_400_000);
+      const got = await thetaGet(`/option/history/eod?${leg}&start_date=${from}&end_date=${k === 0 ? end : to}&format=json`);
+      if (got.error) {
+        if (k === 0 && !noData(got)) return { bars: [], offline: true };
+        break;
+      }
+      const year = readEod(got.data);
+      if (!year.length) break;
+      days.unshift(...year);
+    }
     const base = tf === '1W' ? foldTo(days, weekClose) : days;
     return { bars: shapeBars(base, mins, session, symbol), offline: false };
   }
