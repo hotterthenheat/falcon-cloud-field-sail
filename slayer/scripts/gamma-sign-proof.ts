@@ -354,6 +354,16 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
   check(`spot 50 under strikes 100–140: the window is ${Math.min(...ks)}–${Math.max(...ks)} (${ks.length} strikes)`, Math.min(...ks) === 100 && Math.max(...ks) === 110 && ks.length === 11);
 }
 
+/* 17 — the whole book's vega is the live dates' only: a settled 10/27 date holding −5 of call vex
+   and a live 2027-01-15 date holding −3 put −3 on the whole book, not −8 */
+{
+  const { vexOntoAll } = await import('../src/data/book/levels');
+  const node = (vex: number) => ({ ...emptyNode(770), callVex: vex, netVex: vex });
+  const entry = { all: [node(0)], byDate: { '2026-10-27': [node(-5)], '2027-01-15': [node(-3)] } } as never as { all: StrikeNode[] };
+  vexOntoAll(entry as never);
+  check(`whole-book call vex at 770: ${entry.all[0].callVex} (the settled 10/27 date's −5 left off)`, entry.all[0].callVex === -3);
+}
+
 if (fail) {
   console.log(`\n${fail} failed`);
   process.exit(1);

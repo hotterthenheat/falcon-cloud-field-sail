@@ -92,7 +92,11 @@ export function deskTape(ticker: string, session: DeskSession = getDeskSession()
 /** Sum the per-expiry vega already on the book onto the aggregate chain (a new aggregate — see paintLegs). */
 export function vexOntoAll(entry: Entry): void {
   const agg = new Map<number, { call: number; put: number }>();
-  for (const chain of Object.values(entry.byDate)) {
+  /* the live dates only: a date that settled at the bell holds no vega (its contracts are gone), and summing its last
+     painted vex onto the whole book counted dead contracts */
+  const floor = isoDate(bookToday());
+  for (const [date, chain] of Object.entries(entry.byDate)) {
+    if (date < floor || !expiryOpen(date)) continue;
     for (const n of chain) {
       if (!n.callVex && !n.putVex) continue;
       const cur = agg.get(n.strike) ?? { call: 0, put: 0 };
