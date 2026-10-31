@@ -1001,12 +1001,12 @@ const StockName = () => {
             {file.tapes === 'loading' && (
               <p className="mt-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted" data-stock-alerts="reading">reading the flow alerts of {sessionWord}…</p>
             )}
-            {file.tapes === 'live' && money.askSharePct != null && money.sweepSharePct != null && (
+            {file.tapes === 'live' && money.askSharePct != null && Number.isFinite(money.askSharePct) && money.sweepSharePct != null && Number.isFinite(money.sweepSharePct) && (
               <p className="mt-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted" data-stock-alerts>
                 {money.flowWindow.complete
                   ? `${money.flowWindow.alerts.toLocaleString('en-US')} flow alerts on ${sessionWord}`
                   : `the latest ${money.flowWindow.alerts.toLocaleString('en-US')} flow alerts on ${sessionWord}, ${money.flowWindow.from}–${money.flowWindow.to} ET`}{' '}
-                · {money.askSharePct.toFixed(1)}% of their premium filled on the ask · {money.sweepSharePct.toFixed(0)}% swept
+                · {money.askSharePct.toFixed(1)}% of the sided premium on the ask · {money.sweepSharePct.toFixed(0)}% swept
               </p>
             )}
           </div>
