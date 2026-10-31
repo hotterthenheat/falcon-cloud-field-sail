@@ -475,9 +475,11 @@ const TickPump = memo(function TickPump({ onTick }: { onTick: () => void }) {
   return null;
 });
 
-/* The rail's subject is the app's name. This leaf pushes the desk's name out
-   and follows a palette pick back in, without the desk itself subscribing to
-   the market tick (that would repaint the chain every snapshot). */
+/* The rail's subject is the app's name. This leaf follows it in — on arrival
+   the desk takes the rail's name over its own saved one, and a rail or palette
+   pick moves it after — and pushes a name picked on the desk itself out, without
+   the desk subscribing to the market tick (that would repaint the chain every
+   snapshot). */
 const ShellFollow = memo(function ShellFollow({ ticker, onExternal }: { ticker: string; onExternal: (t: string) => void }) {
   const { activeTicker, changeTicker } = useTicker();
   const echo = useRef(false);
@@ -485,7 +487,11 @@ const ShellFollow = memo(function ShellFollow({ ticker, onExternal }: { ticker: 
   activeRef.current = activeTicker;
   const externalRef = useRef(onExternal);
   externalRef.current = onExternal;
+  /* the desk's name as last seen: only a name the desk moved to goes out — the saved one it opened on does not */
+  const seenRef = useRef(ticker);
   useEffect(() => {
+    if (seenRef.current === ticker) return;
+    seenRef.current = ticker;
     if (activeRef.current === ticker) return;
     echo.current = true;
     changeTicker(ticker);
