@@ -20,6 +20,15 @@ endpoint name suggests.
   read, then the fixed `DEFAULT_R` (4.2%) in `src/core/carry.ts`, and use the holiday table in
   `shared/marketCalendar.mjs`.
 
+- **Terrain's prints are ThetaData's** (approved 2026-10-31 from the ThetaData audit): the flow pane, the net drift,
+  the events lane's print marks and the rail's Prints tab read the server's option tape (`/option/history/trade_quote`,
+  every print tagged sweep / spread leg / floor / block / single off its OPRA conditions, sided at the quote), and the
+  dark-pool overlay and the Prints tab's venue mix read the server's stock tape (`/stock/history/trade_quote`; today's
+  is the merged SIP, fifteen minutes behind). One tape per name on the server (`src/data/tapeServer.ts`,
+  `/api/tape/*`), at most two terminal reads at once; the browser asks the server only. **Trace and the Dossier are
+  untouched:** their dark-pool room and tape stay on Unusual Whales. Other pages that host the chart keep the vendor's
+  tape for the flow pane.
+
 Set by the owner on 2026-10-22 (Pinpoint and Dossier on Unusual Whales) and 2026-10-29 (Trace on Unusual Whales
 only; ThetaData for Pinpoint's live price and candles).
 
