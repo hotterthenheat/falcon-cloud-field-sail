@@ -75,6 +75,7 @@ import type { GexLevel, MarketSnapshot } from '../../types/market';
 import ExposureField from './ExposureField';
 import { RegimeTabs } from './regimeLazy';
 import RailBuilding from './RailBuilding';
+import { LensSwitch, SurfaceLenses, keepLens, readLens, type SurfaceLens } from './surfaceLazy';
 import FilterTabs from '../ui/FilterTabs';
 import { CardRow, PointerFollowCard } from '../ui/PointerCard';
 import { attachScrollMore } from '../ui/scrollMore';
@@ -468,10 +469,18 @@ const ProfilePanel = ({
   /* GEX FIRST (Noah, 2026-10-15, with the panel in front of him: "the gex should also be the first thing that opens") */
   const [viewState, setView] = useState<RailView>(lockView ?? 'gex');
   const view = lockView ?? viewState;
-  const onField = view === 'gex' || view === 'net' || view === 'surface';
+  /* THE SURFACE TAB'S LENS (2026-11-01, from the data audit): dealer gamma across spot (the field's profile), or the
+     vol skew and surface off the live chain (SkewView) — one tab, its lens on its head, kept across visits */
+  const [lens, setLensState] = useState<SurfaceLens>(readLens);
+  const setLens = (v: SurfaceLens) => {
+    setLensState(v);
+    keepLens(v);
+  };
+  const onLens = view === 'surface' && lens !== 'gamma';
+  const onField = view === 'gex' || view === 'net' || (view === 'surface' && !onLens);
   /* the Regime and Building tabs are DOM views over the quiet canvas, like the field: the ladder's pointer and drawing
      stand down while they are up */
-  const onBoard = view === 'regime' || view === 'building';
+  const onBoard = view === 'regime' || view === 'building' || onLens;
   const quiet = onField || onBoard;
   const fieldView: 'matrix' | 'calendar' | 'profile' = view === 'net' ? 'matrix' : view === 'surface' ? 'profile' : 'calendar';
   const [gexTick, setGexTick] = useState(0);
@@ -1833,6 +1842,7 @@ const ProfilePanel = ({
         {/* on GEX the row WRAPS: the tabs, then the field's cards through the slot, the close door pinned at the right */}
         <div className={`flex items-center gap-1.5 min-w-0 ${quiet ? 'flex-wrap gap-y-1 py-[3px] pr-7' : ''}`} style={quiet ? { minHeight: HEAD_TOP } : { height: HEAD_TOP }}>
           {viewTabs}
+          {view === 'surface' && <LensSwitch value={lens} onChange={setLens} />}
           {onField && <div ref={setStripSlot} className="contents" data-profile-head-slot />}
           {headCard && !quiet && (
             <span className="pointer-events-auto shrink-0 inline-flex" data-profile-head-card>
@@ -1880,6 +1890,11 @@ const ProfilePanel = ({
       {view === 'regime' && (
         <div className="absolute inset-x-0 bottom-0 pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-regime>
           <RegimeTabs.Regime mode={mode} paper={paper} />
+        </div>
+      )}
+      {view === 'surface' && lens === 'skew' && ticker && (
+        <div className="absolute inset-x-0 bottom-0 pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-skew>
+          <SurfaceLenses.Skew ticker={ticker} mode={mode} paper={paper} />
         </div>
       )}
       {view === 'building' && ticker && (

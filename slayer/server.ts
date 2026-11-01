@@ -8,6 +8,7 @@ import { compassMount, installProcessLogger } from './server/compassApi.mjs';
 import { exposureMount } from './server/exposureApi.mjs';
 import { volOutlookMount } from './server/volOutlookApi.mjs';
 import { proxyRegime } from './server/regimeApi.mjs';
+import { proxyTerrain } from './server/terrainApi.mjs';
 
 try {
   process.loadEnvFile('.env.local');
@@ -43,6 +44,10 @@ app.use('/api/vol-outlook', (req, res) => {
 /* Terrain's vol regime and open-interest change (server/regimeApi.mjs): read once here for every pane and viewer */
 app.use('/api/regime', (req, res) => {
   void proxyRegime(req, res, __dirname);
+});
+/* Terrain's option chain and its prior close (server/terrainApi.mjs): read once here for every pane and viewer */
+app.use('/api/terrain', (req, res) => {
+  void proxyTerrain(req, res, __dirname);
 });
 app.use('/api/uw', (req, res) => {
   void proxyUw(req, res);

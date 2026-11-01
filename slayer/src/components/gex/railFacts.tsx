@@ -21,6 +21,24 @@ export const SectionHead = ({ name, gloss, aside }: { name: string; gloss?: Reac
   </div>
 );
 
+/** A two- or three-way choice in the head, dressed as the field's Settled · Live switch beside it */
+export const Seg = <V extends string>({ options, value, onChange, testId, title }: { options: readonly { value: V; label: string; hint?: string }[]; value: V; onChange: (v: V) => void; testId?: string; title?: string }) => (
+  <span className="inline-flex shrink-0 items-center rounded-md border border-borderMuted p-0.5" data-rail-seg={testId} title={title}>
+    {options.map(o => (
+      <button
+        key={o.value}
+        type="button"
+        aria-pressed={o.value === value}
+        title={o.hint}
+        onClick={() => onChange(o.value)}
+        className={`px-1.5 py-0.5 rounded font-mono text-t10 ${o.value === value ? 'bg-ink/[0.12] text-textPrimary' : 'text-textMuted hover:text-textSecondary'}`}
+      >
+        {o.label}
+      </button>
+    ))}
+  </span>
+);
+
 /** The tab's one-line foot, as the Surface tab's */
 export const RailFoot = ({ children }: { children: ReactNode }) => (
   <p className="shrink-0 truncate px-3 py-1 text-t11 text-textMuted border-t border-borderSubtle/60">{children}</p>
