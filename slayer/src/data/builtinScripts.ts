@@ -3,10 +3,11 @@
 
 import { compile, explain } from '../core/pine';
 import type { Script } from '../types/scripts';
+import { SOURCES_MZ } from './builtinScriptsMZ';
 
 interface BuiltinSource {
   slug: string;
-  group: 'Slayer' | 'Trend' | 'Bands' | 'Momentum' | 'Volume';
+  group: 'Slayer' | 'Trend' | 'Bands' | 'Momentum' | 'Volume' | 'Volatility' | 'Statistics' | 'Candlesticks' | 'Breadth';
   title: string;
   description: string;
   source: string;
@@ -125,11 +126,37 @@ plot(ta.ema(close, 50), "EMA 50", color = #EDE4CD)`,
     slug: 'vwap',
     group: 'Trend',
     title: 'VWAP',
-    description: 'The session volume-weighted average price, restarting each day',
+    description: 'The session volume-weighted average price, restarting each day, with its first deviation band on',
     source: `//@version=6
 indicator("VWAP", overlay = true)
 
-plot(ta.vwap(hlc3), "VWAP", color = #6BD3C7, linewidth = 2)`,
+src = input.source(hlc3, "Source")
+off = input.int(0, "Offset", minval = -500, maxval = 500)
+show1 = input.bool(true, "Band #1")
+mult1 = input.float(1.0, "Band multiplier #1", minval = 0, step = 0.5)
+show2 = input.bool(false, "Band #2")
+mult2 = input.float(2.0, "Band multiplier #2", minval = 0, step = 0.5)
+show3 = input.bool(false, "Band #3")
+mult3 = input.float(3.0, "Band multiplier #3", minval = 0, step = 0.5)
+
+[vw, upper, lower] = ta.vwap(src, true, 1)
+sd = upper - vw
+up1 = vw + mult1 * sd
+lo1 = vw - mult1 * sd
+up2 = vw + mult2 * sd
+lo2 = vw - mult2 * sd
+up3 = vw + mult3 * sd
+lo3 = vw - mult3 * sd
+plot(vw, "VWAP", color = #6BD3C7, linewidth = 2, offset = off)
+u1 = plot(show1 ? up1 : na, "Upper band #1", color = color.new(#30D158, 30), offset = off)
+l1 = plot(show1 ? lo1 : na, "Lower band #1", color = color.new(#30D158, 30), offset = off)
+fill(u1, l1, color = color.new(#30D158, 94), title = "Band fill #1")
+u2 = plot(show2 ? up2 : na, "Upper band #2", color = color.new(#D8BC8F, 30), offset = off)
+l2 = plot(show2 ? lo2 : na, "Lower band #2", color = color.new(#D8BC8F, 30), offset = off)
+fill(u2, l2, color = color.new(#D8BC8F, 95), title = "Band fill #2")
+u3 = plot(show3 ? up3 : na, "Upper band #3", color = color.new(#5B9CF6, 30), offset = off)
+l3 = plot(show3 ? lo3 : na, "Lower band #3", color = color.new(#5B9CF6, 30), offset = off)
+fill(u3, l3, color = color.new(#5B9CF6, 96), title = "Band fill #3")`,
   },
   {
     slug: 'supertrend',
@@ -256,9 +283,28 @@ fill(u, l, color = color.new(#6BD3C7, 95), title = "Channel")`,
 indicator("RSI")
 
 len = input.int(14, "Length", minval = 1)
-rsi = ta.rsi(close, len)
+src = input.source(close, "Source")
+maKind = input.string("SMA", "Smoothing", options = ["None", "SMA", "SMA + Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"])
+maLen = input.int(14, "Smoothing length", minval = 1)
+bbMult = input.float(2.0, "BB deviation", minval = 0.001, step = 0.5)
+
+rsi = ta.rsi(src, len)
+smooth = switch maKind
+    "SMA" => ta.sma(rsi, maLen)
+    "SMA + Bollinger Bands" => ta.sma(rsi, maLen)
+    "EMA" => ta.ema(rsi, maLen)
+    "SMMA (RMA)" => ta.rma(rsi, maLen)
+    "WMA" => ta.wma(rsi, maLen)
+    "VWMA" => ta.vwma(rsi, maLen)
+    => na
+dev = maKind == "SMA + Bollinger Bands" ? ta.stdev(rsi, maLen) * bbMult : na
 plot(rsi, "RSI", color = #A9C77F, linewidth = 2)
+plot(smooth, "RSI-based MA", color = #F5D76E)
+bu = plot(smooth + dev, "Upper Bollinger Band", color = color.new(#30D158, 30))
+bl = plot(smooth - dev, "Lower Bollinger Band", color = color.new(#30D158, 30))
+fill(bu, bl, color = color.new(#30D158, 92), title = "Bollinger Bands fill")
 hline(70, "Overbought", color = color.new(#C7D3E8, 70), linestyle = hline.style_dotted)
+hline(50, "Middle", color = color.new(#C7D3E8, 85), linestyle = hline.style_dotted)
 hline(30, "Oversold",   color = color.new(#C7D3E8, 70), linestyle = hline.style_dotted)
 alertcondition(ta.crossover(rsi, 70),  "Above 70", "{{ticker}} RSI crossed above 70")
 alertcondition(ta.crossunder(rsi, 30), "Below 30", "{{ticker}} RSI crossed below 30")`,
@@ -271,15 +317,25 @@ alertcondition(ta.crossunder(rsi, 30), "Below 30", "{{ticker}} RSI crossed below
     source: `//@version=6
 indicator("MACD")
 
-fast = input.int(12, "Fast", minval = 1)
-slow = input.int(26, "Slow", minval = 1)
-sig  = input.int(9,  "Signal", minval = 1)
+fast = input.int(12, "Fast length", minval = 1)
+slow = input.int(26, "Slow length", minval = 1)
+src  = input.source(close, "Source")
+sig  = input.int(9,  "Signal smoothing", minval = 1, maxval = 50)
+oscKind = input.string("EMA", "Oscillator MA type", options = ["SMA", "EMA"])
+sigKind = input.string("EMA", "Signal line MA type", options = ["SMA", "EMA"])
 
-[m, s, h] = ta.macd(close, fast, slow, sig)
-plot(h, "Histogram", color = h >= 0 ? color.new(#30D158, 40) : color.new(#FF3B30, 40), style = plot.style_histogram)
+fastMa = oscKind == "SMA" ? ta.sma(src, fast) : ta.ema(src, fast)
+slowMa = oscKind == "SMA" ? ta.sma(src, slow) : ta.ema(src, slow)
+m = fastMa - slowMa
+s = sigKind == "SMA" ? ta.sma(m, sig) : ta.ema(m, sig)
+h = m - s
+histInk = h >= 0 ? (h > h[1] ? color.new(#30D158, 30) : color.new(#30D158, 65)) : (h < h[1] ? color.new(#FF3B30, 30) : color.new(#FF3B30, 65))
+plot(h, "Histogram", color = histInk, style = plot.style_columns)
 plot(m, "MACD",   color = #5B9CF6)
-plot(s, "Signal", color = #D8A6A6)
-hline(0, "Zero", color = color.new(#C7D3E8, 80))`,
+plot(s, "Signal", color = #FF9500)
+hline(0, "Zero", color = color.new(#C7D3E8, 80))
+alertcondition(h >= 0 and h[1] < 0, "Rising to falling", "{{ticker}} MACD histogram turned positive")
+alertcondition(h <= 0 and h[1] > 0, "Falling to rising", "{{ticker}} MACD histogram turned negative")`,
   },
   {
     slug: 'stochastic',
@@ -289,8 +345,8 @@ hline(0, "Zero", color = color.new(#C7D3E8, 80))`,
     source: `//@version=6
 indicator("Stochastic")
 
-len = input.int(14, "Length", minval = 1)
-kS  = input.int(3, "%K smoothing", minval = 1)
+len = input.int(14, "%K length", minval = 1)
+kS  = input.int(1, "%K smoothing", minval = 1)
 dS  = input.int(3, "%D smoothing", minval = 1)
 
 k = ta.sma(ta.stoch(close, high, low, len), kS)
@@ -298,6 +354,7 @@ d = ta.sma(k, dS)
 plot(k, "%K", color = #5B9CF6)
 plot(d, "%D", color = #FF9500)
 hline(80, "Upper", color = color.new(#C7D3E8, 70), linestyle = hline.style_dotted)
+hline(50, "Middle", color = color.new(#C7D3E8, 85), linestyle = hline.style_dotted)
 hline(20, "Lower", color = color.new(#C7D3E8, 70), linestyle = hline.style_dotted)`,
   },
   {
@@ -350,8 +407,12 @@ hline(-100, "Lower", color = color.new(#C7D3E8, 70), linestyle = hline.style_dot
 indicator("Williams %R")
 
 len = input.int(14, "Length", minval = 1)
-plot(ta.wpr(len), "%R", color = #A9C77F)
+src = input.source(close, "Source")
+hh = ta.highest(len)
+ll = ta.lowest(len)
+plot(100 * (src - hh) / (hh - ll), "%R", color = #A9C77F)
 hline(-20, "Upper", color = color.new(#C7D3E8, 70), linestyle = hline.style_dotted)
+hline(-50, "Middle", color = color.new(#C7D3E8, 85), linestyle = hline.style_dotted)
 hline(-80, "Lower", color = color.new(#C7D3E8, 70), linestyle = hline.style_dotted)`,
   },
 
@@ -377,8 +438,21 @@ hline(20, "Lower", color = color.new(#C7D3E8, 70), linestyle = hline.style_dotte
     source: `//@version=6
 indicator("On-balance volume")
 
-plot(ta.obv(), "OBV", color = #EDE4CD)`,
+maKind = input.string("None", "Smoothing", options = ["None", "SMA", "EMA", "SMMA (RMA)", "WMA", "VWMA"])
+maLen  = input.int(14, "Smoothing length", minval = 1)
+
+obv = ta.obv()
+smooth = switch maKind
+    "SMA" => ta.sma(obv, maLen)
+    "EMA" => ta.ema(obv, maLen)
+    "SMMA (RMA)" => ta.rma(obv, maLen)
+    "WMA" => ta.wma(obv, maLen)
+    "VWMA" => ta.vwma(obv, maLen)
+    => na
+plot(obv, "OBV", color = #EDE4CD)
+plot(smooth, "OBV-based MA", color = #F5D76E)`,
   },
+  ...SOURCES_MZ,
 ];
 
 let cache: Script[] | null = null;

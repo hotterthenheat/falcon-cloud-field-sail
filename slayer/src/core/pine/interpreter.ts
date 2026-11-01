@@ -155,10 +155,13 @@ export class Runner {
           s.text = o.text;
           if (o.ink) s.ink = toCss(o.ink);
         }
+        /* `offset` moves the mark onto an earlier (or later) bar — how a fractal or a pivot lands on the bar it names */
+        const at = self.b + Math.round(o.offset ?? 0);
+        if (at < 0 || at >= self.n) return;
         if (typeof on === 'number') {
-          if (!Number.isNaN(on) && on !== 0) s.values[self.b] = s.location === 'absolute' ? on : 1;
-        } else if (on) s.values[self.b] = 1;
-        if (color) s.colorsArr[self.b] = toCss(color);
+          if (!Number.isNaN(on) && on !== 0) s.values[at] = s.location === 'absolute' ? on : 1;
+        } else if (on) s.values[at] = 1;
+        if (color) s.colorsArr[at] = toCss(color);
       },
       bgcolor(color) {
         if (!self.bgcolors) self.bgcolors = new Array(self.n).fill(null);
@@ -478,6 +481,10 @@ export class Runner {
         }
         break;
       }
+      case 'session':
+        /* the first bar of the bar's trading day — the same key VWAP restarts on */
+        if (key === 'isfirstbar') return this.b === 0 || this.dayKey(this.b - 1) !== this.ctx.sessionKey;
+        break;
       case 'slayer': {
         if (key === 'netGex') {
           const v = this.opts.slayer?.netGex?.[this.b];

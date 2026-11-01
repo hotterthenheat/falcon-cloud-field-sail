@@ -34,6 +34,7 @@ const PROOFS = [
   'terrain-setups-proof',
   'exposure-recorder-proof',
   'pine-proof',
+  'indicators-mz-proof',
   'vol-outlook-proof',
   'weigher-density-proof',
   'session-proof',

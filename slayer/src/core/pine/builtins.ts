@@ -4,6 +4,7 @@
 import type { ScriptInputKind, ScriptInputValue } from '../../types/scripts';
 import { fromHex, gradient, isColor, named, rgb, toCss, withTransp } from './colors';
 import * as ta from './ta';
+import { callMZ, SIG_MZ, vwapBands } from './taMoreMZ';
 import { PineError, type PineColor, type PlotRef, type Tuple, type Value } from './types';
 
 /* ---- what a built-in may ask of the run ----------------------------------------- */
@@ -40,7 +41,7 @@ export interface OutputSink {
   plot: (nodeId: number, value: number, color: PineColor | null, opts: { title: string; style: string; width: number; offset: number; hidden: boolean; forceOverlay: boolean; ink: PineColor | null }) => PlotRef;
   hline: (nodeId: number, price: number, opts: { title: string; ink: PineColor | null; style: string; width: number }) => PlotRef;
   fill: (nodeId: number, a: PlotRef, b: PlotRef, color: PineColor | null, title: string) => void;
-  shape: (nodeId: number, on: boolean | number, color: PineColor | null, opts: { title: string; style: string; location: string; size: string; text: string; ink: PineColor | null }) => void;
+  shape: (nodeId: number, on: boolean | number, color: PineColor | null, opts: { title: string; style: string; location: string; size: string; text: string; ink: PineColor | null; offset?: number }) => void;
   bgcolor: (color: PineColor | null) => void;
   barcolor: (color: PineColor | null) => void;
   alertcondition: (nodeId: number, cond: boolean, title: string, message: string) => void;
@@ -239,7 +240,7 @@ const tuple = (items: Value[]): Tuple => ({ tuple: items });
 
 /** Positional and named arguments into a map by parameter name */
 function bind(callee: string, args: CallArg[], line: number): Record<string, Value> {
-  const names = SIG[callee];
+  const names = SIG[callee] ?? SIG_MZ[callee];
   const out: Record<string, Value> = {};
   if (!names) {
     args.forEach((a, i) => (out[a.name ?? String(i)] = a.value));
@@ -363,6 +364,7 @@ export function callBuiltin(ctx: Ctx, callee: string, args: CallArg[], state: St
         size: str(a, 'size', 'auto'),
         text: callee === 'plotchar' ? str(a, 'char', '•') : str(a, 'text', ''),
         ink: color,
+        offset: num(a, 'offset', 0),
       });
       return null;
     }
@@ -456,6 +458,7 @@ export function callBuiltin(ctx: Ctx, callee: string, args: CallArg[], state: St
     case 'math.sum':
       return ta.sum(state, asNum(need(a, 'source', callee, line)), len(a, 'length', callee, line));
     case 'ta.vwap':
+      if ('stdev_mult' in a) return tuple(vwapBands(state, 'source' in a ? asNum(a.source) : (ctx.high + ctx.low + ctx.close) / 3, ctx.volume, ctx.sessionKey, asNum(a.stdev_mult)));
       return ta.vwap(state, 'source' in a ? asNum(a.source) : (ctx.high + ctx.low + ctx.close) / 3, ctx.volume, ctx.sessionKey);
     case 'ta.supertrend':
       return tuple(ta.supertrend(state, ctx.high, ctx.low, ctx.close, asNum(need(a, 'factor', callee, line)), len(a, 'atrPeriod', callee, line)));
@@ -642,6 +645,8 @@ export function callBuiltin(ctx: Ctx, callee: string, args: CallArg[], state: St
       return ctx.time * 1000;
   }
 
+  const mz = callMZ(ctx, callee, a, state, line);
+  if (mz !== undefined) return mz;
   throw new PineError(`${callee}() is not in this version yet`, line);
 }
 
