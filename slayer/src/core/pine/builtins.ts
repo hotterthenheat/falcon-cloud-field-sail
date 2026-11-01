@@ -5,6 +5,7 @@ import type { ScriptInputKind, ScriptInputValue } from '../../types/scripts';
 import { fromHex, gradient, isColor, named, rgb, toCss, withTransp } from './colors';
 import * as ta from './ta';
 import { callMZ, SIG_MZ, vwapBands } from './taMoreMZ';
+import { callMoreAL, SIG_AL } from './taMoreAL';
 import { PineError, type PineColor, type PlotRef, type Tuple, type Value } from './types';
 
 /* ---- what a built-in may ask of the run ----------------------------------------- */
@@ -143,6 +144,7 @@ const SIG: Record<string, string[]> = {
   nz: ['source', 'replacement'],
   na: ['x'],
   fixnan: ['source'],
+  ...SIG_AL,
 };
 
 /** Constants a script names by a dotted path */
@@ -647,6 +649,8 @@ export function callBuiltin(ctx: Ctx, callee: string, args: CallArg[], state: St
 
   const mz = callMZ(ctx, callee, a, state, line);
   if (mz !== undefined) return mz;
+  const more = callMoreAL(ctx, callee, a, state, line);
+  if (more !== undefined) return more;
   throw new PineError(`${callee}() is not in this version yet`, line);
 }
 

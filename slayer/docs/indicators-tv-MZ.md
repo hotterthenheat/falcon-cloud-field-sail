@@ -127,7 +127,7 @@ Volatility and Statistics, and the one search field covers them all.
 | Rob Booker Intraday Pivot Points, Missed Pivot Points, Ziv Ghost Pivots | Pivot points belong to the other half of this work |
 | Pivot Points High Low, Pivot Points Standard, Zigzag | Same |
 | RVT ratio, Realized market cap, Receiving/Sending addresses, SOPR, Spent UTXOs, Stock-to-Flow, Supply Equality Ratio, Supply in Profit, Total/Mean/Median block, gas, UTXO and transfer series, Transaction fees/rate, Transfer count/rate | Need on-chain crypto data |
-| Mark price, Premium, Top trader long/short (four), US spot crypto ETF balances/flows, Power-Law Model, 24-hour Volume | Need crypto exchange data |
+| Mark price, Premium, Top trader long/short (four), US spot crypto ETF balances/flows, Power-Law Model | Need crypto exchange data (24-hour Volume is a digit name; the A–L half covers it) |
 | Ratio, Spread *(library)* | Need a second symbol's bars in the pane |
 | Technical Ratings' multi-timeframe table | Needs higher-timeframe requests. The rating line is added |
 | Up/Down Volume, Volume Delta | Need intrabar (lower-timeframe) data inside each bar |

@@ -4,6 +4,7 @@
 import { compile, explain } from '../core/pine';
 import type { Script } from '../types/scripts';
 import { SOURCES_MZ } from './builtinScriptsMZ';
+import { SOURCES_AL } from './builtinScriptsAL';
 
 interface BuiltinSource {
   slug: string;
@@ -228,15 +229,24 @@ alertcondition(ta.crossunder(conv, base), "Conversion crossed down", "{{ticker}}
     title: 'Bollinger Bands',
     description: 'A 20-bar average two deviations either side — the squeeze and the stretch',
     source: `//@version=6
-indicator("Bollinger Bands", overlay = true)
+indicator("Bollinger Bands", "BB", overlay = true)
 
-len  = input.int(20, "Length", minval = 1)
-mult = input.float(2.0, "Deviations", minval = 0.5, step = 0.25)
+len    = input.int(20, "Length", minval = 1)
+maType = input.string("SMA", "Basis MA type", options = ["SMA", "EMA", "SMMA (RMA)", "WMA", "VWMA"])
+src    = input.source(close, "Source")
+mult   = input.float(2.0, "StdDev", minval = 0.001, maxval = 50, step = 0.25)
+offset = input.int(0, "Offset", minval = -500, maxval = 500)
 
-[basis, upper, lower] = ta.bb(close, len, mult)
-plot(basis, "Basis", color = #C7A9CF)
-u = plot(upper, "Upper", color = color.new(#C7A9CF, 40))
-l = plot(lower, "Lower", color = color.new(#C7A9CF, 40))
+basis = switch maType
+    "EMA"        => ta.ema(src, len)
+    "SMMA (RMA)" => ta.rma(src, len)
+    "WMA"        => ta.wma(src, len)
+    "VWMA"       => ta.vwma(src, len)
+    => ta.sma(src, len)
+dev = mult * ta.stdev(src, len)
+plot(basis, "Basis", color = #C7A9CF, offset = offset)
+u = plot(basis + dev, "Upper", color = color.new(#C7A9CF, 40), offset = offset)
+l = plot(basis - dev, "Lower", color = color.new(#C7A9CF, 40), offset = offset)
 fill(u, l, color = color.new(#C7A9CF, 94), title = "Band")`,
   },
   {
@@ -245,14 +255,21 @@ fill(u, l, color = color.new(#C7A9CF, 94), title = "Band")`,
     title: 'Keltner Channels',
     description: 'An EMA with ATR shoulders — the channel a trend rides inside',
     source: `//@version=6
-indicator("Keltner Channels", overlay = true)
+indicator("Keltner Channels", "KC", overlay = true)
 
 len   = input.int(20, "Length", minval = 1)
-mult  = input.float(2.0, "ATR multiple", minval = 0.5, step = 0.25)
+mult  = input.float(2.0, "Multiplier", step = 0.25)
+src   = input.source(close, "Source")
+useEma = input.bool(true, "Use exponential MA")
+style = input.string("Average True Range", "Bands style", options = ["Average True Range", "True Range", "Range"])
 atrLn = input.int(10, "ATR length", minval = 1)
 
-basis = ta.ema(close, len)
-band  = ta.atr(atrLn) * mult
+basis = useEma ? ta.ema(src, len) : ta.sma(src, len)
+range = switch style
+    "True Range" => ta.tr(true)
+    "Range"      => ta.rma(high - low, len)
+    => ta.atr(atrLn)
+band  = range * mult
 plot(basis, "Basis", color = #D8BC8F)
 u = plot(basis + band, "Upper", color = color.new(#D8BC8F, 40))
 l = plot(basis - band, "Lower", color = color.new(#D8BC8F, 40))
@@ -264,12 +281,13 @@ fill(u, l, color = color.new(#D8BC8F, 94), title = "Channel")`,
     title: 'Donchian Channels',
     description: 'The highest high and lowest low of the last N bars — the envelope a breakout leaves',
     source: `//@version=6
-indicator("Donchian Channels", overlay = true)
+indicator("Donchian Channels", "DC", overlay = true)
 
-len = input.int(20, "Length", minval = 1)
-u = plot(ta.highest(high, len), "Upper", color = color.new(#6BD3C7, 30))
-l = plot(ta.lowest(low, len),   "Lower", color = color.new(#6BD3C7, 30))
-plot(math.avg(ta.highest(high, len), ta.lowest(low, len)), "Middle", color = color.new(#6BD3C7, 60))
+len    = input.int(20, "Length", minval = 1)
+offset = input.int(0, "Offset", minval = -500, maxval = 500)
+u = plot(ta.highest(high, len), "Upper", color = color.new(#6BD3C7, 30), offset = offset)
+l = plot(ta.lowest(low, len),   "Lower", color = color.new(#6BD3C7, 30), offset = offset)
+plot(math.avg(ta.highest(high, len), ta.lowest(low, len)), "Middle", color = color.new(#6BD3C7, 60), offset = offset)
 fill(u, l, color = color.new(#6BD3C7, 95), title = "Channel")`,
   },
 
@@ -359,14 +377,21 @@ hline(20, "Lower", color = color.new(#C7D3E8, 70), linestyle = hline.style_dotte
   },
   {
     slug: 'atr',
-    group: 'Momentum',
+    group: 'Volatility',
     title: 'ATR',
     description: 'The average true range — how far a bar travels, in price',
     source: `//@version=6
 indicator("ATR")
 
-len = input.int(14, "Length", minval = 1)
-plot(ta.atr(len), "ATR", color = #D8BC8F, linewidth = 2)`,
+len       = input.int(14, "Length", minval = 1)
+smoothing = input.string("RMA", "Smoothing", options = ["RMA", "SMA", "EMA", "WMA"])
+
+atr = switch smoothing
+    "SMA" => ta.sma(ta.tr(true), len)
+    "EMA" => ta.ema(ta.tr(true), len)
+    "WMA" => ta.wma(ta.tr(true), len)
+    => ta.rma(ta.tr(true), len)
+plot(atr, "ATR", color = #D8BC8F, linewidth = 2)`,
   },
   {
     slug: 'adx',
@@ -393,10 +418,24 @@ hline(25, "Trending", color = color.new(#C7D3E8, 70), linestyle = hline.style_do
     source: `//@version=6
 indicator("CCI")
 
-len = input.int(20, "Length", minval = 1)
-plot(ta.cci(hlc3, len), "CCI", color = #BBB2E8)
-hline(100,  "Upper", color = color.new(#C7D3E8, 70), linestyle = hline.style_dotted)
-hline(-100, "Lower", color = color.new(#C7D3E8, 70), linestyle = hline.style_dotted)`,
+len       = input.int(20, "Length", minval = 1)
+src       = input.source(hlc3, "Source")
+smoothing = input.string("SMA", "Smoothing", options = ["SMA", "EMA", "SMMA (RMA)", "WMA", "VWMA"])
+smoothLen = input.int(5, "Smoothing length", minval = 1, maxval = 100)
+
+cci = ta.cci(src, len)
+smooth = switch smoothing
+    "EMA"        => ta.ema(cci, smoothLen)
+    "SMMA (RMA)" => ta.rma(cci, smoothLen)
+    "WMA"        => ta.wma(cci, smoothLen)
+    "VWMA"       => ta.vwma(cci, smoothLen)
+    => ta.sma(cci, smoothLen)
+plot(cci, "CCI", color = #BBB2E8)
+plot(smooth, "Smoothing line", color = #FF9500, display = display.none)
+a = hline(100,  "Upper", color = color.new(#C7D3E8, 70), linestyle = hline.style_dotted)
+hline(0, "Middle", color = color.new(#C7D3E8, 85), linestyle = hline.style_dotted)
+b = hline(-100, "Lower", color = color.new(#C7D3E8, 70), linestyle = hline.style_dotted)
+fill(a, b, color = color.new(#BBB2E8, 94), title = "Background")`,
   },
   {
     slug: 'williams-r',
@@ -453,6 +492,7 @@ plot(obv, "OBV", color = #EDE4CD)
 plot(smooth, "OBV-based MA", color = #F5D76E)`,
   },
   ...SOURCES_MZ,
+  ...SOURCES_AL,
 ];
 
 let cache: Script[] | null = null;
