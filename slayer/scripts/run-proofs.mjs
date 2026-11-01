@@ -69,6 +69,7 @@ const PROOFS = [
   'terrain-desk-proof',
   'world-sessions-proof',
   'after-hours-prints-proof',
+  'drawing-geometry-proof',
 ];
 
 const goldens = () =>

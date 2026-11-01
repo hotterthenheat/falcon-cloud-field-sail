@@ -3,6 +3,9 @@ import { fmtElapsed, measureSpan } from '../../data/measure';
 import { fmtDistance, type DistanceScales } from '../../data/atr';
 import { getDistanceUnit } from '../../data/distanceUnits';
 import { avwapSeries, defaultStop, handlePoints, hitKind, renderKind, type KindBar, type KindHit, type KindRender } from './drawingKinds';
+import { PATTERN_POINTS, regressionOf } from './drawingKindsMore';
+import { magnetPick } from './drawingGeometry';
+import { getStamp } from './drawStamp';
 
 /*
   User drawings layer — trendlines and horizontal levels, sketched directly on
@@ -64,7 +67,12 @@ export type DrawingKind =
   | 'fibext' | 'fibchannel'
   | 'long' | 'short' | 'prange' | 'drange' | 'avwap'
   | 'triangle' | 'circle' | 'rotrect' | 'polyline' | 'brush' | 'highlighter' | 'arrowup' | 'arrowdown'
-  | 'text' | 'callout' | 'pricelabel';
+  | 'text' | 'callout' | 'pricelabel'
+  /* PHASE ONE OF TRADINGVIEW PARITY (2026-11-01) — drawn and hit in drawingKindsMore.ts */
+  | 'infoline' | 'trendangle' | 'regression' | 'flattop' | 'disjoint' | 'pitchfork' | 'schiff' | 'mschiff'
+  | 'fibtime' | 'fibfan' | 'fibcircles' | 'fibspiral' | 'fibwedge' | 'gannbox' | 'gannsquare' | 'gannfan'
+  | 'xabcd' | 'abcd' | 'hs' | 'tripattern' | 'threedrives' | 'elliott5' | 'elliott3'
+  | 'forecast' | 'arc' | 'signpost' | 'flag' | 'stamp';
 
 /** HOW A KIND IS MADE — the gesture reads this rather than a list of its own, the same way the validator reads the shape:
       click     one press places it (a level, a stamp, an anchored VWAP)
@@ -141,6 +149,36 @@ const KIND_SHAPE = {
   text: { p2: false, p3: false, text: true, g: 'words' },
   callout: { p2: true, p3: false, text: true, g: 'dragWords' },
   pricelabel: { p2: false, p3: false, text: false, g: 'click' },
+  infoline: { p2: true, p3: false, text: false, g: 'drag' },
+  trendangle: { p2: true, p3: false, text: false, g: 'drag' },
+  regression: { p2: true, p3: false, text: false, g: 'drag' },
+  flattop: { p2: true, p3: true, text: false, g: 'drag' },
+  disjoint: { p2: true, p3: true, text: false, g: 'drag' },
+  pitchfork: { p2: true, p3: true, text: false, g: 'drag' },
+  schiff: { p2: true, p3: true, text: false, g: 'drag' },
+  mschiff: { p2: true, p3: true, text: false, g: 'drag' },
+  fibtime: { p2: true, p3: false, text: false, g: 'drag' },
+  fibfan: { p2: true, p3: false, text: false, g: 'drag' },
+  fibcircles: { p2: true, p3: false, text: false, g: 'drag' },
+  fibspiral: { p2: true, p3: false, text: false, g: 'drag' },
+  fibwedge: { p2: true, p3: true, text: false, g: 'drag' },
+  gannbox: { p2: true, p3: false, text: false, g: 'drag' },
+  gannsquare: { p2: true, p3: false, text: false, g: 'drag' },
+  gannfan: { p2: true, p3: false, text: false, g: 'drag' },
+  /* the patterns are a press a pivot, sealed by their last one (PATTERN_POINTS) rather than a double-click */
+  xabcd: { p2: false, p3: false, text: false, g: 'clicks' },
+  abcd: { p2: false, p3: false, text: false, g: 'clicks' },
+  hs: { p2: false, p3: false, text: false, g: 'clicks' },
+  tripattern: { p2: false, p3: false, text: false, g: 'clicks' },
+  threedrives: { p2: false, p3: false, text: false, g: 'clicks' },
+  elliott5: { p2: false, p3: false, text: false, g: 'clicks' },
+  elliott3: { p2: false, p3: false, text: false, g: 'clicks' },
+  forecast: { p2: true, p3: false, text: false, g: 'drag' },
+  arc: { p2: true, p3: true, text: false, g: 'drag' },
+  signpost: { p2: false, p3: false, text: true, g: 'words' },
+  flag: { p2: false, p3: false, text: false, g: 'click' },
+  /* the stamp's emoji is its words — given at the press from the Icons list's choice (normalise) */
+  stamp: { p2: false, p3: false, text: true, g: 'click' },
 } as const satisfies Record<DrawingKind, { p2: boolean; p3: boolean; text: boolean; g: DrawGesture }>;
 
 export const gestureOf = (kind: DrawingKind): DrawGesture => KIND_SHAPE[kind].g;
@@ -158,6 +196,13 @@ export const isWordsKind = (kind: DrawingKind): boolean => KIND_SHAPE[kind].text
  * phases instead of committing half-made on release.
  */
 export const needsThirdAnchor = (kind: DrawingKind): boolean => KIND_SHAPE[kind].p3;
+
+/** A pattern's fixed number of pivots: its run seals itself on the last one. Undefined: a run sealed by a double-click. */
+export const fixedPoints = (kind: DrawingKind): number | undefined => PATTERN_POINTS[kind];
+
+/** The kinds a Shift-drag holds to 45° (TradingView's constrain) */
+export const isLineKind = (kind: DrawingKind): boolean =>
+  kind === 'trend' || kind === 'ray' || kind === 'extend' || kind === 'arrow' || kind === 'infoline' || kind === 'trendangle' || kind === 'channel' || kind === 'forecast';
 
 export interface DrawingPoint {
   time: number; // bar time (sec)
@@ -188,6 +233,10 @@ export interface Drawing {
   locked?: boolean;
   /** The points of a run, in order (pts[0] === p1) — the path, the polyline, the brush, the highlighter (see usesPts). */
   pts?: DrawingPoint[];
+  /** Hidden from the chart (the settings dialog's Visibility tab) — kept, listed, not drawn or grabbed */
+  hidden?: boolean;
+  /** Drawn on this timeframe only (the Visibility tab); unset: every timeframe */
+  tf?: string;
   /** A horizontal line that follows a live level instead of a frozen price. */
   bind?: 'callWall' | 'putWall' | 'flip' | 'coneHigh' | 'coneLow';
 }
@@ -288,6 +337,7 @@ class DrawingsPaneRenderer {
     const src = this.source;
     if (!src.chart || !src.series) return;
     if (src.drawings.length === 0 && !src.draft) return;
+    if (src.hideAll && !src.draft) return;
     const series = src.series;
 
     target.useBitmapCoordinateSpace(scope => {
@@ -784,7 +834,29 @@ class DrawingsPaneRenderer {
         dot(ctx, x2, y2, a);
       };
 
-      for (let i = 0; i < src.drawings.length; i++) render(src.drawings[i], i === src.selected ? 1 : 0.8);
+      /* A caption (the settings dialog's Text tab) on a mark that is not words already: beside its last anchor, on a wash */
+      const caption = (d: Drawing, alpha: number) => {
+        if (!d.text || isWordsKind(d.kind)) return;
+        const q = d.pts?.length ? d.pts[d.pts.length - 1] : d.p2 ?? d.p1;
+        const cx = src.timeToX(q.time);
+        const cy = series.priceToCoordinate(q.price);
+        if (cx === null || cy === null) return;
+        const px = typePx(d.width);
+        ctx.setLineDash([]);
+        ctx.font = labelFont(vr, px);
+        ctx.textBaseline = 'middle';
+        const tw = ctx.measureText(d.text).width;
+        const x = Math.min(cx * hr + 8 * hr, w - tw - 12 * hr);
+        const y = cy * vr - 14 * vr;
+        wash(ctx, x, y - px * 0.85 * vr, tw + 10 * hr, px * 1.7 * vr, 3 * vr, 'rgba(10,10,10,0.8)');
+        ctx.fillStyle = `rgba(${hexRgb(d.textColor) ?? hexRgb(d.color) ?? src.restInk},${Math.min(1, alpha + 0.15)})`;
+        ctx.fillText(d.text, x + 5 * hr, y);
+      };
+      for (let i = 0; i < src.drawings.length; i++) {
+        if (!src.shows(src.drawings[i])) continue;
+        render(src.drawings[i], i === src.selected ? 1 : 0.8);
+        caption(src.drawings[i], i === src.selected ? 1 : 0.8);
+      }
       if (src.draft) render(src.draft, 0.45, true);
       ctx.setLineDash([]);
 
@@ -792,7 +864,7 @@ class DrawingsPaneRenderer {
          2026-08-28: "full circles and not sqaures") — filled in the mark's
          own white with a dark ring, so "selected" reads as "these points
          are now yours to drag" on any background. */
-      if (src.selected !== null && src.drawings[src.selected]) {
+      if (src.selected !== null && src.drawings[src.selected] && src.shows(src.drawings[src.selected])) {
         const d = src.drawings[src.selected];
         ctx.lineWidth = 1.4 * vr;
         const handle = (pt?: DrawingPoint) => {
@@ -856,6 +928,39 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
   }
   drawings: Drawing[] = [];
   draft: Drawing | null = null;
+  /** Hide all drawings (the rail's eye, Ctrl+Alt+H): kept, not drawn, not grabbed */
+  hideAll = false;
+  /** The timeframe on screen — a mark kept to one timeframe (Drawing.tf) shows only there */
+  timeframe = '';
+  setHideAll(on: boolean): void {
+    if (this.hideAll === on) return;
+    this.hideAll = on;
+    this.requestUpdate?.();
+  }
+  setTimeframe(tf: string): void {
+    if (this.timeframe === tf) return;
+    this.timeframe = tf;
+    this.requestUpdate?.();
+  }
+  /** Whether a mark is on the chart now: not hidden, not kept to another timeframe, not under hide-all */
+  shows(d: Drawing): boolean {
+    return !this.hideAll && !d.hidden && (!d.tf || !this.timeframe || d.tf === this.timeframe);
+  }
+
+  /** MAGNET (TradingView's, strong and weak): a point near a bar takes that bar's open, high, low or close — whichever
+      is nearest on screen. Strong always snaps; weak only within 18 px. `price` is the pointer's; CSS px throughout. */
+  magnet(time: number, price: number, mode: 'weak' | 'strong'): number {
+    const series = this.series;
+    const i = this.timeToLogical(time);
+    if (!series || i === null || i < 0 || i >= this.bars.length) return price;
+    const b = this.bars[i];
+    const vals = [b.open ?? b.close, b.high, b.low, b.close];
+    const py = series.priceToCoordinate(price);
+    const ys = vals.map(v => series.priceToCoordinate(v));
+    if (py === null || ys.some(y => y === null)) return price;
+    const k = magnetPick(ys as number[], py, mode === 'strong' ? null : 18);
+    return k === null ? price : vals[k];
+  }
   /** Index of the mark the reader has selected with the Select tool. */
   selected: number | null = null;
   /** Sorted bar times of the CURRENT aggregation — lets time↔x conversion
@@ -1029,6 +1134,19 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
       const stop = d.p3 ? d.p3.price : defaultStop(d.p1.price, d.p2.price);
       return { ...d, p3: { time: d.p2.time, price: stop } };
     }
+    /* a stamp is born wearing the emoji the Icons list has in hand */
+    if (d.kind === 'stamp' && !d.text) return { ...d, text: getStamp() };
+    /* the regression's handles sit on its centre line, so what is grabbed is what is drawn */
+    if (d.kind === 'regression' && d.p2) {
+      const r = regressionOf(d, this.bars);
+      if (r) {
+        const first = d.p1.time <= d.p2.time;
+        const at = (i: number) => r.icept + r.slope * i;
+        const lo = { time: this.bars[r.i0].time, price: at(r.i0) };
+        const hi = { time: this.bars[r.i1].time, price: at(r.i1) };
+        return { ...d, p1: first ? lo : hi, p2: first ? hi : lo };
+      }
+    }
     if (d.kind === 'avwap') {
       const s = avwapSeries(this.bars, this.barsRev, d.p1.time);
       if (s && s.v.length) return { ...d, p1: { time: this.bars[s.i0].time, price: s.v[0] } };
@@ -1150,6 +1268,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
 
     for (let i = this.drawings.length - 1; i >= 0; i--) {
       const d = this.drawings[i];
+      if (!this.shows(d)) continue;
       const a1 = pt(d.p1);
       const a2 = pt(d.p2);
       const a3 = pt(d.p3);
@@ -1160,7 +1279,8 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
         continue;
       }
 
-      if (d.kind === 'polyline' && d.pts && d.pts.length >= 2) {
+      /* every run of clicked points — the polyline, the patterns — offers each point as an anchor; the path keeps its own */
+      if (d.kind !== 'path' && usesPts(d.kind) && d.pts && d.pts.length >= 2) {
         const cs = d.pts.map(q => pt(q));
         for (let k2 = 0; k2 < cs.length; k2++) {
           const c = cs[k2];
@@ -1317,6 +1437,8 @@ export function loadDrawings(ticker: string): Drawing[] {
       if (shape.text && !(typeof x.text === 'string' && x.text.trim().length > 0)) return false;
       if (usesPts(x.kind)) {
         if (!Array.isArray(x.pts) || x.pts.length < 2) return false;
+        const n = PATTERN_POINTS[x.kind];
+        if (n !== undefined && x.pts.length !== n) return false;
         if (x.pts.some(q => typeof q?.price !== 'number' || typeof q?.time !== 'number')) return false;
       }
       return true;
