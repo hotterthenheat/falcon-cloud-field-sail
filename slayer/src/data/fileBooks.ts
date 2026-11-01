@@ -237,10 +237,3 @@ export const houseSector = (raw: string | null | undefined): string => {
   const t = (raw ?? '').trim();
   return t ? HOUSE_SECTOR[t.toLowerCase()] ?? t : t;
 };
-
-/** A by-market short-volume row's venue as the page says it. The off-exchange report (the regulator's consolidated
-    short-volume file, its trade reporting facilities) is named for what it is, never for who publishes it: no
-    exchange, regulator or vendor name is shown. Any other venue's own name is the data's. */
-export const isOffExchangeVenue = (name: string): boolean => /\b(?:finra|cnms|trf|adf)\b/i.test(name);
-export const venueWords = (name: string): string => (isOffExchangeVenue(name) ? 'Off-exchange report' : name);
-

@@ -607,7 +607,7 @@ const PaperDesk = () => {
           );
         if (os.window?.kind === 'gth' || os.window?.kind === 'curb')
           return (
-            <span className="text-t10 text-textMuted" title="Index options trade global trading hours 8:15 PM–9:25 AM ET and the 4:15–5:00 PM curb. Orders fill in the regular session." data-paper-options-hours={os.window.kind}>
+            <span className="text-t10 text-textMuted" title="Index options trade Cboe's global trading hours 8:15 PM–9:25 AM ET and the 4:15–5:00 PM curb. Orders fill in the regular session." data-paper-options-hours={os.window.kind}>
               {os.window.kind === 'gth' ? 'Index options · global hours' : 'Index options · curb'}
             </span>
           );

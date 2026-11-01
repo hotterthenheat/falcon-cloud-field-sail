@@ -31,7 +31,7 @@ import { useShortReads } from '../../data/shortFile';
 import { displayName } from '../../data/tickers';
 import { AssetCell, BillsSwitch, CongressCard, assetKey, assetLine } from './Congress';
 import { PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
-import { holdingAssetKey, isOffExchangeVenue, venueWords } from '../../data/fileBooks';
+import { holdingAssetKey } from '../../data/fileBooks';
 import { asOfDay, borrowM, longDay, moneyB, signedM as moneyFlow } from './money';
 import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
 import { STOCK_ACT_DEADLINE_DAYS, bracketLabel, isTreasuryBill, seatLabel } from '../../data/congress';
@@ -307,11 +307,11 @@ export const ShortFile = () => {
   const [picks, setPicks] = useState<string[]>([]);
   const markets = useMemo(() => {
     if (!row) return [];
-    return row.exchanges.map(e => ({ id: e.exchange, exchange: venueWords(e.exchange), shortM: e.shortM, totalM: e.totalM, ratio: e.totalM ? (e.shortM / e.totalM) * 100 : 0 }));
+    return row.exchanges.map(e => ({ id: e.exchange, exchange: e.exchange, shortM: e.shortM, totalM: e.totalM, ratio: e.totalM ? (e.shortM / e.totalM) * 100 : 0 }));
   }, [row]);
   const shown = useMemo(() => {
     const cut = markets.filter(e => heavy === 'any' || e.ratio >= 50);
-    return picks.length === 0 ? cut : cut.filter(e => picks.includes(e.id));
+    return picks.length === 0 ? cut : cut.filter(e => picks.includes(e.exchange));
   }, [markets, heavy, picks]);
   const toKnow = useMemo(() => [...markets].sort((a, b) => b.ratio - a.ratio).slice(0, 6), [markets]);
   const toggle = (name: string) => setPicks(p => (p.includes(name) ? p.filter(x => x !== name) : [...p, name]));
@@ -374,10 +374,10 @@ export const ShortFile = () => {
           </div>
           {row.shortVolRatio != null ? (
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`The share of last session's off-exchange volume reported short; about half is ordinary. Source: ${row.shortVolSource ?? 'the off-exchange short-volume report'}`}>Short volume · off-exchange</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title={`The share of last session's off-exchange volume reported short; about half is ordinary. Source: ${row.shortVolSource ?? 'FINRA'}`}>Short volume · off-exchange</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{row.shortVolRatio.toFixed(0)}%{row.shortVolDate ? <span className="text-textMuted"> · {asOfDay(row.shortVolDate)}</span> : null}</dd>
             {/* the source named on the card */}
-            <dd className="font-mono text-t9 text-textMuted whitespace-nowrap" data-short-vol-source>{row.shortVolSource?.startsWith('the by-market') ? 'Off-exchange short-volume report · by-market rows' : 'Off-exchange short-volume report'}</dd>
+            <dd className="font-mono text-t9 text-textMuted whitespace-nowrap" data-short-vol-source>{row.shortVolSource?.startsWith('the by-market') ? 'FINRA CNMS · by-market rows' : 'FINRA CNMS · short volume read'}</dd>
           </div>
           ) : null}
           </>
@@ -420,13 +420,13 @@ export const ShortFile = () => {
       <Summary testId="short">
         {row.shortSharesM.toFixed(1)}M shares short, {row.interestPct.toFixed(2)}% of a {row.floatM.toFixed(0)}M float, {row.daysToCover.toFixed(1)} days to cover.
         {row.availableM == null ? ' The feed did not say how many shares are left to borrow.' : row.availableM >= 10 - 1e-9 ? ' At least 10M shares are available to borrow.' : ` ${borrowM(row.availableM)} shares are available to borrow.`}
-        {/* The off-exchange report's rows are off-exchange volume alone (dark pools and wholesalers), never the day's whole volume. */}
+        {/* FINRA's CNMS rows are off-exchange volume alone (dark pools and wholesalers), never the day's whole volume. */}
         {lead && markets.length === 1 ? (
           <>
             {' '}
             On {row.exchangesDate ? asOfDay(row.exchangesDate) : 'the last session'}, {(lead.shortM).toFixed(2)}M of the {lead.totalM.toFixed(2)}M shares{' '}
-            <span className="text-textPrimary font-semibold">{isOffExchangeVenue(lead.id) ? 'traded off-exchange' : `reported by ${lead.exchange}`}</span> were short sales, {lead.ratio.toFixed(0)}%
-            {isOffExchangeVenue(lead.id) ? ' — that total is off-exchange volume only; the lit exchanges’ trades are not in it' : ''}
+            <span className="text-textPrimary font-semibold">{/finra/i.test(lead.exchange) ? 'traded off-exchange (reported to FINRA)' : `reported by ${lead.exchange}`}</span> were short sales, {lead.ratio.toFixed(0)}%
+            {/finra/i.test(lead.exchange) ? ' — that total is off-exchange volume only; the lit exchanges’ trades are not in it' : ''}
             {row.exchangesDate && row.shortVolDate && row.exchangesDate !== row.shortVolDate ? ` (a session behind the ${row.shortVolRatio != null ? `${row.shortVolRatio.toFixed(0)}% ` : ''}short volume of ${asOfDay(row.shortVolDate)})` : ''}.
           </>
         ) : lead ? (
@@ -458,7 +458,7 @@ export const ShortFile = () => {
         </div>
         <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
           {toKnow.map(e => (
-            <button key={e.id} type="button" onClick={() => toggle(e.id)} aria-pressed={picks.includes(e.id)} className={KNOW(picks.includes(e.id))} data-short-know={e.exchange}>
+            <button key={e.exchange} type="button" onClick={() => toggle(e.exchange)} aria-pressed={picks.includes(e.exchange)} className={KNOW(picks.includes(e.exchange))} data-short-know={e.exchange}>
               <span className="font-mono text-t12 font-bold text-textPrimary">{e.exchange}</span>
               <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
                 <span className={`text-t13 font-bold ${e.ratio >= 50 ? 'text-bear' : 'text-textPrimary'}`}>{e.ratio.toFixed(0)}%</span>
@@ -487,7 +487,7 @@ export const ShortFile = () => {
       </>
       ) : null}
       <ShortHistory ticker={t} />
-      {row.ftdDays.length > 0 ? <Board title="Fails to deliver" rest={`The day, the shares that failed, and the close · newest first, the latest on file ${asOfDay(row.ftdDays[0]?.date)} (fails are published about two weeks late)`} testId="short-ftd" rows={row.ftdDays.map(d => ({ id: d.date, date: d.date, quantity: d.quantity, price: d.price }))} cols={FTD_COLS} /> : null}
+      {row.ftdDays.length > 0 ? <Board title="Fails to deliver" rest={`The day, the shares that failed, and the close · newest first, the latest on file ${asOfDay(row.ftdDays[0]?.date)} (the SEC publishes fails about two weeks late)`} testId="short-ftd" rows={row.ftdDays.map(d => ({ id: d.date, date: d.date, quantity: d.quantity, price: d.price }))} cols={FTD_COLS} /> : null}
     </Page>
     </>
   );
