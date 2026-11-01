@@ -6,6 +6,7 @@
 import { SIM_DESK } from './deskMode';
 import { feedHeaders } from './feedGate';
 import { readSaved, save } from './uwStore';
+import { canonPath } from './canonPath';
 
 export interface UwNews {
   created_at: string;
@@ -149,17 +150,20 @@ const noteNotCarried = (path: string) => {
 export async function uwCall(path: string, priority = false, low = false): Promise<UwAnswer> {
   if (SIM_DESK) return { status: 0, data: null, error: 'sim' };
   const now = Date.now();
-  const hit = shared.get(path);
+  /* one spelling a read (data/canonPath.ts): the shared entry is keyed by the sorted path, so two spellings of one read
+     make one request; the request and the kept copy keep the reader's own spelling */
+  const key = canonPath(path);
+  const hit = shared.get(key);
   const bare = path.split('?')[0];
   if (NO_INDEX_PRICE.test(bare) || notCarried.has(path)) return { status: 422, data: null, error: 'not carried on this key' };
   if (hit && (!hit.done || now - hit.at < (LIVE_PATH.test(bare) ? liveReuseMs(bare) : REUSE_MS))) return copyOf(await hit.p);
   const entry = { at: now, done: false, p: uwFetch(path, priority && !low, low) };
-  shared.set(path, entry);
+  shared.set(key, entry);
   const got = await entry.p;
   entry.done = true;
   entry.at = Date.now();
   if (got.status === 422) noteNotCarried(path);
-  if (got.error) shared.delete(path);
+  if (got.error) shared.delete(key);
   else save(path, got.status, got.data, got.at);
   if (shared.size > 400) for (const [k, v] of shared) if (v.done && Date.now() - v.at > REUSE_MS) shared.delete(k);
   return copyOf(got);

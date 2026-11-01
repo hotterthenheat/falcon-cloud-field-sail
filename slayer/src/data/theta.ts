@@ -4,6 +4,7 @@
 import { SIM_DESK } from './deskMode';
 import { feedHeaders } from './feedGate';
 import { BoundedMap } from './boundedMap';
+import { canonPath } from './canonPath';
 
 let inflight = 0;
 const next: (() => void)[] = [];
@@ -132,23 +133,40 @@ export const optionPath = (path: string): string =>
 
 type ThetaAnswer = { status: number; data: unknown; error: string | null; reason?: 'login' };
 
-/* A name's daily rows are one read a page: the price store (prior closes) and the tape store (the print's prior close)
-   both ask the same address within a second of each other. One read is in flight at a time, and its good answer serves
-   that address for a minute (the price store's own after-the-bell re-ask is a minute apart too). */
+/* ONE SPELLING, ONE READ IN FLIGHT (audit D12). Every read is keyed by its sorted spelling (data/canonPath.ts), so two
+   readers asking the same thing in another order share it, and two asks of one path while it is in flight make one
+   request (each gets its own copy of the answer). A name's daily rows are also kept a minute: the price store's closes,
+   the closes store and a chart's daily ask land within a second of each other (the price store's own after-the-bell
+   re-ask is a minute apart too). */
 const DAILY_ROWS = /^\/(stock|index)\/history\/eod\?/;
 const DAILY_SHARE_MS = 60_000;
 const dailyShared = new BoundedMap<string, { at: number; answer: Promise<ThetaAnswer> }>(200);
+const inFlight = new Map<string, Promise<ThetaAnswer>>();
+const copyOf = (a: ThetaAnswer): ThetaAnswer => {
+  try {
+    return { ...a, data: a.data == null || typeof a.data !== 'object' ? a.data : structuredClone(a.data) };
+  } catch {
+    return a;
+  }
+};
 
 export function thetaCall(path: string, jump = false): Promise<ThetaAnswer> {
-  if (!DAILY_ROWS.test(path)) return thetaRead(path, jump);
-  const hit = dailyShared.get(path);
+  const key = canonPath(path);
+  if (!DAILY_ROWS.test(key)) {
+    const running = inFlight.get(key);
+    if (running) return running.then(copyOf);
+    const p = thetaRead(path, jump).finally(() => inFlight.delete(key));
+    inFlight.set(key, p);
+    return p;
+  }
+  const hit = dailyShared.get(key);
   if (hit && (hit.at === 0 || Date.now() - hit.at < DAILY_SHARE_MS)) return hit.answer;
   const slot = { at: 0, answer: thetaRead(path, jump) };
-  dailyShared.set(path, slot);
+  dailyShared.set(key, slot);
   void slot.answer.then(a => {
     /* a good answer is kept for the minute; a failed one is not kept at all, so the next ask reads again */
     if (a.error) {
-      if (dailyShared.get(path) === slot) dailyShared.delete(path);
+      if (dailyShared.get(key) === slot) dailyShared.delete(key);
     } else slot.at = Date.now();
   });
   return slot.answer;

@@ -302,8 +302,8 @@ export function spansOf(from: string, to: string, grain: Exclude<TapeGrain, 'day
   return out.reverse();
 }
 
-export async function pullIntraday(symbol: string, grain: Exclude<TapeGrain, 'day' | 'week'>, session: DeskSession, from: string, to: string): Promise<Pull> {
-  const raw = await pullIntradayRaw(symbol, grain, session, from, to);
+export async function pullIntraday(symbol: string, grain: Exclude<TapeGrain, 'day' | 'week'>, session: DeskSession, from: string, to: string, get?: (path: string) => Promise<ThetaAnswer>): Promise<Pull> {
+  const raw = await pullIntradayRaw(symbol, grain, session, from, to, get);
   return { bars: await raw.clean(), offline: raw.offline };
 }
 
@@ -312,10 +312,16 @@ export async function pullIntraday(symbol: string, grain: Exclude<TapeGrain, 'da
 const CLEAN_READS = 2;
 let cleanBusy = 0;
 const cleanQueue: (() => void)[] = [];
-async function cleanGet(path: string): Promise<ThetaAnswer> {
+/** The answer a cleaner read gets when no chart wants its tape any more: no request, and the read that asked it is not
+    kept (data/thetaEligible.ts drops it at once), so the tape is cleaned whole when a chart wants it again */
+const RELEASED: ThetaAnswer = { status: 0, data: null, error: 'released' };
+async function cleanGet(path: string, still: () => boolean = () => true): Promise<ThetaAnswer> {
+  if (!still()) return RELEASED;
   if (cleanBusy >= CLEAN_READS) await new Promise<void>(resolve => cleanQueue.push(resolve));
   else cleanBusy += 1;
   try {
+    /* a read queued behind others is asked only if its tape is still wanted when its turn comes */
+    if (!still()) return RELEASED;
     return await thetaGet(path);
   } finally {
     /* the slot passes straight to the next in line */
@@ -325,9 +331,23 @@ async function cleanGet(path: string): Promise<ThetaAnswer> {
   }
 }
 
+/* A ROOM OFF SCREEN STOPS ITS HEAVY READS (audit: Terrain's bar-sanity trade reads, ~100 of them, ran on behind the
+   Weigher after the reader moved). A tape's cleaner reads only while some chart still wants that tape: once none does,
+   its queued reads are not asked, the run is dropped (not stored half-cleaned) and the tape is read again, whole, the
+   next time a chart wants it. */
+type CleanRun = { released: boolean };
+function cleanFor(key: string, run: CleanRun): (path: string) => Promise<ThetaAnswer> {
+  const still = () => {
+    if (wanted.has(key)) return true;
+    run.released = true;
+    return false;
+  };
+  return path => cleanGet(path, still);
+}
+
 /** ThetaData's bars as they came (`bars`, already sound enough to draw), and the cleaner that turns them into the bars
     pullIntraday answers (`clean`). The tape paints the first before it runs the second. */
-async function pullIntradayRaw(symbol: string, grain: IntraGrain, session: DeskSession, from: string, to: string): Promise<Pull & { clean: () => Promise<Candle[]> }> {
+async function pullIntradayRaw(symbol: string, grain: IntraGrain, session: DeskSession, from: string, to: string, get: (path: string) => Promise<ThetaAnswer> = cleanGet): Promise<Pull & { clean: () => Promise<Candle[]> }> {
   const wins = windowsFor(symbol, session, from, to);
   const got = await Promise.all(
     spansOf(from, to, grain).flatMap(([start, end]) =>
@@ -346,9 +366,9 @@ async function pullIntradayRaw(symbol: string, grain: IntraGrain, session: DeskS
       bars,
       offline,
       clean: async () => {
-        const clean = session === 'pre' || session === 'post' ? await cleanExtendedBars(cleanGet, symbol, wins[0], step, bars) : bars;
+        const clean = session === 'pre' || session === 'post' ? await cleanExtendedBars(get, symbol, wins[0], step, bars) : bars;
         /* a bad print's wick on a day the prints above were not read (data/barSanity.ts): rebuilt from that bar's prints */
-        return saneStockBars(cleanGet, symbol, step, clean);
+        return saneStockBars(get, symbol, step, clean);
       },
     };
   }
@@ -551,7 +571,8 @@ async function read(s: Slot): Promise<void> {
     let got: Pull;
     if (daily) got = await pullDays(s.symbol, s.session, from, win.to, true);
     else {
-      const raw = await pullIntradayRaw(s.symbol, s.grain as IntraGrain, s.session, from, win.to);
+      const run: CleanRun = { released: false };
+      const raw = await pullIntradayRaw(s.symbol, s.grain as IntraGrain, s.session, from, win.to, cleanFor(key, run));
       /* Nothing on screen yet: ThetaData's bars are drawn the moment they land, and the bad-print cleaner (its trade reads,
          capped) runs after; the bars it mends replace them below — the same bars as reading them cleaned. */
       if (first && !s.bars.length && raw.bars.length) {
@@ -559,7 +580,18 @@ async function read(s: Slot): Promise<void> {
         s.state = 'live';
         emit();
       }
-      got = { bars: await raw.clean(), offline: raw.offline };
+      const cleaned = await raw.clean();
+      if (run.released) {
+        /* no chart wants the tape any more: nothing half-cleaned is kept, and the next want reads it whole */
+        if (first && s.bars === raw.bars) {
+          s.bars = [];
+          s.state = 'loading';
+          emit();
+        }
+        deferred = true;
+        return;
+      }
+      got = { bars: cleaned, offline: raw.offline };
       if (first && s.bars === raw.bars) s.bars = [];
     }
     const full = first || refresh;
@@ -600,7 +632,10 @@ async function readOlder(s: Slot): Promise<void> {
   try {
     const span = olderChunk(s.grain, s.session, s.from, s.target);
     const daily = s.grain === 'day' || s.grain === 'week';
-    const got = daily ? await pullDays(s.symbol, s.session, span.from, span.to, false) : { ...(await pullIntraday(s.symbol, s.grain as IntraGrain, s.session, span.from, span.to)), none: false };
+    const run: CleanRun = { released: false };
+    const got = daily ? await pullDays(s.symbol, s.session, span.from, span.to, false) : { ...(await pullIntraday(s.symbol, s.grain as IntraGrain, s.session, span.from, span.to, cleanFor(keyOf(s.symbol, s.grain, s.session), run))), none: false };
+    /* no chart wants the tape any more: the chunk is dropped, read again when one does */
+    if (run.released) return;
     if (got.offline && !got.bars.length) {
       s.olderDueAt = Date.now() + 15_000;
       return;

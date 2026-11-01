@@ -213,7 +213,9 @@ function pastPrints(get: Get, symbol: string, w: Window, from: string, to: strin
   if (hit) return hit.got;
   const got = get(tradePath(symbol, from, to, w.start, w.end)).then(a => {
     if (a.error || !Array.isArray(a.data)) {
-      setTimeout(() => pastReads.get(key)?.got === got && pastReads.delete(key), 60_000);
+      /* a read not asked because no chart wants the tape any more (thetaTape cleanFor) is let go at once */
+      if (a.error === 'released') queueMicrotask(() => pastReads.get(key)?.got === got && pastReads.delete(key));
+      else setTimeout(() => pastReads.get(key)?.got === got && pastReads.delete(key), 60_000);
       return null;
     }
     return readTicks(rowsOf(a.data));
@@ -306,7 +308,8 @@ function barPrintRange(get: Get, symbol: string, time: number, stepSec: number):
   if (hit) return hit;
   const got = get(tradePath(symbol, day, day, hms(time), hms(time + stepSec - 1, '.999'))).then(a => {
     if (a.error || !Array.isArray(a.data)) {
-      setTimeout(() => barReads.get(key) === got && barReads.delete(key), 60_000);
+      if (a.error === 'released') queueMicrotask(() => barReads.get(key) === got && barReads.delete(key));
+      else setTimeout(() => barReads.get(key) === got && barReads.delete(key), 60_000);
       return null;
     }
     const inside = readTicks(rowsOf(a.data)).ticks.filter(t => t.t >= time && t.t < time + stepSec);
