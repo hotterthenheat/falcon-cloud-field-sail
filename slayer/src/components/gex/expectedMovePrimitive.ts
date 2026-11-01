@@ -77,6 +77,8 @@ class ExpectedMoveRenderer {
   private cache: { key: string; canvas: HTMLCanvasElement; pad: number; width: number } | null = null;
   /** When the bitmap was last rebuilt: a view still changing (a zoom) is drawn straight, not rebuilt every frame */
   private builtAt = 0;
+  /** The cone's ink: white on a dark tape, the near-black text ink on a light one (a white cone vanished on paper) */
+  private ink = INK;
 
   draw(target: DrawTarget): void {
     const src = this.source;
@@ -86,6 +88,15 @@ class ExpectedMoveRenderer {
     if (!chart || !series || !data || data.cone.forward.length < 2) {
       src.geom = null;
       return;
+    }
+    const bg = chart.options().layout.background as { color?: string; topColor?: string } | undefined;
+    const css = bg?.color ?? bg?.topColor ?? '#0a0a0a';
+    const hex = css.trim().match(/^#([0-9a-f]{6})$/i);
+    const ch = hex ? [0, 2, 4].map(i => parseInt(hex[1].slice(i, i + 2), 16)) : (css.match(/\d+(?:\.\d+)?/g) ?? ['10', '10', '10']).slice(0, 3).map(Number);
+    const ink = (0.299 * ch[0] + 0.587 * ch[1] + 0.114 * ch[2]) / 255 > 0.55 ? '20,22,26' : INK;
+    if (ink !== this.ink) {
+      this.ink = ink;
+      this.cache = null;
     }
     const { cone, barMinutes } = data;
     const fw = cone.forward;
@@ -200,17 +211,17 @@ class ExpectedMoveRenderer {
     const ring = new Path2D();
     outline(ring, p => p.up2, p => p.dn2);
     outline(ring, p => p.up1, p => p.dn1);
-    ctx.fillStyle = `rgba(${INK},0.03)`;
+    ctx.fillStyle = `rgba(${this.ink},0.03)`;
     ctx.fill(ring, 'evenodd');
     const band = new Path2D();
     outline(band, p => p.up1, p => p.dn1);
-    ctx.fillStyle = `rgba(${INK},0.065)`;
+    ctx.fillStyle = `rgba(${this.ink},0.065)`;
     ctx.fill(band);
     const stroke = (pick: (p: ConeGeom['pts'][number]) => number, alpha: number, dashed: boolean, width: number) => {
       ctx.beginPath();
       ctx.moveTo(pts[0].x, pick(pts[0]));
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pick(pts[i]));
-      ctx.strokeStyle = `rgba(${INK},${alpha})`;
+      ctx.strokeStyle = `rgba(${this.ink},${alpha})`;
       ctx.lineWidth = Math.max(1, width * vr);
       ctx.lineJoin = 'round';
       ctx.setLineDash(dashed ? [4 * hr, 4 * hr] : []);
@@ -243,7 +254,7 @@ class ExpectedMoveRenderer {
     }
     for (const p of placed) {
       const a = p.m.strong ? 0.95 : 0.7;
-      ctx.fillStyle = `rgba(${INK},${a})`;
+      ctx.fillStyle = `rgba(${this.ink},${a})`;
       ctx.beginPath();
       ctx.arc(p.x, p.y, 2.2 * vr, 0, Math.PI * 2);
       ctx.fill();
@@ -254,11 +265,11 @@ class ExpectedMoveRenderer {
       const ty = Math.max(boxH / 2, Math.min(h - boxH / 2, p.ty));
       ctx.fillStyle = 'rgba(10,10,10,0.72)';
       ctx.fillRect(left, ty - boxH / 2, p.w, boxH);
-      ctx.fillStyle = `rgba(${INK},${a})`;
+      ctx.fillStyle = `rgba(${this.ink},${a})`;
       ctx.textAlign = 'left';
       ctx.fillText(p.m.text, left + 4 * hr, ty);
       if (Math.abs(ty - p.y) > 2 * vr) {
-        ctx.strokeStyle = `rgba(${INK},0.35)`;
+        ctx.strokeStyle = `rgba(${this.ink},0.35)`;
         ctx.lineWidth = Math.max(1, vr * 0.75);
         ctx.beginPath();
         ctx.moveTo(right, ty);

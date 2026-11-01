@@ -244,7 +244,9 @@ export function layoutHeatLabels(
     if (out.some(l => Math.abs(l.price - e.price) < 1e-6)) continue;
     const y = yOf(e.price);
     if (y == null || y < 0 || y > H) continue;
-    const c = cssRgb(e.ink, ink.text);
+    const c0 = cssRgb(e.ink, ink.text);
+    /* the levels' inks are cut for the black tape: a pale one on paper reads in the text ink */
+    const c = light && (0.299 * c0[0] + 0.587 * c0[1] + 0.114 * c0[2]) / 255 > 0.6 ? ink.text : c0;
     out.push({ price: e.price, y, ty: y, role: e.role, figure: priceText(e.price), value: '', roleInk: c, valueInk: c, prio: e.rank, keep: e.rank >= 7, x: 0, right: 0, figRight: 0, roleRight: 0, foil: false });
   }
   if (!out.length) return [];
