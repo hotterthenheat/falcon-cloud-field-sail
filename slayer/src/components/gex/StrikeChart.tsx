@@ -330,7 +330,9 @@ export const INDICATOR_INKS: Record<keyof ChartIndicators, string> = {
    the candles */
 const LONG_GAMMA_WASH = 'rgba(48,209,88,0.075)';
 /** The wash at the Style tab's opacity: 0.3 (the default) is a 7.5% tint, 1 is a 25% one */
-const gammaWash = (sign: 1 | -1, opacity = 0.3): string => `rgba(${sign > 0 ? '48,209,88' : '255,59,48'},${Math.round(0.25 * opacity * 1000) / 1000})`;
+/* the desk's inks, not market green/red: long gamma glacier (the call wall's), short gamma ember (the put wall's) */
+const washRgb = (h: string): string => `${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)}`;
+const gammaWash = (sign: 1 | -1, opacity = 0.3): string => `rgba(${washRgb(sign > 0 ? CALL_WALL : PUT_WALL)},${Math.round(0.25 * opacity * 1000) / 1000})`;
 /** The physics reads' one input each (indicatorItems.ts carries the specs the settings dialog shows) */
 const physInput = (key: keyof ChartIndicators): IndicatorInputSpec => INDICATOR_ITEMS.find(i => i.key === key)!.inputs![0];
 const PHYS_INPUT = {

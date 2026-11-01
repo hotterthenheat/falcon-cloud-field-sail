@@ -1,3 +1,4 @@
+import { CALL_WALL, PUT_WALL } from './palette';
 /* The chart's built-in indicators, listed top left the standard way: the name, its inputs, its live values in its own
    ink (the bar under the crosshair, else the last bar), and on hover the eye, the settings and the remove. A physics
    read also wears its plain name and its CALCULATED / MODEL tag, and its context line (the regime, the band's width).
@@ -93,7 +94,7 @@ const IndicatorLegend = ({ on, top, mins, chart, seriesOf, tick, extras, idle, o
               data-legend-indicator={key}
               data-hidden={!drawn || undefined}
             >
-              <span className="inline-block w-2 h-[3px] rounded-full shrink-0" style={{ background: key === 'gammaRegime' ? 'linear-gradient(90deg,#30D158 50%,#FF3B30 50%)' : ink }} aria-hidden />
+              <span className="inline-block w-2 h-[3px] rounded-full shrink-0" style={{ background: key === 'gammaRegime' ? `linear-gradient(90deg,${CALL_WALL} 50%,${PUT_WALL} 50%)` : ink }} aria-hidden />
               <span className={`whitespace-nowrap ${drawn ? 'text-textPrimary' : 'text-textMuted'}`}>{item.label}</span>
               {phys && !narrow && <span className="whitespace-nowrap text-textMuted">{phys.plain}</span>}
               {phys && <PhysicsTag tag={phys.tag} />}
