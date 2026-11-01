@@ -80,13 +80,18 @@ export function badBars(bars: readonly Candle[]): SaneFix[] {
   for (let i = n - 1; i >= 0; i--) runTo[i] = i < n - 1 && bars[i + 1].time - bars[i].time <= gap ? runTo[i + 1] : i;
   const vals: number[] = [];
   const ranges: number[] = [];
-  for (let i = MIN_SIDE; i < n - MIN_SIDE; i++) {
+  for (let i = 0; i < n - MIN_SIDE; i++) {
     const from = Math.max(runFrom[i], i - NEAR);
     const to = Math.min(runTo[i], i + NEAR);
-    if (i - from < MIN_SIDE || to - i < MIN_SIDE) continue;
+    /* the newest bars wait for the bars after them; a run's first bars (the after-hours tape's 16:00–16:02, a
+       pre-market's 04:00) are judged against the bars after them alone, twice as many of them */
+    if (to - i < MIN_SIDE) continue;
+    const left = i - from >= MIN_SIDE;
+    if (!left && to - i < 2 * MIN_SIDE) continue;
     const b = bars[i];
-    const prev = bars[i - 1];
     const next = bars[i + 1];
+    /* the day before is never the reference: at a run's start the price before is the next bar's open */
+    const prev = i > runFrom[i] ? bars[i - 1] : { ...next, close: next.open };
     /* cheap pre-check: a bar that stays within the floor of the prices on both sides of it is never touched (both: the
        price on one side may be a bad print itself) */
     const floorHere = FLOOR * prev.close;
@@ -107,7 +112,8 @@ export function badBars(bars: readonly Candle[]): SaneFix[] {
     const inBand = (v: number) => v >= loN - margin && v <= hiN + margin;
     let open = b.open;
     let close = b.close;
-    if (!inBand(open)) {
+    /* an open with no bars before it in its run is the move's own start (news in the first minute): never judged */
+    if (left && !inBand(open)) {
       open = inBand(prev.close) ? prev.close : median(vals);
       out.push({ index: i, field: 'open', was: b.open, now: open });
     }

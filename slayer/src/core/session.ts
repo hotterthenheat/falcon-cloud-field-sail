@@ -41,11 +41,16 @@ export {
   sessionAt,
   sessionDayAtOrBefore,
   windowAt,
+  worldSessionsBetween,
+  zoneInstant,
+  equityWindowsOn,
+  tradingDayOf,
+  WORLD_SESSIONS,
   GTH_ROOTS,
   INDEX_SYMBOLS,
   LATE_ETFS,
 } from '../../shared/marketSession.mjs';
-export type { MarketSessionAt, Phase, Product, WindowKind, SessionWindow } from '../../shared/marketSession.mjs';
+export type { MarketSessionAt, Phase, Product, WindowKind, SessionWindow, WorldSession, WorldSessionKey } from '../../shared/marketSession.mjs';
 
 /** The regular session's open, minutes of the New York day (09:30) — the rule itself is shared/marketSession.mjs */
 export const REGULAR_OPEN_MIN = 9 * 60 + 30;
