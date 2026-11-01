@@ -704,6 +704,9 @@ interface PaneProps {
   deskPanels?: BarPanel[];
 }
 
+/** The slow hover word on the bar only — off it the trigger keeps its own title */
+const SlowTipIf = ({ on, label, children }: { on: boolean; label: string; children: ReactNode }) => (on ? <SlowTip label={label}>{children}</SlowTip> : <>{children}</>);
+
 /** The strike rail's rest width on this desk: a narrow column beside the tape, not two fifths of the pane (the rail took
     ~40% of a pane's width at the panel's own rest widths). Dragged wider, it keeps the reader's width; the bar's
     STRIKES switch and the panel's × fold it away. */
@@ -1132,6 +1135,7 @@ const Pane = ({
           onOpenChange={o => onMenu(o ? 'symbol' : null)}
           /* The ring ↑/↓ walks is invisible, so the one control it moves is where it gets named. */
           title="Switch ticker — S · ↑ ↓ step your symbols"
+          tall={barDesk}
         />
       </span>
     </>
@@ -1140,17 +1144,19 @@ const Pane = ({
      inks all mean something already — and TradingView's compare, another symbol crossed onto this tape */
   const paneRightExtras = (
     <>
+      <SlowTipIf on={barDesk} label={cfg.link ? `Link group ${cfg.link} — panes sharing ${cfg.link} follow each other's symbol` : 'Link this pane to others — shared letters change symbols together'}>
       <button
         onClick={() => onCfg({ link: cfg.link === 'A' ? 'B' : cfg.link === 'B' ? null : 'A' })}
         aria-label={cfg.link ? `Link group ${cfg.link} — linked panes follow this pane's symbol` : 'Link this pane — panes sharing a letter follow each other\'s symbol'}
-        title={cfg.link ? `Link group ${cfg.link} — panes sharing ${cfg.link} follow each other's symbol` : 'Link this pane to others — shared letters change symbols together'}
-        className={`shrink-0 inline-flex items-center justify-center w-6 h-6 rounded font-mono text-t9 font-bold transition-colors ${
+        title={barDesk ? undefined : cfg.link ? `Link group ${cfg.link} — panes sharing ${cfg.link} follow each other's symbol` : 'Link this pane to others — shared letters change symbols together'}
+        className={`shrink-0 inline-flex items-center justify-center ${barDesk ? 'w-7 h-7 rounded-md' : 'w-6 h-6 rounded'} font-mono text-t9 font-bold transition-colors ${
           cfg.link ? 'bg-ink/[0.14] text-textPrimary' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.03]'
         }`}
         data-pane-link
       >
         {cfg.link ?? <Link2 className="w-3 h-3" />}
       </button>
+      </SlowTipIf>
       {/* Not on a 3- OR 4-pane desk — a crossed symbol on a 480px chart is a second tape in a space that holds one;
           the two-up and the one-up keep the door */}
       {paneCount < 3 && (
@@ -1553,10 +1559,29 @@ const Pane = ({
             >
               {/* One row, always — it does not wrap, it clips. */}
               {/* IT hugs its content. */}
-              {expanded ? (
+              {expanded || barDesk ? (
                 /* Fullscreen's second line — the Pulse takeover's own legend: facts on the tape, no chip, no
                    controls; the controls all moved up into the strip. */
-                <div className="pointer-events-none select-none flex items-baseline gap-1.5 font-mono">
+                /* AND EVERY DOCKED PANE'S LEGEND SINCE THE TICKER BAR (the partner tree's, openmarket's desk): the controls
+                   stand on the bar while a pane is active, so each pane prints the in-chart legend — its number on a split
+                   desk, Replay when it replays, the symbol, the timeframe, the price and its change — and nothing to
+                   press; a press on the tape makes the pane the bar's */
+                <div className="pointer-events-none select-none flex items-baseline gap-1.5 font-mono" data-pane-legend={onBar ? 'active' : barDesk ? 'idle' : 'takeover'}>
+                  {barDesk && paneCount > 1 && (
+                    <span
+                      aria-hidden
+                      className={`self-center shrink-0 w-4 h-4 rounded-[3px] text-t9 font-bold tnum inline-flex items-center justify-center ${
+                        isActive ? 'relative holo-bg foil-glide text-onfoil' : 'bg-ink/[0.08] text-textPrimary'
+                      }`}
+                    >
+                      {index + 1}
+                    </span>
+                  )}
+                  {barDesk && replay && (
+                    <span title="This pane is replaying history — it is not live" className="self-center shrink-0 inline-flex items-center px-1.5 h-4 rounded-[3px] bg-silverFill text-onfoil text-t9 font-bold uppercase tracking-wider">
+                      Replay
+                    </span>
+                  )}
                   <span className="text-t11 font-semibold text-textPrimary">{ticker}</span>
                   <span className="text-t10 text-textMuted" aria-hidden>·</span>
                   <span className="text-t10 text-textMuted">{timeframe}</span>

@@ -66,7 +66,6 @@ import { FLOW_CHIPS } from '../../data/flowBuckets';
 /* The scripts library loads the first time its menu opens, not with every chart */
 const ScriptLibrary = lazy(() => import('../scripts/ScriptLibrary'));
 import { usePaneScripts } from '../../data/paneScripts';
-import { closeEditor, useEditorDock } from '../../data/editorDock';
 import AlertsMenu from './AlertsMenu';
 import { useAlerts } from './alertStore';
 import JingleBell from '../ui/JingleBell';
@@ -980,10 +979,7 @@ const ChartToolbar = ({
   const paneScripts = usePaneScripts(paneId);
   const onPaneCount = paneScripts.filter(p => p.chart.visible).length + (indicators ? INDICATOR_ITEMS.filter(i => indicators[i.key]).length : 0);
   /* The editor sits beside a full-screen chart only: this pane leaving full screen closes its dock (the draft stays) */
-  const dock = useEditorDock();
-  useEffect(() => {
-    if (paneId && dock.open && dock.paneId === paneId && !fullscreen) closeEditor();
-  }, [paneId, dock.open, dock.paneId, fullscreen]);
+  /* the editor's dock stays open across full screen and back (the partner tree's c6d73e5): the shell's column gives it room */
 
   // Outside click closes whichever menu is open
   useEffect(() => {

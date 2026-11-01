@@ -2437,3 +2437,17 @@ html[data-theme='light'] [data-tf-tall] [data-tf][aria-pressed='false']:hover { 
    step measured): the muted border in the dark, the subtle border whole on paper */
 .row-line { border-bottom: 1px solid rgb(var(--border-muted)); }
 [data-theme='light'] .row-line:not([data-theme='dark'] *) { border-bottom-color: rgb(var(--border-subtle)); }
+
+/* THE FOIL PRICE TAG (StrikeChart [data-price-tag], the partner tree's 260a099): the sig-foil strip pans under the figure
+   on the mark's keyframes, the figure in the panel's ink */
+.price-foil { color: rgb(var(--panel)); isolation: isolate; }
+.price-foil > .sig-foil { z-index: 0; }
+
+/* …and on a light tape the foil is the galaxy (tokens.css's paper set), so the figure in the panel's light ink reads */
+[data-chart-ground='light'] .price-foil {
+  --foil-1: 43 45 56;
+  --foil-2: 102 113 143;
+  --foil-3: 35 35 44;
+  --foil-4: 103 93 126;
+  --foil-5: 43 45 56;
+}

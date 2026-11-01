@@ -44,9 +44,11 @@ interface ScopeChipProps {
   full?: boolean;
   /** Show the spinner while the name's Pinpoint book loads (which starts that load). Off for surfaces that never read it. */
   arrive?: boolean;
+  /** 28 tall on Terrain's ticker bar, with every other trigger there (the partner tree's b608857) */
+  tall?: boolean;
 }
 
-const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside = true, open: openProp, onOpenChange, title, full = false, arrive = true }: ScopeChipProps) => {
+const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside = true, open: openProp, onOpenChange, title, full = false, arrive = true, tall = false }: ScopeChipProps) => {
   const [selfOpen, setSelfOpen] = useState(false);
   const arriving = useWorking(useNameArriving(arrive ? ticker : null));
   const open = openProp ?? selfOpen;
@@ -128,7 +130,7 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
       ref={rootRef}
       /* h-6: the chip sits on 24px title rows, and the page skeletons assume it. No overflow clip: the two buttons round
          their own ends, so their hit areas (hit-24: 24px at a desk, 44 on a phone) reach past the 22px inside */
-      className={`relative inline-flex items-stretch h-6 rounded-md border bg-chip transition-colors font-mono select-none ${open ? 'border-silver/50' : 'border-borderSubtle hover:border-borderMuted'}`}
+      className={`relative inline-flex items-stretch ${tall ? 'h-7' : 'h-6'} rounded-md border bg-chip transition-colors font-mono select-none ${open ? 'border-silver/50' : 'border-borderSubtle hover:border-borderMuted'}`}
       data-scope={follows ? 'follows' : 'own'}
       data-scope-ticker={ticker}
     >

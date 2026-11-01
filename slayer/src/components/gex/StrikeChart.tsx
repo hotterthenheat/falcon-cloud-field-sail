@@ -3840,8 +3840,8 @@ const StrikeChart = ({
     const chart = chartRef.current;
     const el = priceTagRef.current;
     if (!chart || !el) return;
-    const priceEl = el.firstElementChild as HTMLElement | null;
-    const timeEl = el.lastElementChild as HTMLElement | null;
+    const priceEl = el.querySelector<HTMLElement>('[data-price-figure]');
+    const timeEl = el.querySelector<HTMLElement>('[data-price-left]');
     if (!priceEl || !timeEl) return;
 
     let shownPrice = '';
@@ -5351,11 +5351,14 @@ const StrikeChart = ({
             aria-hidden
             /* The card wears the chart's ground, like its words. */
             /* The card is the library's label size: the price, then the time left in this timeframe's bar. */
-            className="pointer-events-none absolute top-0 right-0 z-10 will-change-transform overflow-hidden rounded-[2px] border border-ink/[0.07] border-l-2 border-l-ink/60 bg-panel/95 pl-[8px] pr-0.5 py-px text-left whitespace-nowrap opacity-0 shadow-sm shadow-black/40"
+            /* THE FOIL PRICE TAG (the partner tree's 260a099, ported 2026-11-01): the brand's foil pans under the figure
+               (.sig-foil on the mark's keyframes), the figure in the panel's ink so it reads on the silver */
+            className="price-foil pointer-events-none absolute top-0 right-0 z-10 will-change-transform overflow-hidden rounded-[3px] pl-[8px] pr-0.5 py-px text-left whitespace-nowrap opacity-0 shadow-sm shadow-black/40"
             data-price-tag
           >
-            <div className="font-mono text-t12 font-bold leading-[14px] tnum text-textPrimary" />
-            <div className="font-mono text-t9 leading-[11px] tnum text-textMuted" />
+            <span className="sig-foil" aria-hidden />
+            <div className="relative font-mono text-t12 font-bold leading-[14px] tnum" data-price-figure />
+            <div className="relative font-mono text-t9 leading-[11px] tnum opacity-80" data-price-left />
           </div>
         )}
 

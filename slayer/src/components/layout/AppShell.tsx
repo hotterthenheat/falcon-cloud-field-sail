@@ -142,6 +142,10 @@ const AppShell = () => {
         className={`flex-1 min-w-0 min-h-0 h-full max-md:pt-12 ${bleedPage ? 'overflow-y-auto md:overflow-hidden' : 'overflow-y-auto'} ${
           location.pathname.startsWith('/trace') ? '[scrollbar-gutter:stable]' : ''
         }`}
+        /* THE EDITOR'S ROOM ON EVERY PAGE (the partner tree's c6d73e5): the script editor docks fixed at the window's right
+           (data/editorDock.ts sets --editor-w while it is open); the column steps in by that width, so a docked desk
+           stands beside the code the way a takeover does */
+        style={{ paddingRight: 'var(--editor-w, 0px)' }}
       >
         <div className={`w-full min-w-0 max-w-full flex flex-col ${bleedPage ? 'min-h-full md:h-full' : 'min-h-full'}`}>
             <ScrollHome />
