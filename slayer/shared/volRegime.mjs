@@ -1,16 +1,15 @@
 /*
-  THE VOL REGIME AND THE OPEN-INTEREST CHANGE, the arithmetic only (the reader is server/regimeApi.mjs; Terrain's rail
-  draws the answers: src/components/gex/VolRegimeView.tsx, OiChangeView.tsx). Plain JavaScript so Node runs it without a
-  build step, and the proofs (scripts/vol-regime-proof.mjs, scripts/oi-change-proof.mjs) test it with known numbers.
+  THE VOL REGIME, the arithmetic only (the reader is server/regimeApi.mjs; Terrain's rail draws the answer:
+  src/components/gex/VolRegimeView.tsx). Plain JavaScript so Node runs it without a build step, and the proof
+  (scripts/vol-regime-proof.mjs) tests it with known numbers.
 
   The terminal's quirks it absorbs:
   - Index bars carry no volume, and the first bar of a session (09:30) is all zeros: a bar with no positive close is
     not a print, so it is dropped. The same rule drops the zero rows before the VIX's first overnight print (~03:15).
   - Stamps are New York wall time ("2026-10-30T16:15:01.000").
-  - Open interest is stamped about 06:30 New York for the PREVIOUS session's close, once a session day.
 */
 
-import { addDays, isSessionDay, nyWall, sessionDayAtOrBefore } from './marketSession.mjs';
+import { addDays, isSessionDay, sessionDayAtOrBefore } from './marketSession.mjs';
 
 /** The VIX term structure, front to back, with each tenor's days for the curve's axis */
 export const TERM = [
@@ -146,89 +145,4 @@ export function yearRead(closes, value) {
     lo: Math.min(...vals),
     hi: Math.max(...vals),
   };
-}
-
-/* ---- open interest ---------------------------------------------------------------------------------------------- */
-
-/** The index whose weeklies carry its chain on the terminal (SPX's dailies are SPXW) */
-export const OI_ROOT = { SPX: 'SPXW', NDX: 'NDXP', RUT: 'RUTW' };
-export const oiRootOf = (ticker) => {
-  const t = String(ticker ?? '').toUpperCase();
-  return OI_ROOT[t] ?? t;
-};
-/** When the morning's open interest is on file, minutes of New York's day: OPRA stamps it about 06:30; five minutes' grace */
-export const OI_READY_MIN = 6 * 60 + 35;
-
-/** The report a reader can expect at `ms`: today's once it is stamped on a session day, else the last session's */
-export function oiReportDay(ms) {
-  const w = nyWall(ms);
-  if (isSessionDay(w.iso) && w.min >= OI_READY_MIN) return w.iso;
-  return sessionDayAtOrBefore(addDays(w.iso, -1));
-}
-/** The report before `day`'s, and the close a report counts (the session before the morning it is stamped) */
-export const priorSession = (day) => sessionDayAtOrBefore(addDays(day, -1));
-
-/** /option/history/open_interest?expiration=*: { 'YYYY-MM-DD': [[strike, callOi, putOi], …] }, strikes ascending */
-export function readOiReport(json) {
-  const by = new Map();
-  for (const row of rowsOf(json)) {
-    const c = row?.contract;
-    const d = Array.isArray(row?.data) ? row.data[row.data.length - 1] : null;
-    const right = String(c?.right ?? '').toUpperCase()[0];
-    const strike = num(c?.strike);
-    const oi = num(d?.open_interest);
-    const exp = String(c?.expiration ?? '').slice(0, 10);
-    if ((right !== 'C' && right !== 'P') || !(strike > 0) || !(oi >= 0) || !/^\d{4}-\d{2}-\d{2}$/.test(exp)) continue;
-    let m = by.get(exp);
-    if (!m) by.set(exp, (m = new Map()));
-    const cell = m.get(strike) ?? [0, 0];
-    cell[right === 'C' ? 0 : 1] += oi;
-    m.set(strike, cell);
-  }
-  const out = {};
-  for (const exp of [...by.keys()].sort()) out[exp] = [...by.get(exp).entries()].sort((a, b) => a[0] - b[0]).map(([k, [c, p]]) => [k, c, p]);
-  return out;
-}
-
-/** How many of the largest builds and unwinds are named */
-export const OI_TOP = 5;
-
-/**
- * The day-over-day change per strike for one scope.
- * @param {Record<string, [number, number, number][]>} now    the later report (readOiReport)
- * @param {Record<string, [number, number, number][]>} prior  the earlier report
- * @param {{ expiry: 'book' | string, from: string }} scope    one expiry, or every expiry still live on `from` (the later
- *   report's date: an expiry before it settled at or before the close the later report counts, so it has no later figure)
- */
-export function oiChange(now, prior, scope) {
-  const exps = scope.expiry === 'book' ? Object.keys(now).filter(e => e >= scope.from).sort() : now[scope.expiry] ? [scope.expiry] : [];
-  const by = new Map();
-  const add = (rep, i) => {
-    for (const e of exps) {
-      for (const [k, c, p] of rep[e] ?? []) {
-        const cell = by.get(k) ?? [0, 0, 0, 0];
-        cell[i] += c;
-        cell[i + 2] += p;
-        by.set(k, cell);
-      }
-    }
-  };
-  add(now, 0);
-  add(prior, 1);
-  /* [strike, call now, call prior, put now, put prior] */
-  const rows = [...by.entries()].sort((a, b) => a[0] - b[0]).map(([k, [c, c0, p, p0]]) => [k, c, c0, p, p0]);
-  const totals = { call: 0, callPrior: 0, put: 0, putPrior: 0 };
-  const moves = [];
-  for (const [k, c, c0, p, p0] of rows) {
-    totals.call += c;
-    totals.callPrior += c0;
-    totals.put += p;
-    totals.putPrior += p0;
-    if (c !== c0) moves.push({ strike: k, right: 'C', d: c - c0, now: c, prior: c0 });
-    if (p !== p0) moves.push({ strike: k, right: 'P', d: p - p0, now: p, prior: p0 });
-  }
-  const order = (a, b) => Math.abs(b.d) - Math.abs(a.d) || a.strike - b.strike || (a.right < b.right ? -1 : 1);
-  const builds = moves.filter(m => m.d > 0).sort(order).slice(0, OI_TOP);
-  const unwinds = moves.filter(m => m.d < 0).sort(order).slice(0, OI_TOP);
-  return { expiries: exps, rows, totals, builds, unwinds };
 }

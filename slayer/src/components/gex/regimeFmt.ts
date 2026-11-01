@@ -1,4 +1,4 @@
-/* The words and figures the rail's Regime and OI change tabs share (VolRegimeView, OiChangeView) */
+/* The words and figures the rail's Regime tab uses (VolRegimeView) */
 
 import { MONTHS } from '../../core/nyTime';
 

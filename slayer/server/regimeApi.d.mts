@@ -13,7 +13,6 @@ export function createRegime(o: {
   log?: (line: string) => void;
 }): {
   vol: () => Promise<Record<string, unknown>>;
-  oi: (ticker: string, expiry: string, opt?: { wait?: boolean }) => Promise<Record<string, unknown>>;
   stats: () => Record<string, number>;
   settle: () => Promise<void>;
 };

@@ -74,6 +74,7 @@ import type { PriceProjection } from './StrikeChart';
 import type { GexLevel, MarketSnapshot } from '../../types/market';
 import ExposureField from './ExposureField';
 import { RegimeTabs } from './regimeLazy';
+import RailBuilding from './RailBuilding';
 import FilterTabs from '../ui/FilterTabs';
 import { CardRow, PointerFollowCard } from '../ui/PointerCard';
 import { attachScrollMore } from '../ui/scrollMore';
@@ -147,7 +148,7 @@ export const PALETTE_OPTIONS: DropdownOption<ProfilePalette>[] = [
   { value: 'thermal', label: 'Thermal', hint: 'Yellow in the middle, red where hedging amplifies a move, blue where it absorbs one' },
   { value: 'house', label: 'House', hint: 'Gold where hedging amplifies, ice where it absorbs' },
 ];
-/** The heat ramp a palette choice reads (the rail's, and its Regime and OI change tabs', phone door included) */
+/** The heat ramp a palette choice reads (the rail's, its Regime tab's, phone door included) */
 export const modeOf = (p: ProfilePalette): HeatMode => (p === 'house' ? HEAT_MODE : 'thermal-yellow');
 /** The spine may lean this far from the centre line, as a share of half the lane, either way */
 const MAX_LEAN = 0.44;
@@ -167,10 +168,10 @@ const VIEW_TABS = [
   { value: 'net', label: 'Matrix' },
   { value: 'gex', label: 'Calendar' },
   { value: 'surface', label: 'Surface' },
-  /* THE MARKET'S TWO READS (2026-10-31, from the data audit): the VIX term structure and the overnight change in open
-     interest, each one shared answer for the desk (data/regimeFeed.ts) */
+  /* THE VIX TERM STRUCTURE (2026-10-31, from the data audit): one shared answer for the desk (data/regimeFeed.ts) */
   { value: 'regime', label: 'Regime' },
-  { value: 'oi', label: 'OI change' },
+  /* PINPOINT'S BUILDING (2026-10-31, the owner: the overnight open-interest change is Building's, one view of it) */
+  { value: 'building', label: 'Building' },
 ] as const;
 type RailView = (typeof VIEW_TABS)[number]['value'];
 /** The head on TWO ROWS below the full tier (2026-09-16: the view tabs and the host's Expiry
@@ -417,8 +418,6 @@ interface ProfilePanelProps {
   className?: string;
   /** Phone sheet. Ladder only — the calendar is the crash, and it stays unmounted. */
   lockView?: 'ladder';
-  /** The expiry cut the OI change tab reads ('book' or YYYY-MM-DD) and its words — the head's Expiry card's choice */
-  oiScope?: { expiry: string; label: string };
 }
 
 interface Placed {
@@ -439,7 +438,7 @@ interface Hover {
 
 const ProfilePanel = ({
   rows, maxAbs, legs, openRatio = null, palette = 'thermal', step, levels, flow, lane, onLane, greek, words = { pos: 'amplifies', neg: 'absorbs' }, focusPrice, onSelect, projection, onGuide, guideOpen = false,
-  ticker, width, onWidth, restWidth, chartFloor = CHART_MIN_W, headCard, onClose, closeHint = 'Hide this panel', className = '', lockView, oiScope,
+  ticker, width, onWidth, restWidth, chartFloor = CHART_MIN_W, headCard, onClose, closeHint = 'Hide this panel', className = '', lockView,
 }: ProfilePanelProps) => {
   const mode = modeOf(palette);
   /* ON PAPER (the page's light theme — the panel's own ground, never the chart's) the ramps are the paper ramps
@@ -470,9 +469,9 @@ const ProfilePanel = ({
   const [viewState, setView] = useState<RailView>(lockView ?? 'gex');
   const view = lockView ?? viewState;
   const onField = view === 'gex' || view === 'net' || view === 'surface';
-  /* the Regime and OI change tabs are DOM views over the quiet canvas, like the field: the ladder's pointer and drawing
+  /* the Regime and Building tabs are DOM views over the quiet canvas, like the field: the ladder's pointer and drawing
      stand down while they are up */
-  const onBoard = view === 'regime' || view === 'oi';
+  const onBoard = view === 'regime' || view === 'building';
   const quiet = onField || onBoard;
   const fieldView: 'matrix' | 'calendar' | 'profile' = view === 'net' ? 'matrix' : view === 'surface' ? 'profile' : 'calendar';
   const [gexTick, setGexTick] = useState(0);
@@ -688,7 +687,7 @@ const ProfilePanel = ({
       const canvas = canvasRef.current;
       const p = projection.current;
       if (!root || !canvas || !p) return;
-      /* the GEX tab stands over a quiet canvas — the field draws the book (and the Regime and OI change tabs theirs) */
+      /* the GEX tab stands over a quiet canvas — the field draws the book (and the Regime and Building tabs theirs) */
       if (quiet) {
         if (lastKey !== 'gex') {
           const c2 = canvas.getContext('2d');
@@ -1835,7 +1834,7 @@ const ProfilePanel = ({
         <div className={`flex items-center gap-1.5 min-w-0 ${quiet ? 'flex-wrap gap-y-1 py-[3px] pr-7' : ''}`} style={quiet ? { minHeight: HEAD_TOP } : { height: HEAD_TOP }}>
           {viewTabs}
           {onField && <div ref={setStripSlot} className="contents" data-profile-head-slot />}
-          {headCard && (!quiet || view === 'oi') && (
+          {headCard && !quiet && (
             <span className="pointer-events-auto shrink-0 inline-flex" data-profile-head-card>
               {headCard}
             </span>
@@ -1877,15 +1876,15 @@ const ProfilePanel = ({
           <ExposureField snapshot={gexSnap} toolbar="panel" viewLock={fieldView} legsLock={view === 'net' ? 'all' : undefined} selectedStrike={focusPrice ?? null} onSelectStrike={onSelect} fullMode="portal" narrowHint="widen the panel or pick fewer" headSlot={stripSlot} />
         </div>
       )}
-      {/* THE REGIME AND OI CHANGE TABS: their own views under the head, the canvas quiet behind them */}
+      {/* THE REGIME AND BUILDING TABS: their own views under the head, the canvas quiet behind them */}
       {view === 'regime' && (
         <div className="absolute inset-x-0 bottom-0 pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-regime>
-          <RegimeTabs.Regime />
+          <RegimeTabs.Regime mode={mode} paper={paper} />
         </div>
       )}
-      {view === 'oi' && ticker && (
-        <div className="absolute inset-x-0 bottom-0 pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-oi>
-          <RegimeTabs.Oi ticker={ticker} expiry={oiScope?.expiry ?? 'book'} scopeLabel={oiScope?.label ?? 'Whole book'} spot={liveSpot} focusPrice={focusPrice ?? null} onSelect={onSelect} />
+      {view === 'building' && ticker && (
+        <div className="absolute inset-x-0 bottom-0 pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-building>
+          <RailBuilding ticker={ticker} focus={focusPrice ?? null} onPick={onSelect} />
         </div>
       )}
       {onField && (!gexSnap || (gexSnap.chain?.length ?? 0) === 0) && (

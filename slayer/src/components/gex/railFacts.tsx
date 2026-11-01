@@ -1,4 +1,4 @@
-/* The pieces the rail's Regime and OI change tabs draw in the house's own hand, beside the Calendar, Matrix and
+/* The pieces the rail's Regime tab draws in the house's own hand, beside the Calendar, Matrix and
    Surface tabs: the head's fact chips (the Expiry card's clothes, without its menu), the section heads (the matrix's
    column heads), the one-line foot (the Surface tab's), and the chart frame every recharts chart there sits in. */
 

@@ -28,29 +28,3 @@ export interface YearRead {
   hi: number | null;
 }
 export function yearRead(closes: [string, number][], value: number): YearRead;
-
-export const OI_ROOT: Record<string, string>;
-export function oiRootOf(ticker: string): string;
-export const OI_READY_MIN: number;
-export function oiReportDay(ms: number): string;
-export function priorSession(day: string): string;
-/** expiry → [strike, call OI, put OI][] */
-export type OiReport = Record<string, [number, number, number][]>;
-export function readOiReport(json: unknown): OiReport;
-export const OI_TOP: number;
-export interface OiMove {
-  strike: number;
-  right: 'C' | 'P';
-  d: number;
-  now: number;
-  prior: number;
-}
-export interface OiChange {
-  expiries: string[];
-  /** [strike, call now, call prior, put now, put prior], strikes ascending */
-  rows: [number, number, number, number, number][];
-  totals: { call: number; callPrior: number; put: number; putPrior: number };
-  builds: OiMove[];
-  unwinds: OiMove[];
-}
-export function oiChange(now: OiReport, prior: OiReport, scope: { expiry: 'book' | string; from: string }): OiChange;
