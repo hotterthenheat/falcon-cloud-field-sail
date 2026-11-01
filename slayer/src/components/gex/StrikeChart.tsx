@@ -115,6 +115,7 @@ import { useChartDarkPrints, useChartFlowPrints } from '../../data/chartFeeds';
 import { usePaneFlow } from '../../data/paneFlow';
 import { feedHeaders } from '../../data/feedGate';
 import { checkPressure, type PressureLevel } from '../../data/nodePressure';
+import { FlowFilterDoor } from './FlowFilterDoor';
 import { FLOW_CHIPS, flowCaption, passesFlow, signedFlowBars, type SignedFlowBar as SignedFlowBarT } from '../../data/flowBuckets';
 import { setDeskPrefs, useDeskPrefs, type FlowFilters } from '../../data/deskPrefs';
 import { INDICATOR_ITEMS, indicatorBlurb } from './indicatorItems';
@@ -3163,6 +3164,17 @@ const StrikeChart = ({
     chartRef.current?.applyOptions({ layout: { fontSize: compact ? 9 : 10 } });
   }, [compact]);
 
+  /* Fewer price ticks on a short pane (a 3- or 4-pane desk, the phone): a tick every ~70px instead of every ~25, so the
+     axis reads as a scale, not a column of figures beside the nodes' labels */
+  const tickDensity = boxH > 0 && boxH < 380 ? 5 : boxH > 0 && boxH < 560 ? 3.6 : 2.5;
+  useEffect(() => {
+    try {
+      chartRef.current?.priceScale('right').applyOptions({ tickMarkDensity: tickDensity });
+    } catch {
+      /* chart already gone */
+    }
+  }, [tickDensity, mainNonce]);
+
   /* Crossing the breakpoint must not need a remount — the chart is created once and a window drag changes which side
      of it the reader is on. */
   useEffect(() => {
@@ -4050,9 +4062,16 @@ const StrikeChart = ({
   /* The floating mark bar Appears whenever a mark is selected; movable anywhere on the pane by its grip; its trash
      kills only the selected mark. */
   const railPrefs = useRailPrefs();
+  /* A short pane (a 3- or 4-pane desk) folds the drawing tools to their slim tab at rest: the column of nine buttons
+     beside every chart was most of the crowding. The tab opens them in this pane (railPeek); drawing keeps them out. */
+  const smallPane = boxH > 0 && boxH < 460;
+  const [railPeek, setRailPeek] = useState(false);
+  useEffect(() => {
+    if (!smallPane) setRailPeek(false);
+  }, [smallPane]);
   /* The dock the reader asked for, honoured only where it fits. */
   const rail = {
-    open: railPrefs.open,
+    open: railPrefs.open && (!smallPane || railPeek || drawing),
     dock: railPrefs.dock === 'top' && railTopOk ? ('top' as const) : ('left' as const),
     /** Both docks reachable here? Drives whether the flip button shows. */
     canTop: railTopOk,
@@ -4803,7 +4822,7 @@ const StrikeChart = ({
             return (
               <div
                 key={l.key}
-                className="absolute z-10 flex items-center gap-x-1 overflow-hidden whitespace-nowrap font-mono text-t9 uppercase tracking-wider text-textMuted"
+                className={`absolute flex items-center gap-x-1 whitespace-nowrap font-mono text-t9 uppercase tracking-wider text-textMuted ${capNarrow ? "z-20 overflow-visible" : "z-10 overflow-hidden"}`}
                 style={{ top: l.top - 3, left: railLeft ? 40 : 8, right: PRICE_SCALE_MIN_WIDTH + 8 }}
                 title={flowCaption(flowFilters)}
                 data-flow-caption={l.key}
@@ -4814,7 +4833,9 @@ const StrikeChart = ({
                     {signedDollars(flowSum.net)}
                   </span>
                 )}
-                {FLOW_CHIPS.map(c => {
+                {/* a small pane (a 3- or 4-pane desk, the phone) folds the six chips into one door */}
+                {capNarrow && l.key === 'flow' && <FlowFilterDoor filters={flowFilters} onStep={step} />}
+                {!(capNarrow && l.key === 'flow') && FLOW_CHIPS.map(c => {
                   const opt = c.options.find(o => o.value === flowFilters[c.key]) ?? c.options[0];
                   const narrowed = opt.value !== 'all';
                   return (
@@ -4882,7 +4903,7 @@ const StrikeChart = ({
           /* The way back — a slim tab at the docked edge, always there, so a hidden toolbar is one click from found
              (TV's collapse grammar). */
           <button
-            onClick={() => setRailPrefs({ open: true })}
+            onClick={() => (smallPane && railPrefs.open ? setRailPeek(true) : setRailPrefs({ open: true }))}
             title="Show the drawing tools"
             aria-label="Show the drawing tools"
             /* Black on any tape, like the rail it opens (index.css) */
@@ -4981,7 +5002,7 @@ const StrikeChart = ({
               {rail.dock === 'left' ? <PanelTop className="w-3.5 h-3.5" /> : <PanelLeft className="w-3.5 h-3.5" />}
             </button>}
             <button
-              onClick={() => setRailPrefs({ open: false })}
+              onClick={() => (smallPane && railPeek ? setRailPeek(false) : setRailPrefs({ open: false }))}
               title="Hide the tools — the small tab at the edge brings them back"
               aria-label="Hide the tools"
               className={`inline-flex items-center justify-center rounded transition-colors shrink-0 text-textMuted hover:text-textPrimary hover:bg-ink/[0.04] ${
