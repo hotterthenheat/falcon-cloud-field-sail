@@ -13,6 +13,7 @@ import type { MarketEvent } from '../../data/events';
 
   GLYPHS CARRY THE KIND, SHAPE CARRIES THE SIDE, COLOUR CARRIES NOTHING.
   Earnings are a filled diamond, macro a hollow square, prints a triangle —
+  outlined for a spread's leg (Terrain's tape tags it), filled otherwise —
   pointing up for calls and down for puts, which is POSITION, not price
   direction, so it gets a shape and not an ink. Everything draws in the
   same steel the session furniture uses: an event is context, and none of
@@ -113,7 +114,9 @@ class EventsRenderer {
             ctx.lineTo(x, y - g);
           }
           ctx.closePath();
-          ctx.fill();
+          /* a spread's leg is half of a structure, not a bet: outlined, not filled */
+          if (e.hollow) ctx.stroke();
+          else ctx.fill();
         }
       }
       ctx.restore();

@@ -3,6 +3,7 @@ import { sessionStarts } from './indicators';
 import type { EarningsEvent } from './earnings';
 import type { Candle } from '../types/market';
 import type { FlowPrint } from '../types/trace';
+import { primaryOf, TYPE_WORDS, type OptionTags } from './printTags';
 
 /* Markers along the tape's bottom edge: this name's next earnings (BMO at the open, AMC at the close), FOMC/CPI/NFP, and the session's
    largest prints. Past events carry a bar time, future ones trading minutes ahead (the cone's arithmetic). FOMC is the Fed's 2026 calendar; NFP first Friday; CPI approximated (second Wednesday, said so). */
@@ -21,6 +22,8 @@ export interface MarketEvent {
   minutesAhead?: number;
   /** Prints only: which right, for the glyph's SHAPE (never its colour). */
   side?: 'C' | 'P';
+  /** Prints only: a leg of a spread — half of a structure, not a bet — drawn hollow */
+  hollow?: boolean;
 }
 
 /** Below this premium a print is tape texture, not an event. */
@@ -154,12 +157,19 @@ export function buildTapeEvents(input: TapeEventsInput): MarketEvent[] {
     .sort((a, b) => b.premium - a.premium)
     .slice(0, PRINT_CAP);
   for (const p of big) {
+    /* a print off the server's tape names its type and the side it took */
+    const tags = (p as FlowPrint & { tapeTags?: OptionTags }).tapeTags;
+    const type = tags ? primaryOf(tags) : null;
+    const took = p.side === 'ASK' ? 'bought' : p.side === 'BID' ? 'sold' : 'no side';
     past.push({
       kind: 'print',
       side: p.right,
       time: p.at,
-      label: `$${(p.premium / 1e6).toFixed(1)}M ${p.right === 'C' ? 'call' : 'put'} print`,
-      detail: `${p.size.toLocaleString()}× ${p.strike} ${p.right} · ${p.dte}dte · ${p.side} side`,
+      hollow: type === 'leg',
+      label: `$${(p.premium / 1e6).toFixed(1)}M ${p.right === 'C' ? 'call' : 'put'} ${type ? TYPE_WORDS[type].one : 'print'}`,
+      detail: tags
+        ? `${p.size.toLocaleString()}× ${p.strike} ${p.right} · ${p.dte}dte · ${took}${tags.floor && type !== 'floor' ? ' · floor' : ''}${tags.sweep && type !== 'sweep' ? ' · swept' : ''}`
+        : `${p.size.toLocaleString()}× ${p.strike} ${p.right} · ${p.dte}dte · ${p.side} side`,
     });
   }
 

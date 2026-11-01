@@ -4,7 +4,11 @@
    One poll a store, on the newest page, every POLL_LIVE_MS in the session and every POLL_QUIET_MS outside it; behind
    the first answer the store walks back a page at a time on the low lane (one request in flight a store, never ahead of
    a page's own reads) until the vendor's tape runs out — it holds one session — or BACK_PAGES pages are in hand. The
-   prints Trace already holds for the name (its shelf) join without a request. */
+   prints Trace already holds for the name (its shelf) join without a request.
+
+   On Terrain the pane reads the server's tape instead (`source: 'tape'`, data/tapeFeed.ts): the name's every print of
+   the session, tagged by type and sided at the quote, read once on the server for every viewer — the same rows, the
+   same filters (data/flowBuckets.ts passesFlow), no vendor page walk. */
 
 import { useEffect, useMemo, useState } from 'react';
 import type { FlowPrint } from '../types/trace';
@@ -12,6 +16,7 @@ import type { FlowFilters } from './deskPrefs';
 import { readTapePage, useShelfPrints } from './traceLive';
 import { marketPhase } from '../core/marketPhase';
 import { flowKey, flowQuery, passesFlow } from './flowBuckets';
+import { useOptionTape } from './tapeFeed';
 
 const PAGE = 500;
 const BACK_PAGES = 10;
@@ -136,14 +141,27 @@ export interface PaneFlow {
   fault: string | null;
   /** The walk back is still reading older pages */
   filling: boolean;
+  /** The server's tape: the session it holds, [open, close) in ms — the caption's figure is that session's */
+  span?: { from: number; to: number };
 }
 
 const EMPTY: readonly FlowPrint[] = [];
 
+/** Where the pane's prints come from: the vendor's tape (Trace's), or the server's tape (Terrain's) */
+export type PaneFlowSource = 'vendor' | 'tape';
+
 /** The flow pane's prints for one name under one filter set, live while `enabled` */
-export function usePaneFlow(ticker: string, filters: FlowFilters, enabled: boolean): PaneFlow {
+export function usePaneFlow(ticker: string, filters: FlowFilters, enabledFor: boolean, source: PaneFlowSource = 'vendor'): PaneFlow {
   const name = ticker.trim().toUpperCase();
   const fkey = flowKey(filters);
+  const tape = useOptionTape(name, enabledFor && source === 'tape');
+  const tapeRows = useMemo(
+    () => (source === 'tape' ? tape.rows.filter(p => passesFlow(p, filters)) : EMPTY),
+    // `rev` stands for the store's rows; the filters are the key
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [source, tape.rev, tape.rows, fkey],
+  );
+  const enabled = enabledFor && source === 'vendor';
   const [, bump] = useState(0);
   const shelf = useShelfPrints(enabled ? name : null);
   useEffect(() => {
@@ -184,6 +202,7 @@ export function usePaneFlow(ticker: string, filters: FlowFilters, enabled: boole
     // `rev` stands for the store's rows
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s, rev, shelf, fkey]);
+  if (source === 'tape') return { rows: tapeRows, ready: tape.ready, fault: tape.fault, filling: tape.filling, span: tape.open > 0 ? { from: tape.open, to: tape.close } : undefined };
   if (!s) return { rows: EMPTY, ready: !enabled, fault: null, filling: false };
   return { rows, ready: s.ready, fault: s.fault, filling: s.backing };
 }

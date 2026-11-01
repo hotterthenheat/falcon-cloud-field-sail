@@ -10,7 +10,8 @@ export const THETA_DENIED = [/\/flat_file(?:\/|\?|$)/, /\/market_value(?:\?|$)/]
 export const THETA_ALLOWED = [
   /^\/stock\/list\/(?:symbols|dates\/(?:trade|quote))(?:\?|$)/,
   /^\/stock\/snapshot\/(?:quote|trade|ohlc)(?:\?|$)/,
-  /^\/stock\/history\/(?:eod|ohlc|trade|quote)(?:\?|$)/,
+  /* trade_quote: Terrain's stock tape on the server (src/data/tapeServer.ts), each print with the quote in force */
+  /^\/stock\/history\/(?:eod|ohlc|trade|quote|trade_quote)(?:\?|$)/,
   /^\/option\/list\/(?:symbols|expirations|strikes|dates\/(?:trade|quote)|contracts\/(?:trade|quote))(?:\?|$)/,
   /^\/option\/snapshot\/(?:quote|ohlc|open_interest|greeks\/(?:first_order|second_order|all|implied_volatility))(?:\?|$)/,
   /^\/option\/history\/(?:eod|ohlc|quote|trade|trade_quote|open_interest|greeks\/(?:eod|first_order|second_order|all|implied_volatility))(?:\?|$)/,

@@ -4,6 +4,7 @@
 
 import { useSyncExternalStore } from 'react';
 import { TIMEFRAMES, frameServed, type Timeframe } from './timeframe';
+import { PRINT_TYPES, type PrintType } from './printTags';
 
 export type ClockZone = 'local' | 'ny';
 
@@ -17,14 +18,15 @@ export const NODE_LOOKS: readonly { value: NodeLook; label: string; hint: string
 
 /** Which option prints the flow pane sums. Each is a narrowing or "all". */
 export interface FlowFilters {
-  /** single-leg prints only, or legs of multi-leg orders as well */
+  /** spread legs left out of the net ('single', the default: a leg is half of a structure, not a bet), or counted by
+      their side ('all') */
   leg: 'single' | 'all';
   /** out of the money only */
   mny: 'otm' | 'all';
   /** at the ask only (calls bought up, puts bought down), or both sides */
   side: 'ask' | 'all';
-  /** sweeps only */
-  kind: 'sweep' | 'all';
+  /** which prints, by type (data/printTags.ts): every one, or sweeps, spread legs, floor trades, blocks or singles */
+  kind: 'all' | PrintType;
   /** days to expiry, at most: 14, 60, or any */
   dte: '14' | '60' | 'all';
   /** a print's premium, at least: $50K, $250K, or any — the vendor's tape holds one session, and a floor is what lets a
@@ -76,7 +78,7 @@ export function asFlowFilters(v: unknown): FlowFilters {
     leg: f.leg === 'single' || f.leg === 'all' ? f.leg : d.leg,
     mny: f.mny === 'otm' || f.mny === 'all' ? f.mny : d.mny,
     side: f.side === 'ask' || f.side === 'all' ? f.side : d.side,
-    kind: f.kind === 'sweep' || f.kind === 'all' ? f.kind : d.kind,
+    kind: f.kind === 'all' || (PRINT_TYPES as readonly unknown[]).includes(f.kind) ? (f.kind as FlowFilters['kind']) : d.kind,
     dte: f.dte === '14' || f.dte === '60' || f.dte === 'all' ? f.dte : d.dte,
     prem: f.prem === '50k' || f.prem === '250k' || f.prem === 'all' ? f.prem : d.prem,
   };

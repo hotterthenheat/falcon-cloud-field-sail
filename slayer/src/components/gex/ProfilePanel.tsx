@@ -172,6 +172,8 @@ const VIEW_TABS = [
   { value: 'regime', label: 'Regime' },
   /* PINPOINT'S BUILDING (2026-10-31, the owner: the overnight open-interest change is Building's, one view of it) */
   { value: 'building', label: 'Building' },
+  /* THE SESSION'S PRINTS (2026-10-31): the option prints by type and side, the stock prints by venue (data/tapeFeed.ts) */
+  { value: 'prints', label: 'Prints' },
 ] as const;
 type RailView = (typeof VIEW_TABS)[number]['value'];
 /** The head on TWO ROWS below the full tier (2026-09-16: the view tabs and the host's Expiry
@@ -471,7 +473,7 @@ const ProfilePanel = ({
   const onField = view === 'gex' || view === 'net' || view === 'surface';
   /* the Regime and Building tabs are DOM views over the quiet canvas, like the field: the ladder's pointer and drawing
      stand down while they are up */
-  const onBoard = view === 'regime' || view === 'building';
+  const onBoard = view === 'regime' || view === 'building' || view === 'prints';
   const quiet = onField || onBoard;
   const fieldView: 'matrix' | 'calendar' | 'profile' = view === 'net' ? 'matrix' : view === 'surface' ? 'profile' : 'calendar';
   const [gexTick, setGexTick] = useState(0);
@@ -1885,6 +1887,11 @@ const ProfilePanel = ({
       {view === 'building' && ticker && (
         <div className="absolute inset-x-0 bottom-0 pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-building>
           <RailBuilding ticker={ticker} focus={focusPrice ?? null} onPick={onSelect} />
+        </div>
+      )}
+      {view === 'prints' && ticker && (
+        <div className="absolute inset-x-0 bottom-0 pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-prints>
+          <RegimeTabs.Prints ticker={ticker} onSelect={onSelect} />
         </div>
       )}
       {onField && (!gexSnap || (gexSnap.chain?.length ?? 0) === 0) && (

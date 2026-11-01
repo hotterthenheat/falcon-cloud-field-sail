@@ -8,6 +8,7 @@ import { exposureMount } from './server/exposureApi.mjs';
 import { volOutlookMount } from './server/volOutlookApi.mjs';
 import { proxyRegime } from './server/regimeApi.mjs';
 import { proxyOiChange } from './server/oiChangeApi.mjs';
+import { tapeMount } from './server/tapeApi.mjs';
 import { superviseTheta } from './theta/supervisor.mjs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { pathToFileURL } from 'node:url';
@@ -21,6 +22,7 @@ const dataProxies = (): Plugin => {
     compass?: ReturnType<typeof compassMount>,
     exposure?: ReturnType<typeof exposureMount>,
     vol?: ReturnType<typeof volOutlookMount>,
+    tape?: ReturnType<typeof tapeMount>,
   ) => {
     if (compass) use('/api/compass', (req, res) => void compass.handle(req, res));
     if (exposure) use('/api/exposure', (req, res) => void exposure.handle(req, res));
@@ -29,6 +31,7 @@ const dataProxies = (): Plugin => {
     use('/api/regime', (req, res) => void proxyRegime(req, res));
     /* Building's complete open-interest change (server/oiChangeApi.mjs): one terminal read a report date, for every viewer */
     use('/api/oi-change', (req, res) => void proxyOiChange(req, res));
+    if (tape) use('/api/tape', (req, res) => void tape.handle(req, res));
     use('/api/uw', (req, res) => void proxyUw(req, res));
     use('/api/theta', (req, res) => void proxyTheta(req, res));
     use('/api/logo', (req, res) => void proxyLogo(req, res));
@@ -49,13 +52,16 @@ const dataProxies = (): Plugin => {
       const exposure = exposureMount(() => server.ssrLoadModule('/src/data/exposureRecorder.ts'));
       /* the vol outlook's sessions (src/data/volOutlookServer.ts): a name's year of minutes read once a day here, not per viewer */
       const vol = volOutlookMount(() => server.ssrLoadModule('/src/data/volOutlookServer.ts'));
-      mount((path, fn) => server.middlewares.use(path, fn), compass, exposure, vol);
+      /* the option and stock tapes (src/data/tapeServer.ts): one per name, read here and shared by every viewer */
+      const tape = tapeMount(() => server.ssrLoadModule('/src/data/tapeServer.ts'));
+      mount((path, fn) => server.middlewares.use(path, fn), compass, exposure, vol, tape);
       server.httpServer?.once('listening', () => void compass.start());
       server.httpServer?.once('listening', () => void exposure.start());
       server.httpServer?.once('listening', () => void vol.start());
       server.httpServer?.once('close', () => compass.stop());
       server.httpServer?.once('close', () => exposure.stop());
       server.httpServer?.once('close', () => vol.stop());
+      server.httpServer?.once('close', () => tape.stop());
       /* one ThetaData terminal for local work (theta/supervisor.mjs); THETA_AUTOSTART=0 leaves it to `npm run theta`, and
          a machine that shares the always-on terminal (THETA_RELAY_URL) never starts its own */
       if (process.env.THETA_AUTOSTART !== '0' && !process.env.THETA_RELAY_URL) {
@@ -71,13 +77,16 @@ const dataProxies = (): Plugin => {
       const exposure = exposureMount(async () => (await import('tsx/esm/api')).tsImport(exposureFile, import.meta.url));
       const volFile = pathToFileURL(nodePath.join(process.cwd(), 'src/data/volOutlookServer.ts')).href;
       const vol = volOutlookMount(async () => (await import('tsx/esm/api')).tsImport(volFile, import.meta.url));
-      mount((path, fn) => server.middlewares.use(path, fn), compass, exposure, vol);
+      const tapeFile = pathToFileURL(nodePath.join(process.cwd(), 'src/data/tapeServer.ts')).href;
+      const tape = tapeMount(async () => (await import('tsx/esm/api')).tsImport(tapeFile, import.meta.url));
+      mount((path, fn) => server.middlewares.use(path, fn), compass, exposure, vol, tape);
       server.httpServer?.once('listening', () => void compass.start());
       server.httpServer?.once('listening', () => void exposure.start());
       server.httpServer?.once('listening', () => void vol.start());
       server.httpServer?.once('close', () => compass.stop());
       server.httpServer?.once('close', () => exposure.stop());
       server.httpServer?.once('close', () => vol.stop());
+      server.httpServer?.once('close', () => tape.stop());
     },
   };
 };

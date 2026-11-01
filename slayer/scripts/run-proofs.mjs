@@ -49,6 +49,8 @@ const PROOFS = [
   'forward-proof',
   'holidays-proof',
   'theta-paths-proof',
+  'flow-tags-proof',
+  'stock-prints-proof',
   'cone-feed-proof',
   'weigher-gamma-proof',
   'node-strikes-proof',

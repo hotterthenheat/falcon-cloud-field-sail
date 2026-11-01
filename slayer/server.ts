@@ -9,6 +9,7 @@ import { exposureMount } from './server/exposureApi.mjs';
 import { volOutlookMount } from './server/volOutlookApi.mjs';
 import { proxyRegime } from './server/regimeApi.mjs';
 import { proxyOiChange } from './server/oiChangeApi.mjs';
+import { tapeMount } from './server/tapeApi.mjs';
 
 try {
   process.loadEnvFile('.env.local');
@@ -49,6 +50,12 @@ app.use('/api/regime', (req, res) => {
 app.use('/api/oi-change', (req, res) => {
   void proxyOiChange(req, res, __dirname);
 });
+/* the option and stock tapes (src/data/tapeServer.ts): one per name, read here and shared by every viewer */
+const TAPES = './src/data/tapeServer.ts';
+const tape = tapeMount(() => import(TAPES), __dirname);
+app.use('/api/tape', (req, res) => {
+  void tape.handle(req, res);
+});
 app.use('/api/uw', (req, res) => {
   void proxyUw(req, res);
 });
@@ -84,6 +91,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     compass.stop();
     exposure.stop();
     vol.stop();
+    tape.stop();
     server.close();
     process.exit(0);
   });
