@@ -2,6 +2,7 @@
    Radix DropdownMenu supplies keyboard, focus, dismissal, typeahead and placement. */
 
 import { Fragment, type CSSProperties } from 'react';
+import { useMenuBounds } from './useMenuBounds';
 import { FLAT_DOOR, FLAT_OPEN } from './flatDoor';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Check, ChevronDown, type LucideIcon } from 'lucide-react';
@@ -70,11 +71,14 @@ export const CARD = 'z-[90] rounded-lg border border-borderSubtle bg-chip shadow
 const DropdownSelect = <T extends string | number>({ label, value, options, onChange, title, align = 'start', icon: Icon, ink, testId, size = 'md', bare = false, labelFrom, flat = false }: DropdownSelectProps<T>) => {
   const current = options.find(o => o.value === value);
   const tip = bare || labelFrom ? (title ? `${label} — ${title}` : label) : title;
+  /* the menu stays inside the pane it opened from (useMenuBounds) */
+  const { ref: triggerRef, bounds } = useMenuBounds<HTMLButtonElement>();
   return (
     <DropdownMenu.Root modal={false}>
       <Tip label={tip}>
         <DropdownMenu.Trigger asChild>
           <button
+            ref={triggerRef}
             type="button"
             data-dropdown={testId ?? label}
             aria-label={`${label}: ${current?.short ?? current?.label ?? ''}`}
@@ -104,7 +108,7 @@ const DropdownSelect = <T extends string | number>({ label, value, options, onCh
       </Tip>
       <DropdownMenu.Portal>
         {/* a long list scrolls inside the card rather than running off a short screen */}
-        <DropdownMenu.Content align={align} sideOffset={6} collisionPadding={12} className={`${CARD} min-w-[220px] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto p-1.5`} data-dropdown-card={testId ?? label}>
+        <DropdownMenu.Content align={align} sideOffset={6} collisionPadding={12} collisionBoundary={bounds} className={`${CARD} min-w-[220px] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto p-1.5`} data-dropdown-card={testId ?? label}>
           <DropdownMenu.Label className="px-2 pt-1 pb-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted">{title ?? label}</DropdownMenu.Label>
           <DropdownMenu.RadioGroup
             value={String(value)}

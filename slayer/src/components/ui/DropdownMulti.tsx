@@ -1,6 +1,7 @@
 /* Any number of choices in DropdownSelect's card: grouped checkbox rows that stay open while ticking, ending with Clear (Radix DropdownMenu). */
 
 import { FLAT_DOOR, FLAT_OPEN } from './flatDoor';
+import { useMenuBounds } from './useMenuBounds';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Check, ChevronDown } from 'lucide-react';
 import { CARD } from './DropdownSelect';
@@ -55,10 +56,13 @@ const DropdownMulti = ({ label, values, groups, onChange, title, emptyWord = 'Ev
   const toggle = (v: string) => onChange(picked.has(v) ? values.filter(x => x !== v) : [...values, v]);
   const summary = summarise(values, groups, emptyWord);
   const shown = groups.filter(g => g.options.length > 0);
+  /* the menu stays inside the pane it opened from (useMenuBounds) */
+  const { ref: triggerRef, bounds } = useMenuBounds<HTMLButtonElement>();
   return (
     <DropdownMenu.Root modal={false}>
       <DropdownMenu.Trigger asChild>
         <button
+          ref={triggerRef}
           type="button"
           data-dropdown={testId ?? label}
           data-picked={values.length}
@@ -72,7 +76,7 @@ const DropdownMulti = ({ label, values, groups, onChange, title, emptyWord = 'Ev
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content align={align} sideOffset={6} className={`${CARD} p-1.5`} data-dropdown-card={testId ?? label}>
+        <DropdownMenu.Content align={align} sideOffset={6} collisionPadding={12} collisionBoundary={bounds} className={`${CARD} p-1.5`} data-dropdown-card={testId ?? label}>
           <DropdownMenu.Label className="px-2 pt-1 pb-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted">{title ?? label}</DropdownMenu.Label>
           {shown.length === 0 ? (
             <div className="px-2 py-3 font-mono text-t10 text-textMuted">Nothing on the page to pick from</div>

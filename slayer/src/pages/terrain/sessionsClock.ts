@@ -13,7 +13,7 @@
 ==================================================
 */
 
-import { addDays, isEarlyCloseDay, isHolidayDay, isSessionDay, nextWindow, nyInstant, nyWall, regularCloseMin, sessionAt, windowAt, type Phase } from '../../core/session';
+import { addDays, isEarlyCloseDay, isHolidayDay, isSessionDay, nextWindow, nyInstant, nyWall, regularCloseMin, sessionAt, windowAt, worldSessionsBetween, type Phase } from '../../core/session';
 
 export type Lane = 'overnight' | 'pre' | 'regular' | 'post';
 export const LANES: readonly Lane[] = ['overnight', 'pre', 'regular', 'post'];
@@ -129,3 +129,42 @@ export function isoDayLabel(iso: string): string {
 }
 /** "13:00" off minutes of the day */
 export const minuteClock = (min: number): string => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+
+/* ---- THE WORLD'S EXCHANGES (the partner tree's sessions clock, 260a099: Tokyo and London beside New York) ----------
+   Their days are shared/marketSession.mjs WORLD_SESSIONS — the TSE 09:00–15:30 Tokyo, the LSE 08:00–16:30 London, each
+   on its own weekdays and its own daylight saving (only the US holidays are known there, so each still opens on its own
+   bank holidays). */
+
+export type WorldLane = 'asia' | 'london';
+export const WORLD_LANES: readonly WorldLane[] = ['asia', 'london'];
+export const WORLD_WORDS: Record<WorldLane, { name: string; short: string }> = {
+  asia: { name: 'Tokyo', short: 'TYO' },
+  london: { name: 'London', short: 'LDN' },
+};
+
+/** A world exchange's spans touching the New York day holding `at` */
+export function worldDaySpans(at: number, key: WorldLane): { from: number; to: number }[] {
+  const day = nyDayBounds(at);
+  return worldSessionsBetween(day.from, day.to, [key]).map(w => ({ from: w.from, to: w.to }));
+}
+
+/** Where a world exchange stands: open (and when it closes) or shut (and when it next opens, within ten days) */
+export function readWorld(at: number, key: WorldLane): { key: WorldLane; open: boolean; changeAt: number | null } {
+  const ahead = worldSessionsBetween(at - 24 * 3600_000, at + 10 * 24 * 3600_000, [key]);
+  const now = ahead.find(w => w.from <= at && at < w.to);
+  if (now) return { key, open: true, changeAt: now.to };
+  const next = ahead.find(w => w.from > at);
+  return { key, open: false, changeAt: next ? next.from : null };
+}
+
+const zoneFmts = new Map<string, Intl.DateTimeFormat>();
+/** "14:05:09" on a zone's wall clock (null = the machine's own) */
+export function zoneClock(zone: string | null, at: number): string {
+  const key = zone ?? '';
+  let f = zoneFmts.get(key);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-GB', { ...(zone ? { timeZone: zone } : {}), hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    zoneFmts.set(key, f);
+  }
+  return f.format(at);
+}

@@ -6,7 +6,36 @@ import { useSyncExternalStore } from 'react';
 import { TIMEFRAMES, frameServed, type Timeframe } from './timeframe';
 import { PRINT_TYPES, type PrintType } from './printTags';
 
-export type ClockZone = 'local' | 'ny';
+/* THE AXES' CLOCK (Settings › Desk › Clock, and the timezone door on Terrain's strip — the partner tree's 260a099 list):
+   the machine's own, New York's, or one of the world sessions' cities (shared/marketSession.mjs WORLD_SESSIONS keeps
+   Tokyo's and London's windows). 'local' keeps a null zone — the Date's own getters are the reader's clock. */
+export type ClockZone = 'local' | 'ny' | 'utc' | 'london' | 'tokyo';
+export interface ClockZoneDef {
+  value: ClockZone;
+  label: string;
+  /** the letters a chip prints */
+  short: string;
+  hint: string;
+  /** the IANA zone; null = the machine's own */
+  zone: string | null;
+}
+const machineZone = (): string => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return "The machine's zone";
+  }
+};
+export const CLOCK_ZONES: readonly ClockZoneDef[] = [
+  { value: 'local', label: 'Your own', short: 'Local', hint: machineZone(), zone: null },
+  { value: 'ny', label: 'New York', short: 'NY', hint: "The market's clock — the regular session opens and closes on it", zone: 'America/New_York' },
+  { value: 'utc', label: 'UTC', short: 'UTC', hint: 'The wire’s clock — no summer time', zone: 'UTC' },
+  { value: 'london', label: 'London', short: 'LDN', hint: 'The LSE’s day, 08:00 to 16:30 London', zone: 'Europe/London' },
+  { value: 'tokyo', label: 'Tokyo', short: 'TYO', hint: 'The TSE’s day, 09:00 to 15:30 Tokyo', zone: 'Asia/Tokyo' },
+];
+const isClockZone = (v: unknown): v is ClockZone => CLOCK_ZONES.some(z => z.value === v);
+/** The IANA zone behind a choice; null for the machine's own */
+export const clockZoneOf = (c: ClockZone): string | null => CLOCK_ZONES.find(z => z.value === c)?.zone ?? null;
 
 /** How the exposure nodes draw: dotted strike rows (beads), the filled field behind price (heat), beads over a faint field,
     or each strike as a waveform ribbon whose thickness is its strength (ribbon) */
@@ -51,7 +80,7 @@ interface DeskPrefs {
   };
   /** the jingle when one arms, the chime when it fires */
   alertsSound: boolean;
-  /** the axes' clock — New York's, or the machine's own */
+  /** the axes' clock — New York's, the machine's own, UTC, London's or Tokyo's */
   clock: ClockZone;
   /** how the exposure nodes draw on the charts */
   nodeLook: NodeLook;
@@ -95,7 +124,7 @@ let prefs: DeskPrefs = (() => {
       opensOn: { ticker: p.opensOn?.ticker ?? null, timeframe: asTimeframe(p.opensOn?.timeframe), page: typeof p.opensOn?.page === 'string' ? p.opensOn.page : null },
       alertsSound: p.alertsSound ?? true,
       /* New York's clock unless the reader chose the machine's (every time in the app is ET) */
-      clock: p.clock === 'local' ? 'local' : 'ny',
+      clock: isClockZone(p.clock) ? p.clock : 'ny',
       nodeLook: asLook(p.nodeLook),
       flowFilters: asFlowFilters(p.flowFilters),
       nodeAlertPct: typeof p.nodeAlertPct === 'number' && p.nodeAlertPct > 0 && p.nodeAlertPct <= 5 ? p.nodeAlertPct : 0.15,

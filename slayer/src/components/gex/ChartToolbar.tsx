@@ -683,46 +683,51 @@ const TRIGGER = (tall: boolean) =>
 
 /* TradingView-style glyphs beside each chart-style row (Noah, 2026-08-23) —
    hand-drawn 14px marks, all in the house white via currentColor. */
+/* the partner tree's style glyphs, 22×14 (b608857/2136793): three candles a shape, read at the size the chip draws them */
+const G = 'w-[22px] h-[14px]';
 const STYLE_GLYPHS: Record<ChartStyle, ReactNode> = {
-  bars: (
-    <svg viewBox="0 0 14 14" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
-      <path d="M4 2v9M2.5 5H4M4 8h1.5M10 3v9M8.5 10H10M10 5h1.5" />
-    </svg>
-  ),
   candles: (
-    <svg viewBox="0 0 14 14" className="w-3.5 h-3.5" fill="currentColor" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round">
-      <path fill="none" d="M4 1.5v2M4 8.5v2.5M10 2.5v2M10 10v1.5" />
-      <rect x="2.9" y="3.5" width="2.2" height="5" rx="0.4" />
-      <rect x="8.9" y="4.5" width="2.2" height="5.5" rx="0.4" />
+    <svg viewBox="0 0 22 14" className={G} fill="currentColor" stroke="currentColor" strokeWidth="1" strokeLinecap="round">
+      <path fill="none" d="M4 1v2.4M4 9.6V13M11 2.2v1.6M11 11.2v1.6M18 0.8v2.4M18 8.4v3.4" />
+      <rect x="2.6" y="3.4" width="2.8" height="6.2" rx="0.5" />
+      <rect x="9.6" y="3.8" width="2.8" height="7.4" rx="0.5" fill="none" />
+      <rect x="16.6" y="3.2" width="2.8" height="5.2" rx="0.5" />
     </svg>
   ),
   hollow: (
-    <svg viewBox="0 0 14 14" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round">
-      <path d="M4 1.5v2M4 8.5v2.5M10 2.5v2M10 10v1.5" />
-      <rect x="2.9" y="3.5" width="2.2" height="5" rx="0.4" />
-      <rect x="8.9" y="4.5" width="2.2" height="5.5" rx="0.4" />
+    <svg viewBox="0 0 22 14" className={G} fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round">
+      <path d="M4 1v2.4M4 9.6V13M11 2.2v1.6M11 11.2v1.6M18 0.8v2.4M18 8.4v3.4" />
+      <rect x="2.6" y="3.4" width="2.8" height="6.2" rx="0.5" />
+      <rect x="9.6" y="3.8" width="2.8" height="7.4" rx="0.5" />
+      <rect x="16.6" y="3.2" width="2.8" height="5.2" rx="0.5" />
+    </svg>
+  ),
+  bars: (
+    <svg viewBox="0 0 22 14" className={G} fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+      <path d="M4 1.5v11M1.8 4.5H4M4 9.5h2.2M11 2.5v10M8.8 9H11M11 5h2.2M18 1v11.5M15.8 3.5H18M18 8h2.2" />
     </svg>
   ),
   line: (
-    <svg viewBox="0 0 14 14" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1.5 10L5 6.5l3 2 4.5-5" />
+    <svg viewBox="0 0 22 14" className={G} fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1.5 11.5L6 6.5l4 3.2 4.5-6 6 4" />
     </svg>
   ),
   step: (
-    <svg viewBox="0 0 14 14" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1.5 10.5h3V7h3V3.5h4" />
+    <svg viewBox="0 0 22 14" className={G} fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1.5 12h4V8.5h4V3h4v4.5h4V1.5h3" />
     </svg>
   ),
   area: (
-    <svg viewBox="0 0 14 14" className="w-3.5 h-3.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1.5 10L5 6.5l3 2 4.5-5V12h-11Z" fill="currentColor" opacity="0.25" stroke="none" />
-      <path d="M1.5 10L5 6.5l3 2 4.5-5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+    <svg viewBox="0 0 22 14" className={G} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1.5 11.5L6 6.5l4 3.2 4.5-6 6 4V13.5h-19Z" fill="currentColor" opacity="0.22" stroke="none" />
+      <path d="M1.5 11.5L6 6.5l4 3.2 4.5-6 6 4" fill="none" stroke="currentColor" strokeWidth="1.3" />
     </svg>
   ),
   baseline: (
-    <svg viewBox="0 0 14 14" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1.5 7h11" strokeWidth="1" strokeDasharray="2 1.6" opacity="0.55" />
-      <path d="M1.5 9.5L5 4.5l3 4 4.5-5" strokeWidth="1.2" />
+    <svg viewBox="0 0 22 14" className={G} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1.5 7h19" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="2.2 1.8" opacity="0.5" />
+      <path d="M1.5 11L6 4.5l4 4 4.5-5.5 6 5.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M6 4.5l4 4 4.5-5.5 2 1.8V7H3.8Z" fill="currentColor" opacity="0.22" stroke="none" />
     </svg>
   ),
 };
@@ -1250,7 +1255,7 @@ const ChartToolbar = ({
               /* on the tall bar the trigger wears the SHAPE IN USE (openmarket's trigger shows its chart type) */
               icon={
                 tall ? (
-                  <span className="inline-flex text-textPrimary [&>svg]:w-[18px] [&>svg]:h-[13px]" aria-hidden>
+                  <span className="inline-flex text-textPrimary [&>svg]:w-[22px] [&>svg]:h-[14px]" aria-hidden>
                     {STYLE_GLYPHS[chartStyle]}
                   </span>
                 ) : (

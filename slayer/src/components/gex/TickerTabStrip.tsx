@@ -142,7 +142,7 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
     /* FORTY TALL ON A DESK (the partner tree's measure of openmarket's top row, 2026-11-01 port): a 32px tab STANDING ON
        THE ROW'S FLOOR, its top corners rounded 8, the text 11.5px medium, the mark 16, a lifted ground under the one in
        hand with a silver hairline along its top; the "+" a 26px square. The phone keeps its 32px boxes. */
-    <div ref={rootRef} className={`shrink-0 flex ${compact ? 'h-8 items-stretch border-b border-borderSubtle/60' : 'h-10 items-end row-line'} min-w-0 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`} role="tablist" aria-label="The names on this pane" data-ticker-tab-strip={tabs.length}>
+    <div ref={rootRef} className={`shrink-0 flex ${compact ? 'h-8 items-stretch' : 'h-10 items-end'} min-w-0 row-line overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`} role="tablist" aria-label="The names on this pane" data-ticker-tab-strip={tabs.length}>
       {lead}
       {paneLabel && (
         <span className="shrink-0 self-center inline-flex items-center pl-2 pr-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted whitespace-nowrap" title={`The tabs of pane ${paneLabel} — the one in hand`} data-ticker-tab-pane={paneLabel}>
@@ -201,7 +201,7 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
         <Plus className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
       </button>
       {end && (
-        <div className="ml-auto shrink-0 self-center inline-flex items-center gap-1.5 pl-3 pr-3" data-ticker-tab-end>
+        <div className="ml-auto shrink-0 self-center inline-flex items-center gap-1.5 pl-3 pr-4" data-ticker-tab-end>
           {end}
         </div>
       )}

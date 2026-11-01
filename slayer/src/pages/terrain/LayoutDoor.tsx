@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, X } from 'lucide-react';
 import { useHoverOpen } from '../../components/ui/useHoverOpen';
 import { useAnchoredMenu } from '../../components/ui/useAnchoredMenu';
+import Switch from '../../components/ui/Switch';
 import { LAYOUT_COUNTS, SHAPES, glyphCells, shapesOf, type LayoutShape, type SyncCfg } from './layoutShapes';
 
 /*
@@ -60,12 +61,6 @@ export const ShapeGlyph = ({ shape, className = '' }: { shape: LayoutShape; clas
   );
 };
 
-/** The house's small switch, drawn inline (no shared Switch in this tree) */
-const Toggle = ({ on }: { on: boolean }) => (
-  <span className={`relative inline-flex shrink-0 w-7 h-4 rounded-full transition-colors ${on ? 'bg-silver/70' : 'bg-ink/[0.12]'}`} aria-hidden>
-    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-canvas shadow transition-transform ${on ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
-  </span>
-);
 
 const SYNC_ROWS: { key: keyof SyncCfg; label: string; word: string }[] = [
   { key: 'symbol', label: 'Symbol', word: 'every chart takes the name you pick on one' },
@@ -179,7 +174,7 @@ const LayoutDoor = ({ shape, onShape, sync, onSync, saved, savedMax, onRecall, o
                 data-layout-sync={r.key}
               >
                 <span className={`flex-1 text-t11 ${sync[r.key] ? 'text-textPrimary' : 'text-textSecondary'}`}>{r.label}</span>
-                <Toggle on={sync[r.key]} />
+                <Switch on={sync[r.key]} />
               </button>
             ))}
             <p className="px-1 pt-1 text-t10 leading-snug text-textMuted">{count > 1 ? 'What one chart does, the others follow.' : 'Sync has something to do once two charts stand.'}</p>
@@ -234,13 +229,13 @@ const LayoutDoor = ({ shape, onShape, sync, onSync, saved, savedMax, onRecall, o
                 }}
                 placeholder="name this desk"
                 aria-label="Desk name"
-                className="flex-1 min-w-0 h-7 px-2 rounded-md border border-borderSubtle bg-inset text-t11 text-textPrimary placeholder:text-textMuted outline-none focus:border-borderMuted"
+                className="flex-1 min-w-0 h-7 px-2 rounded-md border border-borderSubtle bg-ink/[0.03] text-t11 text-textPrimary placeholder:text-textMuted outline-none focus:border-borderMuted"
                 data-layout-name
               />
               <button
                 type="button"
                 onClick={save}
-                className="shrink-0 h-7 px-2.5 rounded-md font-mono text-t10 uppercase tracking-wider text-select hover:bg-select/10 transition-colors"
+                className="shrink-0 h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05] transition-colors"
                 data-layout-save
               >
                 Save

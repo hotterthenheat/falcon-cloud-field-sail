@@ -16,6 +16,8 @@ import { useSyncExternalStore } from 'react';
     regime   · REGIME   — the VIX term structure, the gauges and the two ratios
     building · BUILDING — Pinpoint's overnight open-interest ledger
     prints   · PRINTS   — the session's option and stock prints
+    flow     · NET FLOW — the partner's room (bfce19c): net calls against net puts through the session, off OUR flow
+                          pane's prints and arithmetic (dock/FlowRoom.tsx)
     news     · NEWS     — the wire on the name, and its next report
     earnings · EARNINGS — the week's reports;  events · EVENTS — what lands when
 
@@ -24,8 +26,8 @@ import { useSyncExternalStore } from 'react';
 ==================================================
 */
 
-export type DockRoom = 'ladder' | 'heat' | 'surface' | 'regime' | 'building' | 'prints' | 'news' | 'earnings' | 'events';
-export const DOCK_ROOMS: readonly DockRoom[] = ['ladder', 'heat', 'surface', 'regime', 'building', 'prints', 'news', 'earnings', 'events'];
+export type DockRoom = 'ladder' | 'heat' | 'surface' | 'flow' | 'regime' | 'building' | 'prints' | 'news' | 'earnings' | 'events';
+export const DOCK_ROOMS: readonly DockRoom[] = ['ladder', 'heat', 'surface', 'flow', 'regime', 'building', 'prints', 'news', 'earnings', 'events'];
 
 /** Measured on openmarket (the partner tree's numbers): the trade rail 316, the Earnings and Events panels ~560. The
     book's matrix and calendar read better a little wider, so they open at 380. */
@@ -33,6 +35,8 @@ export const DOCK_WIDTH_BY_REST: Record<DockRoom, number> = {
   ladder: 380,
   heat: 380,
   surface: 380,
+  /* the partner's Net flow room opens at his rail's 316 */
+  flow: 316,
   regime: 340,
   building: 340,
   prints: 340,

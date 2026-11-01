@@ -1,24 +1,28 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAnchoredMenu } from '../../components/ui/useAnchoredMenu';
+import { useHoverOpen } from '../../components/ui/useHoverOpen';
+import { CLOCK_ZONES, useDeskPrefs } from '../../data/deskPrefs';
 import Fact from '../../components/ui/Fact';
 import { SignatureDot } from '../../brand/Signature';
 import { nyClock } from '../../core/nyTime';
 import { futuresPhaseAt, FUTURES_PHASE_WORDS } from '../../core/calendar';
-import { LANE_WORDS, aheadNotes, dayWindows, inWords, isoDayLabel, minuteClock, nextTurn, nyDayBounds, readLanes } from './sessionsClock';
+import { LANE_WORDS, WORLD_LANES, WORLD_WORDS, aheadNotes, dayWindows, inWords, isoDayLabel, minuteClock, nextTurn, nyDayBounds, readLanes, readWorld, worldDaySpans, zoneClock } from './sessionsClock';
 
 /*
 ==================================================
   SLAYER TERMINAL - THE SESSIONS CLOCK (pages/terrain/SessionsClock.tsx)
 
-  On the desk bar (ported from the partner tree's foot clock, 2026-10-31), on OUR session: the chip prints New York's
-  clock with the signature's dot for the tape (live while any session trades) and the next turn — "Regular closes in
+  On the desk bar (ported from the partner tree's foot clock, 2026-10-31), on OUR session: the chip prints the desk's
+  clock (the timezone door beside it: Local · New York · UTC · London · Tokyo) with the signature's dot for the tape (live while any session trades) and the next turn — "Regular closes in
   1h 12m"; a press opens a card that is ONE NEW YORK DAY AS A RULER, midnight to midnight, a lane a session (overnight,
   pre-market, regular, after hours — the windows src/core/session.ts answers, so a holiday's lanes are empty and an
-  early close's regular lane stops at 13:00), the moment now a silver line down all four; under it the dot-leader rows
+  early close's regular lane stops at 13:00 — then London's and Tokyo's exchange days, shared/marketSession.mjs
+  WORLD_SESSIONS), the moment now a silver line down all four; under it the dot-leader rows
   (ui/Fact) — "closes in" in the silver while open, "opens in" while shut — the futures week's phase (core/calendar.ts,
   the read-out the bar used to carry on its own), and the next closures on the calendar. Open wears the silver
-  (where-you-are, never a direction); shut is the muted ink.
+  (where-you-are, never a direction); shut is the muted ink. The card opens on the hover too (ui/useHoverOpen), as the
+  partner's does.
 ==================================================
 */
 
@@ -76,6 +80,25 @@ const DayRuler = ({ now }: { now: number }) => {
             </div>
           );
         })}
+        {WORLD_LANES.map(key => {
+          const mine = worldDaySpans(now, key);
+          const live = mine.some(sp => sp.from <= now && now < sp.to);
+          return (
+            <div key={key} className="flex items-center" data-sessions-lane={key} data-spans={mine.length}>
+              <span className={`w-8 shrink-0 font-mono text-t9 leading-none uppercase tracking-[0.04em] ${live ? 'text-silver' : 'text-textMuted'}`}>{WORLD_WORDS[key].short}</span>
+              <div className="relative flex-1 h-[6px] rounded-full bg-ink/[0.06]">
+                {mine.map((sp, i) => (
+                  <span
+                    key={i}
+                    className={`absolute inset-y-0 rounded-full ${sp.from <= now && now < sp.to ? 'bg-silver' : 'bg-ink/[0.22]'}`}
+                    style={{ left: pct(sp.from), width: `calc(${pct(sp.to)} - ${pct(sp.from)})` }}
+                    title={`${WORLD_WORDS[key].name} ${nyClock(sp.from)}–${nyClock(sp.to)} ET`}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
         <span className="absolute -top-[3px] -bottom-[3px] w-px bg-silver" style={{ left: `calc(2rem + (100% - 2rem) * ${frac(now)})` }} aria-hidden data-sessions-now />
       </div>
     </div>
@@ -84,8 +107,10 @@ const DayRuler = ({ now }: { now: number }) => {
 
 const SessionsClock = ({ compact = false }: { compact?: boolean }) => {
   const now = useNow();
+  const { clock } = useDeskPrefs();
   const [open, setOpen] = useState(false);
   const { anchorRef, placed, menuRef } = useAnchoredMenu<HTMLButtonElement>(open, 'top', CARD_W, 'end');
+  const hover = useHoverOpen(!compact, setOpen, menuRef);
   useEffect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => {
@@ -113,15 +138,19 @@ const SessionsClock = ({ compact = false }: { compact?: boolean }) => {
   const turnWords = !turn
     ? ''
     : inLane
-      ? `${LANE_WORDS[turn.phase as keyof typeof LANE_WORDS].name.toLowerCase()} closes ${inWords(turn.at - now)}`
+      ? `${LANE_WORDS[turn.phase as keyof typeof LANE_WORDS].name} closes ${inWords(turn.at - now)}`
       : turn.next !== 'closed'
-        ? `${LANE_WORDS[turn.next].name.toLowerCase()} opens ${inWords(turn.at - now)}`
+        ? `${LANE_WORDS[turn.next].name} opens ${inWords(turn.at - now)}`
         : '';
   const phaseWord = turn && inLane ? LANE_WORDS[turn.phase as keyof typeof LANE_WORDS].name : 'Closed';
   const lanes = open ? readLanes(now) : [];
   const fut = futuresPhaseAt(new Date(now));
   const notes = open ? aheadNotes(now) : [];
   const day = nyDayBounds(now);
+  const world = open ? WORLD_LANES.map(k => readWorld(now, k)) : [];
+  /* the chip prints the desk's clock — the zone the timezone door keeps */
+  const zoneDef = CLOCK_ZONES.find(z => z.value === clock) ?? CLOCK_ZONES[1];
+  const shown = zoneClock(zoneDef.zone, now);
 
   return (
     <>
@@ -131,21 +160,23 @@ const SessionsClock = ({ compact = false }: { compact?: boolean }) => {
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label={`Market sessions — New York ${nyClock(now, { seconds: true })}, ${phaseWord}${turnWords ? `, ${turnWords}` : ''}`}
-        className={`pointer-events-auto inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-ink/[0.08] bg-canvas/40 backdrop-blur-[3px] font-mono text-t10 transition-colors ${
-          open ? 'text-textPrimary bg-ink/[0.16]' : 'text-textSecondary hover:text-textPrimary'
+        aria-label={`Market sessions — ${zoneDef.label} ${shown}, ${phaseWord}${turnWords ? `, ${turnWords}` : ''}`}
+        className={`pointer-events-auto inline-flex items-center gap-2 h-[26px] px-2.5 rounded-md border border-ink/[0.08] bg-canvas/40 backdrop-blur-[3px] font-mono text-t10 transition-colors ${
+          open ? 'text-textPrimary' : 'text-textSecondary hover:text-textPrimary'
         }`}
         data-sessions-clock={turn?.phase ?? 'closed'}
+        data-sessions-zone={clock}
+        {...hover.trigger}
       >
         <SignatureDot state={trading ? 'live' : 'closed'} className="w-[7px] h-[7px]" />
         <span className="inline-flex items-baseline gap-1.5">
-          <span className="uppercase tracking-wider">NY</span>
+          <span className="uppercase tracking-wider">{zoneDef.short}</span>
           <span className="text-t11 font-semibold tnum text-textPrimary" data-sessions-time>
-            {nyClock(now, { seconds: true })}
+            {shown}
           </span>
         </span>
         {!compact && (
-          <span className="hidden min-[1500px]:inline uppercase tracking-wider text-textMuted whitespace-nowrap" data-sessions-next>
+          <span className="hidden min-[1500px]:inline text-textMuted whitespace-nowrap" data-sessions-next>
             {turnWords || phaseWord}
           </span>
         )}
@@ -157,9 +188,10 @@ const SessionsClock = ({ compact = false }: { compact?: boolean }) => {
             ref={menuRef}
             role="dialog"
             aria-label="Market sessions"
-            className="z-[120] rounded-md border border-borderMuted bg-panel/95 backdrop-blur-md shadow-xl shadow-black/50 overflow-hidden animate-fade-in"
+            className="tf-menu z-[120] rounded-xl border border-borderMuted shadow-xl shadow-black/25 overflow-hidden animate-fade-in"
             style={{ position: 'fixed', ...placed.box, width: CARD_W }}
             data-sessions-card
+            {...hover.menu}
           >
             <div className="flex items-baseline justify-between px-3 pt-2 pb-1">
               <span className="font-mono text-t10 font-bold uppercase tracking-[0.08em] text-textMuted">Market sessions</span>
@@ -176,6 +208,15 @@ const SessionsClock = ({ compact = false }: { compact?: boolean }) => {
                   />
                 </div>
               ))}
+              {world.map(w => (
+                <div key={w.key} data-sessions-row={w.key} data-open={w.open ? '' : undefined} title={`${WORLD_WORDS[w.key].name}'s exchange day on its own clock; its own bank holidays are not known here`}>
+                  <Fact
+                    label={WORLD_WORDS[w.key].name}
+                    value={w.changeAt == null ? 'not in the next ten days' : `${w.open ? 'closes' : 'opens'} ${inWords(w.changeAt - now)}`}
+                    valueCls={w.open ? 'text-silver' : 'text-textPrimary'}
+                  />
+                </div>
+              ))}
               <div data-sessions-row="futures" title={`Futures session (Globex): ${FUTURES_PHASE_WORDS[fut].blurb}. A read-out — Terrain charts the cash market.`}>
                 <Fact label="Futures" value={FUTURES_SHORT[fut]} valueCls={fut === 'CLOSED' || fut === 'MAINTENANCE' ? 'text-textSecondary' : 'text-silver'} />
               </div>
@@ -184,7 +225,7 @@ const SessionsClock = ({ compact = false }: { compact?: boolean }) => {
               {notes.length
                 ? notes.map(n => (n.kind === 'holiday' ? `${isoDayLabel(n.iso)} closed` : `${isoDayLabel(n.iso)} closes ${minuteClock(n.closeMin ?? 0)}`)).join(' · ')
                 : 'No closure on the calendar in the next six weeks'}
-              {' · '}every clock New York&apos;s
+              {' · '}lanes on New York&apos;s day · UTC {zoneClock('UTC', now).slice(0, 5)}
             </p>
           </div>,
           document.body

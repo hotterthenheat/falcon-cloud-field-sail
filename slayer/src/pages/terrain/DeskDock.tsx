@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, CalendarCheck, CalendarDays, Grid3x3, Hammer, Mountain, Newspaper, Receipt, Rows4, X } from 'lucide-react';
+import { Activity, CalendarCheck, CalendarDays, Grid3x3, Hammer, Mountain, Newspaper, Receipt, Rows4, Waves, X } from 'lucide-react';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import SlowTip from '../../components/ui/SlowTip';
 import ExposureField from '../../components/gex/ExposureField';
@@ -17,6 +17,7 @@ import { useNearReports } from '../../data/earningsFeed';
 import { DOCK_ROOMS, setDockWidth, useDockWidth, type DockRoom } from './dockStore';
 import EarningsRoom from './dock/EarningsRoom';
 import EventsRoom from './dock/EventsRoom';
+import FlowRoom from './dock/FlowRoom';
 
 /*
 ==================================================
@@ -24,8 +25,9 @@ import EventsRoom from './dock/EventsRoom';
 
   The column at the desk's right edge that the ticker bar's Panels door opens — the partner tree's dock (2026-11-01 port:
   its head, its grip, a width a room, one room at a time, the charts giving way beside it) over OUR rooms: the strike
-  rail's own views (Matrix · Calendar · Surface · Regime · Building · Prints) at a reading width, the name's news, and
-  the two calendars. Every room reads the ACTIVE pane's name and our own feeds — the book store, the regime feed,
+  rail's own views (Matrix · Calendar · Surface · Regime · Building · Prints) at a reading width, the partner's Net flow
+  room on our flow pane's prints and arithmetic (dock/FlowRoom.tsx), the name's news, and the two calendars. Every room
+  reads the ACTIVE pane's name and our own feeds — the book store, the regime feed,
   Pinpoint's stores, the wire. Not a drawer: it stands in the desk's row, so nothing covers a tape. Never over a
   fullscreen pane. On a phone it is a sheet over the foot of the page with the rooms as tabs in its head.
 ==================================================
@@ -35,6 +37,7 @@ export const DOCK_META: Record<DockRoom, { title: string; sub: string; icon: Rea
   ladder: { title: 'Matrix', sub: 'put · call · net by strike', icon: <Rows4 /> },
   heat: { title: 'Calendar', sub: 'the book across its expiries', icon: <Grid3x3 /> },
   surface: { title: 'Surface', sub: 'gamma across spot · skew · drift', icon: <Mountain /> },
+  flow: { title: 'Net flow', sub: 'calls against puts, through the session', icon: <Waves /> },
   regime: { title: 'Regime', sub: 'the VIX curve and its year', icon: <Activity /> },
   building: { title: 'Building', sub: 'overnight open interest', icon: <Hammer /> },
   prints: { title: 'Prints', sub: "the session's prints", icon: <Receipt /> },
@@ -251,6 +254,7 @@ const DeskDock = ({ room, ticker, names, mode, paper, onClose, onRoom, sheet = f
       {room === 'ladder' && <BookRoom ticker={ticker} view="matrix" />}
       {room === 'heat' && <BookRoom ticker={ticker} view="calendar" />}
       {room === 'surface' && <SurfaceRoom ticker={ticker} mode={mode} paper={paper} />}
+      {room === 'flow' && <FlowRoom ticker={ticker} />}
       {room === 'regime' && (
         <Board room="regime">
           <RegimeTabs.Regime mode={mode} paper={paper} />
