@@ -1,7 +1,6 @@
 /* ThetaData v3 through /api/theta, which the server forwards to the local terminal (127.0.0.1:25503/v3). A down terminal is a 503 terminal_down;
    nothing is invented and the server's sentence never reaches a cell. */
 
-import { SIM_DESK } from './deskMode';
 import { feedHeaders } from './feedGate';
 import { BoundedMap } from './boundedMap';
 import { canonPath } from './canonPath';
@@ -187,7 +186,6 @@ const timedOut = (e: unknown): boolean => {
 
 async function thetaRead(path: string, jump = false): Promise<ThetaAnswer> {
   path = optionPath(path);
-  if (SIM_DESK) return { status: 0, data: null, error: 'sim' };
   if (!thetaAllowedHere(path)) return { status: 0, data: null, error: 'uw_only' };
   const auth = await feedHeaders();
   if (!auth.ok) return { status: 401, data: null, error: auth.code };

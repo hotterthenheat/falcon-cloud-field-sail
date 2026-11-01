@@ -7,7 +7,6 @@ import { setLiveCatalysts, setLiveFda, setLivePosts, setLiveSchedule, type CalEv
 import { setFlexBook } from './oiHeat';
 import { uwCall, type UwAnswer } from './whales';
 import { nyIsoDaysBack } from './nyDate';
-import { SIM_DESK } from './deskMode';
 import { createStore, keptRead } from './feedStore';
 import { BoundedMap } from './boundedMap';
 
@@ -675,7 +674,7 @@ function start(desk: 'pinpoint' | 'dossier', ticker: string, pathname: string) {
 
 /** Pinpoint's book starts the same feed the ledger renders. */
 export function startPinpoint(ticker: string) {
-  if (SIM_DESK || !ticker) return;
+  if (!ticker) return;
   start('pinpoint', ticker, '/pinpoint/map');
 }
 

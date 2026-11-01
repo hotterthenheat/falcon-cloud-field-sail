@@ -1,14 +1,18 @@
 /*
-  THE INDICATORS' PARITY FIXTURE (2026-09-17). Runs the simulator's getIndicators — the
-  function every snapshot's RSI, EMAs and squeeze come from — over the seeded histories and
-  over series drawn to hit its branches, and writes engine/tests/fixtures/indicators_ref.json
-  for engine/tests/test_snapshot.py. The inputs are chosen; every answer is the engine's.
+  THE INDICATORS' PARITY FIXTURE (2026-09-17). Runs getIndicators — the indicator math the
+  snapshot's RSI, EMAs and squeeze come from (scripts/indicatorsRef.ts, kept from the retired
+  simulator) — over the recorded histories and over series drawn to hit its branches, and writes
+  engine/tests/fixtures/indicators_ref.json for engine/tests/test_snapshot.py. The four long
+  histories are the ones recorded in that fixture (2026-09-17); the app has no simulator to draw
+  them again. The inputs are chosen; every answer is the engine's.
 
     npx tsx scripts/indicators-ref.ts
 */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
-import Simulator from '../src/core/simulator';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { getIndicators } from './indicatorsRef';
+
+const recorded = JSON.parse(readFileSync('engine/tests/fixtures/indicators_ref.json', 'utf8')) as { cases: { name: string; prices: number[] }[] };
 
 const drawn: { name: string; prices: number[] }[] = [
   { name: 'up only: no losses in the window', prices: Array.from({ length: 80 }, (_, i) => 100 + i * 0.5) },
@@ -21,9 +25,13 @@ const drawn: { name: string; prices: number[] }[] = [
   { name: 'three', prices: [100, 101, 102] },
   { name: 'one', prices: [100] },
 ];
-const seeded = ['SPY', 'QQQ', 'AAPL', 'NVDA'].map(name => ({ name: `${name} history`, prices: Simulator.snapshotFor(name).priceHistory }));
+const seeded = ['SPY', 'QQQ', 'AAPL', 'NVDA'].map(name => {
+  const hit = recorded.cases.find(c => c.name === `${name} history`);
+  if (!hit) throw new Error(`no recorded ${name} history in the fixture`);
+  return { name: hit.name, prices: hit.prices };
+});
 
-const cases = [...seeded, ...drawn].map(c => ({ ...c, out: Simulator.getIndicators(c.prices) }));
+const cases = [...seeded, ...drawn].map(c => ({ ...c, out: getIndicators(c.prices) }));
 const out = { generatedBy: 'scripts/indicators-ref.ts', cases };
 mkdirSync('engine/tests/fixtures', { recursive: true });
 writeFileSync('engine/tests/fixtures/indicators_ref.json', JSON.stringify(out));

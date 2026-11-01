@@ -1,10 +1,13 @@
 /* Trace's tape: prints arriving at the top and rows stepping down (time, name, side, fill, size, money, lean); the
    largest print magenta. And the net-flow lines: call money climbing, put money falling, the price between. */
 
-import { FONT, box, clock, ease, rgb, rng, type, walk, type Box, type Frame, type Part, type Pen, type Pill, type Stage } from '../kit';
+import { FONT, box, clock, ease, rgb, rng, type, walk, type Box, type Frame, type Part, type Pen, type Pill, type Stage,
+  FOOTER_NAME,
+} from '../kit';
 import type { Chart } from './chart';
 
-const NAMES = ['SPY', 'QQQ', 'AAPL', 'NVDA', 'TSLA', 'AMD', 'META', 'MSFT', 'AMZN', 'IWM'];
+/* placeholders, never real tickers: the footer is decoration (kit.ts FOOTER_NAME) */
+const NAMES = [FOOTER_NAME];
 
 interface Print {
   name: string;

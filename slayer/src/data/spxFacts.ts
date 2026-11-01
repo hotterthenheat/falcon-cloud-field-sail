@@ -1,5 +1,6 @@
 /* The SPX book Terrain may draw, computed from theta/cache/spx-book.json (cash SPX bars, SPXW greeks and OI, a year of VIX closes, SPXW prints).
-   House sign (call gamma negative); dollar gamma uses engine/slayer_core/exposure.py's dealer weights. */
+   House sign (call gamma negative, put gamma positive: core/dealerSign.ts). The old dealer-participation weights
+   (−0.55 calls, −0.53 puts) were a model, not the book, and are gone. */
 
 import type { Candle } from '../types/market';
 import type { KeyLevels } from '../types/gex';
@@ -8,8 +9,6 @@ import { repricedFlip, type GammaLeg } from '../core/gammaFlip';
 import { getCarry } from '../core/carry';
 import { aggregateCandles } from './timeframe';
 
-export const DEALER_CALL = -0.55;
-export const DEALER_PUT = -0.53;
 const YEAR = 252;
 
 interface RawLeg {
@@ -225,7 +224,7 @@ function weeklyOf(daily: readonly Candle[]): Candle[] {
 
 function dollar(oi: number, gamma: number, spot: number, side: 'call' | 'put'): number {
   const per = oi * 100 * gamma * spot * spot * 0.01;
-  return side === 'call' ? per * DEALER_CALL : per * DEALER_PUT * -1;
+  return side === 'call' ? -per : per;
 }
 
 export interface SkewFact {

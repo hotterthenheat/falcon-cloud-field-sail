@@ -3,7 +3,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { nyMinutes } from '../../core/nyTime';
 import { keptOf } from '../../core/dealerSign';
-import { SIM_DESK } from '../deskMode';
 import { uwCall } from '../whales';
 
 
@@ -34,7 +33,6 @@ function publishMinutes(ticker: string, rows: BookMinute[]) {
 
 /** The day's gamma, one print a minute: the vendor's open-interest series (gamma_per_one_percent_move_oi), and only it. */
 export function ensureBookMinutes(ticker: string): void {
-  if (SIM_DESK) return;
   const t = ticker.toUpperCase();
   if (!t || minuteCache.has(t) || minuteWait.has(t)) return;
   const job = (async () => {

@@ -252,7 +252,7 @@ export class SessionLevelsPrimitive implements ISeriesPrimitive<Time> {
   /**
    * Replace what is drawn.
    *
-   * Compared before it repaints: the host recomputes on every simulator tick
+   * Compared before it repaints: the host recomputes on every tick
    * and these prices move only while the opening range and the initial
    * balance are still forming. Asking for a frame that draws the same seven
    * rules is a frame spent for nothing, on a desk that can be running four

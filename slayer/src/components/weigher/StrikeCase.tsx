@@ -1,5 +1,5 @@
 /* The case for one contract. Six tabs. The word is the first gate that fails, or the pass. Figures are Fact rows.
-   A simulated chain is named and is not scored. */
+   A chain not read yet is named and is not scored. */
 
 import { useMemo, useState } from 'react';
 import CardTabs from '../ui/CardTabs';
@@ -70,7 +70,7 @@ const clock = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2,
 /** What a person can read. The scores stay in the gate. They are not shown. */
 function speak(s: string): string | null {
   let out: string | null;
-  if (/simulated/i.test(s)) out = 'These prices are not a live quote.';
+  if (/has not loaded/i.test(s)) out = 'There is no live quote yet.';
   else if (/Quote missing|crossed|older than/i.test(s)) out = 'The bid and ask are missing, crossed, or old.';
   else if (/Outside the entry clock/i.test(s)) out = 'This name’s options are not in a window we read.';
   else if (/high-impact release/i.test(s)) out = 'A big number is close. We don’t start a new one.';
@@ -178,7 +178,7 @@ const StrikeCase = ({ ticker, c, right, chain, tick, score, listed, onPickAlt }:
     if (here < 0) return ordered.slice(0, 7);
     return ordered.slice(Math.max(0, here - 3), here + 4);
   })();
-  const foot = sim ? 'This is a read of the contract in front of you. A simulated read is not an order.' : 'This is a read of the contract in front of you. It is not an order.';
+  const foot = 'This is a read of the contract in front of you. It is not an order.';
   const line = buyLine;
 
   return (

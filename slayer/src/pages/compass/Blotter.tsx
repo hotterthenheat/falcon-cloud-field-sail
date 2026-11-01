@@ -135,7 +135,7 @@ const COLUMNS: Column<Line>[] = [
   { key: 'held', header: 'Held', align: 'right', sortValue: r => r.held ?? -1, render: r => (r.held == null ? blank : <span className="tnum text-textSecondary">{heldWords(r.held)}</span>) },
   /* the return from the fill: live on the contract's one quote while open (the board, the page and the Tracker read the
      same one), captured at the exit once closed */
-  { key: 'ret', header: 'Return', align: 'right', sortValue: r => r.ret ?? -1e9, render: r => <LiveReturn signal={r.sig} detail="short" /> },
+  { key: 'ret', header: <span title="Settled on each minute's quote: the exit is the contract's NBBO at the minute it was taken">Return</span>, align: 'right', sortValue: r => r.ret ?? -1e9, render: r => <LiveReturn signal={r.sig} detail="short" /> },
   { key: 'pnl', header: 'P&L', align: 'right', sortValue: r => r.pnl ?? -1e9, render: r => (r.result === 'open' ? <LivePnl signal={r.sig} /> : r.pnl == null ? blank : <span className={`tnum ${dirInk(r.pnl)}`}>{`${r.pnl < 0 ? '−' : '+'}${usd(Math.abs(r.pnl))}`}</span>) },
   { key: 'result', header: 'Result', align: 'right', sortValue: r => r.result, render: r => <Tip label={r.why || undefined}><span className={RESULT_INK[r.result]}>{RESULT_WORD[r.result]}</span></Tip> },
   {
@@ -234,7 +234,7 @@ const Blotter = () => {
   return (
     <TraceBox
       title="Blotter"
-      sub={iso ? longDay(iso) : 'Every call the scan fired, newest first. The same record in every browser.'}
+      sub={iso ? `${longDay(iso)} · settled on each minute's quote` : "Every call the scan fired, newest first, settled on each minute's quote. The same record in every browser."}
       testId="blotter"
       foldOnPhone
       facts={

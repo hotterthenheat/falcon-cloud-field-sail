@@ -113,7 +113,7 @@ const DESK_KEY = 'slayer_weigher_desk_v2';
     clock and hold still in between, the Pulse contract. Charts and prices
     stay on the 1s tick. */
 const SCAN_MS = 3000;
-/* The light tick's beat with no simulator behind it: the live chain refreshes on its own timer. */
+/* The light tick's beat: the live chain refreshes on its own timer. */
 const PUMP_MS = 3000;
 
 /** How far the chain reaches each side of spot. The book maintains ~30; the ladder synthesizes honest wings beyond

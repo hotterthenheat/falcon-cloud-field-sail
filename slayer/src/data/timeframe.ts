@@ -1,5 +1,5 @@
 /*
-  Timeframe aggregation — rolls the simulator's 1-minute base bars (and the
+  Timeframe aggregation — rolls the 1-minute base bars (and the
   parallel GEX snapshots) up to the selected interval. Both keep bar-aligned,
   matching timestamps so the on-chart node overlay stays pinned to price/time.
 */

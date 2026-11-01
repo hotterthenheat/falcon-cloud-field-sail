@@ -115,7 +115,7 @@ const Compare = () => {
   const revRef = useRef(0);
   const revision = useMemo(() => ++revRef.current, [marketData]);
 
-  /* The two snapshots: the frame's own when the first name follows it, else a pure read of the simulator */
+  /* The two snapshots: the frame's own when the first name follows it, else the name's own book */
   const snapOf = (t: string): MarketSnapshot | null => {
     if (scan && scan.snap.ticker === t) return scan.snap;
     try {

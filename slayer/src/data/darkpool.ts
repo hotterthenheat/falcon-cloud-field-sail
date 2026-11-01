@@ -1,4 +1,4 @@
-/* The simulator's dark-pool story (shelves, print reads, a posture) for Dossier and the contract score, and the
+/* The dark-pool words (shelves, print reads, a posture) for Dossier and the contract score, and the
    sector map the flow pages share. Trace's live dark pool reads traceLive. */
 
 import type { Grade } from './stockOverview';

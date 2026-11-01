@@ -129,7 +129,7 @@ const Board = () => {
   }, []);
 
   // ---- two-tier cadence -----------------------------------------------------
-  // The calendar follows the session clock. It does not follow the simulator.
+  // The calendar follows the session clock.
   const sleeveDates = useMemo(() => {
     return Object.fromEntries(SLEEVES.map(s => [s.key, expiryFor(s.dte)])) as Record<SleeveKey, ReturnType<typeof expiryFor>>;
   }, [clock.session]);

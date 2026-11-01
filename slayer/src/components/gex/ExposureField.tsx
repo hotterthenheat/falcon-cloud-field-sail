@@ -173,7 +173,7 @@ interface ExposureFieldProps {
   onSelectStrikeFor?: (ticker: string, strike: number) => void;
   /** The book of a name beside the host's — the host's replay rewinds every
       column through this (the Map hands the minute's snapshot); absent, the
-      simulator's live read */
+      name's live book */
   snapshotFor?: (ticker: string) => MarketSnapshot | null;
   /** Given, the names' panes PACK to their content (2026-10-13, the owner: "compact and tight grouped") and the field
       tells the host how wide it would be at its widest — the panes' natural widths, or the band's named row if that is
@@ -798,7 +798,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   }, [snapshot, datesIn, bookMode]);
 
   /* THE NAMES BESIDE THE HOST'S — kept on this machine; a name the host
-     already shows is never doubled. Their books are the simulator's pure read,
+     already shows is never doubled. Their books are each name's live book,
      rebuilt whenever the host's surface is (the same cadence), so the columns
      never disagree about the moment. */
   const [extra, setExtra] = useState<string[]>(() => (multi ? readNames() : []));
@@ -930,9 +930,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       /* storage off — the choice lives for the session */
     }
   };
-  /* A NAME NEVER READ BEFORE LANDS AFTER THE GLIDE: the simulator walks a new
-     name's history in on the main thread (~0.6s) the first time it is asked
-     for, and nothing on screen moves meanwhile — so a cold name's column
+  /* A NAME NEVER READ BEFORE LANDS AFTER THE GLIDE: a new name's book is read
+     the first time it is asked for, and nothing on screen moves meanwhile — so a cold name's column
      opens at once with a skeleton inside, and its book is asked for on a
      timer once the columns have settled (one name at a time, the Board's
      rule); a name the terminal already carries builds on the spot. */

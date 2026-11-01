@@ -1,7 +1,7 @@
 /* What stands on a chart: Terrain's strike field, Paper's orders (entry, target, stop with tags), alert lines ending in
    bells, and the backtest replay (candles drawn as the head reaches them, with a scrubber). */
 
-import { FONT, PIX, box, chip, clock, dashes, frame, hair, keep, rgb, rng, type, walk, type Box, type Frame, type Part, type Pen, type Pill, type Stage } from '../kit';
+import { FONT, PIX, box, chip, clock, dashes, frame, hair, keep, rgb, rng, type, walk, type Box, type Frame, type Part, type Pen, type Pill, type Stage, FOOTER_LEGEND } from '../kit';
 import type { Chart } from './chart';
 
 /* ---- the strike field: a bead row per strike, longest where the book is heaviest, walls bright, supreme magenta, the
@@ -152,7 +152,9 @@ export const orders = (ch: Chart): Part => {
   };
 };
 
-/* ---- Alert lines: a dashed line with a bell; when price crosses one it rings, the line lights and a corner card says so ---- */
+/* ---- Alert lines: a dashed line with a bell; when the drawn line crosses one it rings and the line lights. No corner card
+   names a ticker or says an alert sounded: the footer is decoration (kit.ts FOOTER_LEGEND). ---- */
+const TOAST_SHOWN = false;
 
 export const bell = (c: CanvasRenderingContext2D, x: number, y: number, style: string, sharp: boolean) => {
   c.fillStyle = style;
@@ -166,7 +168,7 @@ export const bell = (c: CanvasRenderingContext2D, x: number, y: number, style: s
   c.fillRect(x - 1, y + 4.5, 2, 2);
 };
 
-export const alertLines = (ch: Chart, o: { toast?: boolean; count?: number } = {}): Part => {
+export const alertLines = (ch: Chart, o: { count?: number } = {}): Part => {
   let s: Stage | null = null;
   let levels: { y: number; hue: 'warn' | 'silver' | 'moon'; word: string }[] = [];
   let prev = NaN;
@@ -231,8 +233,8 @@ export const alertLines = (ch: Chart, o: { toast?: boolean; count?: number } = {
         const p = ch.pane();
         c.fillRect(p.x0, l.y - 1, p.x1 - p.x0 - 18, 2);
       }
-      if (o.toast !== false && age < TOAST) {
-        /* the card in the corner: a bell, the name and what it did, the moment */
+      if (TOAST_SHOWN && age < TOAST) {
+        /* the card in the corner: a bell and a blank line — no name, no time: nothing sounded */
         const a = Math.min(1, age / 160, (TOAST - age) / 300);
         const t = toastAt;
         c.fillStyle = pen.ink(s.ink.panel, 0.92 * a);
@@ -259,7 +261,7 @@ export const alertLines = (ch: Chart, o: { toast?: boolean; count?: number } = {
         c.arc(fired.x, fired.y, 4 + q * 26, 0, Math.PI * 2);
         c.stroke();
       }
-      if (o.toast !== false && age < TOAST) {
+      if (TOAST_SHOWN && age < TOAST) {
         const a = Math.min(1, age / 160, (TOAST - age) / 300);
         const t = toastAt;
         c.fillStyle = rgb(s.ink.panel, 0.95 * a);
@@ -274,10 +276,8 @@ export const alertLines = (ch: Chart, o: { toast?: boolean; count?: number } = {
         c.textBaseline = 'middle';
         c.textAlign = 'left';
         c.fillStyle = rgb(s.ink.line, a);
-        c.fillText(`SPY ${l.word}`, t.x0 + 26, t.y0 + 13);
-        c.font = `500 8.5px ${FONT}`;
-        c.fillStyle = rgb(s.ink.secondary, a);
-        c.fillText(`sounded ${clock(f.wall - age, false)}`, t.x0 + 26, t.y0 + 26);
+        c.fillText(l.word, t.x0 + 26, t.y0 + 13);
+        void f;
       }
     },
   };
@@ -354,7 +354,7 @@ export const replay = (o: { seed?: number; cycle?: number } = {}): Part => {
         c.lineWidth = 1;
         c.strokeRect(Math.round(pane.x0) + 0.5, Math.round(pane.y0) + 0.5, Math.round(pane.x1 - pane.x0), Math.round(pane.y1 - pane.y0));
       }
-      type(b, 'SPY  1m', pane.x0 + 8, pane.y0 + 9, { size: 10, share: 0.7 });
+      type(b, FOOTER_LEGEND, pane.x0 + 8, pane.y0 + 9, { size: 10, share: 0.7 });
       /* the trade's target and its stop */
       const tpY = Math.round(lt + (lb - lt) * 0.15);
       const slY = Math.round(lt + (lb - lt) * 0.78);

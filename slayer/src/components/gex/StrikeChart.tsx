@@ -508,7 +508,7 @@ interface StrikeChartProps {
   ticker: string;
   /** The expiry the nodes draw. Null is the first expiry still open, the same column the calendar shows first. */
   bookDate?: string | null;
-  /** Bumped every simulator tick so the chart folds in the newest bar */
+  /** Bumped every tick so the chart folds in the newest bar */
   revision: number;
   levels: KeyLevels;
   timeframe: Timeframe;

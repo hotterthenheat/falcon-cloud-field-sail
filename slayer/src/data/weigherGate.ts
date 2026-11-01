@@ -1,5 +1,5 @@
 /* One read of a Weigher contract. The chain, the case, and the curve ask this. A blank greek stays blank. A
-   simulated chain is named, and it is not scored.
+   chain not read yet is named, and it is not scored.
 
    One clock for every model number in a row: the trading clock (core/tradingYear tradingYears, early closes and holidays
    known). A vendor's IV is quoted on the calendar year; it is moved onto the trading clock with the variance unchanged
@@ -340,15 +340,15 @@ export function sessionDte(expiry: string, now = Date.now()): number {
   return Math.max(1, Math.ceil(sessionsLeft(iso, now) - 1e-9) - 1);
 }
 
-/** The first gate that fails. A simulated chain is not scored and is not a ticket. */
+/** The first gate that fails. A chain not read yet is not scored and is not a ticket. */
 export function readGate(input: GateInput): GateRead {
   const { chain, contract: c } = input;
   const now = input.now ?? Date.now();
   if (chain.source !== 'live') {
     return {
-      status: 'Not scored. This chain is simulated.',
+      status: 'Not scored. The live chain has not loaded.',
       passed: [],
-      failed: 'Not scored. This chain is simulated.',
+      failed: 'Not scored. The live chain has not loaded.',
       ticket: false,
       rank: 0,
     };

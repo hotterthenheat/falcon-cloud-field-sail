@@ -21,9 +21,11 @@ import {
   type Pen,
   type Pill,
   type Stage,
+  FOOTER_NAME,
 } from '../kit';
 
-const NAMES = ['NVDA', 'AVGO', 'AAPL', 'MU', 'QQQ', 'ORCL', 'CRM', 'SPY', 'MSFT', 'GOOGL', 'META', 'AMD', 'TSLA', 'AMZN'];
+/* placeholders, never real tickers: the footer is decoration (kit.ts FOOTER_NAME) */
+const NAMES = [FOOTER_NAME];
 const STATES = ['MOVING', 'ACTIVE', 'WATCH', 'MOVING', 'ACTIVE', 'FADING'];
 
 /** a warning's small triangle (the break line's mark) */

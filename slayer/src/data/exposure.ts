@@ -17,12 +17,8 @@ import type {
   ZoneBand,
 } from '../types/gex';
 
-function scaleSplit(put: number, call: number, factor: number, jitter: number): GreekSplit {
-  const P = put * factor;
-  const C = call * factor;
-  const shift = (jitter - 0.5) * 0.36 * Math.min(Math.abs(P), Math.abs(C));
-  return { put: P + shift, call: C - shift, net: P + C };
-}
+/** A strike's put and call figures and their net, as the book carries them */
+const splitOf = (put: number, call: number): GreekSplit => ({ put, call, net: put + call });
 
 /** Strikes shown each side of spot. 30 is the whole book, 25 the Map's; other cards keep their own (STRIKE_WINDOWS) */
 export type StrikeWindow = 10 | 15 | 20 | 25 | 30;
@@ -40,7 +36,6 @@ export function buildExposureProfile(
   const { ticker, spot } = snapshot;
   const liveChain = snapshot.uwChains?.[expiry];
   const chain = liveChain && liveChain.length ? liveChain : snapshot.chain;
-  const factor = 1;
 
   // Window around spot, descending strikes (highest first). Spot under every strike sits at the bottom of the list
   // (the lowest strikes are the nearest), not the top.
@@ -77,11 +72,11 @@ export function buildExposureProfile(
 
   const maxAbs = { gex: 1, dex: 1, vex: 1, vanna: 1, charm: 1 };
   const strikes: StrikeExposure[] = window.map((n: StrikeNode) => {
-    const gex = scaleSplit(n.putGex, n.callGex, factor, 0.5);
-    const dex = scaleSplit(n.putDex, n.callDex, factor, 0.5);
-    const vex = scaleSplit(n.putVex, n.callVex, factor, 0.5);
-    const vanna = scaleSplit(n.putVanna ?? 0, n.callVanna ?? 0, factor, 0.5);
-    const charm = scaleSplit(n.putCharm ?? 0, n.callCharm ?? 0, factor, 0.5);
+    const gex = splitOf(n.putGex, n.callGex);
+    const dex = splitOf(n.putDex, n.callDex);
+    const vex = splitOf(n.putVex, n.callVex);
+    const vanna = splitOf(n.putVanna ?? 0, n.callVanna ?? 0);
+    const charm = splitOf(n.putCharm ?? 0, n.callCharm ?? 0);
     const h = higherAt.get(n.strike);
     const color = h?.color ?? zeroGreek();
     const vomma = h?.vomma ?? zeroGreek();

@@ -4,7 +4,6 @@
 import { nyIsoDate } from '../../core/nyTime';
 import { dayChangeOf, loadRegularCloses, peekRegularCloses, type MarketPhase } from '../dayChange';
 import { DEFAULT_BOARD_NAMES } from '../boardNames';
-import { SIM_DESK } from '../deskMode';
 import { uwCall } from '../whales';
 import { monDayOf } from './move';
 import { num } from './scale';
@@ -26,7 +25,7 @@ const UNIVERSE_SET = new Set(UNIVERSE);
 const askedAt = new Map<string, number>();
 export const PRICES_MS = 10_000;
 export function refreshBoardPrices(tickers: readonly string[]): void {
-  if (SIM_DESK || typeof window === 'undefined') return;
+  if (typeof window === 'undefined') return;
   const now = Date.now();
   const live = tickers.map(t => t.toUpperCase()).filter(t => {
     const e = cache.get(t);

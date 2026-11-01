@@ -245,7 +245,7 @@ export const positions = (): Part => {
         x += tw + 18;
       });
       const y = at.y0 + 30;
-      tag(b, at.x0, y, 'SPY call', { edge: rgb(ink.bull, 0.9), fill: rgb(ink.bull, 0.14), wordInk: rgb(ink.bull) });
+      tag(b, at.x0, y, 'call', { edge: rgb(ink.bull, 0.9), fill: rgb(ink.bull, 0.14), wordInk: rgb(ink.bull) });
       for (let k = 0; k < 4; k++) prose(b, at.x0 + w * (0.26 + k * 0.16), y, w * 0.08, { hue: k === 3 ? ink.red : ink.secondary, a: 0.7, seed: 30 + k, h: 3, share: 0.5 });
       if (sharp) {
         c.strokeStyle = rgb(ink.muted, 0.5);

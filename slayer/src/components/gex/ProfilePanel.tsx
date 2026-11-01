@@ -457,7 +457,7 @@ const ProfilePanel = ({
      because right now the ladder is strictly put vs calls"): the Map's book in the panel — ExposureField on its own band
      (View · Greek · Legs · Expiries · Strikes · Show, the guide, fullscreen), the canvas quiet behind it. The field cuts
      the expiries to what the panel's width holds and says so, so a wider panel shows more and a narrow one asks for
-     width or fewer. Its snapshot is the simulator's read of the name, re-read every ten seconds while the tab is up. */
+     width or fewer. Its snapshot is the name's live book, re-read every ten seconds while the tab is up. */
   /* GEX FIRST (Noah, 2026-10-15, with the panel in front of him: "the gex should also be the first thing that opens") */
   const [viewState, setView] = useState<RailView>(lockView ?? 'gex');
   const view = lockView ?? viewState;

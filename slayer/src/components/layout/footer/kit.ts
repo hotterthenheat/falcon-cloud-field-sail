@@ -1,5 +1,11 @@
 /* What every footer picture is drawn with: still parts twice (sharp, and broken under FooterArt's red/blue fringe), moving parts in three passes
-   a frame. The walk is a price line with momentum that leans back to its start. Art, not data. */
+   a frame. The walk is a price line with momentum that leans back to its start. Art, not data: no ticker is named on
+   it, no alert sounds in it, and a chart's legend says it is an illustration (FOOTER_LEGEND). */
+
+/** What every footer chart's legend says: the line is drawn, not read off any market */
+export const FOOTER_LEGEND = 'illustration · not market data';
+/** A row's name on a footer card or list: a placeholder, never a real ticker */
+export const FOOTER_NAME = '····';
 
 import { FONT_SANS } from '../../../theme/fonts';
 import { clamp } from '../../../core/math';

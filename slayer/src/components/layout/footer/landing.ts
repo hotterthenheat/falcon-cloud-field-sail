@@ -1,6 +1,6 @@
 /* The landing footer's picture: every product on one desk, the front marks brightest; the pointer's focus and the self-driven arrow tour the panels. */
 
-import { box, compose, cut, dim, type Box, type Part, type SceneMaker } from './kit';
+import { box, compose, cut, dim, type Box, type Part, type SceneMaker, FOOTER_LEGEND } from './kit';
 import { chart, chips, crumb, ladder, panel } from './parts/chart';
 import { cards } from './parts/desk';
 import { alertLines, field, orders } from './parts/field';
@@ -11,8 +11,8 @@ import { worldMap } from './parts/world';
 const inset = (b: Box, l: number, t: number, r = l, btm = t): Box => box(b.x0 + l, b.y0 + t, b.x1 - r, b.y1 - btm);
 
 export const landing: SceneMaker = () => {
-  const main = chart({ legend: 'SPY  1m', levels: 3, wide: true });
-  const paperCh = chart({ legend: 'SPY', seed: 777, candles: 2, up: 'glacier', down: 'blue', band: [0.24, 0.64], volume: false, axis: false, tag: false, gap: 3.4, kick: 1.4 });
+  const main = chart({ legend: FOOTER_LEGEND, levels: 3, wide: true });
+  const paperCh = chart({ legend: FOOTER_LEGEND, seed: 777, candles: 2, up: 'glacier', down: 'blue', band: [0.24, 0.64], volume: false, axis: false, tag: false, gap: 3.4, kick: 1.4 });
   /* the world stands furthest back: it is drawn first, and the arrow visits it last */
   const world = dim(worldMap({ band: false, faint: 0.7 }), 0.5);
   const farAway: Part = { ...world, sights: undefined };
@@ -27,7 +27,7 @@ export const landing: SceneMaker = () => {
       panel('Live chart'),
       main,
       field(main, { gap: 26, seed: 913 }),
-      alertLines(main, { count: 1, toast: false }),
+      alertLines(main, { count: 1 }),
       /* 6–7 · the book: its walls named, the supreme, the flip */
       panel('The book'),
       ladder({ seed: 31, marks: true, run: false, gap: 5, share: 0.6, solid: true }),

@@ -8,7 +8,6 @@ import { noteBarCloses } from '../dayChange';
 import { type Candle, type GexSnapshot, type StrikeNode } from '../../types/market';
 import { levelsForName, readLevelsScope, type LevelsScope } from '../levelsScope';
 import { sameName } from '../spotGexBook';
-import { SIM_DESK } from '../deskMode';
 import { uwCall, whalesMinuteBars, whalesFlowStrike, whalesGreekExpiry, whalesGreekStrike, whalesGreekStrikeExpiry, whalesIvRank, whalesInterpIv, whalesOiStrike, whalesOptionContractsPaged, whalesScreener, whalesState, whalesTermStructure, type UwBar, type UwFlowStrike, type UwGreekStrike, type UwInterp, type UwIv, type UwTerm, type UwState } from '../whales';
 import { applyDay, needDay } from './day';
 import { historyFrom, noteSplit, vexOntoAll } from './levels';
@@ -951,7 +950,6 @@ export function ensureBook(ticker: string, mode: BookMode = 'board', force = fal
   if (typeof window === 'undefined') return;
   const t = sameName(ticker);
   if (!t) return;
-  if (SIM_DESK) return;
   /* a name with no listed options has no book: nothing is asked of the vendor for it */
   if (hasListedOptions(t) === false) return;
   const e = cache.get(t);

@@ -3,7 +3,6 @@
   Calls go only while the terminal shell is mounted and, with accounts on, carry the session token (feedGate.ts).
 */
 
-import { SIM_DESK } from './deskMode';
 import { feedHeaders } from './feedGate';
 import { readSaved, save } from './uwStore';
 import { canonPath } from './canonPath';
@@ -148,7 +147,6 @@ const noteNotCarried = (path: string) => {
 
 /** One GET, with the vendor's status and message. Does not invent a body. */
 export async function uwCall(path: string, priority = false, low = false): Promise<UwAnswer> {
-  if (SIM_DESK) return { status: 0, data: null, error: 'sim' };
   const now = Date.now();
   /* one spelling a read (data/canonPath.ts): the shared entry is keyed by the sorted path, so two spellings of one read
      make one request; the request and the kept copy keep the reader's own spelling */

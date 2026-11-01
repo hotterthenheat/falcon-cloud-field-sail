@@ -52,7 +52,7 @@ const SessionReview = () => {
   return (
     <TraceBox
       title="Session review"
-      sub="Every trade it took, and every one a late mark would have taken, reviewed after the close"
+      sub="Every trade it took, and every one a late mark would have taken, reviewed after the close — settled on each minute's quote"
       testId="compass-review"
       facts={
         <>

@@ -1,6 +1,5 @@
 /* One pane's exposure with a status on every number; a missing wall is unavailable, never the spot. */
 
-import { DEALER_CALL, DEALER_PUT } from './spxFacts';
 
 type FigureStatus = 'OBSERVED' | 'CALCULATED' | 'MODELED' | 'STALE' | 'UNAVAILABLE';
 
@@ -49,7 +48,7 @@ export function pinFromOi(rows: readonly { strike: number; callOI?: number; putO
 
 export const DEALER_MODEL = {
   status: 'MODELED' as const,
-  call: DEALER_CALL,
-  put: DEALER_PUT,
-  note: 'Dealer inventory is not observed. The live book signs both legs short (−1). The −0.55 call and −0.53 put weights are the old participation model and are not applied to this book.',
+  call: -1,
+  put: -1,
+  note: 'Dealer inventory is not observed. The live book signs both legs short (−1); no participation weight is applied.',
 };

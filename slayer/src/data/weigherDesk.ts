@@ -105,8 +105,8 @@ export interface DeskChain {
   /** The IV at spot, percent on the calendar year, interpolated between the strikes around spot (weigherGate atmIvAt).
       Absent on a chain that has none. */
   atmIv?: number;
-  /** Live is this contract's own NBBO. Simulated is the desk model, and it says so. */
-  source: 'live' | 'simulated';
+  /** Live is the contracts' own NBBO; waiting is a chain not read yet (no rows, nothing in their place) */
+  source: 'live' | 'waiting';
   /** Newest quote time on the chain, epoch ms. */
   quotedAt: number;
   /** Listed expiration, YYYY-MM-DD. */
@@ -806,7 +806,7 @@ export async function attachPrior(chain: DeskChain): Promise<DeskChain> {
 
 export function blankChain(ticker: string, dte: number): DeskChain {
   const expiry = expiryFor(dte);
-  return { ticker, spot: 0, step: 1, rows: [], expiry, expectedMovePct: 0, source: 'simulated', quotedAt: 0, expiryIso: isoDate(expiry.date) };
+  return { ticker, spot: 0, step: 1, rows: [], expiry, expectedMovePct: 0, source: 'waiting', quotedAt: 0, expiryIso: isoDate(expiry.date) };
 }
 
 /** The Weigher's name lists: the session's movers and the busiest option tapes */

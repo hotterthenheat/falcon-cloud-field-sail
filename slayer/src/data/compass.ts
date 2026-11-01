@@ -1,21 +1,8 @@
 /* What is left of Compass's first engine: the setup address (a setup's page lives at /compass/<id>), the side
-   Compass takes on the day's move, the tenor a DTE falls in, and the plain premium curve the what-if charts draw.
+   Compass takes on the day's move, and the tenor a DTE falls in.
    The live calls come from compassModel; nothing here scores a contract. */
 
 import type { OptionRight, ScannerKey, SleeveKey } from '../types/compass';
-
-/** The what-if curve's floor */
-const PREMIUM_FLOOR = 0.05;
-
-/** A plain premium curve for what-if charts: intrinsic plus a normal-shaped time value of width iv·√t. It draws a
-    scenario; a quote on screen is always the contract's own. */
-export function estimatePremium(spot: number, strike: number, right: OptionRight, iv: number, tYears: number): number {
-  const width = iv * Math.sqrt(Math.max(tYears, 0));
-  const m = Math.log(strike / spot) / (width || 1e-6);
-  const timeValue = spot * width * 0.4 * Math.exp(-(m * m) / 2);
-  const intrinsic = right === 'C' ? Math.max(spot - strike, 0) : Math.max(strike - spot, 0);
-  return Math.max(PREMIUM_FLOOR, intrinsic + timeValue);
-}
 
 /** The tenor a bare DTE falls in */
 export function sleeveForDte(dte: number): SleeveKey {

@@ -178,9 +178,8 @@ export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfile
       const step = all.length > 1 ? (CLOSE_MIN - OPEN_MIN) / (all.length - 1) : 1;
       for (let i = 0; i < all.length; i++) path.push({ min: OPEN_MIN + i * step, price: all[i].close });
     } else {
-      /* Open: only the minutes that have happened — the simulator's session
-         holds a whole day of bars whatever the wall clock says, so the tail
-         that fits between the open and now is the path, ending AT now */
+      /* Open: only the minutes that have happened — the tail that fits
+         between the open and now is the path, ending AT now */
       const keep = Math.min(all.length, clock.nowMin - OPEN_MIN + 1);
       const bars = all.slice(all.length - keep);
       const first = clock.nowMin - (keep - 1);

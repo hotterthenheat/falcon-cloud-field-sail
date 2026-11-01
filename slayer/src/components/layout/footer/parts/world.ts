@@ -1,7 +1,9 @@
 /* The Dossier: the world as dots with a pin per story city and New York's hours as a band; a story lands as a ring with
    arcs. Beside it the story card, and under it the coming earnings by day. */
 
-import { bar, box, chip, clamp, dayWord, frame, keep, prose, rgb, rng, type, type Box, type Part, type Pen, type Pill, type Stage } from '../kit';
+import { bar, box, chip, clamp, dayWord, frame, keep, prose, rgb, rng, type, type Box, type Part, type Pen, type Pill, type Stage,
+  FOOTER_NAME,
+} from '../kit';
 
 /* THE LAND, 96 × 40, from 76°N to 56°S and 170°W round to 190°E (world-atlas's land, sampled once — the picture never
    needs the atlas itself) */
@@ -324,7 +326,7 @@ export const wire = (): Part => {
         const [kind, hue] = KINDS[i % KINDS.length];
         const lean = r();
         prose(b, at.x0, y, 22, { hue: ink.muted, a: 0.6, seed: i + 200, share: 0.4 });
-        type(b, ['ASML', 'AMZN', 'PG', 'NVDA', 'TSM'][i % 5], at.x0 + 30, y, { size: 8, share: 0.55 });
+        type(b, FOOTER_NAME, at.x0 + 30, y, { size: 8, share: 0.55 });
         type(b, kind, at.x0 + 66, y, { size: 7, hue: ink[hue], share: 0.45 });
         c.fillStyle = rgb(lean < 0.5 ? ink.red : ink.bull, sharp ? 0.85 : 0.8);
         if (keep(b, 0.6)) c.fillRect(at.x0 + 124, y - 2, 30, sharp ? 3 : 4);

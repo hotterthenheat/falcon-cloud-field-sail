@@ -1,12 +1,15 @@
 /* Scenes for pages that are not a market: the alerts list, Settings, the room, Status, About, the legal pages, the
    account forms, an invite and maintenance. */
 
-import { ARROW, FONT, PIX, box, chip, clamp, clock, dashedCard, dayWord, ease, frame, hash01, keep, lerp, prose, rgb, rng, type, walk, type Box, type Part, type Pen, type Pill, type Stage } from '../kit';
+import { ARROW, FONT, PIX, box, chip, clamp, clock, dashedCard, dayWord, ease, frame, hash01, keep, lerp, prose, rgb, rng, type, walk, type Box, type Part, type Pen, type Pill, type Stage,
+  FOOTER_NAME,
+} from '../kit';
 import { bell } from './field';
 
 /* ---- The alerts list: each alert's bell, name, what it waits for, its switch ---- */
 
-const NAMES = ['SPY', 'NVDA', 'QQQ', 'TSLA', 'AAPL', 'META', 'AMD', 'MSFT'];
+/* placeholders, never real tickers: the footer is decoration (kit.ts FOOTER_NAME) */
+const NAMES = [FOOTER_NAME];
 const WHAT = ['crosses', 'above', 'below', 'crosses', 'above', 'below'];
 
 const toggle = (c: CanvasRenderingContext2D, x: number, y: number, on: number, ink: (h: string, a?: number) => string, s: Stage, sharp: boolean) => {

@@ -34,7 +34,7 @@ const put = quoteContract({
   ask: 1.3,
   ivPct: 35,
   quotedAt: 1_700_000_000_000,
-  source: 'simulator',
+  source: 'theta',
 });
 
 assert.equal(put.mid, 1.25);

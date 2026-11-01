@@ -21,7 +21,6 @@ import {
 import { liveBars } from '../../data/book/feed';
 import { useBookRev } from '../../data/book/store';
 import { aggregateCandles, tfMinutes, type Timeframe } from '../../data/timeframe';
-import { estimatePremium } from '../../data/compass';
 import { candleSeriesOptions, chartGround, chartSurface, getCandleTheme, useCandleThemeKey } from './candleTheme';
 import { useResolvedTheme } from '../../theme/theme';
 import { LOCAL_TIME, fmtClockLocal, fmtDayLocal, localTickMarks } from './chartTime';
@@ -528,9 +527,10 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
     const src = owned ? barsProp : liveBars(ticker);
     const bars = aggregateCandles(src, mins);
     if (bars.length === 0) return;
-    /* a modelled premium needs the contract's own vol; without one nothing is modelled */
+    /* the contract's own pricer (the Weigher's, off its live quote and vol); without one nothing is drawn */
     const iv = ivProp ?? Number.NaN;
-    const px = (s: number) => (priceAt ? priceAt(s) : estimatePremium(s, strike, right, iv, tYears));
+    if (!priceAt) return;
+    const px = priceAt;
     const point = (b: (typeof bars)[number], live: boolean) => {
       const o = px(b.open);
       const c = px(live ? spot : b.close);
@@ -544,7 +544,7 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
         low: Number(Math.min(o, c, a, z).toFixed(2)),
       };
     };
-    const sig = `${ticker}|${strike}|${right}|${timeframe}|${tYears.toFixed(4)}|${iv.toFixed(4)}|${priceAt ? 'bs' : 'est'}|${themeKey}|${owned ? 'own' : 'book'}`;
+    const sig = `${ticker}|${strike}|${right}|${timeframe}|${tYears.toFixed(4)}|${iv.toFixed(4)}|bs|${themeKey}|${owned ? 'own' : 'book'}`;
     const pushStock = () => {
       const ss = stockSeriesRef.current;
       if (!ss) return;

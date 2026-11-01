@@ -26,6 +26,7 @@ const Figure = ({ children, label, h = 110 }: { children: ReactNode; label: stri
     <svg viewBox={`0 0 420 ${h}`} width="100%" role="img" aria-label={label} data-guide-figure>
       {children}
     </svg>
+  <figcaption className="mt-1 font-mono text-t9 uppercase tracking-widest text-textMuted" data-guide-example>Example — not live data</figcaption>
   </figure>
 );
 

@@ -7,6 +7,7 @@ import { book, cone } from './parts/book';
 import { chart, chips, crumb, ladder, panel } from './parts/chart';
 import { cards, rows } from './parts/desk';
 import { alertLines, field, orders, replay } from './parts/field';
+import { FOOTER_LEGEND } from './kit';
 import { calendar, equity, orderPad, positions, stats } from './parts/practice';
 import { account, alertList, doc, gather, invite, room, settingsPart, status, testCard } from './parts/quiet';
 import { flowLines, tape } from './parts/tape';
@@ -25,7 +26,7 @@ const paneIn = (b: Box, legend = true) => box(b.x0, b.y0 + (legend ? 4 : 0), b.x
 /* PULSE — THE DESK: the live chart, the strike pressure ladder, the setups the scan found, the earnings to come — each a
    panel, as the reader's own desk stands */
 const pulse: SceneMaker = () => {
-  const lc = chart({ legend: 'SPY  1m', levels: 4, wide: true });
+  const lc = chart({ legend: FOOTER_LEGEND, levels: 4, wide: true });
   return compose(
     [crumb('terminal  /  pulse'), panel('Live chart'), lc, panel('Strike pressure ladder'), ladder({ seed: 31 }), panel('Compass setups'), cards({ cols: 2, rows: 1, seed: 400 }), panel('Earnings calendar'), rows({ kind: 'earnings' }), chips()],
     s => {
@@ -45,7 +46,7 @@ const pulse: SceneMaker = () => {
 /* Terrain: candles, a bead row per strike (walls bright, supreme magenta, flip grey), the price tag, the ladder and its
    curve */
 const terrain: SceneMaker = () => {
-  const ch = chart({ legend: 'SPY  15m', candles: 3, up: 'glacier', down: 'blue', gap: 3.4, kick: 1.5, volTop: 0.86 });
+  const ch = chart({ legend: FOOTER_LEGEND, candles: 3, up: 'glacier', down: 'blue', gap: 3.4, kick: 1.5, volTop: 0.86 });
   return compose([crumb('terminal  /  terrain'), ch, field(ch), ladder({ seed: 47, curve: true, warm: true, gap: 6, run: false, share: 0.86 })], s => {
     const b = s.box;
     if (s.phone) return [top(s), paneIn(cut(b, 0, 0.12, 1, 1)), b, null];
@@ -109,7 +110,7 @@ const weigher: SceneMaker = () =>
 
 /* Paper: the chart with entry, target and stop run out to tags, the open P&L chip, positions, chain and order pad */
 const paper: SceneMaker = () => {
-  const ch = chart({ legend: 'SPY  1m', candles: 3, up: 'glacier', down: 'blue', band: [0.2, 0.62], gap: 3.4, kick: 1.5, volTop: 0.86 });
+  const ch = chart({ legend: FOOTER_LEGEND, candles: 3, up: 'glacier', down: 'blue', band: [0.2, 0.62], gap: 3.4, kick: 1.5, volTop: 0.86 });
   return compose([crumb('terminal  /  practice  /  paper'), ch, orders(ch), positions(), chain({ cols: ['STRIKE', 'BID', 'ASK', 'DELTA'], rh: 16 }), orderPad({ side: 'SELL' })], s => {
     const b = s.box;
     if (s.phone) return [top(s), box(b.x0, b.y0 + 22, b.x1 - 66, b.y1 - 64), b, cut(b, 0, 0.78, 1, 1), null, null];
@@ -138,7 +139,7 @@ const journal: SceneMaker = () =>
 
 /* Alerts: the chart with alert lines ending in bells; one sounds as price crosses it; the alert list beside */
 const alerts: SceneMaker = () => {
-  const ch = chart({ legend: 'SPY  1m', band: [0.16, 0.74], volTop: 0.86 });
+  const ch = chart({ legend: FOOTER_LEGEND, band: [0.16, 0.74], volTop: 0.86 });
   return compose([crumb('terminal  /  alerts'), ch, alertLines(ch), alertList()], s => {
     const b = s.box;
     if (s.phone) return [top(s), box(b.x0, b.y0 + 22, b.x1 - 66, b.y1 - 26), b, null];
@@ -151,7 +152,7 @@ const settings: SceneMaker = () => compose([crumb('terminal  /  settings'), sett
 
 /* THE ROOM — ONE CHART, OTHER READERS: their pointers resting on the line, each with its letters */
 const community: SceneMaker = () => {
-  const ch = chart({ legend: 'SPY  5m', band: [0.2, 0.7], volTop: 0.86 });
+  const ch = chart({ legend: FOOTER_LEGEND, band: [0.2, 0.7], volTop: 0.86 });
   return compose([crumb('terminal  /  community'), ch, room(() => ch.pane(), (x, t) => ch.yAt(x, t))], s => {
     const b = s.box;
     if (s.phone) return [top(s), box(b.x0, b.y0 + 24, b.x1 - 66, b.y1 - 28), b];
