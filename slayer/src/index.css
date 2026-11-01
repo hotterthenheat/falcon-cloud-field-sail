@@ -2451,3 +2451,6 @@ html[data-theme='light'] [data-tf-tall] [data-tf][aria-pressed='false']:hover { 
   --foil-4: 103 93 126;
   --foil-5: 43 45 56;
 }
+
+/* the gliding foil (.foil-glide paints the foil on its ::before) wears the galaxy too on paper, under the light words */
+[data-theme='light'] .holo-bg.foil-glide:not([data-theme='dark'] *) { --foil-ink: var(--galaxy-gradient); }

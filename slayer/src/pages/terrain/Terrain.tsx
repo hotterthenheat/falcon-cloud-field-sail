@@ -74,7 +74,6 @@ import { useMaxPain } from '../../components/gex/levelExtras';
 import { composeSnapshot, snapshotName } from '../../components/gex/snapshot';
 import { readSessionClock } from '../../data/moc';
 import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, modeOf, type ProfileLane, type ProfilePalette } from '../../components/gex/ProfilePanel';
-import RegimeDoor from '../../components/gex/RegimeDoor';
 import DropdownSelect from '../../components/ui/DropdownSelect';
 import { netSinceOpenRatio } from '../../data/levelview';
 import { useLevelsFor } from '../../data/levelsFor';
@@ -87,7 +86,7 @@ import { useIsBelowXl, useIsPhone, useIsPortraitDesk } from '../../components/ui
 import ScopeChip from '../../components/ui/ScopeChip';
 import { ChartSkeleton, Deferred } from '../../components/ui/Skeleton';
 import SpotPrice from '../../components/gex/SpotPrice';
-import { CANDLE_THEMES, chartGround, chartSurface, pageDefaultCandleKey, usePageDefaultCandleKey, type CandleThemeKey } from '../../components/gex/candleTheme';
+import { CANDLE_THEMES, chartGround, chartSurface, usePageDefaultCandleKey, type CandleThemeKey } from '../../components/gex/candleTheme';
 import { TIMEFRAMES, frameServed, type Timeframe } from '../../data/timeframe';
 import FrameMeter, { frameMeterOn } from '../../components/gex/FrameMeter';
 import { paneLevels } from './paneLevels';
@@ -1588,6 +1587,12 @@ const Pane = ({
                   <span className="text-t10 text-textMuted" aria-hidden>·</span>
                   <HeadPrice ticker={ticker} session={session} className="font-mono text-t11 font-semibold tnum text-textPrimary" />
                   <HeadMove ticker={ticker} session={session} cashClose={cashClose} className="text-t10 font-semibold tnum" />
+                  {/* ours beside the partner's legend: the expiry that settled under the nodes, said once on the roll */}
+                  {barDesk && (shownBook?.movedFrom || rollNote) && (
+                    <span className="text-t10 text-textSecondary" data-book-roll>
+                      · {shownBook?.movedFrom ? `${shownBook.movedFrom} settled, now on ${shownBook.label}` : rollNote}
+                    </span>
+                  )}
                 </div>
               ) : (
               <div className={`chrome-hover relative z-30 pointer-events-auto max-w-full min-w-0 overflow-hidden select-none flex items-center gap-2 rounded-md bg-canvas/25 backdrop-blur-[3px] px-2 py-1 opacity-55 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 ${toolbarInline ? 'w-full' : 'w-fit'}`}>
@@ -1972,23 +1977,6 @@ const Terrain = () => {
   setPaneRef.current = setPane;
 
   const [expanded, setExpanded] = useState<number | null>(null);
-  /* The floating desk bar's height while a pane is expanded — the pane reserves it at its foot */
-  const [deskBarH, setDeskBarH] = useState(0);
-  const barFloats = expanded !== null;
-  const deskBarObs = useRef<ResizeObserver | null>(null);
-  const deskBarRef = useCallback((el: HTMLDivElement | null) => {
-    deskBarObs.current?.disconnect();
-    deskBarObs.current = null;
-    if (!el || !barFloats) {
-      setDeskBarH(0);
-      return;
-    }
-    const read = () => setDeskBarH(Math.ceil(el.getBoundingClientRect().height));
-    read();
-    const ro = new ResizeObserver(read);
-    ro.observe(el);
-    deskBarObs.current = ro;
-  }, [barFloats]);
   const expandedRef = useRef<number | null>(null);
   expandedRef.current = expanded;
   /* The takeover leaves on a fade instead of vanishing — the same hook the Pulse fullscreen uses, so the two desks
