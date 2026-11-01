@@ -10,6 +10,7 @@ import { volOutlookMount } from './server/volOutlookApi.mjs';
 import { proxyRegime } from './server/regimeApi.mjs';
 import { proxyOiChange } from './server/oiChangeApi.mjs';
 import { tapeMount } from './server/tapeApi.mjs';
+import { proxyTerrain } from './server/terrainApi.mjs';
 
 try {
   process.loadEnvFile('.env.local');
@@ -55,6 +56,10 @@ const TAPES = './src/data/tapeServer.ts';
 const tape = tapeMount(() => import(TAPES), __dirname);
 app.use('/api/tape', (req, res) => {
   void tape.handle(req, res);
+});
+/* Terrain's option chain and its prior close (server/terrainApi.mjs): read once here for every pane and viewer */
+app.use('/api/terrain', (req, res) => {
+  void proxyTerrain(req, res, __dirname);
 });
 app.use('/api/uw', (req, res) => {
   void proxyUw(req, res);

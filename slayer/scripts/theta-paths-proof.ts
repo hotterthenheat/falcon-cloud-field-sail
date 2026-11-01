@@ -9,6 +9,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { thetaAllowed } from '../shared/thetaPaths.mjs';
 import { proxyTheta } from '../server/thetaProxy.mjs';
+import { chainPath, closesPath, oiPath } from '../server/terrainApi.mjs';
 
 let fail = 0;
 const check = (what: string, ok: boolean) => {
@@ -69,6 +70,10 @@ check(`the Regime reads pass (${REGIME_READS.length}: the index snapshot, 1m and
 /* Building's complete open-interest change (server/oiChangeApi.mjs), as it writes it: one root, every expiration, one date */
 const OI_CHANGE_READS = ['/option/history/open_interest?symbol=SPY&expiration=*&date=20261030&format=json', '/option/history/open_interest?symbol=SPXW&expiration=*&date=20261030&format=json'];
 check(`Building's all-expiration open-interest read passes (${OI_CHANGE_READS.length})`, OI_CHANGE_READS.every(p => thetaAllowed(p)));
+
+/* Terrain's option-chain reads (server/terrainApi.mjs), as it writes them: the Surface tab's Skew and Drift lenses */
+const TERRAIN_READS = [chainPath('SPXW'), oiPath('SPXW'), closesPath('SPXW', '2026-10-29')];
+check(`the Terrain chain reads pass (${TERRAIN_READS.length}: the all-expiry greeks and open-interest snapshots, the prior session's end-of-day greeks)`, TERRAIN_READS.every(p => thetaAllowed(p)));
 
 /* ---- what is shut ---- */
 const FLAT = ['/option/flat_file/trade_quote', '/option/flat_file/eod', '/option/flat_file/open_interest', '/option/flat_file/quote', '/stock/flat_file/trade_quote', '/stock/flat_file/eod', '/stock/flat_file/quote', '/index/flat_file/eod'];

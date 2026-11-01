@@ -9,6 +9,7 @@ import { volOutlookMount } from './server/volOutlookApi.mjs';
 import { proxyRegime } from './server/regimeApi.mjs';
 import { proxyOiChange } from './server/oiChangeApi.mjs';
 import { tapeMount } from './server/tapeApi.mjs';
+import { proxyTerrain } from './server/terrainApi.mjs';
 import { superviseTheta } from './theta/supervisor.mjs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { pathToFileURL } from 'node:url';
@@ -32,6 +33,8 @@ const dataProxies = (): Plugin => {
     /* Building's complete open-interest change (server/oiChangeApi.mjs): one terminal read a report date, for every viewer */
     use('/api/oi-change', (req, res) => void proxyOiChange(req, res));
     if (tape) use('/api/tape', (req, res) => void tape.handle(req, res));
+    /* Terrain's option chain and its prior close (server/terrainApi.mjs): read once here for every pane and viewer */
+    use('/api/terrain', (req, res) => void proxyTerrain(req, res));
     use('/api/uw', (req, res) => void proxyUw(req, res));
     use('/api/theta', (req, res) => void proxyTheta(req, res));
     use('/api/logo', (req, res) => void proxyLogo(req, res));
