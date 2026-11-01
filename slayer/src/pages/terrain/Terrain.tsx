@@ -1,6 +1,6 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ChevronUp, Code2, Link2, Maximize2, Minimize2, Rows3, SlidersHorizontal, X } from 'lucide-react';
+import { ChevronUp, Code2, Link2, Maximize2, Minimize2, SlidersHorizontal, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { DOCK_ROOM, openEditor } from '../../data/editorDock';
 import { useDeskSession, sessionMeta, type DeskSession } from '../../data/deskSession';
@@ -21,7 +21,7 @@ import { barInTape, peekPrint, peekTape, usePrintRev, useTapeRev, useThetaTape, 
 import { thetaChartBars } from '../../data/thetaCandles';
 import { fmtUsd } from '../../data/gex';
 import { CALENDAR_DTES } from '../../data/exposureSurface';
-import { expiryFor, futuresPhaseAt, FUTURES_PHASE_WORDS } from '../../core/calendar';
+import { expiryFor } from '../../core/calendar';
 import { nyClock, nyIsoDate } from '../../core/nyTime';
 import { peekThetaPrice, thetaMove, useThetaPrice } from '../../data/thetaQuote';
 import { closeMoveTitle, sessionWhen, signedPct } from '../../data/dayChange';
@@ -47,6 +47,7 @@ import StrikeChart, {
   type CompareEntry,
   type CompareMode,
   type CrosshairSync,
+  type RangeSync,
   type PriceProjection,
   type PriceScale,
 } from '../../components/gex/StrikeChart';
@@ -87,27 +88,25 @@ import {
 } from './setups';
 import { flipRing, stepSymbol, stepTf } from './paneKeys';
 import { hasListedOptions, useDirectoryRev } from '../../data/symbolDirectory';
+import LayoutDoor from './LayoutDoor';
+import DesksDoor from './DesksDoor';
+import type { DeskPreset } from './deskPresets';
+import SessionsClock from './SessionsClock';
+import DeskDock from './DeskDock';
+import { closeDock, setDock, toggleDock, useDock } from './dockStore';
+import { LAYOUT_COUNTS, MAX_PANES, SYNC_BY_REST, countOf, gridStyleOf, isShape, nextShapeOf, readSync, shapeByRest, type LayoutShape, type SyncCfg } from './layoutShapes';
 
-/* The bottom bar's futures clock in plain words (core/calendar.ts has the long ones, on its hover) */
-const FUTURES_PHASE_SHORT: Record<ReturnType<typeof futuresPhaseAt>, string> = {
-  GLOBEX_ASIA: 'Asia hours',
-  GLOBEX_EUROPE: 'Europe hours',
-  RTH: 'cash session',
-  GLOBEX_POST: 'after the close',
-  MAINTENANCE: 'daily break 17–18 ET',
-  CLOSED: 'closed',
-};
 
-/* Terrain — one to four chart panes that own the viewport. Each pane is its own workspace: symbol, interval,
+/* Terrain — one to six chart panes that own the viewport. Each pane is its own workspace: symbol, interval,
    overlays, indicators, style, theme and rail. */
 
 const TERRAIN_KEY = 'slayer_terrain_v1';
 
 /* `stepTf` and the symbol ring live in ./paneKeys so `npm test` can load them without the charting library. */
 
-/** How many panes are on screen. Four is the ceiling: at 1440 a fifth pane is 260px wide, and a chart that narrow
-    stops being a chart — the same finding that keeps the Pulse desk's widgets from going below their floor. */
-export const LAYOUTS = [1, 2, 3, 4] as const;
+/** How many panes are on screen: 1 · 2 · 3 · 4 · 6 (terrain/layoutShapes.ts — each count with its shapes). Six is the
+    ceiling: every new name on the desk is its own set of reads, and six is what the request budget carries. */
+export const LAYOUTS = LAYOUT_COUNTS;
 export type TerrainLayout = (typeof LAYOUTS)[number];
 
 /* Everything one pane owns. There is nothing else — a setting that is not here is a setting every pane shares, and
@@ -151,7 +150,11 @@ export interface PaneCfg {
 
 interface TerrainCfg {
   layout: TerrainLayout;
-  /** Always four, whatever the layout, so going 3 → 2 → 3 gives the third pane back exactly as it was rather than
+  /** How the panes stand (terrain/layoutShapes.ts); always agrees with `layout` (countOf(shape) === layout) */
+  shape: LayoutShape;
+  /** What one chart does that the others follow — symbol, interval, crosshair, time (the layout door's Sync) */
+  sync: SyncCfg;
+  /** Always six (MAX_PANES), whatever the layout, so going 3 → 2 → 3 gives the third pane back exactly as it was rather than
       resetting it. */
   panes: PaneCfg[];
   /** How each symbol was last set up. Consulted only when a symbol is newly picked — never re-applied to what is
@@ -269,7 +272,7 @@ const lookUp = (cfg: TerrainCfg, stored: unknown): TerrainCfg => {
 };
 
 /** The pane slots differ only by symbol at first; a reader sets the rest. */
-const OPEN_NAMES = ['SPY', 'QQQ', 'AAPL', 'NVDA'] as const;
+const OPEN_NAMES = ['SPY', 'QQQ', 'AAPL', 'NVDA', 'IWM', 'TSLA'] as const;
 const defaultPanes = (): PaneCfg[] =>
   OPEN_NAMES.map(ticker => ({
     ticker,
@@ -289,7 +292,7 @@ const defaultPanes = (): PaneCfg[] =>
   }));
 
 /* The map starts empty on a fresh install, deliberately. */
-const defaults = (): TerrainCfg => ({ layout: 3, panes: defaultPanes(), setups: {}, palette: 'thermal', railCut: 'book', look: LOOK });
+const defaults = (): TerrainCfg => ({ layout: 3, shape: shapeByRest(3), sync: SYNC_BY_REST, panes: defaultPanes(), setups: {}, palette: 'thermal', railCut: 'book', look: LOOK });
 
 /** One stored pane, validated field by field against a known-good default. */
 /* Migration only. A blob written before setups existed has four panes a reader did configure, so their settings
@@ -372,12 +375,15 @@ function loadCfg(): TerrainCfg {
     const deskLadder = typeof c.ladder === 'boolean' ? (c.ladder as boolean) : undefined;
     const palette: ProfilePalette = c.palette === 'house' ? 'house' : def.palette;
     const railCut: RailCut = typeof c.railCut === 'number' && (CALENDAR_DTES as readonly number[]).includes(c.railCut) ? c.railCut : def.railCut;
+    /* the shape must stand the count it was saved with; a blob from before shapes takes its count's shape by rest */
+    const shape: LayoutShape = isShape(c.shape) && countOf(c.shape) === layout ? c.shape : shapeByRest(layout);
+    const sync = readSync(c.sync);
 
     if (Array.isArray(c.panes)) {
       const stored = c.panes as unknown[];
       const panes = def.panes.map((d, i) => readPane(stored[i], { ...d, ladder: deskLadder ?? d.ladder }));
       const hadSetups = !!c.setups && typeof c.setups === 'object';
-      return lookUp({ layout, panes, setups: hadSetups ? readSetups(c.setups) : seedFrom(panes), palette, railCut }, c.look);
+      return lookUp({ layout, shape, sync, panes, setups: hadSetups ? readSetups(c.setups) : seedFrom(panes), palette, railCut }, c.look);
     }
 
     // The flat shape, fanned out
@@ -395,28 +401,15 @@ function loadCfg(): TerrainCfg {
         ladder: deskLadder ?? d.ladder,
       })
     );
-    return lookUp({ layout, panes, setups: seedFrom(panes), palette, railCut }, c.look);
+    return lookUp({ layout, shape, sync, panes, setups: seedFrom(panes), palette, railCut }, c.look);
   } catch {
     return def;
   }
 }
 
-/** How many columns a layout wants, and from which breakpoint. */
-const COLS: Record<TerrainLayout, string> = {
-  1: 'grid-cols-1',
-  2: 'grid-cols-1 xl:grid-cols-2',
-  3: 'grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3',
-  4: 'grid-cols-1 xl:grid-cols-2',
-};
-
-/* Rows have to follow columns, at every breakpoint, or a pane falls out of the grid's height. Three panes in two
-   columns need two rows. */
-const ROWS: Record<TerrainLayout, string> = {
-  1: 'xl:grid-rows-1',
-  2: 'xl:grid-rows-1',
-  3: 'xl:grid-rows-2 2xl:grid-rows-1',
-  4: 'xl:grid-rows-2',
-};
+/* The grid is the shape's (terrain/layoutShapes.ts gridStyleOf): columns, rows and areas in one place, each pane in
+   its own area — written out here so Tailwind keeps the six classes. Stacked (below xl, a phone) no pane names one. */
+const AREA_CLS = ['[grid-area:a]', '[grid-area:b]', '[grid-area:c]', '[grid-area:d]', '[grid-area:e]', '[grid-area:f]'] as const;
 
 /* Height of the time axis lightweight-charts draws under the plot, in px. Measured, not chosen: with `timeVisible:
    true` and this font the axis canvas runs 858→884 in a 1000px viewport. */
@@ -654,6 +647,9 @@ interface PaneProps {
   onCrosshair: CrosshairSync;
   /** Hand the desk this pane's "mark that moment" function, null on unmount. */
   registerSync: (apply: CrosshairSync | null) => void;
+  /** Time sync: this chart's visible window out, and another's in */
+  onRange?: RangeSync;
+  registerRange?: (apply: RangeSync | null) => void;
   /* Replay, and it lives in the desk rather than in the pane, unlike draw mode. */
   replay: boolean;
   onToggleReplay: () => void;
@@ -743,7 +739,7 @@ const bookIndicatorsOf = (i: ChartIndicators): Partial<ChartIndicators> => Objec
 
 const Pane = ({
   cfg, onCfg, revision, expanded, onToggleExpand, index, tall,
-  onCrosshair, registerSync, replay, onToggleReplay, onExitReplay,
+  onCrosshair, registerSync, onRange, registerRange, replay, onToggleReplay, onExitReplay,
   drawing, onToggleDrawing, onExitDraw,
   isActive, onActivate, paneCount, closing = false, menuOpen, onMenu,
   boxRef, cell = '', palette, railCut, onRailCut, arriveFocus = null, footRoom = 0,
@@ -753,6 +749,8 @@ const Pane = ({
   const onTrailKey = useCallback((ref: number) => setFieldScale(ref), []);
   const chartCrosshair = useStable(onCrosshair);
   const chartSyncRegister = useStable(registerSync);
+  const chartRange = useStable((r: Parameters<RangeSync>[0]) => onRange?.(r));
+  const chartRangeRegister = useStable((apply: RangeSync | null) => registerRange?.(apply));
   const chartExitDraw = useStable(onExitDraw);
   const chartEnterDraw = useStable(onToggleDrawing);
   const chartExitReplay = useStable(onExitReplay);
@@ -1351,6 +1349,8 @@ const Pane = ({
               priceTag
               onCrosshair={chartCrosshair}
               syncRegister={chartSyncRegister}
+              onRange={chartRange}
+              rangeRegister={chartRangeRegister}
               onReadout={readout.set}
               projectionRef={projectionRef}
               exportRef={exportPngRef}
@@ -1745,34 +1745,52 @@ const Terrain = () => {
   const [namedLayouts, setNamedLayouts] = useState<Record<string, NamedLayoutEntry<PaneCfg>>>(() =>
     loadNamedLayouts(readPane, defaultPanes()[0], LAYOUTS)
   );
-  const [layoutsOpen, setLayoutsOpen] = useState(false);
-  const [layoutName, setLayoutName] = useState('');
-  const [layoutNote, setLayoutNote] = useState<string | null>(null);
+  /* The desk in hand's name — set when a saved desk or a field is recalled, worn on the desks door's chip */
+  const [deskName, setDeskName] = useState<string | null>(null);
   const applyNamedLayout = (entry: NamedLayoutEntry<PaneCfg>) => {
     const defs = defaultPanes();
     const panes = defs.map((d, i) => entry.panes[i] ?? d);
     /* Through the dissolve as well — recalling a shelf layout is the biggest reflow the desk does. */
     dissolve(() =>
-      setCfg(prev => ({ ...prev, layout: (LAYOUTS as readonly number[]).includes(entry.layout) ? (entry.layout as TerrainLayout) : prev.layout, panes }))
+      setCfg(prev => {
+        const layout = (LAYOUTS as readonly number[]).includes(entry.layout) ? (entry.layout as TerrainLayout) : prev.layout;
+        const shape = isShape(entry.shape) && countOf(entry.shape) === layout ? entry.shape : shapeByRest(layout);
+        return { ...prev, layout, shape, panes };
+      })
     );
-    setLayoutsOpen(false);
   };
-  const saveCurrentLayout = () => {
-    const next = saveNamedLayout(namedLayouts, layoutName, cfg.layout, cfg.panes, Date.now());
-    if (next === null) {
-      setLayoutNote(layoutName.trim() ? `the shelf holds ${MAX_NAMED_LAYOUTS} — delete one first` : 'give it a name');
-      return;
-    }
+  /** Save the desk in hand under a name; a note when refused, null when it took */
+  const saveCurrentLayout = (name: string): string | null => {
+    const next = saveNamedLayout(namedLayouts, name, cfg.layout, cfg.panes, Date.now(), cfg.shape);
+    if (next === null) return name.trim() ? `the shelf holds ${MAX_NAMED_LAYOUTS} — forget one first` : 'give it a name';
     setNamedLayouts(next);
     persistNamedLayouts(next);
-    setLayoutName('');
-    setLayoutNote(null);
+    setDeskName(name.trim());
+    return null;
   };
   const removeNamedLayout = (name: string) => {
     const next = deleteNamedLayout(namedLayouts, name);
     setNamedLayouts(next);
     persistNamedLayouts(next);
+    setDeskName(d => (d === name ? null : d));
   };
+  const recallDesk = (name: string) => {
+    const e = namedLayouts[name];
+    if (!e) return;
+    applyNamedLayout(e);
+    setDeskName(name);
+  };
+  /* A DESK BY FIELD (deskPresets.ts): the field's four names in a four-pane desk; each name takes its own remembered
+     setup, the same path a symbol pick takes, and every other pane stands as it was */
+  const applyPreset = (p: DeskPreset) => {
+    const now = cfgRef.current;
+    const panes = now.panes.map((q, i) => (i < p.names.length ? { ...applySetup(q, now.setups[symKey(p.names[i])]), compares: [], ticker: p.names[i], tabs: [p.names[i]] } : q));
+    applyNamedLayout({ layout: p.names.length, shape: shapeByRest(p.names.length), panes, savedAt: 0 });
+    setDeskName(p.name);
+  };
+  const savedDesks = Object.entries(namedLayouts).map(([name, e]) => ({ name, count: e.layout, shape: e.shape, names: e.panes.slice(0, e.layout).map(pn => pn.ticker), savedAt: e.savedAt }));
+  /* THE DOCK (DeskDock.tsx): shut by rest; Earnings and Events on the desk's names */
+  const dockRoom = useDock();
   /* the chart's dev-only heat look wears the rails' palette (nodeHeat.ts), and switches with this menu */
   useEffect(() => setHeatPalette(cfg.palette), [cfg.palette]);
   useEffect(() => {
@@ -1809,7 +1827,8 @@ const Terrain = () => {
         /* Linked panes follow the symbol. */
         const group = cur.link ?? null;
         const panes = prev.panes.map((q, j) => {
-          const inGroup = j === i || (group !== null && q.link === group);
+          /* the desk's Symbol sync: on, every pane is in the group */
+          const inGroup = j === i || prev.sync.symbol || (group !== null && q.link === group);
           if (!inGroup) return q;
           const base = j === i ? cur : q;
           const applied = { ...applySetup(base, saved), compares: saved?.compares ?? [] };
@@ -1820,6 +1839,16 @@ const Terrain = () => {
 
       // A control touch — this is what earns the symbol its entry
       const next = { ...cur, ...patch };
+      /* The desk's Interval sync: the timeframe picked here is every pane's, as a slot setting — nothing is written to
+         the other panes' symbols' setups, which stay earned by touch. */
+      if (patch.timeframe && prev.sync.interval) {
+        const tf = patch.timeframe;
+        return {
+          ...prev,
+          panes: prev.panes.map((q, j) => (j === i ? next : q.timeframe === tf ? q : { ...q, timeframe: tf })),
+          setups: evict({ ...prev.setups, [symKey(cur.ticker)]: captureSetup(next, now) }),
+        };
+      }
       // A rail-only patch is slot business and writes nothing to the symbol.
       if (!SETUP_KEYS.some(k => k in patch)) return put(next, prev.setups);
       return put(next, evict({ ...prev.setups, [symKey(cur.ticker)]: captureSetup(next, now) }));
@@ -1868,10 +1897,22 @@ const Terrain = () => {
       setSwapping(false);
     }, 130);
   }, []);
+  /** A count (the number keys): its shape by rest, or — pressed again on the count already standing — the next shape
+      of that count, so 3 · 3 · 3 walks the row */
   const changeLayout = useCallback(
     (n: TerrainLayout) => {
-      if (cfgRef.current.layout === n) return; // a no-op should not blink
-      dissolve(() => setCfg(prev => ({ ...prev, layout: n })));
+      const cur = cfgRef.current;
+      const shape = cur.layout === n ? nextShapeOf(cur.shape) : shapeByRest(n);
+      if (shape === cur.shape) return; // a no-op should not blink
+      dissolve(() => setCfg(prev => ({ ...prev, layout: n, shape })));
+    },
+    [dissolve]
+  );
+  /** The shape picked on the layout door: the count follows it */
+  const changeShape = useCallback(
+    (shape: LayoutShape) => {
+      if (cfgRef.current.shape === shape) return;
+      dissolve(() => setCfg(prev => ({ ...prev, shape, layout: countOf(shape) as TerrainLayout })));
     },
     [dissolve]
   );
@@ -1913,6 +1954,11 @@ const Terrain = () => {
   belowLgRef.current = belowLg;
 
   const panes = cfg.panes.slice(0, cfg.layout);
+  /* the panes stack in one column below xl and on a phone, whatever the shape */
+  const stacked = isPhone || belowLg;
+  /* the calendars' "This desk" scope: every name on the panes, once */
+  const deskKey = panes.map(p => p.ticker.toUpperCase()).join(',');
+  const deskNames = useMemo(() => Array.from(new Set(deskKey.split(','))), [deskKey]);
   const anyLadder = panes.some(p => p.ladder);
   /* The page's theme, as the rails read it: the rails wear the page's theme, not their tapes' */
   const pageLight = chartGround(usePageDefaultCandleKey()) === 'light';
@@ -1937,14 +1983,14 @@ const Terrain = () => {
 
   /* Which panes are replaying. Four flags rather than one index: nothing stops a reader replaying two panes side by
      side, and that is arguably the point of a four-pane desk. */
-  const [replaying, setReplaying] = useState<boolean[]>(() => [false, false, false, false]);
+  const [replaying, setReplaying] = useState<boolean[]>(() => Array<boolean>(MAX_PANES).fill(false));
   const replayingRef = useRef<boolean[]>(replaying);
   replayingRef.current = replaying;
   const setPaneReplay = (i: number, on: boolean) =>
     setReplaying(prev => (prev[i] === on ? prev : prev.map((v, j) => (j === i ? on : v))));
 
   /* Draw mode, the same shape and here for the same reasons — see PaneProps. */
-  const [drawingPanes, setDrawingPanes] = useState<boolean[]>(() => [false, false, false, false]);
+  const [drawingPanes, setDrawingPanes] = useState<boolean[]>(() => Array<boolean>(MAX_PANES).fill(false));
   const drawingRef = useRef<boolean[]>(drawingPanes);
   drawingRef.current = drawingPanes;
   const setPaneDrawing = (i: number, on: boolean) =>
@@ -1991,7 +2037,7 @@ const Terrain = () => {
       };
 
       switch (e.key) {
-        case '1': case '2': case '3': case '4': {
+        case '1': case '2': case '3': case '4': case '6': {
           e.preventDefault();
           const n = Number(e.key) as TerrainLayout;
           changeLayoutRef.current(n);
@@ -2103,12 +2149,28 @@ const Terrain = () => {
       if (j === i) continue;
       const sameMode = (rep[j] ?? false) === (rep[i] ?? false);
       /* The interval clause applies only in replay — see the note above. */
-      const ok = rep[i] ? sameMode && panesNow[j]?.timeframe === panesNow[i]?.timeframe : sameMode;
+      /* the layout door's Crosshair sync (on by rest): off, no moment travels */
+      const ok = cfgRef.current.sync.crosshair && (rep[i] ? sameMode && panesNow[j]?.timeframe === panesNow[i]?.timeframe : sameMode);
       if (ok) apply(time);
       /* A pane that is NOT going to be marked has its old mark cleared, or a stale crosshair sits on it for as long
          as the reader hovers elsewhere. */
       else apply(null);
     }
+  };
+
+  /* THE WINDOW TRAVELS (the layout door's Time sync): the pane under the pointer — the crosshair's source — hands out
+     its visible window and every other live pane shows the same hours, by time, so a 1m and a 15m pane agree. Only
+     the source's window travels, so a window set on a follower never echoes back; replaying panes stand outside it. */
+  const rangeSinks = useRef(new Map<number, RangeSync>()).current;
+  const registerRange = (i: number, apply: RangeSync | null) => {
+    if (apply) rangeSinks.set(i, apply);
+    else rangeSinks.delete(i);
+  };
+  const emitRange = (i: number, range: Parameters<RangeSync>[0]) => {
+    if (!cfgRef.current.sync.time || sourcePane.current !== i) return;
+    const rep = replayingRef.current;
+    if (rep[i]) return;
+    for (const [j, apply] of rangeSinks) if (j !== i && !rep[j]) apply(range);
   };
 
   /* Nothing carries across a change of arrangement: a pane that has gone leaves no mark behind it, and the
@@ -2195,30 +2257,23 @@ const Terrain = () => {
         data-chart-chrome={expanded !== null ? '' : undefined}
         data-chart-ground={expanded !== null ? chartGround(panes[expanded]?.theme ?? pageDefaultCandleKey()) : undefined}
       >
-        <div
-          role="group"
-          aria-label="How many charts"
-          className="pointer-events-auto inline-flex flex-wrap items-center gap-0.5 border border-ink/[0.08] bg-canvas/40 backdrop-blur-[3px] rounded-md p-0.5"
-        >
-          <Rows3 className="w-3.5 h-3.5 mx-1.5 text-textMuted shrink-0" aria-hidden />
-          {LAYOUTS.map(n => {
-            const active = n === cfg.layout;
-            return (
-              <button
-                key={n}
-                onClick={() => changeLayout(n)}
-                aria-pressed={active}
-                aria-label={`${n} ${n === 1 ? 'chart' : 'charts'}`}
-                title={`${n} ${n === 1 ? 'chart' : 'charts'} — press ${n}`}
-                className={`px-2.5 py-1 rounded font-mono text-t11 font-semibold tnum transition-colors ${
-                  active ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'
-                }`}
-              >
-                {n}
-              </button>
-            );
-          })}
-        </div>
+        {/* THE LAYOUT DOOR (LayoutDoor.tsx): splits 1 · 2 · 3 · 4 · 6 with their shapes, the sync, the saved desks —
+            where the count and the Layouts shelf stood; THE DESKS DOOR beside it (DesksDoor.tsx) */}
+        <LayoutDoor
+          shape={cfg.shape}
+          onShape={sh => {
+            changeShape(sh);
+            setDeskName(null);
+          }}
+          sync={cfg.sync}
+          onSync={sync => setCfg(prev => ({ ...prev, sync }))}
+          saved={savedDesks}
+          savedMax={MAX_NAMED_LAYOUTS}
+          onRecall={recallDesk}
+          onSave={saveCurrentLayout}
+          onForget={removeNamedLayout}
+        />
+        <DesksDoor current={deskName} saved={savedDesks} onRecall={recallDesk} onForget={removeNamedLayout} onPreset={applyPreset} />
 
         {/* Every pane at once — a convenience over the per-pane ×, not the only way out of the rail. */}
         {!belowLg && (
@@ -2257,85 +2312,27 @@ const Terrain = () => {
           <DistanceUnitPicker dense />
         </span>
 
-        {/* The named-layouts shelf, in the desk's own cluster. */}
-        <span className="relative pointer-events-auto">
-          <button
-            onClick={() => setLayoutsOpen(o => !o)}
-            aria-haspopup="dialog"
-            aria-expanded={layoutsOpen}
-            title="Named layouts — save this arrangement, recall another"
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-ink/[0.08] backdrop-blur-[3px] font-mono text-t10 uppercase tracking-wider transition-colors ${
-              layoutsOpen ? 'bg-ink/[0.16] text-textPrimary' : 'bg-canvas/40 text-textSecondary hover:text-textPrimary'
-            }`}
-          >
-            <Rows3 className="w-3 h-3" /> Layouts
-          </button>
-          {layoutsOpen && (
-            <>
-              <span className="fixed inset-0 z-30" onClick={() => setLayoutsOpen(false)} aria-hidden />
-              <div
-                role="dialog"
-                aria-label="Named layouts"
-                onKeyDown={e => {
-                  /* Escape closes the shelf from anywhere inside it — a panel with a click-away backdrop and no key
-                     out is a trap for keyboard readers (and the probe that found this). */
-                  if (e.key === 'Escape') {
-                    e.stopPropagation();
-                    setLayoutsOpen(false);
-                  }
-                }}
-                className="absolute bottom-full right-0 mb-2 z-40 w-64 border border-borderMuted bg-panel/95 rounded-md p-2 shadow-xl shadow-black/50"
+        {/* THE DOCK'S DOORS (DeskDock.tsx): Earnings and Events beside the charts, shut by rest; not while a pane is
+            fullscreen (the takeover owns the screen) */}
+        {expanded === null && !belowLg && (
+          <span role="group" aria-label="Dock" className="pointer-events-auto inline-flex items-center gap-0.5 border border-ink/[0.08] bg-canvas/40 backdrop-blur-[3px] rounded-md p-0.5" data-terrain-dock-doors>
+            {(['earnings', 'events'] as const).map(r => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => toggleDock(r)}
+                aria-pressed={dockRoom === r}
+                title={r === 'earnings' ? "The week's reports, beside the charts" : 'What lands when — macro, reports, expiries'}
+                className={`px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider transition-colors ${
+                  dockRoom === r ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'
+                }`}
+                data-dock-door={r}
               >
-                <div className="font-mono text-t9 uppercase tracking-widest text-textMuted px-1 pb-1.5">
-                  Named layouts · {Object.keys(namedLayouts).length}/{MAX_NAMED_LAYOUTS}
-                </div>
-                {Object.entries(namedLayouts)
-                  .sort((a, b) => b[1].savedAt - a[1].savedAt)
-                  .map(([name, entry]) => (
-                    <div key={name} className="flex items-center gap-1 group">
-                      <button
-                        onClick={() => applyNamedLayout(entry)}
-                        title={`${entry.layout} pane${entry.layout === 1 ? '' : 's'} · ${entry.panes.slice(0, entry.layout).map(pn => pn.ticker).join(' ')}`}
-                        className="flex-1 min-w-0 text-left px-1.5 py-1 rounded font-mono text-t11 text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05] truncate transition-colors"
-                      >
-                        {name}
-                        <span className="ml-1.5 text-t9 text-textMuted tnum">
-                          {entry.layout}× {entry.panes.slice(0, entry.layout).map(pn => pn.ticker).join('·')}
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => removeNamedLayout(name)}
-                        aria-label={`Delete the layout ${name}`}
-                        className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded text-textMuted opacity-0 group-hover:opacity-100 hover:text-textPrimary hover:bg-ink/[0.08] transition-all"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                {Object.keys(namedLayouts).length === 0 && (
-                  <div className="px-1.5 py-1 font-mono text-t10 text-textMuted">Nothing saved yet — name this desk below.</div>
-                )}
-                <div className="mt-1.5 pt-1.5 border-t border-borderSubtle/60 flex items-center gap-1">
-                  <input
-                    value={layoutName}
-                    onChange={e => { setLayoutName(e.target.value); setLayoutNote(null); }}
-                    onKeyDown={e => { if (e.key === 'Escape') { setLayoutsOpen(false); return; } e.stopPropagation(); if (e.key === 'Enter') saveCurrentLayout(); }}
-                    placeholder="name this arrangement"
-                    aria-label="Layout name"
-                    className="flex-1 min-w-0 px-1.5 py-1 rounded border border-borderSubtle bg-inset font-mono text-t11 text-textPrimary placeholder:text-textMuted outline-none focus:border-borderMuted"
-                  />
-                  <button
-                    onClick={saveCurrentLayout}
-                    className="shrink-0 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider text-select hover:bg-select/10 transition-colors"
-                  >
-                    Save
-                  </button>
-                </div>
-                {layoutNote && <div className="px-1.5 pt-1 font-mono text-t9 text-textMuted">{layoutNote}</div>}
-              </div>
-            </>
-          )}
-        </span>
+                {r === 'earnings' ? 'Earnings' : 'Events'}
+              </button>
+            ))}
+          </span>
+        )}
 
         {/* The pine door, fullscreen only: the editor docks at the right of the expanded pane (data/editorDock.ts —
             the pane narrows by --editor-w), a blank script for this pane. */}
@@ -2350,26 +2347,9 @@ const Terrain = () => {
           </button>
         )}
 
-        {/* The first piece: where in the Globex (futures) week the wall clock sits — a read-out, not a control, so it
-            names itself ("Futures · daily break", not a bare MAINTENANCE that read as a button) and wears no button edge. */}
-        {(() => {
-          const phase = futuresPhaseAt(new Date());
-          const words = FUTURES_PHASE_WORDS[phase];
-          const short = FUTURES_PHASE_SHORT[phase];
-          return (
-            <span
-              title={`Futures session (Globex): ${words.blurb}. A clock read-out — Terrain charts the cash market; futures are not on the desk.`}
-              className={`pointer-events-auto cursor-help inline-flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-canvas/40 backdrop-blur-[3px] font-mono text-t10 uppercase tracking-wider ${
-                phase === 'RTH' ? 'text-textPrimary' : 'text-textSecondary'
-              }`}
-              aria-label={`Futures session: ${short}`}
-              data-terrain-futures-phase={phase}
-            >
-              <span className="text-textMuted">Futures</span>
-              {short}
-            </span>
-          );
-        })()}
+        {/* THE SESSIONS CLOCK (SessionsClock.tsx): New York's clock and the next turn of the tape, on the session module;
+            its card carries the futures week's phase the bar used to print on its own */}
+        <SessionsClock />
 
         {expanded !== null && (
           <button
@@ -2388,17 +2368,19 @@ const Terrain = () => {
 
       {/* The charts are the page, so the grid takes every pixel the root has left rather than a fraction of the
           viewport. */}
+      {/* THE GRID AND THE DOCK SHARE THE ROW: the dock stands beside the charts (they give way), never over a tape */}
+      <div className="relative flex-1 min-h-0 flex items-stretch">
       <div
         /* The stacked-phone minimum lives on the pane, not here — see the note on Pane's own wrapper for why a rule
            here does nothing. */
-        className={`grid ${isPhone ? COLS[1] : COLS[cfg.layout]} ${
-          isPhone ? ROWS[1] : ROWS[cfg.layout]
-        } gap-1.5 flex-1 min-h-0 transition-opacity duration-200 ease-out ${swapping ? 'opacity-0' : ''}`}
+        className={`grid gap-1.5 flex-1 min-w-0 min-h-0 transition-opacity duration-200 ease-out ${swapping ? 'opacity-0' : ''}`}
+        style={gridStyleOf(cfg.shape, stacked)}
+        data-terrain-shape={cfg.shape}
       >
         {panes.map((pane, i) =>
           /* A real branch, not `hidden`. */
           isPhone && i !== active ? null : (
-          <PaneBoundary key={i} name={pane.ticker} resetKey={`${pane.ticker}|${pane.timeframe}`} cell={cfg.layout === 3 && i === 2 ? 'xl:col-span-2 2xl:col-span-1' : ''}>
+          <PaneBoundary key={i} name={pane.ticker} resetKey={`${pane.ticker}|${pane.timeframe}`} cell={stacked ? '' : AREA_CLS[i] ?? ''}>
           <Pane
             arriveFocus={i === 0 ? arrive?.focus ?? null : null}
             cfg={pane}
@@ -2411,6 +2393,8 @@ const Terrain = () => {
             tall={cfg.layout === 1}
             onCrosshair={t => emitCrosshair(i, t)}
             registerSync={apply => registerSync(i, apply)}
+            onRange={r => emitRange(i, r)}
+            registerRange={apply => registerRange(i, apply)}
             replay={replaying[i] ?? false}
             onToggleReplay={() => setPaneReplay(i, !(replaying[i] ?? false))}
             /* The chart calls this itself on a ticker or timeframe change — a replay was recorded in another world
@@ -2428,15 +2412,45 @@ const Terrain = () => {
             menuOpen={menu?.pane === i ? menu.which : null}
             onMenu={which => setMenu(which ? { pane: i, which } : null)}
             boxRef={el => { paneRefs.current[i] = el; }}
-            /* The odd pane out takes the whole row. Three panes in two columns leaves the second row half empty — at
-               1440, the most ordinary laptop width there is, that is a quarter of the desk showing nothing. */
-            cell={cfg.layout === 3 && i === 2 ? 'xl:col-span-2 2xl:col-span-1' : ''}
+            /* the pane's own area in the shape's grid; none while stacked */
+            cell={stacked ? '' : AREA_CLS[i] ?? ''}
             footRoom={expanded === i && !isPhone ? deskBarH : 0}
           />
           </PaneBoundary>
           )
         )}
       </div>
+      {/* THE DOCK beside the grid — not on a phone (its sheet is below), not below xl, never over a fullscreen pane */}
+      {!isPhone && !belowLg && expanded === null && dockRoom && (
+        <DeskDock room={dockRoom} ticker={stripPane.ticker} names={deskNames} onClose={closeDock} onRoom={setDock} />
+      )}
+      </div>
+      {/* THE PHONE'S FOOT: the dock's two rooms and the sessions clock in one quiet row; a room opens as a sheet */}
+      {isPhone && (
+        <div className="shrink-0 mt-1 flex items-center gap-1.5 overflow-x-auto" data-terrain-phone-foot>
+          {(['earnings', 'events'] as const).map(r => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => toggleDock(r)}
+              aria-pressed={dockRoom === r}
+              className={`shrink-0 px-2.5 py-1.5 rounded-md border border-ink/[0.08] font-mono text-t10 uppercase tracking-wider ${dockRoom === r ? 'bg-ink/[0.16] text-textPrimary' : 'bg-canvas/40 text-textSecondary'}`}
+              data-dock-door={r}
+            >
+              {r === 'earnings' ? 'Earnings' : 'Events'}
+            </button>
+          ))}
+          <span className="ml-auto shrink-0">
+            <SessionsClock compact />
+          </span>
+        </div>
+      )}
+      {isPhone && dockRoom && (
+        <>
+          <span className="fixed inset-0 z-[94] bg-black/40" onClick={closeDock} aria-hidden />
+          <DeskDock room={dockRoom} ticker={stripPane.ticker} names={deskNames} onClose={closeDock} onRoom={setDock} sheet />
+        </>
+      )}
       {/* THE PHONE'S WAY IN to the rail's Regime and Building tabs (the rail is not on a phone): one line, a sheet */}
       {isPhone && panes[active] && (
         <RegimeDoor ticker={panes[active].ticker} mode={modeOf(cfg.palette)} paper={pageLight} />

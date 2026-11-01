@@ -607,6 +607,9 @@ interface StrikeChartProps {
   /** Handed this chart's own "mark that moment" function on mount and null on unmount, so a host can call it when a
       different pane is hovered. */
   syncRegister?: (apply: CrosshairSync | null) => void;
+  /** Time sync (Terrain's layout door): the visible window by time on every change, and a "show this window" handed in */
+  onRange?: RangeSync;
+  rangeRegister?: (apply: RangeSync | null) => void;
   /** The snapshot: handed a function that returns the chart's own picture (the library's takeScreenshot — every
       series, every drawing, the axes) on mount, and null on unmount; the host composes and offers it */
   snapshotRegister?: (take: (() => HTMLCanvasElement | null) | null) => void;
@@ -631,6 +634,8 @@ interface StrikeChartProps {
 
 /** Mark a moment on this chart on another pane's behalf; null clears it. */
 export type CrosshairSync = (time: UTCTimestamp | null) => void;
+/** A visible window by time — another pane's pan or zoom, set on this one */
+export type RangeSync = (range: { from: UTCTimestamp; to: UTCTimestamp }) => void;
 
 /* What the hovered bar says. A second channel, not an extension of `CrosshairSync`, and the split is deliberate. */
 export interface CrosshairBar {
@@ -899,6 +904,8 @@ const StrikeChart = ({
   priceTag = false,
   onCrosshair,
   syncRegister,
+  onRange: onRangeOut,
+  rangeRegister,
   snapshotRegister,
   onReadout,
   projectionRef,
@@ -1245,6 +1252,10 @@ const StrikeChart = ({
   onCrosshairRef.current = onCrosshair;
   const syncRegisterRef = useRef(syncRegister);
   syncRegisterRef.current = syncRegister;
+  const onRangeOutRef = useRef(onRangeOut);
+  onRangeOutRef.current = onRangeOut;
+  const rangeRegisterRef = useRef(rangeRegister);
+  rangeRegisterRef.current = rangeRegister;
   const snapshotRegisterRef = useRef(snapshotRegister);
   snapshotRegisterRef.current = snapshotRegister;
   const onReadoutRef = useRef(onReadout);
@@ -2101,6 +2112,18 @@ const StrikeChart = ({
     };
     chart.subscribeCrosshairMove(onCross);
     syncRegisterRef.current?.(applySync);
+    /* Time sync: the window out on every change (the host keeps only the pane under the pointer's), and in by time */
+    const onTimeRange = (r: { from: Time; to: Time } | null) => {
+      if (r && typeof r.from === 'number' && typeof r.to === 'number') onRangeOutRef.current?.({ from: r.from as UTCTimestamp, to: r.to as UTCTimestamp });
+    };
+    chart.timeScale().subscribeVisibleTimeRangeChange(onTimeRange);
+    rangeRegisterRef.current?.(range => {
+      try {
+        chart.timeScale().setVisibleRange(range);
+      } catch {
+        /* no bars yet — nothing to show the window on */
+      }
+    });
     snapshotRegisterRef.current?.(() => chartRef.current?.takeScreenshot() ?? null);
 
     chartRef.current = chart;
@@ -2222,6 +2245,8 @@ const StrikeChart = ({
       chart.unsubscribeCrosshairMove(onCross);
       devCharts?.delete(devEntry);
       syncRegisterRef.current?.(null);
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(onTimeRange);
+      rangeRegisterRef.current?.(null);
       snapshotRegisterRef.current?.(null);
       syncedRef.current = null;
       if (projectionRef) projectionRef.current = null;

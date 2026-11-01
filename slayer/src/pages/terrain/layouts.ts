@@ -26,6 +26,9 @@
 
 export interface NamedLayoutEntry<P> {
   layout: number;
+  /** the arrangement (terrain/layoutShapes.ts) — absent on a desk saved before shapes existed, which then takes its
+      count's shape by rest */
+  shape?: string;
   panes: P[];
   savedAt: number;
 }
@@ -51,6 +54,7 @@ export function loadNamedLayouts<P>(
       if (!validLayouts.includes(v.layout as number) || !Array.isArray(v.panes)) continue;
       out[name] = {
         layout: v.layout as number,
+        shape: typeof v.shape === 'string' ? v.shape : undefined,
         /* Each stored pane through the ONE validator — a malformed field
            falls back per field, never takes the whole layout down. */
         panes: v.panes.map(p => readPaneFn(p, defaultPane)),
@@ -73,12 +77,13 @@ export function saveNamedLayout<P>(
   nameRaw: string,
   layout: number,
   panes: P[],
-  savedAt: number
+  savedAt: number,
+  shape?: string
 ): Record<string, NamedLayoutEntry<P>> | null {
   const name = nameRaw.trim().slice(0, LAYOUT_NAME_MAX);
   if (!name) return null;
   if (!(name in existing) && Object.keys(existing).length >= MAX_NAMED_LAYOUTS) return null;
-  return { ...existing, [name]: { layout, panes, savedAt } };
+  return { ...existing, [name]: { layout, shape, panes, savedAt } };
 }
 
 export function deleteNamedLayout<P>(
