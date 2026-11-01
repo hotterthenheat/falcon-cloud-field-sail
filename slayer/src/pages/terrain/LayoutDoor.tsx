@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronUp, X } from 'lucide-react';
+import { ChevronDown, X } from 'lucide-react';
+import { useHoverOpen } from '../../components/ui/useHoverOpen';
 import { useAnchoredMenu } from '../../components/ui/useAnchoredMenu';
 import { LAYOUT_COUNTS, SHAPES, glyphCells, shapesOf, type LayoutShape, type SyncCfg } from './layoutShapes';
 
@@ -79,7 +80,9 @@ const LayoutDoor = ({ shape, onShape, sync, onSync, saved, savedMax, onRecall, o
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [note, setNote] = useState<string | null>(null);
-  const { anchorRef, placed, menuRef } = useAnchoredMenu<HTMLButtonElement>(open, 'top', MENU_W, 'end');
+  const { anchorRef, placed, menuRef } = useAnchoredMenu<HTMLButtonElement>(open, 'bottom', MENU_W, 'start');
+  /* THE HOVER OPENS IT (the partner tree's 2136793: "no click is needed"); a click still toggles */
+  const hover = useHoverOpen(true, setOpen, menuRef);
   useEffect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => {
@@ -116,15 +119,14 @@ const LayoutDoor = ({ shape, onShape, sync, onSync, saved, savedMax, onRecall, o
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`Layout — ${SHAPES[shape].word}`}
-        title={`Layout — ${SHAPES[shape].word}. Splits, sync and saved desks · keys 1 2 3 4 6`}
-        className={`inline-flex items-center gap-1.5 px-2 py-1.5 rounded-md border border-ink/[0.08] backdrop-blur-[3px] font-mono text-t10 uppercase tracking-wider transition-colors ${
-          open ? 'bg-ink/[0.16] text-textPrimary' : 'bg-canvas/40 text-textSecondary hover:text-textPrimary'
+        {...hover.trigger}
+        className={`inline-flex items-center gap-1.5 h-7 px-2 rounded-md border transition-colors ${
+          open ? 'border-borderMuted bg-ink/[0.08] text-textPrimary' : 'border-borderSubtle text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05]'
         }`}
         data-layout-trigger={shape}
       >
         <ShapeGlyph shape={shape} />
-        <span className="tnum">{count}</span>
-        <ChevronUp className={`w-3 h-3 text-textMuted transition-transform ${open ? '' : 'rotate-180'}`} />
+        <ChevronDown className="w-3 h-3 text-textMuted" />
       </button>
       {open &&
         placed &&
@@ -134,8 +136,9 @@ const LayoutDoor = ({ shape, onShape, sync, onSync, saved, savedMax, onRecall, o
             role="dialog"
             aria-label="Layout"
             style={{ position: 'fixed', ...placed.box, width: MENU_W }}
-            className="z-[120] overflow-y-auto rounded-md border border-borderMuted bg-panel/95 backdrop-blur-md shadow-xl shadow-black/50 p-2.5 animate-fade-in"
+            className="z-[120] overflow-y-auto rounded-md border border-borderMuted bg-panel/95 backdrop-blur-md shadow-xl shadow-black/50 p-2.5 animate-slide-in"
             data-layout-menu
+            {...hover.menu}
           >
             {/* SPLITS */}
             <div className="font-mono text-t9 uppercase tracking-widest text-textMuted px-1 pb-1.5">Splits</div>

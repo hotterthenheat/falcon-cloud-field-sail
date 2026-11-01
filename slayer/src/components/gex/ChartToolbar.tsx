@@ -588,7 +588,7 @@ export interface BarPanel {
   /** why it cannot be pressed now — printed on the row, the row dimmed */
   blocked?: string;
 }
-const PANEL_SECTIONS: Record<BarPanelSection, string> = { tools: 'Tools', book: 'The book', tape: 'The tape', news: 'Calendars', lists: 'Lists', yours: 'Yours' };
+const PANEL_SECTIONS: Record<BarPanelSection, string> = { tools: 'Tools', book: 'The book', tape: 'The tape', news: 'News', lists: 'Lists', yours: 'Yours' };
 /* three blocks of two columns — a section with no rows draws nothing, so a host with fewer rooms shows fewer heads */
 const PANEL_BLOCKS: BarPanelSection[][] = [
   ['tools', 'book'],

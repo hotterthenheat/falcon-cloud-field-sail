@@ -62,6 +62,7 @@ import { toggleAlertsDrawer, useAlertsDrawer } from '../../data/alertsDrawer';
 import { setDeskPrefs, useDeskPrefs, type ClockZone } from '../../data/deskPrefs';
 import { useResolvedTheme } from '../../theme/theme';
 import DeskDoor from './DeskDoor';
+import { useStandalone } from '../../data/standalone';
 import { makeCell, useCell, type Cell } from '../../components/gex/hoverCell';
 import { useFadeClose } from '../../components/ui/useFadeClose';
 import CompareControl from '../../components/gex/CompareControl';
@@ -2073,6 +2074,8 @@ const Terrain = () => {
   const topGround = topKey ? chartGround(topKey) : undefined;
   const profile = useProfile();
   const deskPrefs = useDeskPrefs();
+  /* THE ROOM STANDS ALONE (data/standalone.ts): the sidebar waits at the left edge, the wordmark leads the strip */
+  const standalone = useStandalone('/terrain');
   /* the ticker bar's slot, and the desk's box its menus stay inside */
   const [barSlot, setBarSlot] = useState<HTMLDivElement | null>(null);
   const deskBoxRef = useRef<HTMLDivElement | null>(null);
@@ -2360,7 +2363,19 @@ const Terrain = () => {
           compact={isPhone}
           /* THE STRIP'S LEAD (the partner tree's 4a11c33, openmarket's corner measured): the desks door — the monitor
              and its chevron, the desk in hand's name on its menu */
-          lead={!isPhone ? <DesksDoor current={deskName} saved={savedDesks} onRecall={recallDesk} onForget={removeNamedLayout} onPreset={applyPreset} /> : undefined}
+          lead={
+            !isPhone ? (
+              <>
+                {/* standing alone (the rail waits at the edge), the WORDMARK in the foil leads — the galaxy on paper */}
+                {standalone && (
+                  <Link to="/" title="Slayer Terminal" className="shrink-0 self-end mb-1 inline-flex items-center h-7 pl-4 font-mono text-t13 font-semibold tracking-[0.01em] holo-text whitespace-nowrap" data-strip-wordmark>
+                    {'>'}slayer_terminal
+                  </Link>
+                )}
+                <DesksDoor current={deskName} saved={savedDesks} onRecall={recallDesk} onForget={removeNamedLayout} onPreset={applyPreset} />
+              </>
+            ) : undefined
+          }
           /* THE STRIP'S END (openmarket's top row: the search and the account at the far right). The sessions clock and
              the timezone door stand here too — the foot strip that carried them under the charts is gone, so the
              charts run to the bottom of the page (the owner, 2026-11-01: "push this up so the chart is full"). On a

@@ -1,6 +1,7 @@
 import { Component, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import SideNav from './SideNav';
+import { standaloneRoomOf, useStandalone } from '../../data/standalone';
 import SiteFooter from './SiteFooter';
 import RouteSkeleton from '../ui/RouteSkeleton';
 import { PlanGate } from './PlanWall';
@@ -125,13 +126,16 @@ const AppShell = () => {
 
   /* the chart pages are framed to the viewport from md up; on a phone their board and panes stack, so they scroll like
      every other page (overflow-hidden there clipped Net Flow's pane and the 0DTE desk) */
+  const standalone = useStandalone(location.pathname);
+  const standaloneRoom = standaloneRoomOf(location.pathname);
   const bleedPage = /^\/trace\/(net-flow|odte)/.test(location.pathname);
 
   return (
     /* h-dvh: on a phone 100vh excludes the address bar, and this frame never lets the document scroll */
     <div className="h-screen h-dvh flex flex-row bg-canvas text-textPrimary overflow-hidden">
       <RouteHold />
-      <SideNav onOpenPalette={openPalette} />
+      {/* A ROOM THAT STANDS ALONE (data/standalone.ts, the partner tree's): the rail leaves the frame and waits at the left edge */}
+      <SideNav onOpenPalette={openPalette} overlay={standalone} room={standaloneRoom} />
       {/* Trace pages reserve the scrollbar gutter so switching between them never changes the page width */}
       <main
         /* max-md:pt-12 clears the fixed phone strip (SideNav, h-12) */

@@ -1583,12 +1583,12 @@ const StrikeChart = ({
      more room, so a wider frame shows fewer of them and the recent structure stays legible. */
   const pitchPx = (tf: Timeframe): number => {
     const m = tfMinutes(tf);
-    if (m < 1) return 3;
-    if (m <= 1) return 3.5;
-    if (m <= 5) return 4;
-    if (m <= 15) return 6.5;
-    if (m <= 45) return 8;
-    if (m <= 60) return 10;
+    /* THE CHART OPENS SPACIOUS (the partner tree's f5262be, 2026-11-01 port): every intraday tape at 8–11px a bar — a
+       body of five or six — instead of the dense ~4px of 08-22; the reader zooms out from there */
+    if (m <= 5) return 8;
+    if (m <= 15) return 9;
+    if (m <= 45) return 10;
+    if (m <= 60) return 11;
     if (m <= 240) return 12;
     if (m < 1440) return 13;
     if (m <= 1440) return 14;

@@ -4,7 +4,8 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation } from 'react-router-dom';
-import { ChevronDown, ChevronLeft, ChevronRight, Eye, Lock, Menu, Search, UserRound } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Eye, Lock, Menu, PanelLeftClose, PanelLeftOpen, Search, UserRound } from 'lucide-react';
+import { setStandalone } from '../../data/standalone';
 import { useAccess } from '../../data/access';
 import JingleBell from '../ui/JingleBell';
 import Fold from '../ui/Fold';
@@ -62,7 +63,16 @@ const readCollapsed = () => {
 
 interface SideNavProps {
   onOpenPalette: () => void;
+  /** THE RAIL WAITS AT THE EDGE (the partner tree's data/standalone.ts, 2026-11-01 port): on a room that stands alone the
+      panel leaves the frame — the page has the whole window — and a rest of the pointer at the left edge slides it over
+      the page, never into it; leaving it slides it back */
+  overlay?: boolean;
+  /** the standalone-capable room the page is in (its path), for the notch that lets it stand alone or keeps the rail */
+  room?: string | null;
 }
+
+const REVEAL_DWELL_MS = 90;
+const REVEAL_LINGER_MS = 220;
 
 interface Tip {
   label: string;
@@ -80,7 +90,7 @@ const NavClock = () => {
   return <span className="ml-auto whitespace-nowrap text-textMuted select-none">{time}</span>;
 };
 
-const SideNav = ({ onOpenPalette }: SideNavProps) => {
+const SideNav = ({ onOpenPalette, overlay = false, room = null }: SideNavProps) => {
   const { activeTicker } = useTicker();
   /* the contract the reader is inside — Compass's tree keeps its row (see subpagesFor) */
   const { chosenId } = useCompassView();
@@ -99,11 +109,77 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   useEffect(() => {
     if (!narrow) setNarrowOpen(false);
   }, [narrow]);
-  const collapsed = narrow ? !narrowOpen : storedCollapsed;
+  /* over the page the rail is always the open panel — it has all the width it wants there */
+  const collapsed = overlay ? false : narrow ? !narrowOpen : storedCollapsed;
+  /* THE REVEAL: the pointer at the left edge slides the rail out after a short rest; leaving the rail slides it back */
+  const [revealed, setRevealed] = useState(false);
+  const revealTimer = useRef(0);
+  const lingerTimer = useRef(0);
+  const armReveal = () => {
+    window.clearTimeout(lingerTimer.current);
+    if (revealed || revealTimer.current) return;
+    revealTimer.current = window.setTimeout(() => {
+      revealTimer.current = 0;
+      setRevealed(true);
+    }, REVEAL_DWELL_MS);
+  };
+  const disarmReveal = () => {
+    window.clearTimeout(revealTimer.current);
+    revealTimer.current = 0;
+  };
+  const stayRevealed = () => window.clearTimeout(lingerTimer.current);
+  const linger = () => {
+    window.clearTimeout(lingerTimer.current);
+    lingerTimer.current = window.setTimeout(() => setRevealed(false), REVEAL_LINGER_MS);
+  };
+  useEffect(
+    () => () => {
+      window.clearTimeout(revealTimer.current);
+      window.clearTimeout(lingerTimer.current);
+    },
+    []
+  );
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const [clock, setClock] = useState(() => readSessionClock());
   const asideRef = useRef<HTMLElement | null>(null);
+  /* a page picked puts the rail back */
+  useEffect(() => {
+    setRevealed(false);
+  }, [pathname, overlay]);
+  /* WHILE IT IS OUT, THE POINTER'S PLACE DECIDES (the partner tree's walk): any move past the panel's width plus a margin,
+     a press outside it, or Escape slides it back */
+  useEffect(() => {
+    if (!revealed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setRevealed(false);
+    };
+    const onMove = (e: PointerEvent) => {
+      if (e.clientX > SIDENAV_W + 16) linger();
+      else stayRevealed();
+    };
+    const onDown = (e: PointerEvent) => {
+      if (!asideRef.current?.contains(e.target as Node)) setRevealed(false);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('pointerdown', onDown, true);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerdown', onDown, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealed]);
+  const standAlone = () => {
+    if (room) setStandalone(room, true);
+    setTip(null);
+  };
+  const keepRail = () => {
+    if (room) setStandalone(room, false);
+    setRevealed(false);
+    setTip(null);
+  };
   const navRef = useRef<HTMLElement | null>(null);
   const [bar, setBar] = useState<{ top: number } | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
@@ -492,30 +568,85 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   return (
     <>
       {/* THE PANEL, hugging the left edge from tablet width up */}
+      {/* THE ROOM STANDS ALONE: a strip five pixels wide at the window's left edge is where the pointer finds the rail — a
+          rest there slides it over the page. Not while a button is held: a drag that crosses the edge must not open it. */}
+      {overlay && (
+        <div
+          className={`hidden md:block fixed inset-y-0 left-0 w-[5px] z-[69] transition-colors ${revealed ? '' : 'hover:bg-silver/30'}`}
+          onPointerEnter={e => {
+            if (e.buttons === 0) armReveal();
+          }}
+          onPointerLeave={disarmReveal}
+          aria-hidden
+          data-rail-edge
+        />
+      )}
       <aside
         ref={asideRef}
-        onMouseLeave={hideTip}
+        onMouseEnter={overlay ? stayRevealed : undefined}
+        onMouseLeave={() => {
+          hideTip();
+          if (overlay) linger();
+        }}
         onTransitionEnd={e => {
           measure();
           /* Two frames on: the desk's grid measures its new width on the
              frame after the aside settles and lays its items out on the next */
           if (e.target === asideRef.current && e.propertyName === 'width') requestAnimationFrame(() => requestAnimationFrame(endGlide));
         }}
-        className="relative hidden md:flex shrink-0 h-full flex-col overflow-visible bg-panel border-r border-ink/[0.07] transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
-        style={{ width }}
+        className={
+          overlay
+            ? /* WAITING, THE RAIL SHOWS NOTHING (the partner tree's 50405ea): clipped while off screen, so nothing of it
+                 peeks into the room at x = 0; revealed, the notch stands out again */
+              `fixed inset-y-0 left-0 z-[70] hidden md:flex flex-col bg-panel border-r border-ink/[0.07] transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${revealed ? 'overflow-visible shadow-[16px_0_48px_rgba(0,0,0,0.45)]' : 'overflow-hidden'}`
+            : 'relative hidden md:flex shrink-0 h-full flex-col overflow-visible bg-panel border-r border-ink/[0.07] transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]'
+        }
+        style={overlay ? { width: SIDENAV_W, transform: revealed ? 'translateX(0)' : 'translateX(-100%)' } : { width }}
         data-sidenav
         data-collapsed={collapsed || undefined}
+        data-sidenav-overlay={overlay || undefined}
+        data-sidenav-revealed={(overlay && revealed) || undefined}
+        aria-hidden={(overlay && !revealed) || undefined}
       >
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-label={collapsed ? 'Open the sidebar' : 'Collapse the sidebar to icons'}
-          title={collapsed ? 'Open the sidebar' : 'Collapse to icons'}
-          data-sidenav-toggle
-          className="absolute -right-[11px] top-[15px] z-10 w-[22px] h-[22px] rounded-full border border-ink/[0.12] bg-card text-textMuted hover:text-textPrimary hover:border-silver/60 shadow-md shadow-black/50 flex items-center justify-center transition-colors"
-        >
-          {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
-        </button>
+        {overlay ? (
+          /* over the page there is nothing to collapse: the notch keeps the rail in the frame instead */
+          <button
+            type="button"
+            onClick={keepRail}
+            aria-label="Keep the sidebar in the frame on this page"
+            title="Keep the sidebar here — the page gives it the room back"
+            data-sidenav-keep
+            className="absolute -right-[11px] top-[15px] z-10 w-[22px] h-[22px] rounded-full border border-ink/[0.12] bg-card text-textMuted hover:text-textPrimary hover:border-silver/60 shadow-md shadow-black/50 flex items-center justify-center transition-colors"
+          >
+            <PanelLeftOpen className="w-3 h-3" />
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={toggleCollapsed}
+              aria-label={collapsed ? 'Open the sidebar' : 'Collapse the sidebar to icons'}
+              title={collapsed ? 'Open the sidebar' : 'Collapse to icons'}
+              data-sidenav-toggle
+              className="absolute -right-[11px] top-[15px] z-10 w-[22px] h-[22px] rounded-full border border-ink/[0.12] bg-card text-textMuted hover:text-textPrimary hover:border-silver/60 shadow-md shadow-black/50 flex items-center justify-center transition-colors"
+            >
+              {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
+            </button>
+            {/* THE SECOND NOTCH, on a room that can stand alone: the rail leaves the frame and waits at the edge */}
+            {room && (
+              <button
+                type="button"
+                onClick={standAlone}
+                aria-label="Let this page stand alone — the sidebar waits at the left edge"
+                title="Let the page stand alone — the sidebar waits at the left edge; rest the pointer there to bring it over"
+                data-sidenav-alone
+                className="absolute -right-[11px] top-[43px] z-10 w-[22px] h-[22px] rounded-full border border-ink/[0.12] bg-card text-textMuted hover:text-textPrimary hover:border-silver/60 shadow-md shadow-black/50 flex items-center justify-center transition-colors"
+              >
+                <PanelLeftClose className="w-3 h-3" />
+              </button>
+            )}
+          </>
+        )}
         {/* The edge bar — one, on the edge, gliding to the current product */}
         {bar && (
           <span

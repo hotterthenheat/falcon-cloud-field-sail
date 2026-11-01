@@ -1599,7 +1599,21 @@ html[data-theme='light'] [data-paper-chain-side-pick='P']:not([aria-pressed='tru
    in deep steel and moon, every stop 3.5:1 or better for large type; the surface gradient
    (holo-bg, the filled pills) stays the foil with dark ink on it. */
 [data-theme='light'] .holo-text:not([data-theme='dark'] *) {
-  background-image: linear-gradient(115deg, #3a4f7a 0%, #5f7aa8 14%, #2f5f9e 30%, #5b4aa8 45%, #6b86b8 58%, #35507f 72%, #6a58b4 86%, #3a4f7a 100%);
+  /* THE GALAXY, NOT THE STEEL (the partner tree's b942fc3, 2026-11-01 port): every foil word on paper is the galaxy ink */
+  background-image: var(--galaxy-gradient);
+}
+/* …and every other foil SURFACE on paper is the galaxy too: the filled pill (light words on it), the bar, the ring,
+   the living border (its pad the panel's). Dark keeps the foil. */
+[data-theme='light'] .holo-bg:not([data-theme='dark'] *) {
+  background-image: var(--galaxy-gradient);
+  color: #f4f3ef;
+}
+[data-theme='light'] .holo-bar:not([data-theme='dark'] *),
+[data-theme='light'] .holo-ring:not([data-theme='dark'] *) {
+  background-image: var(--galaxy-gradient);
+}
+[data-theme='light'] .holo-border:not([data-theme='dark'] *) {
+  background-image: linear-gradient(rgb(var(--panel)), rgb(var(--panel))), var(--galaxy-gradient);
 }
 /* …and a foil word marked `paper-galaxy` wears the galaxy ink on paper instead (the coming-soon wall's wordmark). Dark is
    the foil, untouched. */
@@ -2402,3 +2416,24 @@ html[data-theme='light'] [data-paper-chain-side-pick='P']:not([aria-pressed='tru
     transform: translate(-50%, -50%);
   }
 }
+
+/* THE TIMEFRAME TRAY AND MENU (gex/ChartToolbar TimeframeTray + TimeframeRows) — the partner tree's 33d42ee/0b879c6/b942fc3,
+   openmarket's values measured in both of their themes: the dark menu INVERTS the row in hand (a near-white pill with the
+   page's ink) and lifts the hover and the card; the light one keeps them grey on white. On the dark tray the rung in hand
+   is its brighter ink alone; on paper it gets a 10% pill and the rest step back to the muted ink. */
+.tf-row-on { background: rgb(var(--ink) / 0.95); color: rgb(var(--panel)); }
+.tf-row-on [data-tf-star] { color: rgb(var(--panel)); }
+.tf-row:not(.tf-row-on):hover { background: rgb(var(--ink) / 0.12); color: rgb(var(--text-primary)); }
+.tf-menu { background: color-mix(in srgb, rgb(var(--panel)), rgb(var(--ink)) 7%); }
+:is(html[data-theme='light'], [data-chart-ground='light']) .tf-row-on { background: rgb(var(--ink) / 0.09); color: rgb(var(--text-primary)); }
+:is(html[data-theme='light'], [data-chart-ground='light']) .tf-row-on [data-tf-star] { color: rgb(var(--silver)); }
+:is(html[data-theme='light'], [data-chart-ground='light']) .tf-row:not(.tf-row-on):hover { background: rgb(var(--ink) / 0.05); }
+:is(html[data-theme='light'], [data-chart-ground='light']) .tf-menu { background: rgb(var(--panel)); }
+html[data-theme='light'] [data-tf-tall] [data-tf][aria-pressed='true'] { background-color: rgb(var(--ink) / 0.1); }
+html[data-theme='light'] [data-tf-tall] [data-tf][aria-pressed='false'] { color: rgb(var(--text-muted) / 0.7); }
+html[data-theme='light'] [data-tf-tall] [data-tf][aria-pressed='false']:hover { color: rgb(var(--text-primary)); }
+
+/* THE ROW LINE — the hairline under Terrain's tab strip and under its ticker bar (the partner tree's, openmarket's 46-on-15
+   step measured): the muted border in the dark, the subtle border whole on paper */
+.row-line { border-bottom: 1px solid rgb(var(--border-muted)); }
+[data-theme='light'] .row-line:not([data-theme='dark'] *) { border-bottom-color: rgb(var(--border-subtle)); }
