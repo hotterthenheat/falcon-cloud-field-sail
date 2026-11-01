@@ -3,6 +3,7 @@
 
 import { compile, explain } from '../core/pine';
 import type { Script } from '../types/scripts';
+import { CANDLE_SOURCES } from './builtinScriptsCandles';
 import { SOURCES_AL } from './builtinScriptsAL';
 
 interface BuiltinSource {
@@ -418,6 +419,7 @@ indicator("On-balance volume")
 
 plot(ta.obv(), "OBV", color = #EDE4CD)`,
   },
+  ...CANDLE_SOURCES,
   ...SOURCES_AL,
 ];
 

@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp, Eye, EyeOff, Settings2, X } from 'lucide-react';
 import { MismatchDirection, type IChartApi, type ISeriesApi, type SeriesType } from 'lightweight-charts';
 import { INDICATOR_ITEMS, indicatorBlurb, physicsOf } from './indicatorItems';
+import { tvSpecialRecord } from './tvSpecialItems';
 import { INDICATOR_INKS, type ChartIndicators } from './StrikeChart';
 import IndicatorSettings, { PhysicsTag } from './IndicatorSettings';
 import { drawnOn, inkAt, inputOf, lookOf, setLook, useLooksRev } from '../../data/indicatorLooks';
@@ -26,6 +27,8 @@ const VALUE_PARTS: Partial<Record<keyof ChartIndicators, { part: string; fmt: (v
   effRatio: [{ part: 'line', fmt: v => v.toFixed(2) }],
   amihud: [{ part: 'line', fmt: v => v.toFixed(4) }],
   sessions: [],
+  /* the volume profiles and auto levels print their context line, not a series value */
+  ...tvSpecialRecord([]),
 };
 
 /* The fold, per pane, kept in this browser */
@@ -130,7 +133,7 @@ const IndicatorLegend = ({ on, top, mins, chart, seriesOf, tick, extras, idle, o
           const drawn = drawnOn(key, mins) && !why;
           const ink = inkAt(look.ink ?? INDICATOR_INKS[key], look.opacity ?? 1);
           /* a switch prints its name when on (the Sessions indicator's Tokyo London New York), a number its value */
-          const inputs = (item.inputs ?? []).map(i => (i.kind === 'toggle' ? (inputOf(key, i) >= 1 ? i.title : '') : String(inputOf(key, i)))).filter(Boolean).join(' ');
+          const inputs = (item.inputs ?? []).filter(i => !i.quiet).map(i => (i.kind === 'toggle' ? (inputOf(key, i) >= 1 ? i.title : '') : i.kind === 'choice' && i.options ? (i.options[inputOf(key, i)] ?? '') : String(inputOf(key, i)))).filter(Boolean).join(' ');
           const vals = look.legendValues === false || !drawn ? [] : (VALUE_PARTS[key] ?? DEFAULT_PARTS).map(p => ({ part: p.part, v: valueOf(key, p.part), fmt: p.fmt }));
           const extra = !narrow && drawn ? extras?.[key] : undefined;
           return (
