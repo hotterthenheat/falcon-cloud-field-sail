@@ -6,6 +6,10 @@
                                       Drift views both draw from it
   GET /api/terrain/prior?symbol=SPX   the session before the snapshot's: its end-of-day closing quotes per strike
                                       (CLOSE_COLS), the surface the Skew view compares against
+  GET /api/terrain/overnight          the GTH night (open now, else the latest): every 5 minutes the nearest SPXW
+                                      expiry's call/put pairs around the money (shared/overnight.mjs), the live pairs
+                                      while it is open, and the VIX's prints from about 03:15 — Terrain's overnight SPX
+                                      line on SPX, SPXW and XSP panes
 
   What it costs the terminal, however many viewers ask:
   - the chain: ONE /option/snapshot/greeks/all request per name (expiration=*, max_dte, strike_range), re-read at most
@@ -14,6 +18,11 @@
   - the open interest: ONE /option/snapshot/open_interest request per name, at most every OI_MS (it is reported once a
     day, about 06:30 New York);
   - the prior session's surface: ONE /option/history/greeks/eod request per name per session, kept on disk;
+  - the night: ONE /option/history/quote request per half of the night (the evening and the morning dates, 5-minute
+    stamps, strike_range NIGHT_STRIKES), read whole once a half is over and kept on disk; while it runs, only the
+    stamps since the last one, at most every NIGHT_PATH_MS; the live pairs from ONE /option/snapshot/quote at most every
+    NIGHT_LIVE_MS while the night is open; the VIX's 5-minute closes of the morning from ONE /index/history/ohlc, topped
+    up at most every NIGHT_PATH_MS;
   - history reads go two at a time at most across this module (HISTORY_AT_ONCE): the terminal is shared.
 
   Every read rides the hub's record lane (server/thetaProxy.mjs thetaDirect): this module keeps its own copy, so the hub
@@ -23,8 +32,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { gate, sendDenied } from './auth.mjs';
-import { addDays, feedMoving, sessionDayAtOrBefore } from '../shared/marketSession.mjs';
+import { addDays, feedMoving, nyInstant, nyWall, sessionDayAtOrBefore } from '../shared/marketSession.mjs';
 import { chainRoot, okSymbol, readChain, readCloses, readOpenInterest } from '../shared/optionChain.mjs';
+import { nightAt, nightExpiry, nightParts, pairsAround, readQuoteStamps } from '../shared/overnight.mjs';
+import { readMinuteCloses } from '../shared/volRegime.mjs';
 
 export const TERRAIN_VERSION = 1;
 /** The chain's freshness while the name's options trade, and while they do not */
@@ -42,7 +53,18 @@ const MAX_NAMES = 24;
 /** A failed read is not tried again before this */
 const RETRY_MS = 60_000;
 
+/** The night's live pairs are re-read at most this often; its history and the VIX's at most this often */
+export const NIGHT_LIVE_MS = 15_000;
+export const NIGHT_PATH_MS = 5 * 60_000;
+/** Strikes each side of the money the night's quotes are read at (5 points apart on SPXW: ±100 points) */
+export const NIGHT_STRIKES = 20;
+/** The night's options root */
+const NIGHT_ROOT = 'SPXW';
+
 const ymd = (iso) => iso.replace(/-/g, '');
+/** A minute of the New York day as the terminal's clock param, "HH:MM:SS" */
+const clockOf = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}:00`;
+const minOf = (clock) => Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3, 5));
 /** A terminal answer's failure code, for the page's words (never the vendor's) */
 const codeOf = (status, body) => {
   const m = /"code":"([a-z_]+)"/.exec(String(body).slice(0, 300));
@@ -53,6 +75,10 @@ const codeOf = (status, body) => {
 export const chainPath = (root) => `/option/snapshot/greeks/all?symbol=${root}&expiration=*&max_dte=${MAX_DTE}&strike_range=${STRIKE_RANGE}&format=csv`;
 export const oiPath = (root) => `/option/snapshot/open_interest?symbol=${root}&expiration=*&max_dte=${MAX_DTE}&strike_range=${STRIKE_RANGE}&format=csv`;
 export const closesPath = (root, day) => `/option/history/greeks/eod?symbol=${root}&expiration=*&start_date=${ymd(day)}&end_date=${ymd(day)}&max_dte=${MAX_DTE}&strike_range=${STRIKE_RANGE}&format=csv`;
+
+export const nightQuotePath = (exp, date, start, end) => `/option/history/quote?symbol=${NIGHT_ROOT}&expiration=${ymd(exp)}&date=${ymd(date)}&start_time=${start}&end_time=${end}&interval=5m&strike_range=${NIGHT_STRIKES}&format=csv`;
+export const nightLivePath = (exp) => `/option/snapshot/quote?symbol=${NIGHT_ROOT}&expiration=${ymd(exp)}&strike_range=${NIGHT_STRIKES}&format=csv`;
+export const nightVixPath = (date, start, end) => `/index/history/ohlc?symbol=VIX&start_date=${ymd(date)}&end_date=${ymd(date)}&interval=5m&start_time=${start}&end_time=${end}&format=json`;
 
 /**
  * @param {object} o
@@ -65,7 +91,7 @@ export function createTerrain(o) {
   const now = o.now ?? (() => Date.now());
   const dir = o.dir ?? null;
   const log = o.log ?? (() => {});
-  const stats = { chain: 0, oi: 0, closes: 0, failed: 0 };
+  const stats = { chain: 0, oi: 0, closes: 0, night: 0, nightLive: 0, vix: 0, failed: 0 };
 
   /* ---- two history reads at once ---- */
   let running = 0;
@@ -233,9 +259,156 @@ export function createTerrain(o) {
     return { v: TERRAIN_VERSION, at: t, symbol, root, ...e.data, day, pending: false, error: e.data.expiries.length ? null : 'no_data' };
   }
 
+  /* ---- the overnight line: one GTH night at a time ---- */
+  /** { key, night, expiry, parts: [{ date, start, end, stamps: Map ms → Map strike → quotes, last, readAt, done, failAt,
+      job }], vix: { date, bars: [ms, close][], readAt, done, failAt, job }, live: { at, stamps, job } } */
+  let nightState = null;
+  const fileOf = (night) => `night-${NIGHT_ROOT}-${ymd(nyWall(night.from).iso)}.json`;
+  function nightFor(t) {
+    const night = nightAt(t);
+    if (!night) return null;
+    const key = String(night.from);
+    if (nightState?.key === key) {
+      nightState.night = night;
+      return nightState;
+    }
+    const kept = readJson(fileOf(night));
+    const parts = nightParts(night).map((p, i) => {
+      const stamps = new Map();
+      for (const [ms, rows] of kept?.parts?.[i]?.stamps ?? []) stamps.set(ms, new Map(rows.map((r) => [r[0], r.slice(1)])));
+      return { ...p, stamps, last: null, readAt: 0, done: !!kept?.parts?.[i]?.done, failAt: 0, job: null };
+    });
+    nightState = {
+      key,
+      night,
+      expiry: nightExpiry(night),
+      parts,
+      vix: { date: parts[1].date, bars: kept?.vix?.bars ?? [], readAt: 0, done: !!kept?.vix?.done, failAt: 0, job: null },
+      live: { at: 0, stamps: new Map(), job: null },
+    };
+    return nightState;
+  }
+  /** A night whose halves and VIX are all read whole is kept on disk: it is never read again */
+  function keepNight(n) {
+    if (!n.parts.every((p) => p.done) || !n.vix.done) return;
+    writeJson(fileOf(n.night), {
+      parts: n.parts.map((p) => ({ done: true, stamps: [...p.stamps].map(([ms, m]) => [ms, [...m].map(([k, q]) => [k, ...q])]) })),
+      vix: { done: true, bars: n.vix.bars },
+    });
+  }
+  function topUpPart(n, p, t) {
+    const startMs = nyInstant(p.date, minOf(p.start));
+    const endMs = nyInstant(p.date, minOf(p.end)) + 59_000;
+    if (p.done || p.job || t < startMs || t - p.readAt < NIGHT_PATH_MS || t - p.failAt < RETRY_MS) return;
+    /* a half read after it ended is whole; while it runs, only the stamps since the last one */
+    const over = t > endMs + 120_000;
+    const from = p.last ?? p.start;
+    p.job = (async () => {
+      try {
+        const got = await history(nightQuotePath(n.expiry, p.date, from, p.end), 'night');
+        if (got.status === 200 || got.status === 472) {
+          const stamps = got.status === 200 ? readQuoteStamps(got.body) : new Map();
+          for (const [ms, m] of stamps) p.stamps.set(ms, m);
+          const newest = Math.max(0, ...p.stamps.keys());
+          if (newest > 0) p.last = clockOf(nyWall(newest).min);
+          p.readAt = now();
+          if (over) p.done = true;
+          keepNight(n);
+        } else {
+          stats.failed += 1;
+          p.failAt = now();
+        }
+      } catch {
+        stats.failed += 1;
+        p.failAt = now();
+      } finally {
+        p.job = null;
+      }
+    })();
+  }
+  /* the VIX prints from about 03:15 New York: its 5-minute closes of the night's morning */
+  function topUpVix(n, t) {
+    const v = n.vix;
+    if (v.done || v.job || t < nyInstant(v.date, 3 * 60) || t - v.readAt < NIGHT_PATH_MS || t - v.failAt < RETRY_MS) return;
+    const over = t > n.night.to + 120_000;
+    v.job = (async () => {
+      try {
+        const got = await history(nightVixPath(v.date, '03:00:00', clockOf(nyWall(n.night.to).min)), 'vix');
+        if (got.status === 200 || got.status === 472) {
+          v.bars = got.status === 200 ? readMinuteCloses(JSON.parse(got.body)).map(([min, c]) => [nyInstant(v.date, min), c]) : [];
+          v.readAt = now();
+          if (over) v.done = true;
+          keepNight(n);
+        } else {
+          stats.failed += 1;
+          v.failAt = now();
+        }
+      } catch {
+        stats.failed += 1;
+        v.failAt = now();
+      } finally {
+        v.job = null;
+      }
+    })();
+  }
+  function liveNight(n, t) {
+    const l = n.live;
+    if (!n.night.live || l.job || t - l.at < NIGHT_LIVE_MS) return l.job ?? Promise.resolve();
+    l.job = (async () => {
+      try {
+        stats.nightLive += 1;
+        const got = await o.theta(nightLivePath(n.expiry), { lane: 'record' });
+        if (got.status === 200) l.stamps = readQuoteStamps(got.body, 60_000);
+        else stats.failed += 1;
+      } catch {
+        stats.failed += 1;
+      } finally {
+        l.at = now();
+        l.job = null;
+      }
+    })();
+    return l.job;
+  }
+
+  /** The night's line as the pages read it — per 5-minute stamp the pairs around the money — starting whatever reads it
+      lacks (the next ask carries them) */
+  async function overnight() {
+    const t = now();
+    const n = nightFor(t);
+    if (!n) return { v: TERRAIN_VERSION, at: t, error: 'no_night' };
+    for (const p of n.parts) topUpPart(n, p, t);
+    topUpVix(n, t);
+    await liveNight(n, t);
+    const merged = new Map();
+    for (const p of n.parts) for (const [ms, m] of p.stamps) merged.set(ms, m);
+    /* the live pairs after the last history stamp */
+    const lastHist = Math.max(0, ...merged.keys());
+    if (n.night.live) for (const [ms, m] of n.live.stamps) if (ms > lastHist) merged.set(ms, m);
+    const bars = [];
+    for (const ms of [...merged.keys()].sort((a, b) => a - b)) {
+      if (ms < n.night.from || ms >= n.night.to) continue;
+      const pairs = pairsAround(merged.get(ms));
+      if (pairs.length >= 3) bars.push([ms, pairs]);
+    }
+    const started = (p) => t >= nyInstant(p.date, minOf(p.start));
+    return {
+      v: TERRAIN_VERSION,
+      at: t,
+      root: NIGHT_ROOT,
+      night: n.night,
+      expiry: n.expiry,
+      live: n.night.live,
+      bars,
+      vix: n.vix.bars,
+      pending: n.parts.some((p) => started(p) && !p.done && !p.readAt) || (!!n.vix.job && !n.vix.readAt),
+      error: null,
+    };
+  }
+
   return {
     chain,
     prior,
+    overnight,
     stats: () => ({ ...stats, peakHistory: peak, running, waiting: waiting.length, names: names.size }),
     /** Every read in flight has landed (the proof's) */
     settle: async () => {
@@ -245,6 +418,7 @@ export function createTerrain(o) {
           jobs.push(s.chain.job, s.oi.job);
           for (const e of s.closes.values()) jobs.push(e.job);
         }
+        if (nightState) jobs.push(...nightState.parts.map((p) => p.job), nightState.vix.job, nightState.live.job);
         const live = jobs.filter(Boolean);
         if (!live.length) return;
         await Promise.all(live);
@@ -275,7 +449,7 @@ async function reader(root) {
   return shared;
 }
 
-/** GET /api/terrain/chain|prior?symbol= (mounted at /api/terrain, or the whole URL on Vercel) */
+/** GET /api/terrain/chain|prior?symbol=, /api/terrain/overnight (mounted at /api/terrain, or the whole URL on Vercel) */
 export async function proxyTerrain(req, res, root = process.cwd()) {
   if (req.method !== 'GET') {
     send(res, 405, { error: 'method not allowed' });
@@ -284,7 +458,7 @@ export async function proxyTerrain(req, res, root = process.cwd()) {
   const url = new URL(req.url || '/', 'http://x');
   const route = url.pathname.replace(/^\/api\/terrain/, '').replace(/\/+$/, '');
   const symbol = String(url.searchParams.get('symbol') ?? '').toUpperCase();
-  if (!['/chain', '/prior'].includes(route) || !okSymbol(symbol)) {
+  if (!(route === '/overnight' || (['/chain', '/prior'].includes(route) && okSymbol(symbol)))) {
     send(res, 404, { error: 'not found' });
     return;
   }
@@ -295,7 +469,7 @@ export async function proxyTerrain(req, res, root = process.cwd()) {
   }
   const r = await reader(root);
   try {
-    send(res, 200, route === '/chain' ? await r.chain(symbol) : await r.prior(symbol));
+    send(res, 200, route === '/overnight' ? await r.overnight() : route === '/chain' ? await r.chain(symbol) : await r.prior(symbol));
   } catch (e) {
     send(res, 500, { error: 'The chain read failed.', code: 'terrain_failed' });
     console.warn(`[terrain] ${e && e.message ? e.message : e}`);

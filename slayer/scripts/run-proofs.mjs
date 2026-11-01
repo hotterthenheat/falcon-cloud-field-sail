@@ -61,6 +61,7 @@ const PROOFS = [
   'oi-change-proof.mjs',
   'skew-proof',
   'charm-drift-proof',
+  'overnight-proof',
 ];
 
 const goldens = () =>

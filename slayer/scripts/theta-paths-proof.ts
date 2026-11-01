@@ -9,7 +9,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { thetaAllowed } from '../shared/thetaPaths.mjs';
 import { proxyTheta } from '../server/thetaProxy.mjs';
-import { chainPath, closesPath, oiPath } from '../server/terrainApi.mjs';
+import { chainPath, closesPath, nightLivePath, nightQuotePath, nightVixPath, oiPath } from '../server/terrainApi.mjs';
 
 let fail = 0;
 const check = (what: string, ok: boolean) => {
@@ -74,6 +74,10 @@ check(`Building's all-expiration open-interest read passes (${OI_CHANGE_READS.le
 /* Terrain's option-chain reads (server/terrainApi.mjs), as it writes them: the Surface tab's Skew and Drift lenses */
 const TERRAIN_READS = [chainPath('SPXW'), oiPath('SPXW'), closesPath('SPXW', '2026-10-29')];
 check(`the Terrain chain reads pass (${TERRAIN_READS.length}: the all-expiry greeks and open-interest snapshots, the prior session's end-of-day greeks)`, TERRAIN_READS.every(p => thetaAllowed(p)));
+
+/* Terrain's overnight SPX line (server/terrainApi.mjs), as it writes it: the night's SPXW quotes by half, the live pairs, the VIX's morning */
+const NIGHT_READS = [nightQuotePath('2026-10-30', '2026-10-29', '20:15:00', '23:59:59'), nightQuotePath('2026-10-30', '2026-10-30', '00:00:00', '09:25:00'), nightLivePath('2026-10-30'), nightVixPath('2026-10-30', '03:00:00', '09:25:00')];
+check(`the overnight line's reads pass (${NIGHT_READS.length}: the night's quote history, its live quotes, the VIX's 5-minute history)`, NIGHT_READS.every(p => thetaAllowed(p)));
 
 /* ---- what is shut ---- */
 const FLAT = ['/option/flat_file/trade_quote', '/option/flat_file/eod', '/option/flat_file/open_interest', '/option/flat_file/quote', '/stock/flat_file/trade_quote', '/stock/flat_file/eod', '/stock/flat_file/quote', '/index/flat_file/eod'];

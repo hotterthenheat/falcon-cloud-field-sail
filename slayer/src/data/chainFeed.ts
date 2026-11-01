@@ -63,7 +63,7 @@ interface Store<T> {
 }
 
 /** One polled store per key: `gap` says how long to wait after an answer */
-function makeStores<T extends { error?: string | null }>(url: (root: string) => string, gap: (s: Store<T>, root: string) => number) {
+export function makeStores<T extends { error?: string | null }>(url: (root: string) => string, gap: (s: Store<T>, root: string) => number) {
   const stores = new Map<string, Store<T>>();
   const get = (root: string): Store<T> => {
     let s = stores.get(root);
@@ -84,8 +84,8 @@ function makeStores<T extends { error?: string | null }>(url: (root: string) => 
     }
     if (s.users && !s.timer) s.timer = setTimeout(() => void tick(root), gap(s, root));
   }
-  function use(symbol: string | null | undefined): Read<T> {
-    const root = symbol ? chainRoot(symbol) : '';
+  function use(symbol: string | null | undefined, rootOf: (s: string) => string = chainRoot): Read<T> {
+    const root = symbol ? rootOf(symbol) : '';
     useEffect(() => {
       if (!root) return;
       const s = get(root);

@@ -126,6 +126,7 @@ import StrikeExposureBand, { type BandMetric } from './StrikeExposureBand';
 import { buildExposureProfile } from '../../data/exposure';
 import type { ExposureProfileData } from '../../types/gex';
 import GapChip, { GAP_GRACE_MS } from './GapChip';
+import { useOvernightLayer } from './useOvernightLayer';
 
 /* The shape this chart needs off a print: whatever FlowPrint is, plus the instant it arrived. Declared here rather
    than imported from the provider so a chart never depends on a React context it does not use. */
@@ -1243,6 +1244,19 @@ const StrikeChart = ({
 
   // Drawing state
   const drawingsRef = useRef<DrawingsPrimitive | null>(null);
+  /* THE NIGHT'S SLOTS (useOvernightLayer.ts): the overnight layer's own times on the time scale. The layers that place
+     themselves by slot (the drawings, the cone, the events) count them with the bars, or everything right of the night
+     would sit as many slots off as the night has. */
+  const nightSlotsRef = useRef<number[]>([]);
+  const [nightRev, setNightRev] = useState(0);
+  const drawnTimesRef = useRef<number[]>([]);
+  /** Bar times with the night's slots among them: the time scale's own slots, in order */
+  const withNight = (times: readonly number[]): number[] => {
+    const night = nightSlotsRef.current;
+    if (!night.length) return times as number[];
+    const out = [...times, ...night].sort((a, b) => a - b);
+    return out.filter((t, i) => i === 0 || t !== out[i - 1]);
+  };
   const shapesRef = useRef<Drawing[]>([]);
   const dragRef = useRef<Drawing | null>(null);
   /** A committed base waiting for its third anchor — the channel's width, the curve's bend. Which kinds owe one comes
@@ -1476,7 +1490,10 @@ const StrikeChart = ({
     const hold = focusHoldRef.current;
     const world = `${tickerRef.current}|${timeframeRef.current}|${barClockRef.current}`;
     if (hold && hold.key.startsWith(`${world}|`)) return;
-    const len = barCountRef.current;
+    /* the newest bar's own slot on the time scale: the overnight layer's slots (useOvernightLayer.ts) can stand between
+       bars, so the bar count is not always the newest bar's index */
+    const lastSlot = lastBarTimeRef.current ? chart.timeScale().timeToIndex(lastBarTimeRef.current as UTCTimestamp, true) : null;
+    const len = lastSlot != null ? Math.max(barCountRef.current, Number(lastSlot) + 1) : barCountRef.current;
     const width = widthRef.current || (containerRef.current?.clientWidth ?? 1200);
     const pitch = pitchPx(timeframeRef.current);
     const total = Math.max(90, Math.min(700, Math.round(width / pitch)));
@@ -2744,6 +2761,24 @@ const StrikeChart = ({
     []
   );
 
+  /* THE OVERNIGHT LAYER (2026-11-01, from the data audit): on Terrain's panes, the SPX price the options imply through
+     the GTH night (SPX, SPXW, XSP) and the labelled empty night of a stock (useOvernightLayer.ts) — its own series, the
+     candles untouched; intraday time bars only, never a host's tape or a replay */
+  useOvernightLayer(chartRef, {
+    ticker,
+    mins: tfMinutes(timeframe),
+    light: chartSurface(CANDLE_THEMES[themeKey]).light,
+    off: !paneId?.startsWith('terrain') || !!tape || replay || barClock !== 'time',
+    revision,
+    onSlots: times => {
+      const was = nightSlotsRef.current;
+      if (was.length === times.length && was.every((t, i) => t === times[i])) return;
+      nightSlotsRef.current = times;
+      drawingsRef.current?.setBarTimes(withNight(drawnTimesRef.current));
+      setNightRev(n => n + 1);
+    },
+  });
+
   /* Compare lines. Rebuilt when the roster/timeframe/ticker changes, ticked per revision otherwise — the same full-
      load/incremental split the candles use. */
   useEffect(() => {
@@ -2942,6 +2977,8 @@ const StrikeChart = ({
        not "live since connect" — that chip would call two days of prints a gap. */
     setLiveFrom(!tapeRef.current?.native && !thetaBars() && (altSpec || mins < 1) ? bars[0]?.time ?? 0 : null);
     drawingsRef.current?.setBars(bars);
+    drawnTimesRef.current = bars.map(b => b.time);
+    if (nightSlotsRef.current.length) drawingsRef.current?.setBarTimes(withNight(drawnTimesRef.current));
     /* The measure counts bars and annualizes off them, so the layer has to know what a bar is worth here — set
        beside the times it belongs with, so a timeframe change can never move one without the other. */
     drawingsRef.current?.setBarMinutes(altSpec ? 0 : mins);
@@ -3123,10 +3160,18 @@ const StrikeChart = ({
         break;
       }
     }
+    /* the bars' own slots on the time scale (the overnight layer's slots can stand between them) */
+    const slot = (i: number) => {
+      const at = want[i] ? chart.timeScale().timeToIndex(want[i].time as UTCTimestamp, true) : null;
+      return at != null ? Number(at) : i;
+    };
+    const atEnd = b >= want.length - 1;
+    a = slot(a);
+    b = slot(b);
     const pad = Math.max(3, Math.round((b - a) * 0.06));
     /* the session dominates; ahead of its last bar, room for the cone's end and the edge tags (about a seventh of the
        plot when the session ends at the tape's end, the plain pad when it is an earlier one) */
-    const ahead = b >= want.length - 1 ? Math.max(pad, Math.round((b - a + pad) * 0.17)) : pad;
+    const ahead = atEnd ? Math.max(pad, Math.round((b - a + pad) * 0.17)) : pad;
     try {
       chart.timeScale().setVisibleLogicalRange({ from: a - pad, to: b + ahead });
     } catch {
@@ -3328,9 +3373,9 @@ const StrikeChart = ({
             marks: coneMarks(fc, clock.label),
             /* the key levels name the cone's ends at the edge; without them the cone names its own */
             markWords: !overlays.levels,
-            barTimes: drawn.map(b => b.time),
+            barTimes: withNight(drawn.map(b => b.time)),
             barMinutes: perBar,
-            anchor: drawn.length - 1,
+            anchor: withNight(drawn.map(b => b.time)).length - 1,
             oddsName: clock.label,
             iv: fc.ivNext,
             source: term?.source === 'theta' ? 'at-the-money implied vol' : 'term structure',
@@ -3340,7 +3385,7 @@ const StrikeChart = ({
     /* the cone's numbers at the edge: today's expected move, and ±1σ to the tip of this frame */
     ladderRef.current?.setExtras('cone', coneRungs(fc, clock.label));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, timeframe, revision, overlays.cone, overlays.levels, replay, mainNonce, altSpec, session, tapeRev, volsRev, printRev, fullNonce]);
+  }, [ticker, timeframe, revision, overlays.cone, overlays.levels, replay, mainNonce, altSpec, session, tapeRev, volsRev, printRev, fullNonce, nightRev]);
 
   /* The event markers. The calendar half (this name's report, the macro dates) is cached per ticker and day; the
      prints half is live. */
@@ -3387,12 +3432,12 @@ const StrikeChart = ({
       barTimes: (() => {
         const drawn = drawnTimes();
         const times = drawn.length ? drawn : bars.map(b => b.time);
-        return cut == null ? times : times.filter(t => t <= cut);
+        return withNight(cut == null ? times : times.filter(t => t <= cut));
       })(),
       barMinutes: mins,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, timeframe, revision, overlays.events, replay, replayIdx, mainNonce, flowRows, altSpec]);
+  }, [ticker, timeframe, revision, overlays.events, replay, replayIdx, mainNonce, flowRows, altSpec, nightRev]);
 
   /* The live price, as a card on the right scale. The library draws a flat one-line tag for the last value. */
   useEffect(() => {
