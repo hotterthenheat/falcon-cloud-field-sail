@@ -1044,7 +1044,7 @@ class NodesRenderer {
       if (used.some(p => Math.abs(p - l.price) < 1e-6)) continue;
       const y = yOf(l.price);
       if (y == null || y < 0 || y > paneH) continue;
-      tags.push({ price: l.price, y, ty: y, text: narrow ? `${l.short} ${priceText(l.price)}` : `${l.name} ${priceText(l.price)}`, ink: l.ink, prio: l.rank, keep: l.rank >= 7, w: 0, zone: false });
+      tags.push({ price: l.price, y, ty: y, text: narrow || l.rank < 7 ? `${l.short} ${priceText(l.price)}` : `${l.name} ${priceText(l.price)}`, ink: l.ink, prio: l.rank, keep: l.rank >= 7, w: 0, zone: false });
     }
     if (!tags.length) return;
     /* fitted to the pane in one pass (edgeLabelFit.ts): merged where levels touch, the least important dropped first

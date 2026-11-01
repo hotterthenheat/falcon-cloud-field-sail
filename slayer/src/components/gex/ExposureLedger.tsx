@@ -1011,7 +1011,8 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
         </div>
       ) : (
       <div className="relative flex-1 min-h-0">
-        <div className="pointer-events-none absolute right-2 top-1 z-30">
+        {/* a narrow rail (a 3- or 4-pane desk) keeps the dot alone: the words sat on the grid's own title */}
+        <div className={`absolute right-2 top-1 z-30 ${box.w > 0 && box.w < 260 ? '[&_[data-stale]]:!text-[0px] top-1.5' : 'pointer-events-none'}`}>
           <StaleMark at={book?.at} ttlMs={BOOK_TTL_MS} fault={book?.status === 'error' ? 'failed' : null} />
         </div>
         {/* THE FOCUS SCRIM — one layer for the blur and the dim (see index.css) */}

@@ -1108,6 +1108,7 @@ const StrikeChart = ({
   /* …and as state, with the box's height, for the drawing rail's placement */
   const [chromeInset, setChromeInset] = useState(0);
   const [boxH, setBoxH] = useState(0);
+  const [boxW, setBoxW] = useState(0);
   /* THE TRADINGVIEW MARK'S ROOM (2026-10-30, the last-targets pass): CSS px from the mark's top to the box's bottom,
      measured; 56 until the chart has drawn it (a 27px time axis, the mark's 10px inset, its 19px). */
   const [markClear, setMarkClear] = useState(56);
@@ -1779,6 +1780,7 @@ const StrikeChart = ({
       const box = el.getBoundingClientRect();
       if (box.height === 0) return;
       setBoxH(h => (h === Math.round(box.height) ? h : Math.round(box.height)));
+      setBoxW(w => (w === Math.round(box.width) ? w : Math.round(box.width)));
       let low = 0;
       document.querySelectorAll<HTMLElement>('[data-chart-chrome]').forEach(c => {
         const r = c.getBoundingClientRect();
@@ -4120,9 +4122,10 @@ const StrikeChart = ({
   /* The floating mark bar Appears whenever a mark is selected; movable anywhere on the pane by its grip; its trash
      kills only the selected mark. */
   const railPrefs = useRailPrefs();
-  /* A short pane (a 3- or 4-pane desk) folds the drawing tools to their slim tab at rest: the column of nine buttons
-     beside every chart was most of the crowding. The tab opens them in this pane (railPeek); drawing keeps them out. */
-  const smallPane = boxH > 0 && boxH < 460;
+  /* A short pane (a 3- or 4-pane desk) or a narrow one (the phone) folds the drawing tools to their slim tab at rest:
+     the column of nine buttons beside every chart was most of the crowding. The tab opens them in this pane (railPeek);
+     drawing keeps them out. */
+  const smallPane = (boxH > 0 && boxH < 460) || (boxW > 0 && boxW < 460);
   const [railPeek, setRailPeek] = useState(false);
   useEffect(() => {
     if (!smallPane) setRailPeek(false);
