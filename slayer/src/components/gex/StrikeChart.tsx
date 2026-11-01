@@ -4,7 +4,7 @@ import {
   type MutableRefObject, type PointerEvent as ReactPointerEvent, useLayoutEffect,
   type ReactNode,
 } from 'react';
-import { Eraser, MousePointer2, Trash2 } from 'lucide-react';
+import { Copy, Eraser, MousePointer2, Settings2, Trash2 } from 'lucide-react';
 import {
   createChart,
   createSeriesMarkers,
@@ -83,9 +83,11 @@ import { commitArm, evaluateAlert, markFired, useAlerts, type AlertContext, type
 import { newsPulse } from '../../data/news';
 import { exposureNowFor, fmtGexUsd as fmtUsd } from '../../data/gex';
 import { ChevronsLeft, ChevronsUp, GripVertical, Lock, PanelLeft, PanelTop, Pencil, Type, Unlock } from 'lucide-react';
-import { DrawingsPrimitive, REST_INK_DARK, REST_INK_LIGHT, gestureOf, isFreehand, isWordsKind, loadDrawings, needsThirdAnchor, popDrawings, saveDrawings, usesPts, type Drawing, type DrawingKind } from './drawingsPrimitive';
-import DrawRailTools, { DrawSheet, RAIL_ARROW_PAD } from './DrawRailTools';
-import { drawToolLabel, registerDrawChart, rememberDrawTool, touchDrawChart } from './drawTools';
+import { DrawingsPrimitive, REST_INK_DARK, REST_INK_LIGHT, fixedPoints, gestureOf, isFreehand, isLineKind, isWordsKind, loadDrawings, needsThirdAnchor, popDrawings, saveDrawings, usesPts, type Drawing, type DrawingKind } from './drawingsPrimitive';
+import DrawRailTools, { DrawFavBar, DrawRailSwitches, DrawSheet, RAIL_ARROW_PAD } from './DrawRailTools';
+import DrawSettings from './DrawSettings';
+import { snap45 } from './drawingGeometry';
+import { drawPrefs, drawToolLabel, registerDrawChart, rememberDrawTool, touchDrawChart, useDrawToolPrefs } from './drawTools';
 import {
   CANDLE_THEMES,
   chartGround,
@@ -4155,7 +4157,9 @@ const StrikeChart = ({
       drawingsRef.current?.setDrawings(shapesRef.current);
       saveDrawings(drawKey, shapesRef.current);
       /* The tool empties into your hand. Placing a mark drops the tool back to Select with the new mark already
-         selected, so the very next drag moves it. Want another one? */
+         selected, so the very next drag moves it. Want another one? — unless the reader keeps drawing (the rail's
+         stay-in-drawing switch, TradingView's), when the tool stays in hand for the next one. */
+      if (drawPrefs().stay) return;
       setDrawTool('select');
       const idx = shapesRef.current.length - 1;
       setSelectedIdx(idx);
@@ -4226,6 +4230,48 @@ const StrikeChart = ({
     [selectedIdx, ticker]
   );
 
+  /* The rail's switches (drawTools prefs): hide all reaches the layer; the layer knows the timeframe for marks kept to one */
+  const drawSwitches = useDrawToolPrefs();
+  useEffect(() => {
+    drawingsRef.current?.setHideAll(drawSwitches.hideAll);
+  }, [drawSwitches.hideAll]);
+  useEffect(() => {
+    drawingsRef.current?.setTimeframe(timeframe);
+  }, [timeframe]);
+  const allLocked = shapesRef.current.length > 0 && shapesRef.current.every(d => d.locked);
+  const lockAll = useCallback(() => {
+    const on = !(shapesRef.current.length > 0 && shapesRef.current.every(d => d.locked));
+    shapesRef.current = shapesRef.current.map(d => ({ ...d, locked: on }));
+    drawingsRef.current?.setDrawings(shapesRef.current);
+    saveDrawings(drawKey, shapesRef.current);
+    forceMark();
+  }, [ticker]);
+  /* Clone (TradingView's): the same mark, three bars later, selected so the next drag places it */
+  const cloneSelected = useCallback(() => {
+    const prim = drawingsRef.current;
+    const i = selectedIdx;
+    if (!prim || i === null || !shapesRef.current[i]) return;
+    const o = shapesRef.current[i];
+    const shift = (q?: { time: number; price: number }) => {
+      if (!q) return undefined;
+      const bi = prim.barIndexOf(q.time);
+      const t = bi === null ? null : prim.timeAtBarIndex(bi + 3);
+      return t === null ? q : { time: t, price: q.price };
+    };
+    const pts = o.pts?.map(q => shift(q) ?? q);
+    const copy: Drawing = { ...o, locked: false, p1: shift(o.p1)!, p2: shift(o.p2), p3: shift(o.p3), ...(pts ? { pts } : {}) };
+    shapesRef.current = [...shapesRef.current, copy];
+    prim.setDrawings(shapesRef.current);
+    saveDrawings(drawKey, shapesRef.current);
+    const idx = shapesRef.current.length - 1;
+    setSelectedIdx(idx);
+    prim.setSelected(idx);
+  }, [selectedIdx, ticker]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  useEffect(() => {
+    if (selectedIdx === null) setSettingsOpen(false);
+  }, [selectedIdx]);
+
   const onBarGripDown = (e: ReactPointerEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -4272,7 +4318,8 @@ const StrikeChart = ({
     deselect();
   }, [ticker, deselect]);
 
-  const pointFromClient = (clientX: number, clientY: number): { time: number; price: number } | null => {
+  /** `flip`: Ctrl/⌘ held — TradingView's key that turns the magnet the other way for as long as it is down */
+  const pointFromClient = (clientX: number, clientY: number, flip = false): { time: number; price: number } | null => {
     const container = containerRef.current;
     const candleSeries = candleSeriesRef.current;
     const prim = drawingsRef.current;
@@ -4281,9 +4328,46 @@ const StrikeChart = ({
     const time = prim.xToTime(clientX - rect.left);
     const price = candleSeries.coordinateToPrice(clientY - rect.top);
     if (time === null || price === null) return null;
+    const mode = drawPrefs().magnet;
+    const on = (mode !== 'off') !== flip;
+    if (on) return { time, price: prim.magnet(time, price, mode === 'off' ? 'weak' : mode) };
     return { time, price };
   };
-  const pointAt = (e: ReactPointerEvent<HTMLDivElement>) => pointFromClient(e.clientX, e.clientY);
+  const pointAt = (e: ReactPointerEvent<HTMLDivElement>) => pointFromClient(e.clientX, e.clientY, e.ctrlKey || e.metaKey);
+  /** Shift held: a line holds to 45° (flat, upright or diagonal), a box or an ellipse to a square or a circle */
+  const constrained = (kind: DrawingKind, p1: { time: number; price: number }, p: { time: number; price: number }, shift: boolean) => {
+    const prim = drawingsRef.current;
+    const series = candleSeriesRef.current;
+    if (!shift || !prim || !series) return p;
+    const box = kind === 'rect' || kind === 'ellipse' || kind === 'circle' || kind === 'gannbox';
+    if (!isLineKind(kind) && !box) return p;
+    const x1 = prim.timeToX(p1.time);
+    const y1 = series.priceToCoordinate(p1.price);
+    const x2 = prim.timeToX(p.time);
+    const y2 = series.priceToCoordinate(p.price);
+    if (x1 === null || y1 === null || x2 === null || y2 === null) return p;
+    let q: [number, number];
+    if (box) {
+      const side = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
+      q = [x1 + Math.sign(x2 - x1 || 1) * side, y1 + Math.sign(y2 - y1 || 1) * side];
+    } else q = snap45([x1, y1], [x2, y2]);
+    const time = prim.xToTime(q[0]);
+    const price = series.coordinateToPrice(q[1]);
+    return time === null || price === null ? p : { time, price };
+  };
+  /** Shift+click on the chart measures (TradingView's): the measure's first corner is down, the next click lands it */
+  const startShiftMeasure = (e: ReactPointerEvent<HTMLDivElement>): boolean => {
+    if (!e.shiftKey || !onEnterDraw) return false;
+    const p = pointFromClient(e.clientX, e.clientY);
+    if (!p) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!drawing) onEnterDraw();
+    setDrawTool('measure');
+    pendingSecondRef.current = { kind: 'measure', p1: p };
+    drawingsRef.current?.setDraft({ kind: 'measure', p1: p, p2: p });
+    return true;
+  };
   /** The same point, kept between the bars — the freehand kinds */
   const exactPointAt = (e: ReactPointerEvent<HTMLDivElement>): { time: number; price: number } | null => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -4299,6 +4383,7 @@ const StrikeChart = ({
      capture-phase handler on the chart's own container is the marks' standing doorbell. */
   const onSleepingMarkDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (drawing) return; // the overlay owns the pointer in draw mode
+    if (e.button === 0 && startShiftMeasure(e)) return;
     const rect = containerRef.current?.getBoundingClientRect();
     const prim = drawingsRef.current;
     if (!rect || !prim) return;
@@ -4358,8 +4443,9 @@ const StrikeChart = ({
     const p = pointAt(e);
     if (!p) return;
 
-    /* The select tool — the pointer that picks a mark up instead of making one. */
+    /* The select tool — the pointer that picks a mark up instead of making one. Shift+click measures, as on the tape. */
     if (drawTool === 'select') {
+      if (startShiftMeasure(e)) return;
       const rect = containerRef.current?.getBoundingClientRect();
       const hit = rect ? drawingsRef.current?.hitTestAt(e.clientX - rect.left, e.clientY - rect.top) ?? null : null;
       if (!hit) {
@@ -4394,7 +4480,7 @@ const StrikeChart = ({
         return;
       }
       drawingsRef.current?.setDraft(null);
-      commitDrawing({ ...base, p2: p });
+      commitDrawing({ ...base, p2: constrained(base.kind, base.p1, p, e.shiftKey) });
       return;
     }
     /* A third-anchor kind's second phase ends on this press: the third anchor (channel width, curve bend) has tracked
@@ -4429,7 +4515,17 @@ const StrikeChart = ({
       /* The path plots by clicks — each press adds a point; the draft's tail rides the cursor; the double-click
          handler below seals it with the head. */
       const run = pathDraftRef.current?.kind === drawTool ? pathDraftRef.current.pts : [];
+      const n = fixedPoints(drawTool);
+      /* a pattern's pivots are on different bars — a second press on the same bar (a double-click) is not a pivot */
+      if (n !== undefined && run.length && run[run.length - 1].time === p.time) return;
       run.push(p);
+      /* a pattern seals itself on its last pivot — XABCD on its fifth press, head and shoulders on its seventh */
+      if (n !== undefined && run.length >= n) {
+        pathDraftRef.current = null;
+        drawingsRef.current?.setDraft(null);
+        commitDrawing({ kind: drawTool, p1: run[0], pts: run.slice(0, n) });
+        return;
+      }
       pathDraftRef.current = { kind: drawTool, pts: run };
       drawingsRef.current?.setDraft({ kind: drawTool, p1: run[0], pts: [...run, p] });
       return;
@@ -4442,10 +4538,12 @@ const StrikeChart = ({
   };
 
   const onDrawDblClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (drawTool === 'select' || gestureOf(drawTool) !== 'clicks' || !pathDraftRef.current) return;
+    if (drawTool === 'select' || gestureOf(drawTool) !== 'clicks') return;
     /* The seal — and the wrapper's own dblclick is resetView, which must not fire under a finished path. */
     e.stopPropagation();
     e.preventDefault();
+    /* a pattern is sealed by its own count, never by a double-click */
+    if (!pathDraftRef.current || fixedPoints(drawTool) !== undefined) return;
     const { kind: runKind, pts: run } = pathDraftRef.current;
     pathDraftRef.current = null;
     drawingsRef.current?.setDraft(null);
@@ -4525,7 +4623,7 @@ const StrikeChart = ({
     /* Click-move-click: the line in the hand follows the pointer. */
     if (pendingSecondRef.current) {
       const p = pointAt(e);
-      if (p) drawingsRef.current?.setDraft({ ...pendingSecondRef.current, p2: p });
+      if (p) drawingsRef.current?.setDraft({ ...pendingSecondRef.current, p2: constrained(pendingSecondRef.current.kind, pendingSecondRef.current.p1, p, e.shiftKey) });
       return;
     }
     /* A freehand stroke grows with the pointer — a point every couple of pixels, capped so a long scribble stays a
@@ -4556,7 +4654,7 @@ const StrikeChart = ({
     if (!dragRef.current) return;
     const p = pointAt(e);
     if (!p) return;
-    dragRef.current = { ...dragRef.current, p2: p };
+    dragRef.current = { ...dragRef.current, p2: constrained(dragRef.current.kind, dragRef.current.p1, p, e.shiftKey) };
     drawingsRef.current?.setDraft(dragRef.current);
   };
 
@@ -5074,6 +5172,8 @@ const StrikeChart = ({
             {/* One button a family — the rail was thirteen tools long; it is five families, the search and the star,
                 and holds thirty-four */}
             <DrawRailTools dock={rail.dock} drawing={drawing} drawTool={drawTool} onPick={pickTool} host={boxEl} sheetOpen={sheetOpen} onSheet={setSheetOpen} />
+            {/* magnet, stay in drawing mode, lock all, hide all — TradingView's switches under the tools */}
+            <DrawRailSwitches dock={rail.dock} allLocked={allLocked} onLockAll={lockAll} />
             {drawing && (
               <>
                 <div className={rail.dock === 'left' ? 'mx-1 my-0.5 h-px bg-borderMuted' : 'my-1 mx-0.5 w-px bg-borderMuted'} aria-hidden />
@@ -5141,6 +5241,16 @@ const StrikeChart = ({
           </button>
         )}
         {sheetOpen && boxEl && <DrawSheet host={boxEl} dock={rail.dock} drawTool={drawing ? drawTool : 'select'} onPick={pickTool} onClose={() => setSheetOpen(false)} />}
+        {!compact && onEnterDraw && <DrawFavBar drawTool={drawing ? drawTool : 'select'} onPick={pickTool} />}
+        {drawing && settingsOpen && selectedIdx !== null && shapesRef.current[selectedIdx] && drawingsRef.current && (
+          <DrawSettings
+            mark={shapesRef.current[selectedIdx]}
+            timeframe={timeframe}
+            prim={drawingsRef.current}
+            onChange={updateSelected}
+            onClose={() => setSettingsOpen(false)}
+          />
+        )}
         {drawing && selectedIdx !== null && shapesRef.current[selectedIdx] && (() => {
           const m = shapesRef.current[selectedIdx];
           /* On a note the 1–4 width field is type size, not stroke — the picker relabels itself and previews
@@ -5311,6 +5421,12 @@ const StrikeChart = ({
 
               <span className="mx-0.5 w-px h-4 bg-borderMuted" aria-hidden />
 
+              <button onClick={() => setSettingsOpen(o => !o)} title="Settings — style, text, coordinates, visibility" aria-label="Drawing settings" aria-pressed={settingsOpen} className={btn(settingsOpen)} data-mark-settings>
+                <Settings2 className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={cloneSelected} title="Clone — the same mark, three bars on" aria-label="Clone" className={btn(false)} data-mark-clone>
+                <Copy className="w-3.5 h-3.5" />
+              </button>
               <button
                 onClick={() => updateSelected({ locked: !m.locked })}
                 title={m.locked ? 'Unlock — allow moving again' : 'Lock in place — timeframes and drags cannot move it'}

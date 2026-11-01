@@ -3,8 +3,11 @@
 
 import { fmtElapsed, measureSpan } from '../../data/measure';
 import type { Drawing, DrawingPoint } from './drawingsPrimitive';
+import { hitMore, renderMore } from './drawingKindsMore';
 
 export interface KindBar {
+  /** the magnet snaps to it when the tape carries it */
+  open?: number;
   time: number;
   high: number;
   low: number;
@@ -595,7 +598,8 @@ export function renderKind(d: Drawing, R: KindRender): boolean {
       return true;
     }
     default:
-      return false;
+      /* the phase-one kinds (drawingKindsMore.ts) — false when it is none of them either */
+      return renderMore(d, R);
   }
 }
 
@@ -751,6 +755,6 @@ export function hitKind(d: Drawing, H: KindHit): boolean | null {
       return near(a, [a[0] + 12, a[1] - 12]) || (x >= a[0] + 10 && x <= a[0] + 14 + box.w && Math.abs(y - by) <= box.h / 2 + 2);
     }
     default:
-      return null;
+      return hitMore(d, H);
   }
 }
