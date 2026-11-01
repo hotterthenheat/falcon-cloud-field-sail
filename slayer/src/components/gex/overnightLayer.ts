@@ -180,6 +180,11 @@ export class OvernightLayer {
   private sig = '';
   constructor(private chart: IChartApi) {}
 
+  /** Whether this layer was drawn on `chart` — a chart rebuilt or removed takes the layer's series down with it */
+  isOn(chart: IChartApi | null): boolean {
+    return chart === this.chart;
+  }
+
   /** Draws `d`, or clears the layer with null. Redraws only when what is drawn changes. */
   update(d: OvernightDraw | null): void {
     const sig = d ? `${d.kind}|${d.light}|${d.label}|${d.valueWord ?? ''}|${d.vixWord ?? ''}|${d.points.length}|${d.points[0]?.time}|${d.points[d.points.length - 1]?.time}|${d.points[d.points.length - 1]?.value ?? ''}` : '';

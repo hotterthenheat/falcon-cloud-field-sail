@@ -91,7 +91,7 @@ interface Props {
 }
 
 const iconBtn = 'shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06] disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-textSecondary transition-colors';
-const doorBtn = 'shrink-0 inline-flex items-center gap-1.5 h-6 rounded-md border border-borderSubtle hover:border-borderMuted font-mono text-t11 text-textSecondary hover:text-textPrimary transition-colors';
+const doorBtn = 'shrink-0 inline-flex items-center gap-1.5 h-6 whitespace-nowrap rounded-md border border-borderSubtle hover:border-borderMuted font-mono text-t11 text-textSecondary hover:text-textPrimary transition-colors';
 
 const ReplayStrip = ({ phase, pos, length, day, startMin, playing, onPlay, pace, onPace, onSeek, onExit, compact = false, words, marks, sections, paceUnit = 'seconds', candleMin = 1, step = 60, counter, wordsAt, exitWords = 'Back to live', stateWord = 'replaying', minPos = 0, minTitle, className = '', wide = false }: Props) => {
   /* candles a real second at a pace: a chart's own bars ARE candles; a session clock's seconds are folded into the host's candle */

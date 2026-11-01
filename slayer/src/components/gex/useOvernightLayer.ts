@@ -31,6 +31,8 @@ export function useOvernightLayer(chartRef: MutableRefObject<IChartApi | null>, 
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
+    /* a rebuilt chart: the old layer went with the old chart, so it is dropped, never touched */
+    if (layerRef.current && !layerRef.current.isOn(chart)) layerRef.current = null;
     if (!layerRef.current) layerRef.current = new OvernightLayer(chart);
     const layer = layerRef.current;
     if (!on) {
@@ -74,7 +76,9 @@ export function useOvernightLayer(chartRef: MutableRefObject<IChartApi | null>, 
 
   useEffect(
     () => () => {
-      layerRef.current?.destroy();
+      /* StrikeChart's own cleanup removes the chart first (it clears chartRef): a layer on a removed chart is only let
+         go — detaching from it would ask the dead chart for a frame ("Object is disposed") */
+      if (layerRef.current?.isOn(chartRef.current)) layerRef.current.destroy();
       layerRef.current = null;
     },
     []

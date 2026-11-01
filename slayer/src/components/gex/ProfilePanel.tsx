@@ -180,6 +180,10 @@ type RailView = (typeof VIEW_TABS)[number]['value'];
 /** The head on TWO ROWS below the full tier (2026-09-16: the view tabs and the host's Expiry
     card on the first, the lane tools on the second — one row cannot hold them all at 340) */
 const HEAD_TOP_2 = 56;
+/** The head on THREE ROWS in a thin rail that carries the host's card (2026-11-01, the button audit): in a three-pane
+    desk the rail is 180 wide, and the Expiry card (≈170) beside the view tabs left the tabs no width at all and pushed
+    the × past the rail's edge, so the Ladder had no way to another view and no close. The card takes its own row. */
+const HEAD_TOP_3 = HEAD_TOP_2 + (HEAD_TOP_2 - HEAD_TOP);
 /** The key under the head (the full and mid tiers): what the ramp, the spine, the ghost and the
     magenta mean — one line, drawn on the canvas */
 const KEY_BAND = 16;
@@ -515,6 +519,8 @@ const ProfilePanel = ({
   }, [view, ticker, gexTick, bookRev]);
   /* where the rows start this frame — the head, plus the key when it is drawn */
   const headBandRef = useRef(HEAD_TOP);
+  /** the host's card stands on a row of its own (a thin rail; HEAD_TOP_3) — read by the draw, which runs outside render */
+  const cardOwnRowRef = useRef(false);
   /* whether the rows PRINT their figures this frame — the card carries them only when they
      cannot (the partner's rule: the card once the numbers no longer fit) */
   const figuresRef = useRef(true);
@@ -724,7 +730,7 @@ const ProfilePanel = ({
       const tierNow = profileTier(W);
       const colW = tierNow === 'thin' ? COL_W : COL_W_WIDE;
       const keyOn = false;
-      const headTop = tierNow === 'full' ? HEAD_TOP : HEAD_TOP_2;
+      const headTop = tierNow === 'full' ? HEAD_TOP : tierNow === 'thin' && cardOwnRowRef.current ? HEAD_TOP_3 : HEAD_TOP_2;
       const HEAD_BAND = headTop + (keyOn ? KEY_BAND : 0) + COL_HEAD;
       headBandRef.current = HEAD_BAND;
       /* THE LADDER'S OWN SCALE. Not the chart's. Opens on the live price with a row tall enough
@@ -1711,6 +1717,8 @@ const ProfilePanel = ({
      whatever the tier. Below the full tier the head is TWO ROWS: the view tabs and the host's
      card on the first, these tools on the second (a 340 head cannot hold them all on one). */
   const twoRowHead = tier !== 'full';
+  const cardOwnRow = tier === 'thin' && !!headCard && !quiet;
+  cardOwnRowRef.current = cardOwnRow;
   const laneTools = (
     <>
       {onLane && (roomForLanes || twoRowHead) && <DropdownSelect label="Lanes" value={lane} options={LANE_OPTIONS} onChange={onLane} title="What the panel draws" testId="lanes" align={twoRowHead ? 'start' : 'end'} size="sm" />}
@@ -1838,7 +1846,7 @@ const ProfilePanel = ({
       <div
         ref={headRef}
         className={`absolute inset-x-0 top-0 flex flex-col px-2 ${quiet ? 'pointer-events-auto' : 'pointer-events-none'}`}
-        style={quiet ? undefined : { height: twoRowHead ? HEAD_TOP_2 : HEAD_TOP }}
+        style={quiet ? undefined : { height: cardOwnRow ? HEAD_TOP_3 : twoRowHead ? HEAD_TOP_2 : HEAD_TOP }}
         data-profile-head
         data-head-rows={quiet ? undefined : twoRowHead ? 2 : 1}
       >
@@ -1847,7 +1855,7 @@ const ProfilePanel = ({
           {viewTabs}
           {view === 'surface' && <LensSwitch value={lens} onChange={setLens} />}
           {onField && <div ref={setStripSlot} className="contents" data-profile-head-slot />}
-          {headCard && !quiet && (
+          {headCard && !quiet && !cardOwnRow && (
             <span className="pointer-events-auto shrink-0 inline-flex" data-profile-head-card>
               {headCard}
             </span>
@@ -1872,6 +1880,13 @@ const ProfilePanel = ({
             {closeDoor}
           </span>
         </div>
+        {cardOwnRow && (
+          <div className="flex items-center min-w-0" style={{ height: HEAD_TOP_2 - HEAD_TOP }}>
+            <span className="pointer-events-auto shrink-0 whitespace-nowrap inline-flex" data-profile-head-card>
+              {headCard}
+            </span>
+          </div>
+        )}
         {twoRowHead && !quiet && (
           <div className="flex items-center gap-1 pointer-events-auto" style={{ height: HEAD_TOP_2 - HEAD_TOP }} data-profile-tools>
             {laneTools}

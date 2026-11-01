@@ -13,7 +13,8 @@ import type { ChartScript, PaneId, Script, ScriptInput, ScriptInputValue } from 
 import Modal from '../ui/Modal';
 import { INDICATOR_ITEMS, indicatorBlurb, physicsOf } from '../gex/indicatorItems';
 import IndicatorSettings, { PhysicsTag } from '../gex/IndicatorSettings';
-import { MAX_SUB_PANES, SUB_PANE_ORDER, type ChartIndicators, type ChartOverlays } from '../gex/StrikeChart';
+import { DEFAULT_OVERLAYS, MAX_SUB_PANES, SUB_PANE_ORDER, type ChartIndicators, type ChartOverlays } from '../gex/StrikeChart';
+import { NODE_LOOKS, setDeskPrefs, useDeskPrefs } from '../../data/deskPrefs';
 import { OPENING_RANGES, type OpeningRange } from '../../data/sessionLevels';
 
 type Shelf = 'recent' | 'favourites' | 'mine' | 'slayer' | 'physics' | 'technicals' | 'chart';
@@ -182,6 +183,10 @@ const OVERLAY_ROWS: { key: keyof ChartOverlays; label: string; hint: string; pan
   { key: 'events', label: 'Events', hint: 'Earnings, FOMC, CPI, NFP, and the largest prints.', pane: 'on the tape' },
   { key: 'alerts', label: 'Alert lines', hint: 'A line where a price alert is waiting.', pane: 'on the tape' },
   { key: 'dexStrike', label: 'Exposure by strike', hint: 'The chain, docked under the tape.', pane: 'own pane' },
+  /* the two session washes: on by default, and until now switchable only from the overlays menu, which a pane with the
+     library (Terrain) does not show */
+  { key: 'extHours', label: 'Extended hours', hint: 'A faint wash behind the pre-market, after-hours and overnight bars. Intraday only.', pane: 'on the tape' },
+  { key: 'sessionBreaks', label: 'Session breaks', hint: 'A dashed rule where each session day starts. Intraday only.', pane: 'on the tape' },
 ];
 
 const CLOCK_HELD = new Set<keyof ChartOverlays>(['trails', 'flow', 'netDrift', 'volDrift', 'session', 'cone', 'wind', 'events']);
@@ -208,6 +213,7 @@ const ScriptLibrary = ({
   barClock,
 }: ScriptLibraryProps) => {
   const [shelf, setShelf] = useState<Shelf>('slayer');
+  const { nodeLook } = useDeskPrefs();
   const [query, setQuery] = useState('');
   const [mine, setMine] = useState<Script[]>([]);
   const [favourites, setFavourites] = useState<Set<string>>(new Set());
@@ -461,7 +467,8 @@ const ScriptLibrary = ({
               <div>
                 <div className="px-2 pt-3 pb-1 font-mono text-t8 uppercase tracking-widest text-textSecondary">On the chart</div>
                 {OVERLAY_ROWS.filter(r => !q || `${r.label} ${r.hint}`.toLowerCase().includes(q)).map(r => {
-                  const on = !!overlays[r.key];
+                  /* an overlay the host never set reads as its default (the session washes are on unless turned off) */
+                  const on = !!(overlays[r.key] ?? DEFAULT_OVERLAYS[r.key]);
                   const held = (barClock ?? 'time') !== 'time' && CLOCK_HELD.has(r.key);
                   return (
                     <div key={r.key}>
@@ -496,6 +503,15 @@ const ScriptLibrary = ({
                           </button>
                         </span>
                       </div>
+                      {on && r.key === 'trails' && (
+                        /* HOW THE NODES DRAW — the overlays menu's Draw row, here for the panes that show the library instead */
+                        <div className="flex items-center gap-2 pl-16 pr-2 pb-1" role="group" aria-label="How the exposure nodes draw" data-library-node-look>
+                          <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Draw</span>
+                          {NODE_LOOKS.map(l => (
+                            <button key={l.value} type="button" onClick={() => setDeskPrefs({ nodeLook: l.value })} aria-pressed={nodeLook === l.value} title={l.hint} className={`px-1.5 py-0.5 rounded font-mono text-t10 ${nodeLook === l.value ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>{l.label}</button>
+                          ))}
+                        </div>
+                      )}
                       {on && r.key === 'trails' && onTrailGreek && (
                         <div className="flex items-center gap-2 pl-16 pr-2 pb-1">
                           <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Greek</span>

@@ -57,7 +57,8 @@ interface Row {
   title: string;
   sub: string;
   exp: string;
-  door: string;
+  /** where a press goes; null for a row with nowhere else to go (an expiry: its book is the desk this room sits on) */
+  door: string | null;
   desk: boolean;
   major: boolean;
   weight?: number;
@@ -78,6 +79,19 @@ const monthly = (iso: string): boolean => {
   return new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay() === 5 && d >= 15 && d <= 21;
 };
 
+/** A calendar figure as the feed sends it, a big bare count shortened: "7100000" → "7.1M", "-105600000000" → "−105.6B".
+    Anything else (a percent, a figure with a unit, a small number) is printed as it came. */
+const figure = (v: string | undefined): string | undefined => {
+  if (v == null) return v;
+  const t = v.trim();
+  if (!/^-?\d+(\.\d+)?$/.test(t)) return v;
+  const n = Number(t);
+  const a = Math.abs(n);
+  if (a < 1e4) return v;
+  const [d, u] = a >= 1e9 ? [1e9, 'B'] : a >= 1e6 ? [1e6, 'M'] : [1e3, 'K'];
+  return `${n < 0 ? '−' : ''}${(a / d).toFixed(1)}${u}`;
+};
+
 const macroRows = (events: EconEvent[]): Row[] =>
   events
     .filter(e => Number.isFinite(e.atMs))
@@ -88,8 +102,8 @@ const macroRows = (events: EconEvent[]): Row[] =>
       tier: e.impact,
       time: e.timeLabel,
       title: e.title,
-      sub: [e.previous ? `Prev ${e.previous}` : '', e.region !== 'USD' ? e.region : ''].filter(Boolean).join(' · '),
-      exp: e.forecast ?? '—',
+      sub: [e.previous ? `Prev ${figure(e.previous)}` : '', e.region !== 'USD' ? e.region : ''].filter(Boolean).join(' · '),
+      exp: figure(e.forecast) ?? '—',
       door: '/dossier/news',
       desk: e.region === 'USD',
       major: e.impact === 'high',
@@ -136,7 +150,8 @@ const expiryRows = (ticker: string, expiries: { date: string; dte: number }[]): 
         title: `${ticker} options expire`,
         sub: monthly(x.date) ? 'the monthly expiry' : 'a listed expiry',
         exp: x.dte === 0 ? '0DTE' : `${x.dte} DTE`,
-        door: '/terrain',
+        /* was '/terrain' — a press that went to the page already open, so it did nothing */
+        door: null,
         desk: true,
         major: false,
       },
@@ -193,12 +208,15 @@ const EventsRoom = ({ names, ticker }: { names: string[]; ticker: string }) => {
       return next;
     });
 
-  const row = (r: Row) => (
-    <button
+  const row = (r: Row) => {
+    const door = r.door;
+    /* a row with somewhere to go is a button; one without (an expiry) is a plain line, so it never promises a press */
+    const Tag = door ? 'button' : 'div';
+    return (
+    <Tag
       key={r.id}
-      type="button"
-      onClick={() => navigate(r.door)}
-      className="grid items-center w-full text-left px-3 gap-x-2 h-11 border-b border-borderSubtle/50 hover:bg-ink/[0.04] transition-colors"
+      {...(door ? { type: 'button' as const, onClick: () => navigate(door) } : {})}
+      className={`grid items-center w-full text-left px-3 gap-x-2 h-11 border-b border-borderSubtle/50 ${door ? 'hover:bg-ink/[0.04] transition-colors' : ''}`}
       style={{ gridTemplateColumns: GRID }}
       data-dock-event={r.id}
       data-kind={r.kind}
@@ -219,8 +237,9 @@ const EventsRoom = ({ names, ticker }: { names: string[]; ticker: string }) => {
       </span>
       <span className="font-mono text-t11 tnum text-textSecondary text-right truncate">{r.exp}</span>
       <span className={`font-mono text-t11 font-semibold tnum text-right ${r.at <= at ? 'text-textMuted' : 'text-textPrimary'}`}>{r.at <= at ? 'out' : untilShort(r.at - at)}</span>
-    </button>
-  );
+    </Tag>
+    );
+  };
 
   const loading = econ.status === 'loading' && reportsPending;
   const failed = econ.status !== 'live' && econ.status !== 'loading' && reports.length === 0;
