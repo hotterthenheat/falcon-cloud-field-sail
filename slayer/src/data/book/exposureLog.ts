@@ -30,7 +30,6 @@ import { peekEntry } from './store';
 import { expiryOpen } from '../../core/tradingYear';
 import type { GexSnapshot } from '../../types/market';
 import { ALL, JOIN_MS, closeOf, dayStartOf, placeSeg, readAnswer, rowMeasures, spanOf, type KeptSeries } from './exposureSegs';
-import { nodeConcept } from '../../components/gex/nodeConcept';
 
 export { JOIN_MS, rowMeasures };
 
@@ -751,8 +750,6 @@ async function pullHist(t: string, cut: FieldCut, day: string): Promise<boolean>
 
 /** Where the field's cell at this moment came from, in words for the cell's card: null for a live day */
 export function fieldSourceWords(ticker: string, ms: number): string | null {
-  /* dev-only with the heat look until the owner approves it: production's card is unchanged */
-  if (nodeConcept() !== 'heat') return null;
   const src = daySource.get(`${rootOf(ticker)}|${nyIsoDate(ms)}`);
   if (src === 'reconstructed') return "Reconstructed from the day's open interest and quotes";
   if (src === 'recorded') return 'Recorded live';
@@ -760,53 +757,175 @@ export function fieldSourceWords(ticker: string, ms: number): string | null {
   return nyIsoDate(ms) === nyIsoDate(Date.now()) ? 'Recorded live' : null;
 }
 
-/** Read the cut's book for each of the last `count` sessions, once each (a past date never changes): the server's day
-    first — recorded, or rebuilt bar by bar from that day's open interest and quotes — and where it has none, the vendor's
-    book as of that close (one expiry's rows off spot-exposures/expiry-strike, or the whole book off spot-exposures/strike),
-    carried through the cash session. One call at a time. */
-export function ensureFieldCloses(ticker: string, cut: FieldCut, count = 8): void {
-  const t = rootOf(ticker);
-  const days = priorSessions(count).filter(d => cut === 'book' || d <= cut);
-  const todo = days.filter(d => !closesAsked.has(`${t}|${cut}|${d}`));
-  if (!todo.length) return;
-  for (const d of todo) closesAsked.add(`${t}|${cut}|${d}`);
-  void (async () => {
-    for (const d of todo) {
-      let answered = false;
-      /* the server's past day (recorded or rebuilt) feeds the dev-only heat look until the owner approves it; production
-         keeps the vendor's close */
-      if (nodeConcept() === 'heat' && (await pullHist(t, cut, d))) {
-        closesSettled.add(`${t}|${cut}|${d}`);
-        emit();
-        continue;
-      }
-      try {
-        if (cut === 'book') {
-          for (let page = 0; page < 4; page++) {
-            const res = await uwCall(`/stock/${encodeURIComponent(t)}/spot-exposures/strike?date=${d}&limit=500&page=${page}`);
-            if (res.error || !Array.isArray(res.data)) break;
-            answered = true;
-            noteExposureRows(t, asSessionBook(res.data, d), true);
-            if (res.data.length < 500) break;
-          }
-        } else {
-          const res = await uwCall(`/stock/${encodeURIComponent(t)}/spot-exposures/expiry-strike?expirations[]=${encodeURIComponent(cut)}&date=${d}&limit=500`);
-          if (!res.error && Array.isArray(res.data)) {
-            answered = true;
-            noteExposureRows(t, asSessionBook(res.data, d));
-          }
-        }
-      } catch {
-        answered = false;
-      }
-      if (answered) {
-        closesSettled.add(`${t}|${cut}|${d}`);
-        if (!daySource.has(`${t}|${d}`)) daySource.set(`${t}|${d}`, 'close');
-      }
-      else closesAsked.delete(`${t}|${cut}|${d}`);
-    }
+/* ---- the sessions in view, each read once a page --------------------------------------------------------------- */
+
+/** Past days this page reads at once, across every name and pane: the server's own gate (HIST_READS) is two as well */
+export const DAY_READS = 2;
+/** The oldest session start a chart has had in view, per name, ms: memory keeps the readings back to it */
+const viewFrom = new Map<string, number>();
+interface DayJob {
+  t: string;
+  cut: FieldCut;
+  day: string;
+  /** when a chart last asked for it: the freshest ask (the view the reader is on now) goes first */
+  wanted: number;
+}
+const dayJobs = new Map<string, DayJob>();
+let dayBusy = 0;
+
+function nextDayJob(): DayJob | null {
+  let best: DayJob | null = null;
+  for (const j of dayJobs.values()) {
+    if (!best || j.wanted > best.wanted || (j.wanted === best.wanted && j.day > best.day)) best = j;
+  }
+  if (best) dayJobs.delete(`${best.t}|${best.cut}|${best.day}`);
+  return best;
+}
+
+/** One past day: the server's (recorded, else rebuilt), and where it has none the vendor's book as of that close */
+async function readDay(t: string, cut: FieldCut, d: string): Promise<void> {
+  if (await pullHist(t, cut, d)) {
+    closesSettled.add(`${t}|${cut}|${d}`);
     emit();
-  })();
+    return;
+  }
+  let answered = false;
+  try {
+    if (cut === 'book') {
+      for (let page = 0; page < 4; page++) {
+        const res = await uwCall(`/stock/${encodeURIComponent(t)}/spot-exposures/strike?date=${d}&limit=500&page=${page}`);
+        if (res.error || !Array.isArray(res.data)) break;
+        answered = true;
+        noteExposureRows(t, asSessionBook(res.data, d), true);
+        if (res.data.length < 500) break;
+      }
+    } else {
+      const res = await uwCall(`/stock/${encodeURIComponent(t)}/spot-exposures/expiry-strike?expirations[]=${encodeURIComponent(cut)}&date=${d}&limit=500`);
+      if (!res.error && Array.isArray(res.data)) {
+        answered = true;
+        noteExposureRows(t, asSessionBook(res.data, d));
+      }
+    }
+  } catch {
+    answered = false;
+  }
+  if (answered) {
+    closesSettled.add(`${t}|${cut}|${d}`);
+    if (!daySource.has(`${t}|${d}`)) daySource.set(`${t}|${d}`, 'close');
+  } else closesAsked.delete(`${t}|${cut}|${d}`);
+  emit();
+}
+
+function pumpDays(): void {
+  while (dayBusy < DAY_READS) {
+    const job = nextDayJob();
+    if (!job) return;
+    dayBusy += 1;
+    void readDay(job.t, job.cut, job.day)
+      .catch(() => {
+        closesAsked.delete(`${job.t}|${job.cut}|${job.day}`);
+      })
+      .finally(() => {
+        dayBusy -= 1;
+        pumpDays();
+      });
+  }
+}
+
+/** The finished sessions a chart can ask for, of the New York days its bars stand on: trading days before today, and
+    for one expiry no later than it — newest first, each once */
+export function pastFieldDays(days: Iterable<string>, cut: FieldCut, now: number = Date.now()): string[] {
+  const today = nyIsoDate(now);
+  const out = new Set<string>();
+  for (const d of days) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d >= today || (cut !== 'book' && d > cut)) continue;
+    const [y, m, dd] = d.split('-').map(Number);
+    if (!isTradingDay(new Date(y, m - 1, dd))) continue;
+    out.add(d);
+  }
+  return [...out].sort().reverse();
+}
+
+/** Read the cut's book for each finished session a chart has in view, once each (a past date never changes): the
+    server's day first — recorded, or rebuilt bar by bar from that day's open interest and quotes — and where it has
+    none, the vendor's book as of that close (one expiry's rows off spot-exposures/expiry-strike, or the whole book off
+    spot-exposures/strike), carried through the cash session. DAY_READS at once across the page, the view the reader is
+    on first; the server keeps what it reads on disk. */
+export function ensureFieldDays(ticker: string, cut: FieldCut, daysInView: Iterable<string>, now: number = Date.now()): void {
+  const t = rootOf(ticker);
+  if (!t || !cut) return;
+  const days = pastFieldDays(daysInView, cut, now);
+  if (!days.length) return;
+  const [y, m, d] = days[days.length - 1].split('-').map(Number);
+  const from = nyWallTime(y, m, d, 0, 0);
+  const was = viewFrom.get(t);
+  if (was == null || from < was) viewFrom.set(t, from);
+  const stamp = Date.now();
+  for (const day of days) {
+    const key = `${t}|${cut}|${day}`;
+    const job = dayJobs.get(key);
+    if (job) {
+      job.wanted = stamp;
+      continue;
+    }
+    if (closesAsked.has(key)) continue;
+    closesAsked.add(key);
+    dayJobs.set(key, { t, cut, day, wanted: stamp });
+  }
+  if (dayJobs.size) pumpDays();
+}
+
+/** The most past sessions one view asks for at once: the newest in view first (a view zoomed out over months asks the
+    rest as the reader pans to them) */
+export const DAYS_PER_VIEW = 12;
+
+/** The New York days from one moment to another (ms), oldest first — every calendar day; pastFieldDays keeps the
+    sessions */
+export function nyDaysBetween(fromMs: number, toMs: number, max = 400): string[] {
+  if (!(toMs >= fromMs)) return [];
+  const [y0, m0, d0] = nyIsoDate(fromMs).split('-').map(Number);
+  const last = nyIsoDate(toMs);
+  const out: string[] = [];
+  for (let i = 0; i < max; i++) {
+    const d = new Date(Date.UTC(y0, m0 - 1, d0 + i));
+    const iso = d.toISOString().slice(0, 10);
+    if (iso > last) break;
+    out.push(iso);
+  }
+  /* a view wider than `max` days keeps its newest */
+  return out.length === max && out[out.length - 1] < last ? nyDaysBetween(toMs - (max - 1) * 86_400_000, toMs, max) : out;
+}
+
+/**
+ * The bars the field builds its grid on (seconds, oldest first): the bars in view and as many again each side, so a pan
+ * moves over cells already built; at most `cap` of them, centred on the view. With no view yet, the newest `cap`.
+ * Returns the window's index range [lo, hi).
+ */
+export function fieldWindow(times: readonly number[], view: { from: number; to: number } | null, cap = 2000): [number, number] {
+  const n = times.length;
+  if (n <= cap) return [0, n];
+  if (!view || !(view.to >= view.from)) return [n - cap, n];
+  let i0 = 0;
+  while (i0 < n && times[i0] < view.from) i0++;
+  let i1 = n - 1;
+  while (i1 >= 0 && times[i1] > view.to) i1--;
+  if (i0 >= n) return [Math.max(0, n - cap), n];
+  if (i1 < i0) i1 = i0;
+  const span = i1 - i0 + 1;
+  const margin = Math.max(span, 100);
+  let lo = Math.max(0, i0 - margin);
+  let hi = Math.min(n, i1 + 1 + margin);
+  if (hi - lo > cap) {
+    const mid = Math.floor((i0 + i1) / 2);
+    lo = Math.max(0, Math.min(n - cap, mid - (cap >> 1)));
+    hi = lo + cap;
+  }
+  return [lo, hi];
+}
+
+/** The last `count` sessions before today, for a host with no view to read */
+export function ensureFieldCloses(ticker: string, cut: FieldCut, count = 8): void {
+  ensureFieldDays(ticker, cut, priorSessions(count));
 }
 
 /* ---- this browser's kept copy (IndexedDB), so a reload keeps the readings it has seen ------------------------- */
@@ -860,12 +979,17 @@ async function saveLog(t: string): Promise<void> {
   const d = await db();
   if (!log || !d) return;
   const floor = Date.now() - KEEP_DAYS * 86_400_000;
+  /* memory keeps every session a chart has had in view, however old (a past day is read once a page); the kept copy
+     keeps KEEP_DAYS */
+  const memFloor = Math.min(floor, viewFrom.get(t) ?? Infinity);
   const series: KeptLog['series'] = [];
   for (const s of log.series.values()) {
     let i = 0;
-    while (i < s.segs.length && s.segs[i + 1] < floor) i += 4;
+    while (i < s.segs.length && s.segs[i + 1] < memFloor) i += 4;
     if (i > 0) s.segs.splice(0, i);
-    if (s.segs.length) series.push([s.expiry, s.strike, Float64Array.from(s.segs)]);
+    let k = 0;
+    while (k < s.segs.length && s.segs[k + 1] < floor) k += 4;
+    if (k < s.segs.length) series.push([s.expiry, s.strike, Float64Array.from(k > 0 ? s.segs.slice(k) : s.segs)]);
   }
   try {
     d.transaction(STORE, 'readwrite').objectStore(STORE).put({ v: VERSION, series } satisfies KeptLog, t);

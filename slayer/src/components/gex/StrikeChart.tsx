@@ -31,7 +31,7 @@ import { peekDaySigma, peekIv } from '../../data/book/move';
 import { bookStatus, peekEntry, useBookRev } from '../../data/book/store';
 import { snapshotFor } from '../../data/book/feed';
 import { useBookMinutes } from '../../data/book/minutes';
-import { alignLatestColumn, ensureFieldCloses, ensureFieldCut, exposureGrid, fieldSourceWords, gridColumns, heldStrikes, useExposureLogRev } from '../../data/book/exposureLog';
+import { DAYS_PER_VIEW, alignLatestColumn, ensureFieldCloses, ensureFieldCut, ensureFieldDays, exposureGrid, fieldWindow, nyDaysBetween, fieldSourceWords, gridColumns, heldStrikes, useExposureLogRev } from '../../data/book/exposureLog';
 import { useFieldMode } from '../../data/fieldMode';
 import { useSessionQuote } from '../../data/sessionQuote';
 import { asOfText } from '../ui/states';
@@ -943,17 +943,28 @@ const StrikeChart = ({
         /* A day bar is the cash session. The desk clock being after hours must not blank the field. */
         const p = nyParts(b.time * 1000);
         if (!contractsLive(name, cut, nyWallTime(p.year, p.month, p.day, 9, 30))) continue;
-      } else if (!contractsLive(name, cut, b.time * 1000) && trailsRef.current?.concept !== 'heat') continue;
-      /* the dev-only heat (nodeConcept.ts) keeps every bar with a price: a reading in the pre-market or after hours (the
-         recorder's, or a rebuilt day's) is a cell, and a session with none stays empty in the grid */
+      }
+      /* every intraday bar with a price is a column: a reading in the pre-market or after hours (the recorder's, or a
+         rebuilt day's) is a cell, and a session with none stays empty in the grid */
       times.push(b.time);
     }
     if (!times.length) return [];
     /* A daily chart can hold years of bars. The field only needs the recent ones — walking every strike across
-       every session locks the page (and is what "This page stopped" was). */
-    const drawn = dayBar && times.length > 60 ? times.slice(-60) : times.length > 2000 ? times.slice(-2000) : times;
+       every session locks the page (and is what "This page stopped" was). An intraday chart builds the bars in view
+       and as many again each side, 2000 at most (fieldWindow); a pan past them rebuilds (fieldViewRef). */
+    const vis = live ? chartRef.current?.timeScale().getVisibleRange() : null;
+    const view = vis ? { from: Number(vis.from), to: Number(vis.to) } : null;
+    const [wLo, wHi] = dayBar ? [Math.max(0, times.length - 60), times.length] : fieldWindow(times, view, 2000);
+    const drawn = wLo === 0 && wHi === times.length ? times : times.slice(wLo, wHi);
+    if (live) fieldWinRef.current = { from: drawn[0], to: drawn[drawn.length - 1], first: wLo === 0, last: wHi === times.length, name, cut, price: null };
     ensureFieldCut(name, cut);
-    ensureFieldCloses(name, cut);
+    /* every finished session in view, read once (recorded, else rebuilt from the day's open interest and quotes) */
+    if (dayBar) ensureFieldCloses(name, cut);
+    else {
+      const a = view ? Math.max(drawn[0], view.from) : drawn[Math.max(0, drawn.length - 200)];
+      const z = view ? Math.min(drawn[drawn.length - 1], view.to) : drawn[drawn.length - 1];
+      ensureFieldDays(name, cut, nyDaysBetween(a * 1000, z * 1000).slice(-DAYS_PER_VIEW));
+    }
     const series = candleSeriesRef.current;
     const paneH = chartRef.current?.paneSize(0).height ?? 0;
     let price: { lo: number; hi: number } | null = null;
@@ -972,6 +983,12 @@ const StrikeChart = ({
       }
       if (hi > lo) price = { lo, hi };
     }
+    /* a quarter of the view more each side, as the raster reaches (a small drag of the scale needs no rebuild) */
+    if (price) {
+      const pad = (price.hi - price.lo) * 0.25;
+      price = { lo: price.lo - pad, hi: price.hi + pad };
+    }
+    if (live && fieldWinRef.current) fieldWinRef.current.price = price;
     const spot = bars.length ? bars[bars.length - 1].close : null;
     const grid = exposureGrid(name, cut, drawn, mins * 60, fieldMode, Date.now(), price, spot, fieldMode === 'flow' ? heldStrikes(name, cut) : null);
     if (!grid) return [];
@@ -1105,6 +1122,13 @@ const StrikeChart = ({
   const priceTagRef = useRef<HTMLDivElement | null>(null);
   const priceTagRafRef = useRef(0);
   const trailsRef = useRef<GexTrailsPrimitive | null>(null);
+  /** The bars the field's grid was last built on (seconds; `first`/`last`: the window reaches the tape's ends), and its
+      name and cut — a pan that leaves them rebuilds the field, and the sessions newly in view are read */
+  const fieldWinRef = useRef<{ from: number; to: number; first: boolean; last: boolean; name: string; cut: string; price: { lo: number; hi: number } | null } | null>(null);
+  /** Rebuild the field on the bars now drawn (set by the bars effect; a resting pan calls it) */
+  const fieldViewRef = useRef<(() => void) | null>(null);
+  /** The cone's 1σ ends as rungs (levelExtras coneRungs): named at the edge with the nodes when the key levels are off */
+  const coneEdgeRef = useRef<KeyLevelRung[]>([]);
   /* The field's hover: the bead under the pointer (its card follows the pointer), the one kept by a click (its card
      stands still, with more), the size reference the legend line prints */
   /* The hover cards' reads live in cells, not state: a new bead or rung under the pointer re-renders its card, not
@@ -1916,6 +1940,7 @@ const StrikeChart = ({
        draw after them in the same frame. */
     const ladder = new KeyLevelsPrimitive();
     ladder.chips = () => trails.chips;
+    ladder.figures = () => !(trails.enabled && trails.tagsOn && trails.cols.length > 0);
     candles.attachPrimitive(ladder);
     /* Dev only: the perf probes read each chart's visible range and loaded bar count off `window.__charts` (the axis
        is canvas, not DOM). */
@@ -1945,7 +1970,31 @@ const StrikeChart = ({
     /* Zooming out reaches past the runway's end; extend it as they go. The handler reads refs rather than closing
        over the bar time, so it is installed once with the chart and never re-subscribed. */
     let stamped = 0;
+    /* The field follows the view: once a pan or zoom rests, the sessions now in view are read (each once), and a view
+       past the bars the grid was built on rebuilds it */
+    let fieldTimer = 0;
+    const fieldRest = () => {
+      fieldTimer = 0;
+      const win = fieldWinRef.current;
+      const vis = chart.timeScale().getVisibleRange();
+      if (!win || !vis || replayRef.current) return;
+      const from = Number(vis.from);
+      const to = Number(vis.to);
+      /* the grid holds the strikes of the prices in view when it was built: a scale moved past them rebuilds it too */
+      const series = candleSeriesRef.current;
+      const paneH = chart.paneSize(0).height;
+      const pTop = series && paneH > 0 ? series.coordinateToPrice(0) : null;
+      const pBot = series && paneH > 0 ? series.coordinateToPrice(paneH) : null;
+      const priceOut = !!win.price && pTop != null && pBot != null && (Math.min(pTop, pBot) < win.price.lo || Math.max(pTop, pBot) > win.price.hi);
+      if (priceOut || (from < win.from && !win.first) || (to > win.to && !win.last)) {
+        fieldViewRef.current?.();
+        return;
+      }
+      ensureFieldDays(win.name, win.cut, nyDaysBetween(Math.max(from, win.from) * 1000, Math.min(to, win.to) * 1000).slice(-DAYS_PER_VIEW));
+    };
     const onRange = () => {
+      window.clearTimeout(fieldTimer);
+      fieldTimer = window.setTimeout(fieldRest, 300);
       if (keepViewRef.current) {
         const now = performance.now();
         if (now - stamped > 400) {
@@ -2132,6 +2181,7 @@ const StrikeChart = ({
       container.removeEventListener('wheel', freezeScale);
       container.removeEventListener('pointerdown', freezeScale);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(onRange);
+      window.clearTimeout(fieldTimer);
       chart.unsubscribeCrosshairMove(onCross);
       devCharts?.delete(devEntry);
       syncRegisterRef.current?.(null);
@@ -3023,13 +3073,17 @@ const StrikeChart = ({
        A bad grid is dropped. It is not left forced off, and it is not laid out by spacing every strike down the pane. */
     const showTrails = !!overlays.trails;
     trails.labelPx = compact ? 8.5 : 9.5;
-    try {
-      const cols = showTrails ? fieldColumns(bars, mins) : [];
-      trails.setData(cols, 0, showTrails, mins * 60, trailsGreek, 0, [], bars.map(b => ({ time: b.time, close: b.close })));
-    } catch (e) {
-      console.warn('[trails]', e);
-      trails.setData([], 0, false, mins * 60, trailsGreek, 0, [], []);
-    }
+    const pushField = () => {
+      try {
+        const cols = showTrails ? fieldColumns(bars, mins) : [];
+        trails.setData(cols, 0, showTrails, mins * 60, trailsGreek, 0, [], bars.map(b => ({ time: b.time, close: b.close })));
+      } catch (e) {
+        console.warn('[trails]', e);
+        trails.setData([], 0, false, mins * 60, trailsGreek, 0, [], []);
+      }
+    };
+    pushField();
+    fieldViewRef.current = showTrails ? pushField : null;
     return () => cancelAnimationFrame(armTimer);
   }, [ticker, revision, timeframe, themeKey, overlays.trails, showRecent, reloadNonce, mainNonce, toMain, compact, altSpec, barClock, fullNonce, focusNonce, trailsGreek, levels.spot, levels.callWall, levels.putWall, levels.flip, levels.supreme, bookRev, session, tapeRev, bookDate, tapeStamp, fieldMode, fieldRev]);
 
@@ -3175,11 +3229,15 @@ const StrikeChart = ({
     if (!trails) return;
     trails.setLook(nodeLook);
     trails.setTagsOn(nodeTags);
+    /* the key levels, or with them off the cone's 1σ ends: one column of names at the edge, fitted with the nodes' own
+       (edgeLabelFit.ts) — the cone prints no words of its own while the nodes name the edge */
     trails.edgeLevels = overlays.levels
       ? () => (ladderRef.current?.visible() ?? []).map(r => edgeLevelOf(r))
-      : null;
+      : overlays.cone
+        ? () => coneEdgeRef.current.map(r => edgeLevelOf(r))
+        : null;
     trails.requestUpdate?.();
-  }, [nodeLook, nodeTags, overlays.levels, mainNonce]);
+  }, [nodeLook, nodeTags, overlays.levels, overlays.cone, mainNonce]);
 
   /* Node pressure: price near one of the three heaviest nodes now or the flip fires the app's alert, once a level a
      session (data/nodePressure.ts). Live only — a replay is history. */
@@ -3270,6 +3328,7 @@ const StrikeChart = ({
     if (!overlays.cone || replay || altSpec) {
       prim.setData(null);
       ladderRef.current?.setExtras('cone', []);
+      coneEdgeRef.current = [];
       return;
     }
     /* The cone is the expected move of the interval on this chart, not a fixed session fan. */
@@ -3296,7 +3355,7 @@ const StrikeChart = ({
             cone: { past: [], forward: fc.points, crossings: [], openPrice: 0, openTime: null },
             marks: coneMarks(fc, clock.label),
             /* the key levels name the cone's ends at the edge; without them the cone names its own */
-            markWords: !overlays.levels,
+            markWords: !overlays.levels && !overlays.trails,
             barTimes: drawn.map(b => b.time),
             barMinutes: perBar,
             anchor: drawn.length - 1,
@@ -3307,7 +3366,9 @@ const StrikeChart = ({
         : null,
     );
     /* the cone's numbers at the edge: today's expected move, and ±1σ to the tip of this frame */
-    ladderRef.current?.setExtras('cone', coneRungs(fc, clock.label));
+    coneEdgeRef.current = coneRungs(fc, clock.label);
+    ladderRef.current?.setExtras('cone', coneEdgeRef.current);
+    trailsRef.current?.requestUpdate?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker, timeframe, revision, overlays.cone, overlays.levels, replay, mainNonce, altSpec, session, tapeRev, volsRev, printRev, fullNonce]);
 
