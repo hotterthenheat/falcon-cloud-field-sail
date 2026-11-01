@@ -76,10 +76,17 @@ class Renderer {
         ctx.fillRect(x0 * hr, 0, (x1 - x0) * hr, H * vr);
         const text = d.label;
         const tw = ctx.measureText(text).width / hr;
-        if (tw + 12 <= x1 - x0) {
-          ctx.fillStyle = ink.muted;
-          ctx.textAlign = 'center';
-          ctx.fillText(text, ((x0 + x1) / 2) * hr, (H / 2) * vr);
+        ctx.fillStyle = ink.muted;
+        ctx.textAlign = 'center';
+        const mid = ((x0 + x1) / 2) * hr;
+        if (tw + 12 <= x1 - x0) ctx.fillText(text, mid, (H / 2) * vr);
+        else {
+          /* a narrow night (a phone): the words on two lines, a word cut nowhere */
+          const words = text.split(' ');
+          const half = Math.ceil(words.length / 2);
+          const lines = [words.slice(0, half).join(' '), words.slice(half).join(' ')];
+          if (Math.max(...lines.map(l => ctx.measureText(l).width / hr)) + 12 <= x1 - x0)
+            lines.forEach((l, i) => ctx.fillText(l, mid, (H / 2 + (i - 0.5) * 13) * vr));
         }
         ctx.restore();
         return;
