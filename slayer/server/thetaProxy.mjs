@@ -182,12 +182,14 @@ export async function thetaUncached(reqPath) {
 }
 
 /** One answer for a reader inside this process (the Compass engine): the same hub and the same eight slots as every
-    viewer's call, with no HTTP hop. An outage answers 503 with its code, as the proxy does. */
-export async function thetaDirect(reqPath) {
+    viewer's call, with no HTTP hop. An outage answers 503 with its code, as the proxy does. `opt.lane: 'record'` is a
+    reader that keeps its own copy (server/regimeApi.mjs): its asks are not a viewer's, so the hub neither keeps the path
+    warm nor pins it for the day, and its vendor calls wait behind every viewer's. */
+export async function thetaDirect(reqPath, opt) {
   if (process.env.VERCEL && !RELAY && !process.env.THETA_REST_BASE) return { status: 503, body: NO_TERMINAL, type: 'application/json' };
   if (!thetaAllowed(reqPath)) return { status: 404, body: JSON.stringify({ error: 'not found' }), type: 'application/json' };
   try {
-    const got = await hub.get(reqPath);
+    const got = await hub.get(reqPath, opt);
     return { status: got.status, body: got.body.toString('utf8'), type: got.type };
   } catch {
     return { status: 503, body: DOWN, type: 'application/json' };

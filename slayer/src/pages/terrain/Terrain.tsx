@@ -61,7 +61,8 @@ import { dealerOf } from '../../core/dealerSign';
 import { useMaxPain } from '../../components/gex/levelExtras';
 import { composeSnapshot, snapshotName } from '../../components/gex/snapshot';
 import { readSessionClock } from '../../data/moc';
-import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, type ProfileLane, type ProfilePalette } from '../../components/gex/ProfilePanel';
+import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, modeOf, type ProfileLane, type ProfilePalette } from '../../components/gex/ProfilePanel';
+import RegimeDoor from '../../components/gex/RegimeDoor';
 import DropdownSelect from '../../components/ui/DropdownSelect';
 import { netSinceOpenRatio } from '../../data/levelview';
 import { useLevelsFor } from '../../data/levelsFor';
@@ -2432,6 +2433,10 @@ const Terrain = () => {
           )
         )}
       </div>
+      {/* THE PHONE'S WAY IN to the rail's Regime and Building tabs (the rail is not on a phone): one line, a sheet */}
+      {isPhone && panes[active] && (
+        <RegimeDoor ticker={panes[active].ticker} mode={modeOf(cfg.palette)} paper={pageLight} />
+      )}
       {meterOn && <FrameMeter />}
     </div>
   );

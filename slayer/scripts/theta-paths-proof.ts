@@ -59,6 +59,14 @@ for (const p of called) console.log(`       ${thetaAllowed(`${p}?symbol=SPY&form
 const denied = called.filter(p => !thetaAllowed(`${p}?symbol=SPY&format=json`) || !thetaAllowed(p));
 check(`every endpoint the app calls passes the allowlist (${called.length - denied.length}/${called.length})${denied.length ? `: denied ${denied.join(', ')}` : ''}`, denied.length === 0 && called.length >= 30);
 
+/* Terrain's Regime tab (server/regimeApi.mjs), as it writes them */
+const REGIME_READS = [
+  '/index/snapshot/price?symbol=VIX1D,VIX9D,VIX,VIX3M,VIX6M,VVIX,SKEW&format=json',
+  '/index/history/ohlc?symbol=VIX3M&start_date=20261030&end_date=20261030&interval=1m&start_time=03:00:00&end_time=16:15:00&format=json',
+  '/index/history/eod?symbol=VIX&start_date=20251029&end_date=20261029&format=json',
+];
+check(`the Regime reads pass (${REGIME_READS.length}: the index snapshot, 1m and eod history)`, REGIME_READS.every(p => thetaAllowed(p)));
+
 /* ---- what is shut ---- */
 const FLAT = ['/option/flat_file/trade_quote', '/option/flat_file/eod', '/option/flat_file/open_interest', '/option/flat_file/quote', '/stock/flat_file/trade_quote', '/stock/flat_file/eod', '/stock/flat_file/quote', '/index/flat_file/eod'];
 check(`all 8 flat-file endpoints are denied (they passed /^\\/option\\/.+/ and /^\\/stock\\/.+/ before)`, FLAT.every(p => !thetaAllowed(`${p}?date=20261030&format=json`) && !thetaAllowed(p)));

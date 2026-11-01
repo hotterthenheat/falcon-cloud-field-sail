@@ -55,6 +55,7 @@ const PROOFS = [
   'exposure-hist-proof',
   'proxy-auth-proof.mjs',
   'hub-proof.mjs',
+  'vol-regime-proof.mjs',
 ];
 
 const goldens = () =>

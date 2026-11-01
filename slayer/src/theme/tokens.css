@@ -219,6 +219,22 @@
   color: rgb(var(--text-primary));
 }
 
+/* THE CHART SERIES (shadcn's chart, components/shadcn/chart.tsx): its --chart-N names are aliases of the house tokens,
+   never colours of their own. Declared on every theme scope, because a var() resolves where it is declared — so a
+   chart on a dark island inside a light page reads the island's tokens. Channels, like every token: rgb(var(--chart-1)).
+   1 the series in hand (the silver select), 2 and 3 the plain series (ink, the secondary text), 4 calls / long (glacier,
+   as the walls), 5 puts / short (ember); the grid and the axis text. */
+:root,
+[data-theme] {
+  --chart-1: var(--select);
+  --chart-2: var(--ink);
+  --chart-3: var(--text-secondary);
+  --chart-4: var(--glacier);
+  --chart-5: var(--ember);
+  --chart-grid: var(--border-subtle);
+  --chart-axis: var(--text-muted);
+}
+
 /* Colour vision (`<html data-cvd="blue-orange">`, theme/theme.ts): swaps --bull/--bear for blue and orange in every
    scope; the paper pair keeps the 4.3:1 direction-ink floor (blue 4.8:1, orange 4.3:1). */
 :root[data-cvd='blue-orange'],
