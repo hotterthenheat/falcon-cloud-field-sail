@@ -747,6 +747,8 @@ const OVERLAY_ITEMS: { key: keyof ChartOverlays; label: string; hint: string }[]
   { key: 'wind', label: 'Wind · model forecast', hint: "A model's paths for the rest of today's session: the options' implied vol, bent by the dealer book (short gamma widens, long gamma holds, the heavy same-day strike pulls at the close). A forecast, not a market price." },
   { key: 'events', label: 'Events', hint: 'Earnings, FOMC/CPI/NFP and the biggest option prints, marked on the tape' },
   { key: 'alerts', label: 'Alert lines', hint: 'A dotted line where each price alert waits — the bell tells you either way' },
+  { key: 'extHours', label: 'Extended hours', hint: 'A faint wash behind the pre-market, after-hours and overnight bars, each its own tint. Intraday only.' },
+  { key: 'sessionBreaks', label: 'Session breaks', hint: 'A dashed rule where each session day starts. Intraday only.' },
 ];
 
 /* T-15 — the overlays a rule clock holds: each assumes a fixed bar interval
@@ -755,7 +757,7 @@ const OVERLAY_ITEMS: { key: keyof ChartOverlays; label: string; hint: string }[]
    MENU honest about it, and the two agree by construction because the chart
    gates on the same idea — no interval, no interval-based layer. */
 const CLOCK_HELD_OVERLAYS = new Set<keyof ChartOverlays>([
-  'trails', 'flow', 'netDrift', 'volDrift', 'session', 'cone', 'wind', 'events',
+  'trails', 'flow', 'netDrift', 'volDrift', 'session', 'cone', 'wind', 'events', 'extHours', 'sessionBreaks',
 ]);
 
 /* Re-exported so every consumer keeps importing its menu vocabulary from the

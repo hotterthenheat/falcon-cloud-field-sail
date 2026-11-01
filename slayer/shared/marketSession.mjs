@@ -312,3 +312,96 @@ export function feedMoving(ms, path = '') {
   if (/(^|[^A-Z])(SPXW?|XSP|VIXW?|RUTW?)([^A-Z]|$)/.test(p)) return stockDay || !!windowAt(ms, 'indexOption');
   return stockDay;
 }
+
+/* ---- the world's three cash sessions (the chart's Sessions indicator) ------------------------------------------ */
+
+/*
+  Tokyo, London and New York as the chart's Sessions boxes draw them, each on its own exchange's wall clock:
+    asia     Tokyo Stock Exchange 09:00–15:30 Asia/Tokyo (the close moved from 15:00 to 15:30 on 5 Nov 2024). Japan keeps
+             no daylight saving: the open is 00:00 UTC all year, 19:00 New York the evening before under EST, 20:00
+             under EDT.
+    london   London Stock Exchange 08:00–16:30 Europe/London (GMT in the winter, BST, UTC+1, from the last Sunday of
+             March to the last Sunday of October). New York changes clocks on its own Sundays, so for two or three
+             weeks each spring and autumn London opens at 04:00 New York instead of 03:00.
+    newYork  the regular session above (09:30–16:00, 13:00 on an early close), on US session days only
+  A box opens on its exchange's own weekdays (Monday to Friday on its calendar). Only the US holidays are known here,
+  so Tokyo and London still open on their own bank holidays in this table. Where a chart has bars, a box's high and
+  low come from those bars.
+*/
+export const WORLD_SESSIONS = [
+  { key: 'asia', name: 'Tokyo', tz: 'Asia/Tokyo', open: 9 * 60, close: 15 * 60 + 30 },
+  { key: 'london', name: 'London', tz: 'Europe/London', open: 8 * 60, close: 16 * 60 + 30 },
+  { key: 'newYork', name: 'New York', tz: 'America/New_York', open: null, close: null },
+];
+
+const zoneFmts = new Map();
+/** A zone's wall date (YYYY-MM-DD) and minute of the day at an instant */
+function zoneWall(tz, ms) {
+  let f = zoneFmts.get(tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    zoneFmts.set(tz, f);
+  }
+  const p = {};
+  for (const x of f.formatToParts(new Date(Math.floor(ms / 60_000) * 60_000))) if (x.type !== 'literal') p[x.type] = x.value;
+  return { iso: `${p.year}-${p.month}-${p.day}`, min: (Number(p.hour) % 24) * 60 + Number(p.minute) };
+}
+
+const zoneMemo = new Map();
+/** The instant a zone's clock reads `min` minutes after midnight on `iso` (its daylight saving included) */
+export function zoneInstant(tz, iso, min) {
+  if (tz === 'America/New_York') return nyInstant(iso, min);
+  const key = `${tz}|${iso}|${min}`;
+  const hit = zoneMemo.get(key);
+  if (hit !== undefined) return hit;
+  const [y, m, d] = iso.split('-').map(Number);
+  const guess = Date.UTC(y, m - 1, d, 0, min);
+  let t = guess;
+  for (let i = 0; i < 3; i++) {
+    const w = zoneWall(tz, t);
+    const [wy, wm, wd] = w.iso.split('-').map(Number);
+    const reads = Date.UTC(wy, wm - 1, wd, 0, w.min);
+    if (reads === guess) break;
+    t += guess - reads;
+  }
+  if (zoneMemo.size > 20_000) zoneMemo.clear();
+  zoneMemo.set(key, t);
+  return t;
+}
+
+/** One world session on one of its own dates: { key, name, day, from, to }, or null when it does not open */
+function worldSessionOn(s, iso) {
+  if (s.key === 'newYork') {
+    if (!isSessionDay(iso)) return null;
+    const reg = windowsOf(iso, 'equity').find(w => w.kind === 'regular');
+    return reg ? { key: s.key, name: s.name, day: iso, from: reg.from, to: reg.to } : null;
+  }
+  const wd = weekdayOf(iso);
+  if (wd === 0 || wd === 6) return null;
+  return { key: s.key, name: s.name, day: iso, from: zoneInstant(s.tz, iso, s.open), to: zoneInstant(s.tz, iso, s.close) };
+}
+
+/** Every world session (keys asia, london, newYork; all three when omitted) overlapping [fromMs, toMs), oldest first */
+export function worldSessionsBetween(fromMs, toMs, keys) {
+  const want = WORLD_SESSIONS.filter(s => !keys || keys.includes(s.key));
+  const out = [];
+  if (!(toMs > fromMs)) return out;
+  const last = addDays(nyWall(toMs).iso, 1);
+  for (let iso = addDays(nyWall(fromMs).iso, -1), i = 0; iso <= last && i < 4000; iso = addDays(iso, 1), i++) {
+    for (const s of want) {
+      const w = worldSessionOn(s, iso);
+      if (w && w.to > fromMs && w.from < toMs) out.push(w);
+    }
+  }
+  return out.sort((a, b) => a.from - b.from);
+}
+
+/** The equity windows (overnight, pre, regular, post) that start on a New York date, as copies */
+export const equityWindowsOn = (iso) => windowsOf(iso, 'equity').map(w => ({ ...w }));
+
+/** The session day a stock-tape instant belongs to (an overnight belongs to the morning it opens into); null when closed */
+export function tradingDayOf(ms) {
+  const w = windowAt(ms, 'equity');
+  if (!w) return null;
+  return w.kind === 'overnight' ? nyWall(w.to).iso : nyWall(w.from).iso;
+}

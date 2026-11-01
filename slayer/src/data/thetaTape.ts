@@ -363,7 +363,9 @@ async function pullIntradayRaw(symbol: string, grain: IntraGrain, session: DeskS
   const step = STEP_SEC[grain] ?? 60;
   if (root(symbol) === 'stock') {
     return {
-      bars,
+      /* the first paint holds the rule's own mends too (barSanity.ts, no prints): a cleaner still reading its prints, or
+         one that never finishes, used to leave the vendor's bad-print wicks on screen (SPY 30 Oct 2026, 16:01–16:28) */
+      bars: saneBars(bars),
       offline,
       clean: async () => {
         const clean = session === 'pre' || session === 'post' ? await cleanExtendedBars(get, symbol, wins[0], step, bars) : bars;

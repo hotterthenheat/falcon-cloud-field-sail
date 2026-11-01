@@ -1290,7 +1290,7 @@ const Pane = ({
       overlays={cfgOverlays}
       onOverlays={o => onCfg({ overlays: o })}
       /* The strike band docks under the tape when Exposure by strike is on. The chart mounts it; this menu only switches it. */
-      overlayKeys={['trails', 'levels', 'darkpool', 'volume', 'flow', 'netDrift', 'volDrift', 'dexStrike', 'session', 'cone', 'wind', 'events', 'alerts']}
+      overlayKeys={['trails', 'levels', 'darkpool', 'volume', 'flow', 'netDrift', 'volDrift', 'dexStrike', 'session', 'cone', 'wind', 'events', 'alerts', 'extHours', 'sessionBreaks']}
       indicators={cfgIndicators}
       onIndicators={i => onCfg({ indicators: i })}
       paneId={`terrain:${index + 1}`}

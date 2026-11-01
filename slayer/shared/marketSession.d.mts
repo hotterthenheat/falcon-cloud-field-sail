@@ -57,3 +57,11 @@ export function sessionAt(ms: number, product?: Product): MarketSessionAt;
 export function nextChangeAt(ms: number): number;
 export function inRegular(ms: number): boolean;
 export function feedMoving(ms: number, path?: string): boolean;
+export type WorldSessionKey = 'asia' | 'london' | 'newYork';
+export interface WorldSessionSpec { key: WorldSessionKey; name: string; tz: string; open: number | null; close: number | null }
+export interface WorldSession { key: WorldSessionKey; name: string; day: string; from: number; to: number }
+export const WORLD_SESSIONS: readonly WorldSessionSpec[];
+export function zoneInstant(tz: string, iso: string, min: number): number;
+export function worldSessionsBetween(fromMs: number, toMs: number, keys?: readonly WorldSessionKey[]): WorldSession[];
+export function equityWindowsOn(iso: string): SessionWindow[];
+export function tradingDayOf(ms: number): string | null;

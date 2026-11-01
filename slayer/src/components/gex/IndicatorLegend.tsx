@@ -2,10 +2,12 @@ import { CALL_WALL, PUT_WALL } from './palette';
 /* The chart's built-in indicators, listed top left the standard way: the name, its inputs, its live values in its own
    ink (the bar under the crosshair, else the last bar), and on hover the eye, the settings and the remove. A physics
    read also wears its plain name and its CALCULATED / MODEL tag, and its context line (the regime, the band's width).
-   The eye and the timeframe bands are the settings' (data/indicatorLooks.ts); a row that is not drawn stays, dimmed. */
+   The eye and the timeframe bands are the settings' (data/indicatorLooks.ts); a row that is not drawn stays, dimmed.
+   With two or more rows a caret folds the list to one "N indicators" chip, the way the standard desks do, so a long
+   list never sits over the candles; the fold is remembered per pane in this browser. */
 
 import { useEffect, useState } from 'react';
-import { Eye, EyeOff, Settings2, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Eye, EyeOff, Settings2, X } from 'lucide-react';
 import { MismatchDirection, type IChartApi, type ISeriesApi, type SeriesType } from 'lightweight-charts';
 import { INDICATOR_ITEMS, indicatorBlurb, physicsOf } from './indicatorItems';
 import { INDICATOR_INKS, type ChartIndicators } from './StrikeChart';
@@ -23,7 +25,30 @@ const VALUE_PARTS: Partial<Record<keyof ChartIndicators, { part: string; fmt: (v
   gammaRegime: [],
   effRatio: [{ part: 'line', fmt: v => v.toFixed(2) }],
   amihud: [{ part: 'line', fmt: v => v.toFixed(4) }],
+  sessions: [],
 };
+
+/* The fold, per pane, kept in this browser */
+const FOLD_KEY = 'slayer:legend-folded:v1';
+function readFolds(): Record<string, boolean> {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(FOLD_KEY) : null;
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
+function writeFold(pane: string, folded: boolean): void {
+  try {
+    const all = readFolds();
+    if (folded) all[pane] = true;
+    else delete all[pane];
+    localStorage.setItem(FOLD_KEY, JSON.stringify(all));
+  } catch {
+    /* private mode: the fold holds for this visit */
+  }
+}
 const DEFAULT_PARTS = [{ part: 'line', fmt: (v: number) => v.toFixed(2) }];
 
 interface Props {
@@ -41,10 +66,20 @@ interface Props {
   idle?: Partial<Record<keyof ChartIndicators, string>>;
   /** A narrow pane: values only, no inputs or context line */
   narrow?: boolean;
+  /** The pane the fold is remembered for */
+  paneKey?: string;
+  /** Px from the plot's left edge (past a drawing rail docked there); 12 by default */
+  left?: number;
 }
 
-const IndicatorLegend = ({ on, top, mins, chart, seriesOf, tick, extras, idle, onRemove, narrow = false }: Props) => {
+const IndicatorLegend = ({ on, top, mins, chart, seriesOf, tick, extras, idle, onRemove, narrow = false, paneKey = 'chart', left = 12 }: Props) => {
   useLooksRev();
+  const [folded, setFolded] = useState(() => !!readFolds()[paneKey]);
+  useEffect(() => setFolded(!!readFolds()[paneKey]), [paneKey]);
+  const fold = (v: boolean) => {
+    setFolded(v);
+    writeFold(paneKey, v);
+  };
   const [idx, setIdx] = useState<number | null>(null);
   const [editing, setEditing] = useState<keyof ChartIndicators | null>(null);
   useEffect(() => {
@@ -72,9 +107,20 @@ const IndicatorLegend = ({ on, top, mins, chart, seriesOf, tick, extras, idle, o
     }
   };
   if (on.length === 0) return null;
+  const foldable = on.length >= 2;
+  const chip = 'pointer-events-auto inline-flex items-center gap-1 h-[20px] pl-1 pr-1.5 rounded bg-canvas/75 backdrop-blur-[2px] font-mono text-t10 text-textSecondary hover:text-textPrimary hover:bg-ink/[0.08] transition-colors';
+  if (foldable && folded)
+    return (
+      <div className="absolute z-10 pointer-events-auto select-none" style={{ top, left }} aria-label="Indicators on this pane" data-indicator-legend data-legend-folded>
+        <button type="button" onClick={() => fold(false)} aria-expanded={false} title="Show the indicators" className={chip} data-legend-fold>
+          <ChevronDown className="w-3 h-3" aria-hidden />
+          <span className="tnum">{on.length} indicators</span>
+        </button>
+      </div>
+    );
   return (
     <>
-      <div className="absolute left-3 z-10 flex flex-col items-start gap-[3px] pointer-events-auto select-none max-w-[calc(100%-96px)]" style={{ top }} aria-label="Indicators on this pane" data-indicator-legend>
+      <div className="absolute z-10 flex flex-col items-start gap-[3px] pointer-events-auto select-none" style={{ top, left, maxWidth: `calc(100% - ${84 + left}px)` }} aria-label="Indicators on this pane" data-indicator-legend>
         {on.map(key => {
           const item = INDICATOR_ITEMS.find(i => i.key === key);
           if (!item) return null;
@@ -83,7 +129,8 @@ const IndicatorLegend = ({ on, top, mins, chart, seriesOf, tick, extras, idle, o
           const why = idle?.[key];
           const drawn = drawnOn(key, mins) && !why;
           const ink = inkAt(look.ink ?? INDICATOR_INKS[key], look.opacity ?? 1);
-          const inputs = (item.inputs ?? []).map(i => inputOf(key, i)).join(' ');
+          /* a switch prints its name when on (the Sessions indicator's Tokyo London New York), a number its value */
+          const inputs = (item.inputs ?? []).map(i => (i.kind === 'toggle' ? (inputOf(key, i) >= 1 ? i.title : '') : String(inputOf(key, i)))).filter(Boolean).join(' ');
           const vals = look.legendValues === false || !drawn ? [] : (VALUE_PARTS[key] ?? DEFAULT_PARTS).map(p => ({ part: p.part, v: valueOf(key, p.part), fmt: p.fmt }));
           const extra = !narrow && drawn ? extras?.[key] : undefined;
           return (
@@ -123,6 +170,11 @@ const IndicatorLegend = ({ on, top, mins, chart, seriesOf, tick, extras, idle, o
             </div>
           );
         })}
+        {foldable && (
+          <button type="button" onClick={() => fold(true)} aria-expanded title="Fold the indicators to one line" className={`${chip} w-[22px] justify-center px-0`} data-legend-fold>
+            <ChevronUp className="w-3 h-3" aria-hidden />
+          </button>
+        )}
       </div>
       {editing && <IndicatorSettings indicator={editing} onClose={() => setEditing(null)} />}
     </>
