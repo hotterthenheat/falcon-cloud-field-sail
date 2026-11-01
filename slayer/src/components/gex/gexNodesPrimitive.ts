@@ -3,8 +3,9 @@ import type { GexSnapshot } from '../../types/market';
 import { nySession } from '../../core/nyTime';
 import { dealerOf } from '../../core/dealerSign';
 import type { NodeLook } from '../../data/deskPrefs';
-import { selectNodeStrikes, type KeptLevel } from './nodeStrikes';
+import { NODE_CAP, NODE_SHARE, selectNodeStrikes, type KeptLevel } from './nodeStrikes';
 import type { NodeConcept } from './nodeConcept';
+import { PHONE_ROW_PX, fitEdgeLabels } from './edgeLabelFit';
 import { heatInks, heatPalette, layoutHeatLabels, onHeatPalette, paintHeatLabels, type HeatLabel } from './nodeHeat';
 
 /*
@@ -115,7 +116,7 @@ const RASTER_MY = 0.25;
 const SETTLE_MS = 120;
 
 /** The heat's seam between two strikes' bands, device px, by the row's height */
-const heatInset = (h: number): number => (h >= 10 ? Math.round(h * 0.14) : h >= 5 ? 1 : 0);
+const heatInset = (h: number): number => (h >= 10 ? Math.round(h * 0.2) : h >= 5 ? 1 : 0);
 
 /** The cell under the pointer, as the card reads it */
 export interface BeadHit {
@@ -350,6 +351,41 @@ class FieldRenderer {
         }
         const vals = src.values;
         const ref = src.ref;
+        /* THE HEAT'S CUT, MOMENT BY MOMENT: a cell is lit when it matters in its own column — nodeStrikes' rule (a fifth
+           of the largest strike in view, never less than half the column's largest anywhere, NODE_CAP at most) — so a
+           level that ruled three sessions ago is lit there and only there; the walls, the flip and the pin are lit
+           through the newest session. Everything under the cut is a whisper of context. */
+        const litCut = heat ? new Float64Array(cTo - cFrom).fill(Infinity) : null;
+        let anchorFrom = Infinity;
+        if (litCut) {
+          const sizes = new Float64Array(Math.max(1, rHi - rLo));
+          for (let c = cFrom; c < cTo; c++) {
+            if (Number.isNaN(xl[c - cFrom])) continue;
+            const base = c * R;
+            let all = 0;
+            for (let r = 0; r < R; r++) {
+              const v = vals[base + r];
+              if (v === v && Math.abs(v) > all) all = Math.abs(v);
+            }
+            let n = 0;
+            let top = 0;
+            for (let r = rLo; r < rHi; r++) {
+              const v = vals[base + r];
+              if (v !== v || v === 0) continue;
+              const a = Math.abs(v);
+              sizes[n++] = a;
+              if (a > top) top = a;
+            }
+            if (!n) continue;
+            let cut = NODE_SHARE * Math.max(top, all / 2);
+            if (n > NODE_CAP) {
+              const s = sizes.subarray(0, n).sort();
+              cut = Math.max(cut, s[n - NODE_CAP]);
+            }
+            litCut[c - cFrom] = cut;
+          }
+          if (cols.length) anchorFrom = src.colIndexAtOrAfter(nySession(cols[cols.length - 1].time * 1000).open / 1000 - 5.5 * 3600);
+        }
         /* A row runs from the midpoint below the strike to the midpoint above it. A coordinate the scale
            cannot see is skipped. A row shorter than one device pixel is drawn at one pixel. None is dropped. */
         for (let r = rLo; r < rHi; r++) {
@@ -361,8 +397,8 @@ class FieldRenderer {
           if (yBot < -myPx || yTop > hBmp + myPx) continue;
           if (yBot - yTop < 1) yBot = yTop + 1;
           /* today's look draws only the kept strikes; the heat draws every strike, the rest as a whisper of context */
-          const quiet = heat && !!keep && !keep.has(r);
           if (!heat && keep && !keep.has(r)) continue;
+          const anchor = heat && !!keep && keep.has(r);
           /* the heat's bands stand apart: a seam of ground between two strikes, so the field reads as strata, not a wall */
           if (heat) {
             const inset = heatInset(yBot - yTop);
@@ -373,8 +409,14 @@ class FieldRenderer {
           let runKey = -1;
           let runL = 0;
           let runR = 0;
+          /* a lit heat band has a core: its middle drawn twice, so the band glows at its strike and softens to its seams */
+          const coreT = heat ? Math.round(yTop + (yBot - yTop) * 0.28) : 0;
+          const coreB = heat ? Math.round(yBot - (yBot - yTop) * 0.28) : 0;
           const flush = () => {
-            if (runKey >= 0) pathFor(runKey).rect(runL, yTop, runR - runL, yBot - yTop);
+            if (runKey >= 0) {
+              pathFor(runKey).rect(runL, yTop, runR - runL, yBot - yTop);
+              if (heat && !(Math.floor((runKey % 1000) / 100) & 2) && coreB - coreT >= 1) pathFor(runKey + 10000).rect(runL, coreT, runR - runL, coreB - coreT);
+            }
             runKey = -1;
           };
           for (let c = cFrom; c < cTo; c++) {
@@ -386,6 +428,7 @@ class FieldRenderer {
             }
             const tt = Math.min(1, Math.abs(v) / ref);
             const step = Math.min(STEPS - 1, Math.floor(tt * STEPS));
+            const quiet = !!litCut && Math.abs(v) < litCut[c - cFrom] && !(anchor && c >= anchorFrom);
             const k = (v > 0 ? 0 : 1) * 1000 + step + (dim ? 100 : 0) + (quiet ? 200 : 0);
             const Rr = xr[c - cFrom];
             if (k === runKey && Math.abs(L - runR) <= 1) {
@@ -415,7 +458,7 @@ class FieldRenderer {
           for (const [k, path] of paths) {
             const step = k % 100;
             const flags = Math.floor((k % 1000) / 100);
-            const s0 = Math.floor(k / 1000);
+            const s0 = Math.floor((k % 10000) / 1000);
             if (hInk) {
               bctx.globalAlpha = flags & 1 ? 0.4 : 1;
               bctx.fillStyle = (flags & 2 ? hInk.quiet : hInk.lit)[s0][step];
@@ -439,6 +482,31 @@ class FieldRenderer {
             let runL = 0;
             let runR = 0;
             let runSide = 0;
+            /* the star: one at the moment a node takes the crown, where its reign is long enough to read (the king's
+               mark, as the references star theirs), never two within STAR_GAP of each other */
+            const STAR_MIN = 26 * hr;
+            const STAR_GAP = 56 * hr;
+            /* the labels' column at the edge: a crown taken under it is named there ("★ Top"), not starred */
+            const STAR_CLEAR = Math.min(150, wCss * 0.3);
+            let lastStar = -Infinity;
+            const g0 = src.groundRgb();
+            const star = (cx: number, cy: number, rad: number) => {
+              bctx.beginPath();
+              for (let i = 0; i < 10; i++) {
+                const a = -Math.PI / 2 + (i * Math.PI) / 5;
+                const rr = i % 2 ? rad * 0.45 : rad;
+                const px = cx + Math.cos(a) * rr;
+                const py = cy + Math.sin(a) * rr;
+                if (i) bctx.lineTo(px, py);
+                else bctx.moveTo(px, py);
+              }
+              bctx.closePath();
+              bctx.lineWidth = Math.max(1, 1.6 * hr);
+              bctx.strokeStyle = `rgba(${g0[0]},${g0[1]},${g0[2]},0.9)`;
+              bctx.stroke();
+              bctx.fillStyle = `rgba(${crown[0]},${crown[1]},${crown[2]},0.98)`;
+              bctx.fill();
+            };
             const flushKing = () => {
               if (runRow < 0) return;
               const ya = edgeY[runRow];
@@ -447,23 +515,30 @@ class FieldRenderer {
                 const y0 = Math.round(Math.min(ya, yb));
                 const y1 = Math.round(Math.max(ya, yb));
                 const inset = heatInset(y1 - y0);
-                const yT = y0 + inset;
-                const yB = Math.max(yT + lw, y1 - inset);
+                /* never thinner than three pixels: the king reads in a short pane too */
+                const mid = (y0 + y1) / 2;
+                const half = Math.max(1.5 * vr, (y1 - inset - (y0 + inset)) / 2);
+                const yT = Math.round(mid - half);
+                const yB = Math.max(yT + lw, Math.round(mid + half));
                 /* the bloom alone: the shape is drawn far off the raster and only its shadow lands here */
                 bctx.save();
                 const far = 20000;
-                bctx.shadowColor = `rgba(${bloom[0]},${bloom[1]},${bloom[2]},${light ? 0.3 : 0.42})`;
-                bctx.shadowBlur = 12 * hr;
+                bctx.shadowColor = `rgba(${bloom[0]},${bloom[1]},${bloom[2]},${light ? 0.22 : 0.3})`;
+                bctx.shadowBlur = 10 * hr;
                 bctx.shadowOffsetX = far;
                 bctx.fillStyle = '#000';
                 bctx.fillRect(runL - far, yT, runR - runL, yB - yT);
                 bctx.restore();
-                /* its own ink, lifted toward the ramp's top */
-                bctx.fillStyle = hInk.solid[runSide][STEPS - 1].replace('rgb(', 'rgba(').replace(')', `,${light ? 0.28 : 0.24})`);
+                /* its own hue at the ramp's top, lit nearly solid: the brightest band on the chart */
+                bctx.fillStyle = hInk.solid[runSide][STEPS - 1].replace('rgb(', 'rgba(').replace(')', `,${light ? 0.5 : 0.62})`);
                 bctx.fillRect(runL, yT, runR - runL, yB - yT);
-                bctx.fillStyle = `rgba(${crown[0]},${crown[1]},${crown[2]},${light ? 0.7 : 0.62})`;
+                bctx.fillStyle = `rgba(${crown[0]},${crown[1]},${crown[2]},${light ? 0.6 : 0.5})`;
                 bctx.fillRect(runL, yT, runR - runL, lw);
                 bctx.fillRect(runL, yB - lw, runR - runL, lw);
+                if (runR - runL >= STAR_MIN && runL - lastStar >= STAR_GAP && runL < (wCss - STAR_CLEAR) * hr) {
+                  lastStar = runL;
+                  star(runL + 7 * hr, mid, Math.max(3.6, Math.min(5.5, ((y1 - y0) / vr) * 0.9)) * hr);
+                }
               }
               runRow = -1;
             };
@@ -555,6 +630,8 @@ interface EdgeTag {
   prio: number;
   w: number;
   zone: boolean;
+  /** a wall, the flip, the supreme or the top node: dropped last when the edge is crowded */
+  keep?: boolean;
 }
 
 /** A zone: one of the heaviest nodes now, outlined from the column it became one of them */
@@ -776,7 +853,8 @@ class NodesRenderer {
       }
       const lastBar = series.dataByIndex(Number.MAX_SAFE_INTEGER, MismatchDirection.NearestLeft) as { close?: number } | null;
       const priceY = lastBar?.close != null ? yOf(lastBar.close) : null;
-      src.heatLabels = layoutHeatLabels(levels, yOf, paneW, paneH, src.chromeInset, priceY, top, light);
+      const extras = (src.edgeLevels?.() ?? []).map(l => ({ price: l.price, role: l.short, ink: l.ink, rank: l.rank }));
+      src.heatLabels = layoutHeatLabels(levels, yOf, paneW, paneH, src.chromeInset, priceY, top, light, extras);
       src.chips = src.heatLabels.map(l => ({ strike: l.price, left: l.x, top: l.ty - 9, bottom: l.ty + 9 }));
       return;
     }
@@ -958,30 +1036,29 @@ class NodesRenderer {
       const t = Math.min(1, Math.abs(z.value) / (ref || 1));
       const ink = rgba(strong ? crown : (z.value > 0 ? BEADS.pos : BEADS.neg)[Math.min(STEPS - 1, Math.floor(t * STEPS))], 1);
       const text = narrow ? `${priceText(strike)}${role.short === 'N' ? '' : ` ${role.short}`} ${shortDollars(z.value)}` : `${priceText(strike)} · ${role.name} · ${signedDollars(z.value)}`;
-      tags.push({ price: strike, y, ty: y, text, ink, prio: 10, w: 0, zone: true });
+      const named = role.short !== 'N' && role.short !== 'Top';
+      tags.push({ price: strike, y, ty: y, text, ink, prio: strong ? 10 : named ? 9 : 6, keep: strong || named, w: 0, zone: true });
       used.push(strike);
     }
     for (const l of levels) {
       if (used.some(p => Math.abs(p - l.price) < 1e-6)) continue;
       const y = yOf(l.price);
       if (y == null || y < 0 || y > paneH) continue;
-      tags.push({ price: l.price, y, ty: y, text: narrow ? `${l.short} ${priceText(l.price)}` : `${l.name} ${priceText(l.price)}`, ink: l.ink, prio: l.rank, w: 0, zone: false });
+      tags.push({ price: l.price, y, ty: y, text: narrow || l.rank < 7 ? `${l.short} ${priceText(l.price)}` : `${l.name} ${priceText(l.price)}`, ink: l.ink, prio: l.rank, keep: l.rank >= 7, w: 0, zone: false });
     }
     if (!tags.length) return;
-    const step = TAG_H + 2;
-    const ceiling = src.chromeInset + TAG_H / 2 + 2;
-    const floor = paneH - TAG_H / 2 - 2;
-    /* more tags than the height holds: the least of them go first (their rungs still draw) */
-    const room = Math.max(1, Math.floor((floor - ceiling) / step) + 1);
-    tags.sort((a, b) => b.prio - a.prio || a.y - b.y);
-    tags.length = Math.min(tags.length, room);
-    tags.sort((a, b) => a.y - b.y);
-    tags[0].ty = Math.max(tags[0].ty, ceiling);
-    for (let i = 1; i < tags.length; i++) tags[i].ty = Math.max(tags[i].y, tags[i - 1].ty + step);
-    if (tags[tags.length - 1].ty > floor) {
-      tags[tags.length - 1].ty = floor;
-      for (let i = tags.length - 2; i >= 0; i--) tags[i].ty = Math.min(tags[i].ty, tags[i + 1].ty - step);
-    }
+    /* fitted to the pane in one pass (edgeLabelFit.ts): merged where levels touch, the least important dropped first
+       (their rungs still draw), none on another or on the price's row */
+    const lastBar = series.dataByIndex(Number.MAX_SAFE_INTEGER, MismatchDirection.NearestLeft) as { close?: number } | null;
+    const priceY = lastBar?.close != null ? yOf(lastBar.close) : null;
+    const fit = fitEdgeLabels(
+      tags.map((t, i) => ({ id: String(i), y: t.y, prio: t.prio, keep: t.keep })),
+      { h: TAG_H, gap: 2, top: src.chromeInset + 2, bottom: paneH - 2, rowPx: paneW < 480 ? PHONE_ROW_PX : undefined, reserved: priceY != null ? [{ lo: priceY - TAG_H / 2, hi: priceY + TAG_H / 2 }] : [] },
+    );
+    const fitted = fit.map(p => ({ ...tags[Number(p.id)], ty: p.ty }));
+    tags.length = 0;
+    tags.push(...fitted);
+    if (!tags.length) return;
     const measure = measureCtx();
     if (measure) measure.font = `${TAG_FONT}px ${TAG_MONO}`;
     const right = paneW - 3;

@@ -54,6 +54,7 @@ const PROOFS = [
   'cone-feed-proof',
   'weigher-gamma-proof',
   'node-strikes-proof',
+  'edge-label-fit-proof',
   'exposure-hist-proof',
   'proxy-auth-proof.mjs',
   'hub-proof.mjs',

@@ -134,6 +134,7 @@ class LadderRenderer {
     }
     if (data.rungs.length === 0) return;
     const chips = this.source.chips?.() ?? [];
+    const figuresOff = this.source.figures ? !this.source.figures() : false;
     target.useBitmapCoordinateSpace(scope => {
       const pen = ladderPen(scope);
       const { ctx, hr, vr, H, right } = pen;
@@ -184,7 +185,7 @@ class LadderRenderer {
             ctx.fill();
           }
         }
-        if (chip) continue;
+        if (chip || figuresOff) continue;
         if (figRungs.some(fy => Math.abs(fy - y) < FIG_GAP)) continue;
         figRungs.push(y);
         const text = r.price.toFixed(2);
@@ -357,6 +358,9 @@ export class KeyLevelsPrimitive implements ISeriesPrimitive<Time> {
   edge: number | null = null;
   /** The field's strike chips at the edge this frame — set by the host, read at draw and in its hit test */
   chips?: () => EdgeChip[];
+  /** False while another layer names the edge (the nodes' labels, fitted to the pane): a rung its fit left out keeps
+      its rule and leaves the figure to the pointer card, so nothing the fit dropped comes back as a pile of figures */
+  figures?: () => boolean;
   /** Strikes whose open interest at least doubled. Dots, not a new study. */
   marks: number[] = [];
   private readonly _paneViews: LadderPaneView[];
