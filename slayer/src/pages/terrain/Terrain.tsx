@@ -1,7 +1,7 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
-import { Activity, CalendarCheck, CalendarDays, ChevronUp, Code2, Columns2, Eye, Grid3x3, Hammer, Inbox, Link2, Maximize2, Minimize2, Mountain, Newspaper, PanelsTopLeft, Receipt, Rewind, Rows4, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Activity, CalendarCheck, CalendarDays, ChevronUp, Code2, Columns2, Eye, Grid3x3, Hammer, Inbox, Link2, Maximize2, Minimize2, Mountain, Newspaper, PanelsTopLeft, Receipt, Rewind, Rows4, Search, SlidersHorizontal, UserRound, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { DOCK_ROOM, openEditor } from '../../data/editorDock';
 import { useDeskSession, sessionMeta, type DeskSession } from '../../data/deskSession';
@@ -55,7 +55,8 @@ import StrikeChart, {
 import ChartToolbar, { type BarPanel } from '../../components/gex/ChartToolbar';
 import SlowTip from '../../components/ui/SlowTip';
 import Avatar from '../../components/ui/Avatar';
-import { useProfile } from '../../data/profile';
+import { SAMPLE_PROFILE, useProfile } from '../../data/profile';
+import { useAccount } from '../../data/account';
 import { openPalette } from '../../components/layout/paletteDoor';
 import { toggleWatchlist, useWatchlistOpen } from '../../data/nameWatch';
 import { toggleAlertsDrawer, useAlertsDrawer } from '../../data/alertsDrawer';
@@ -2086,6 +2087,10 @@ const Terrain = () => {
   const topBg = topSurfaceBg === 'transparent' ? 'rgb(var(--panel))' : topSurfaceBg;
   const topGround = topKey ? chartGround(topKey) : undefined;
   const profile = useProfile();
+  /* signed out (or only the sample profile) shows a sign-in door, never a made-up person's initials — as the side nav does */
+  const account = useAccount();
+  const guest = account.status === 'out' || account.status === 'loading'
+    || (profile.name === SAMPLE_PROFILE.name && profile.handle === SAMPLE_PROFILE.handle && profile.email === SAMPLE_PROFILE.email);
   const deskPrefs = useDeskPrefs();
   /* THE ROOM STANDS ALONE (data/standalone.ts): the sidebar waits at the left edge, the wordmark leads the strip */
   const standalone = useStandalone('/terrain');
@@ -2422,9 +2427,15 @@ const Terrain = () => {
                   <span className="holo-text font-semibold hidden 2xl:inline">Search anything</span>
                   <kbd className="font-mono text-t9 tracking-wide text-textMuted">⌘K</kbd>
                 </button>
-                <Link to="/settings/account" title={`${profile.name} — your account`} className="inline-flex rounded-full ml-1" data-strip-avatar>
-                  <Avatar profile={profile} size={26} />
-                </Link>
+                {guest ? (
+                  <Link to="/signin" title="Sign in" aria-label="Sign in" className="inline-flex items-center justify-center w-[26px] h-[26px] rounded-full ml-1 border border-ink/[0.12] text-textMuted hover:text-textPrimary" data-strip-avatar>
+                    <UserRound size={14} aria-hidden />
+                  </Link>
+                ) : (
+                  <Link to="/settings/account" title={`${profile.name} — your account`} className="inline-flex rounded-full ml-1" data-strip-avatar>
+                    <Avatar profile={profile} size={26} />
+                  </Link>
+                )}
               </>
             ) : (
               <>
