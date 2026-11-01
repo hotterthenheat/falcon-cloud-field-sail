@@ -3,9 +3,10 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronRight, Search, Star, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Eye, EyeOff, Lock, Search, Star, Unlock, X } from 'lucide-react';
 import type { DrawingKind } from './drawingsPrimitive';
-import { DRAW_FAMILIES, drawToolDef, familyFace, searchDrawTools, toggleDrawFavourite, useDrawToolPrefs, type DrawToolDef } from './drawTools';
+import { DRAW_FAMILIES, DRAW_HOTKEY, drawToolDef, familyFace, searchDrawTools, setDrawPref, toggleDrawFavourite, useDrawToolPrefs, type DrawToolDef } from './drawTools';
+import { STAMPS, setStamp } from './drawStamp';
 
 type Dock = 'left' | 'top';
 type OpenList = { id: string; anchor: DOMRect } | null;
@@ -122,7 +123,7 @@ const StarToggle = ({ kind, on, className = '' }: { kind: DrawingKind; on: boole
 );
 
 /** A family's list, beside the rail */
-const ToolList = ({ title, tools, anchor, dock, host, drawTool, favs, onPick, onClose, empty }: { title: string; tools: DrawToolDef[]; anchor: DOMRect; dock: Dock; host: HTMLElement; drawTool: DrawingKind | 'select'; favs: DrawingKind[]; onPick: (k: DrawingKind) => void; onClose: () => void; empty?: string }) => {
+const ToolList = ({ title, tools, anchor, dock, host, drawTool, favs, onPick, onClose, empty, footer }: { title: string; tools: DrawToolDef[]; anchor: DOMRect; dock: Dock; host: HTMLElement; drawTool: DrawingKind | 'select'; favs: DrawingKind[]; onPick: (k: DrawingKind) => void; onClose: () => void; empty?: string; footer?: ReactNode }) => {
   const box = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number; maxH: number } | null>(null);
   useLayoutEffect(() => {
@@ -187,15 +188,43 @@ const ToolList = ({ title, tools, anchor, dock, host, drawTool, favs, onPick, on
             >
               <span className={`text-t15 inline-flex ${on ? '' : 'text-textSecondary'}`}>{t.icon}</span>
               <span className="min-w-0 flex-1 truncate">{t.label}</span>
+              {DRAW_HOTKEY[t.tool] && <span className="shrink-0 font-mono text-t9 text-textMuted">{DRAW_HOTKEY[t.tool]}</span>}
               <StarToggle kind={t.tool} on={favs.includes(t.tool)} className="w-6 h-6" />
             </button>
           </div>
         );
       })}
+      {footer}
     </div>,
     host
   );
 };
+
+/** The Icons family's stamps: a press takes one in hand and arms the stamp tool */
+const StampGrid = ({ current, onPick }: { current: string; onPick: () => void }) => (
+  <div className="px-1.5 pt-2 pb-1">
+    <div className="px-0.5 pb-1 text-t10 text-textMuted">Emoji</div>
+    <div className="grid grid-cols-5 gap-1">
+      {STAMPS.map(e => (
+        <button
+          key={e}
+          type="button"
+          title={`Stamp ${e}`}
+          aria-label={`Stamp ${e}`}
+          aria-pressed={current === e}
+          onClick={() => {
+            setStamp(e);
+            onPick();
+          }}
+          className={`h-8 rounded text-[17px] leading-none transition-colors ${current === e ? 'bg-select/15 ring-1 ring-select/50' : 'hover:bg-ink/[0.08]'}`}
+          data-draw-stamp={e}
+        >
+          {e}
+        </button>
+      ))}
+    </div>
+  </div>
+);
 
 interface SheetProps {
   host: HTMLElement;
@@ -409,9 +438,95 @@ const DrawRailTools = ({ dock, drawing, drawTool, onPick, host, sheetOpen, onShe
           favs={prefs.favs}
           onPick={onPick}
           onClose={close}
+          footer={
+            list.id === 'icons' ? (
+              <StampGrid
+                current={prefs.stamp}
+                onPick={() => {
+                  onPick('stamp');
+                  close();
+                }}
+              />
+            ) : list.id === 'favs' ? (
+              <label className="mt-1 flex items-center gap-2 h-7 px-2 rounded text-t11 text-textSecondary hover:bg-ink/[0.06] cursor-pointer border-t border-borderMuted">
+                <input type="checkbox" checked={prefs.favBar} onChange={e => setDrawPref({ favBar: e.target.checked })} className="accent-current" data-draw-favbar-toggle />
+                Show the favourites bar
+              </label>
+            ) : undefined
+          }
         />
       )}
     </>
+  );
+};
+
+/* ---- TradingView's switches under the tools: magnet, stay in drawing mode, lock all, hide all ------------------------- */
+
+/** Our magnet: a horseshoe, with a bar under it when it is strong */
+const MagnetGlyph = ({ strong }: { strong: boolean }) => (
+  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden>
+    <path d="M4 2.5v5.5a4 4 0 0 0 8 0V2.5" />
+    <path d="M2.6 2.5h2.8M10.6 2.5h2.8" strokeWidth="2" />
+    {strong && <path d="M3.5 15h9" strokeWidth="1.6" />}
+  </svg>
+);
+/** Stay in drawing mode: a pencil with a loop */
+const StayGlyph = () => (
+  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M10.5 2.5 13.5 5.5 6 13H3v-3z" />
+    <path d="M1.8 15.2c2-1.4 4.2.9 6.2-.4 1-.6 1.6-1.4 3-1.2" />
+  </svg>
+);
+
+export const DrawRailSwitches = ({ dock, allLocked, onLockAll }: { dock: Dock; allLocked: boolean; onLockAll: () => void }) => {
+  const prefs = useDrawToolPrefs();
+  const next = prefs.magnet === 'off' ? 'weak' : prefs.magnet === 'weak' ? 'strong' : 'off';
+  const magnetWords = prefs.magnet === 'off' ? 'Magnet off — click for the weak magnet (snaps near a bar\'s open, high, low or close)' : prefs.magnet === 'weak' ? 'Weak magnet — click for the strong magnet (always snaps); hold Ctrl to flip it while drawing' : 'Strong magnet — click to turn the magnet off; hold Ctrl to flip it while drawing';
+  const b = (on: boolean) => `shrink-0 inline-flex items-center justify-center rounded transition-colors ${cell(dock)} ${face(on)}`;
+  return (
+    <>
+      <Rule dock={dock} />
+      <button type="button" onClick={() => setDrawPref({ magnet: next })} title={magnetWords} aria-label={magnetWords} aria-pressed={prefs.magnet !== 'off'} className={b(prefs.magnet !== 'off')} data-draw-magnet={prefs.magnet}>
+        <MagnetGlyph strong={prefs.magnet === 'strong'} />
+      </button>
+      <button type="button" onClick={() => setDrawPref({ stay: !prefs.stay })} title={prefs.stay ? 'Stay in drawing mode — on: a placed mark leaves the tool in hand' : 'Stay in drawing mode — off: a placed mark hands back the pointer'} aria-label="Stay in drawing mode" aria-pressed={prefs.stay} className={b(prefs.stay)} data-draw-stay>
+        <StayGlyph />
+      </button>
+      <button type="button" onClick={onLockAll} title={allLocked ? 'Unlock all drawings' : 'Lock all drawings'} aria-label={allLocked ? 'Unlock all drawings' : 'Lock all drawings'} aria-pressed={allLocked} className={b(allLocked)} data-draw-lock-all>
+        {allLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+      </button>
+      <button type="button" onClick={() => setDrawPref({ hideAll: !prefs.hideAll })} title={prefs.hideAll ? 'Show all drawings (Ctrl+Alt+H)' : 'Hide all drawings (Ctrl+Alt+H)'} aria-label={prefs.hideAll ? 'Show all drawings' : 'Hide all drawings'} aria-pressed={prefs.hideAll} className={b(prefs.hideAll)} data-draw-hide-all>
+        {prefs.hideAll ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+      </button>
+    </>
+  );
+};
+
+/** The favourites bar (TradingView's): the starred tools in a row over the chart, while the reader asks for it */
+export const DrawFavBar = ({ drawTool, onPick }: { drawTool: DrawingKind | 'select'; onPick: (k: DrawingKind) => void }) => {
+  const prefs = useDrawToolPrefs();
+  const tools = prefs.favs.map(k => drawToolDef(k)).filter((t): t is DrawToolDef => !!t);
+  if (!prefs.favBar || tools.length === 0) return null;
+  return (
+    <div data-chart-rail data-draw-favbar className="absolute z-30 bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-0.5 p-1 rounded-md border border-borderMuted bg-panel/75 backdrop-blur-md shadow-xl shadow-black/50 select-none max-w-[80%] overflow-x-auto [scrollbar-width:none]">
+      <Star className="w-3 h-3 mx-1 shrink-0 text-silver" fill="currentColor" aria-hidden />
+      {tools.map(t => (
+        <button
+          key={t.tool}
+          type="button"
+          title={t.label}
+          aria-label={t.label}
+          aria-pressed={drawTool === t.tool}
+          onClick={() => onPick(t.tool)}
+          className={`shrink-0 inline-flex items-center justify-center w-7 h-7 rounded text-t15 transition-colors ${face(drawTool === t.tool)}`}
+        >
+          {t.icon}
+        </button>
+      ))}
+      <button type="button" onClick={() => setDrawPref({ favBar: false })} title="Put the favourites bar away" aria-label="Put the favourites bar away" className="shrink-0 inline-flex items-center justify-center w-5 h-7 rounded text-textMuted hover:text-textPrimary">
+        <X className="w-3 h-3" />
+      </button>
+    </div>
   );
 };
 

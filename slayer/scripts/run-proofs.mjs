@@ -67,6 +67,7 @@ const PROOFS = [
   'overnight-proof',
   'wind-proof',
   'terrain-desk-proof',
+  'drawing-geometry-proof',
 ];
 
 const goldens = () =>
