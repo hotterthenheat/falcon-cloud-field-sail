@@ -7,7 +7,8 @@
    mapping); this file holds its inks, the palette it follows, the king pass's inks and the labels at the price axis. */
 
 import type { KeptLevel } from './nodeStrikes';
-import { HEAT_MODE, heatRampColorFor, type HeatMode } from './heatmap';
+import { HEAT_MODE, heatRampColorFor, ladderRampT, type HeatMode } from './heatmap';
+import { fitEdgeLabels } from './edgeLabelFit';
 
 export type Rgb = readonly [number, number, number];
 
@@ -49,6 +50,17 @@ export interface HeatInks {
 const rampSign = (side: number): 1 | -1 => (side === 0 ? -1 : 1);
 
 const cache = new Map<string, HeatInks>();
+/** Where on the palette's ramp a cell of strength t (0..1 against the field's scale) takes its hue: the ladder's window
+    (heatmap.ts ladderRampT) — the saturated stretch the rails' bars wear, so the chart and its rails read alike and
+    every hue holds on black — and on paper the paper ink's deep half */
+export const heatHueAt = (side: number, t: number, mode: HeatMode, light: boolean): Rgb => heatRampColorFor(rampSign(side), ladderRampT(rampSign(side), t, mode, light), mode, light);
+/** A lit cell's opacity: the light carries the size, so the eye reads strength as brightness on any palette (a deep
+    red is darker than a pale one; the ramp's own lightness cannot be the scale). Never opaque: a candle over the
+    brightest cell still reads; a lit band draws its core twice (gexNodesPrimitive), so the core runs brighter. */
+export const litAlpha = (t: number, light: boolean): number => (light ? 0.08 : 0.09) + (light ? 0.3 : 0.36) * Math.pow(Math.max(0, Math.min(1, t)), 0.9);
+/** A cell under the strike cut: context only, a whisper of the same hue */
+export const quietAlpha = (t: number, light: boolean): number => (light ? 0.035 : 0.04) + (light ? 0.07 : 0.09) * Math.pow(Math.max(0, Math.min(1, t)), 0.9);
+
 /** The field's inks on a ground, in the page's palette */
 export function heatInks(light: boolean): HeatInks {
   const mode = modeOf(palette);
@@ -60,15 +72,12 @@ export function heatInks(light: boolean): HeatInks {
   const solid: [string[], string[]] = [[], []];
   for (let s = 0; s < HEAT_STEPS; s++) {
     const t = (s + 0.5) / HEAT_STEPS;
-    /* the lit strikes: present from the first step, never opaque, so a candle over the brightest cell still reads */
-    const a = 0.1 + (light ? 0.5 : 0.56) * Math.pow(t, 1.15);
-    /* the rest: context only — the ramp's lower half, faint, never read as a level */
-    const q = (light ? 0.06 : 0.08) + (light ? 0.12 : 0.16) * Math.pow(t, 0.9);
+    const a = litAlpha(t, light);
+    const q = quietAlpha(t, light);
     for (const side of [0, 1]) {
-      const c = heatRampColorFor(rampSign(side), 0.12 + 0.88 * t, mode, light);
+      const c = heatHueAt(side, t, mode, light);
       lit[side].push(`rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`);
-      const cq = heatRampColorFor(rampSign(side), 0.2 + 0.35 * t, mode, light);
-      quiet[side].push(`rgba(${cq[0]},${cq[1]},${cq[2]},${q.toFixed(3)})`);
+      quiet[side].push(`rgba(${c[0]},${c[1]},${c[2]},${q.toFixed(3)})`);
       solid[side].push(`rgb(${c[0]},${c[1]},${c[2]})`);
     }
   }
@@ -86,10 +95,17 @@ export function heatInks(light: boolean): HeatInks {
 }
 
 /** The key's swatches in this look (FieldKey), in a palette: short gamma left, long gamma right */
-export function heatRampCss(p: HeatPalette): { neg: string; pos: string } {
+export function heatRampCss(p: HeatPalette, light = false): { neg: string; pos: string } {
   const mode = modeOf(p);
-  const stops = (sign: 1 | -1) => [0.1, 0.4, 0.7, 1].map(t => heatRampColorFor(sign, t, mode)).map(c => `rgb(${c[0]},${c[1]},${c[2]})`).join(', ');
-  return { neg: `linear-gradient(90deg, ${stops(1)})`, pos: `linear-gradient(90deg, ${stops(-1)})` };
+  /* the cells as they land on the chart: the hue and the light together */
+  const stops = (side: number) =>
+    [0.05, 0.35, 0.7, 1]
+      .map(t => {
+        const c = heatHueAt(side, t, mode, light);
+        return `rgba(${c[0]},${c[1]},${c[2]},${litAlpha(t, light).toFixed(2)})`;
+      })
+      .join(', ');
+  return { neg: `linear-gradient(90deg, ${stops(1)})`, pos: `linear-gradient(90deg, ${stops(0)})` };
 }
 
 /* ---------- the labels at the price axis ---------- */
@@ -154,9 +170,29 @@ function signedShort(v: number): string {
 /* the labels' inks: palette.ts CALL_WALL / PUT_WALL / FLIP on the tape, tokens.css's light cuts on paper */
 const WALL = { dark: { call: [158, 212, 234] as Rgb, put: [245, 197, 66] as Rgb, flip: [228, 231, 238] as Rgb, text: [226, 228, 233] as Rgb, long: [150, 196, 216] as Rgb, short: [228, 170, 96] as Rgb, pin: [255, 90, 241] as Rgb }, light: { call: [3, 105, 161] as Rgb, put: [146, 86, 4] as Rgb, flip: [75, 85, 99] as Rgb, text: [20, 22, 26] as Rgb, long: [26, 98, 146] as Rgb, short: [150, 84, 8] as Rgb, pin: [163, 0, 179] as Rgb } };
 
+/** A level the host names at the edge beside the nodes (the key levels' rungs, the cone's 1σ ends): drawn in the same
+    column, fitted with the nodes' own labels */
+export interface HeatExtra {
+  price: number;
+  /** its short name (1σ↑, MP, Flip) */
+  role: string;
+  /** a CSS colour (#rrggbb or rgb()) */
+  ink: string;
+  /** how much it matters when the edge is crowded (EdgeLevel rank: walls 8, flip 7, the cone's ends 3) */
+  rank: number;
+}
+
+const cssRgb = (css: string, fallback: Rgb): Rgb => {
+  const hex = css.trim().match(/^#([0-9a-f]{6})$/i);
+  if (hex) return [parseInt(hex[1].slice(0, 2), 16), parseInt(hex[1].slice(2, 4), 16), parseInt(hex[1].slice(4, 6), 16)];
+  const m = css.match(/\d+(?:\.\d+)?/g);
+  return m && m.length >= 3 ? [Number(m[0]), Number(m[1]), Number(m[2])] : fallback;
+};
+
 /**
- * The kept levels as labels at the price axis: role, strike, signed size in three right-aligned columns, pushed apart so
- * none overlaps another or the price's own row. `top` is the price of the heaviest strike now (its role reads "Top").
+ * The kept levels as labels at the price axis: role, strike, signed size in three right-aligned columns, fitted to the
+ * pane with the host's levels (edgeLabelFit.ts) — merged where they touch, the least important dropped first, none on
+ * another, on the price's own row or under the pane's chrome. `top` is the price of the heaviest strike now ("★ Top").
  */
 export function layoutHeatLabels(
   kept: readonly KeptLevel[],
@@ -167,13 +203,15 @@ export function layoutHeatLabels(
   priceY: number | null,
   top: number | null,
   light: boolean,
+  extras: readonly HeatExtra[] = [],
 ): HeatLabel[] {
   const ink = light ? WALL.light : WALL.dark;
+  const mode = modeOf(palette);
   const px = labelPx();
   const font = `500 ${px}px ${FACE}`;
   const roleFont = `600 ${px}px ${FACE}`;
   const h = px + 6;
-  const out: HeatLabel[] = [];
+  const out: (HeatLabel & { keep: boolean })[] = [];
   for (const l of kept) {
     const y = yOf(l.price);
     if (y == null || y < 0 || y > H) continue;
@@ -181,7 +219,8 @@ export function layoutHeatLabels(
     const pw = l.roles.includes('putWall');
     const isTop = top != null && Math.abs(l.price - top) < 1e-6;
     const flipOnly = l.value !== l.value && l.roles.includes('flip');
-    const role = cw ? 'CW' : pw ? 'PW' : flipOnly ? 'Flip' : isTop ? 'Top' : l.roles.includes('pin') ? 'Pin' : '';
+    const role = isTop ? '★ Top' : cw ? 'CW' : pw ? 'PW' : flipOnly ? 'Flip' : l.roles.includes('pin') ? 'Pin' : '';
+    const side = l.value > 0 ? 0 : 1;
     out.push({
       price: l.price,
       y,
@@ -189,23 +228,42 @@ export function layoutHeatLabels(
       role,
       figure: priceText(l.price),
       value: signedShort(l.value),
-      roleInk: cw ? ink.call : pw ? ink.put : flipOnly ? ink.flip : role === 'Pin' ? ink.pin : ink.text,
-      valueInk: l.value > 0 ? ink.long : ink.short,
-      prio: cw || pw ? 9 : flipOnly ? 8 : isTop ? 7.5 : l.roles.includes('pin') ? 7 : 4 + l.share,
+      roleInk: isTop ? ink.text : cw ? ink.call : pw ? ink.put : flipOnly ? ink.flip : role === 'Pin' ? ink.pin : ink.text,
+      /* the size in the field's own hue, so a label reads as its band */
+      valueInk: heatHueAt(side, light ? 0.85 : 0.7, mode, light),
+      prio: isTop ? 9.5 : cw || pw ? 9 : flipOnly ? 8 : l.roles.includes('pin') ? 7 : 4 + l.share,
+      keep: isTop || cw || pw || flipOnly,
       x: 0,
       right: 0,
       figRight: 0,
       roleRight: 0,
-      foil: isTop && !cw && !pw,
+      foil: isTop,
     });
   }
-  if (!out.length) return out;
+  for (const e of extras) {
+    if (out.some(l => Math.abs(l.price - e.price) < 1e-6)) continue;
+    const y = yOf(e.price);
+    if (y == null || y < 0 || y > H) continue;
+    const c = cssRgb(e.ink, ink.text);
+    out.push({ price: e.price, y, ty: y, role: e.role, figure: priceText(e.price), value: '', roleInk: c, valueInk: c, prio: e.rank, keep: e.rank >= 7, x: 0, right: 0, figRight: 0, roleRight: 0, foil: false });
+  }
+  if (!out.length) return [];
+  const fit = fitEdgeLabels(
+    out.map((l, i) => ({ id: String(i), y: l.y, prio: l.prio, keep: l.keep })),
+    { h, gap: 2, top: ceiling + 1, bottom: H - 2, reserved: priceY != null && priceY > 0 && priceY < H ? [{ lo: priceY - h / 2, hi: priceY + h / 2 }] : [] },
+  );
+  const placed: HeatLabel[] = fit.map(p => {
+    const { keep: _k, ...l } = out[Number(p.id)];
+    return { ...l, ty: p.ty };
+  });
+  if (!placed.length) return placed;
+  /* the columns, measured on what is drawn */
   const pad = W < 480 ? 4 : 5;
   const gap = W < 480 ? 4 : 6;
   let roleW = 0;
   let figW = 0;
   let valW = 0;
-  for (const l of out) {
+  for (const l of placed) {
     roleW = Math.max(roleW, textW(l.role, roleFont));
     figW = Math.max(figW, textW(l.figure, font));
     valW = Math.max(valW, textW(l.value, font));
@@ -213,34 +271,15 @@ export function layoutHeatLabels(
   const right = W - 2 - pad;
   const figRight = right - (valW > 0 ? valW + gap : 0);
   const roleRight = figRight - figW - (roleW > 0 ? gap - 1 : 0);
-  for (const l of out) {
+  for (const l of placed) {
     l.right = right;
     l.figRight = figRight;
     l.roleRight = roleRight;
     l.x = Math.round((l.role ? roleRight - textW(l.role, roleFont) : figRight - textW(l.figure, font)) - pad);
   }
-  /* pushed apart top to bottom; the price's row at the axis is kept clear */
-  const step = h + 2;
-  const top0 = ceiling + h / 2 + 1;
-  const floor = H - h / 2 - 2;
-  const room = Math.max(1, Math.floor((floor - top0) / step));
-  const placed = out.sort((a, b) => b.prio - a.prio || a.y - b.y).slice(0, room);
-  placed.sort((a, b) => a.y - b.y);
-  const keep = priceY != null && priceY > 0 && priceY < H ? { lo: priceY - h / 2 - 1, hi: priceY + h / 2 + 1 } : null;
-  const clear = (t: number, up: boolean) => (!keep || t + h / 2 <= keep.lo || t - h / 2 >= keep.hi ? t : up ? keep.lo - h / 2 : keep.hi + h / 2);
-  for (let i = 0; i < placed.length; i++) {
-    const p = placed[i];
-    let t = Math.max(p.y, top0, i ? placed[i - 1].ty + step : -Infinity);
-    t = clear(t, !!keep && p.y < (keep.lo + keep.hi) / 2 && t < keep.lo + 1);
-    if (i && t < placed[i - 1].ty + step) t = placed[i - 1].ty + step;
-    p.ty = t;
-  }
-  if (placed.length && placed[placed.length - 1].ty > floor) {
-    placed[placed.length - 1].ty = floor;
-    for (let i = placed.length - 2; i >= 0; i--) placed[i].ty = clear(Math.min(placed[i].ty, placed[i + 1].ty - step), true);
-  }
   return placed;
 }
+
 
 /** The labels, on the top layer: a plate of the chart's ground, a short tick from the level into it, the words */
 export function paintHeatLabels(scope: BitmapScope, labels: readonly HeatLabel[], ground: Rgb, light: boolean): void {
