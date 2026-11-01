@@ -59,6 +59,14 @@ import { BEAD_INK_CSS, GexTrailsPrimitive, signedDollars, type BeadHit, type Edg
 import { nodeConcept } from './nodeConcept';
 import { BOOK_MODE_WORDS } from '../../data/bookMode';
 import { ExpectedMovePrimitive, type ConeHit } from './expectedMovePrimitive';
+import { rgbOf, THERMAL_YELLOW } from './thermalFieldPrimitive';
+import { EMBER, GLACIER, resolveInk } from './paletteInk';
+import { nyWall, REGULAR_OPEN_MIN } from '../../core/session';
+import { WindFieldPrimitive } from './windFieldPrimitive';
+import { askWind } from '../../core/windPool';
+import type { WindField } from '../../core/windField';
+import { windInputsFor } from '../../data/windInputs';
+import { carryFor } from '../../core/carry';
 import { coneMissed, coneTerm, ensureCone, useConeRev } from '../../data/coneFeed';
 import { coneFrame, coneMarks, forwardCone, runwaySlots, todayOpenOf, tradingMinutesPerBar } from '../../data/terrainCone';
 import { EXTRA_INK, coneRungs } from './levelExtras';
@@ -213,6 +221,9 @@ export interface ChartOverlays {
   session: boolean;
   /* The expected-move cone. */
   cone: boolean;
+  /* The wind field: a MODEL forecast of the rest of today's session — paths off the cone's implied vol, bent by the
+     dealer book (core/windField.ts, run in a worker). Off by default; labelled on the chart as a model forecast. */
+  wind?: boolean;
   /* Event markers. The calendar on the tape: this name's next report, fomc/cpi/nfp, and the session's largest option
      prints, as glyphs in a lane above the time axis with a hover card each (data/events.ts). */
   events: boolean;
@@ -447,6 +458,8 @@ export const DEFAULT_OVERLAYS: ChartOverlays = {
   /* Off for the same courtesy — an envelope plus a runway cone is a lot of geometry to hand a reader who has not
      asked what the options charge. */
   cone: false,
+  /* Off by default: a model forecast is something a reader asks for */
+  wind: false,
   /* Off until asked for, like every other layer of context. */
   events: false,
 };
@@ -1194,6 +1207,11 @@ const StrikeChart = ({
   const sessionPrimRef = useRef<SessionLevelsPrimitive | null>(null);
   /** The layer, run the same way — see the cone effect below. */
   const conePrimRef = useRef<ExpectedMovePrimitive | null>(null);
+  /** The wind field's layer (a model forecast), and the field the worker last handed back for this chart */
+  const windPrimRef = useRef<WindFieldPrimitive | null>(null);
+  const [windField, setWindField] = useState<WindField | null>(null);
+  const windAskRef = useRef('');
+  const [windWhy, setWindWhy] = useState<string | null>(null);
   /** The layer, ditto. */
   const eventsPrimRef = useRef<EventsPrimitive | null>(null);
   /** The calendar half of the events data, cached per ticker+day: the dates move daily while prints move every tick,
@@ -1999,6 +2017,10 @@ const StrikeChart = ({
     /* The cone, run exactly the same way. */
     const conePrim = new ExpectedMovePrimitive();
     candles.attachPrimitive(conePrim);
+    /* The wind field (a model forecast), the same way: under the candles, its field swapped by the wind effect. */
+    const windPrim = new WindFieldPrimitive();
+    candles.attachPrimitive(windPrim);
+    windPrimRef.current = windPrim;
 
     /* The event lane. */
     const eventsPrim = new EventsPrimitive();
@@ -2194,14 +2216,46 @@ const StrikeChart = ({
     }
 
     /* The frame belongs to the user after first touch. The library only suspends price autoscale on an axis drag; a
-       wheel zoom or a pan keeps it on, so every 1s tick re-fit the price scale and undid the reader's hand. */
-    /* applyOptions re-lays the whole chart, so only the first wheel or press of a gesture pays it */
+       pan keeps it on, so every 1s tick re-fit the price scale and undid the reader's hand: a press on the tape freezes
+       it (a vertical drag pans the price and stays where the hand left it). */
+    /* applyOptions re-lays the whole chart, so only the first press of a gesture pays it */
     const freezeScale = () => {
       const ps = chart.priceScale('right');
       if (ps.options().autoScale) ps.applyOptions({ autoScale: false });
     };
-    container.addEventListener('wheel', freezeScale, { passive: true });
     container.addEventListener('pointerdown', freezeScale);
+    /* THE WHEEL KEEPS THE CANDLES (ported from Noah's fork, 2026-10-31: "if i scroll too rapidly... then they
+       disappear"): the wheel no longer freezes the scale — a zoom keeps it fitting the bars it shows, as TradingView's
+       does. A scale the hand froze stays frozen through a zoom while the candles are still in it; a zoom out that
+       leaves no visible candle inside the frozen price range (the empty pane, the volume at its foot) gives the fit
+       back. Read once a frame after the library has applied the zoom. */
+    let wheelRaf = 0;
+    const keepCandles = () => {
+      wheelRaf = 0;
+      const ps = chart.priceScale('right');
+      if (ps.options().autoScale) return;
+      const series = candleSeriesRef.current;
+      const range = chart.timeScale().getVisibleLogicalRange();
+      const shown = ps.getVisibleRange();
+      if (!series || !range || !shown) return;
+      const data = series.data() as readonly { high?: number; low?: number; value?: number }[];
+      const from = Math.max(0, Math.floor(range.from));
+      const to = Math.min(data.length - 1, Math.ceil(range.to));
+      if (to < from) return;
+      const lo = Math.min(shown.from, shown.to);
+      const hi = Math.max(shown.from, shown.to);
+      for (let i = from; i <= to; i++) {
+        const d = data[i];
+        const top = d.high ?? d.value;
+        const bot = d.low ?? d.value;
+        if (top != null && bot != null && top >= lo && bot <= hi) return;
+      }
+      ps.applyOptions({ autoScale: true });
+    };
+    const onWheelKeep = () => {
+      if (!wheelRaf) wheelRaf = requestAnimationFrame(keepCandles);
+    };
+    container.addEventListener('wheel', onWheelKeep, { passive: true });
 
     return () => {
       /* Remember the view before this instance dies (the Weigher's fullscreen portal is a remount); spacing and
@@ -2215,7 +2269,8 @@ const StrikeChart = ({
           scroll: ts.scrollPosition(),
         });
       }
-      container.removeEventListener('wheel', freezeScale);
+      container.removeEventListener('wheel', onWheelKeep);
+      if (wheelRaf) cancelAnimationFrame(wheelRaf);
       container.removeEventListener('pointerdown', freezeScale);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(onRange);
       window.clearTimeout(fieldTimer);
@@ -2243,6 +2298,7 @@ const StrikeChart = ({
       drawingsRef.current = null;
       sessionPrimRef.current = null;
       conePrimRef.current = null;
+      windPrimRef.current = null;
       eventsPrimRef.current = null;
       compareSeriesRef.current.clear();
       compareLoadedRef.current = '';
@@ -2279,6 +2335,7 @@ const StrikeChart = ({
        vanish. */
     if (sessionPrim) next.attachPrimitive(sessionPrim);
     if (conePrim) next.attachPrimitive(conePrim);
+    if (windPrimRef.current) next.attachPrimitive(windPrimRef.current);
     if (eventsPrimRef.current) next.attachPrimitive(eventsPrimRef.current);
     candleSeriesRef.current = next;
     styleBuiltRef.current = chartStyle;
@@ -3461,6 +3518,93 @@ const StrikeChart = ({
     trailsRef.current?.requestUpdate?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker, timeframe, revision, overlays.cone, overlays.levels, replay, mainNonce, altSpec, session, tapeRev, volsRev, printRev, fullNonce, nightRev]);
+
+  /* THE WIND FIELD — a model forecast of the rest of today's session (core/windField.ts, data/windInputs.ts). Its σ is
+     the cone's own (the at-the-money implied vol to today's close on the trading clock), its book the chain the nodes
+     read, its clock the session module's, its drift the name's carry. Asked of the worker once a minute and once a
+     tenth of a move; a tick in between repaints the field it has. Off in replay, on a rule clock and on day bars. */
+  useEffect(() => {
+    const prim = windPrimRef.current;
+    if (!prim) return;
+    const mins = tfMinutes(timeframe);
+    if (!overlays.wind || replay || altSpec || mins >= 1440) {
+      prim.setData(null);
+      windAskRef.current = '';
+      setWindWhy(null);
+      return;
+    }
+    const bars = barsFor(mins);
+    ensureCone(ticker);
+    const print = peekPrint(ticker);
+    const spot = print && print.price > 0 ? print.price : bars.length ? bars[bars.length - 1].close : 0;
+    const now = Date.now();
+    const term = coneTerm(ticker);
+    const fc = term && spot > 0 ? forwardCone(term.rows, spot, now, null) : null;
+    const name = sameName(ticker);
+    const nodes = chainForDate(name, bookDate ?? 'book')?.nodes ?? [];
+    const todayIso = nyWall(now).iso;
+    const today = chainForDate(name, todayIso);
+    const closes: number[] = [];
+    for (const b of baseBars()) {
+      const w = nyWall(b.time * 1000);
+      if (b.time * 1000 <= now && w.iso === todayIso && w.min >= REGULAR_OPEN_MIN) closes.push(b.close);
+    }
+    const ready = windInputsFor({
+      ticker,
+      now,
+      spot,
+      sigmaToday: fc?.sigmaToday ?? null,
+      nodes,
+      sameDay: today && today.date === todayIso ? today.nodes : [],
+      closes,
+      carry: carryFor(ticker),
+    });
+    if (!ready.ok) {
+      prim.setData(null);
+      setWindWhy(ready.why);
+      return;
+    }
+    setWindWhy(null);
+    const { inputs, clock } = ready;
+    const sigStep = Math.max(spot * inputs.sigmaLeft * 0.1, 0.01);
+    const sig = `${clock.iso}|${clock.nyMin}|${Math.round(spot / sigStep)}|${inputs.sigmaLeft.toFixed(5)}|${nodes.length}|${bookRev}`;
+    const key = `${paneId ?? 'chart'}:${ticker}`;
+    if (windAskRef.current !== sig) {
+      windAskRef.current = sig;
+      void askWind(key, sig, inputs).then(f => {
+        if (f && windAskRef.current === sig) setWindField(f);
+      });
+    }
+    const f = windField;
+    if (!f || f.density.cols <= 0 || Math.abs(f.spot - spot) > spot * inputs.sigmaLeft) {
+      prim.setData(null);
+      return;
+    }
+    const host = containerRef.current ?? document.documentElement;
+    const light = chartGround(themeKey) === 'light';
+    const shown = barCountRef.current;
+    const drawn = shown > 0 && shown < bars.length ? bars.slice(-shown) : bars;
+    prim.setData({
+      cols: f.density.cols,
+      lo: f.density.lo,
+      step: f.density.step,
+      bins: f.density.bins,
+      cells: f.density.cells,
+      streams: f.streams,
+      spot: f.spot,
+      inks: {
+        up: rgbOf(resolveInk(GLACIER, host)),
+        down: rgbOf(resolveInk(EMBER, host)),
+        core: THERMAL_YELLOW,
+        text: rgbOf(resolveInk('rgb(var(--text-primary))', host)),
+        strength: light ? 0.62 : 0.8,
+      },
+      anchor: withNight(drawn.map(b => b.time)).length - 1,
+      perBar: tradingMinutesPerBar(mins),
+      label: 'Wind · model forecast',
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticker, timeframe, revision, overlays.wind, replay, mainNonce, altSpec, session, tapeRev, volsRev, printRev, fullNonce, nightRev, windField, bookRev, bookDate, themeKey]);
 
   /* The event markers. The calendar half (this name's report, the macro dates) is cached per ticker and day; the
      prints half is live. */
@@ -4673,6 +4817,8 @@ const StrikeChart = ({
     if (!clock && overlays.session && sessionLines(buildSessionLevels(baseBars(), sessionOr)).length === 0) {
       push('Session levels — not enough of this session');
     }
+    if (!clock && overlays.wind && windWhy) push(windWhy);
+    else if (!clock && overlays.wind && tfMinutes(timeframe) >= 1440) push('Wind — needs intraday bars');
     if (!clock && overlays.cone && !coneTerm(ticker)) push(coneMissed(ticker) ? 'Expected move — no implied vol on this name' : 'Expected move — waiting on implied vol');
     if (overlays.levels && ![levels.callWall, levels.putWall, levels.flip, levels.supreme].some(v => Number.isFinite(v) && v > 0)) {
       /* the book did not come back at all: that, not "not named yet" */

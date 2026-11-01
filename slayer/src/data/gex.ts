@@ -85,7 +85,13 @@ function stepOf(chain: readonly { strike: number }[]): number {
 /** A name's book as an alert reads it: its Levels card's net (house sign), supreme, walls and flip — null while loading */
 export function exposureNowFor(ticker: string): ExposureNow | null {
   const lv = levelsFor(ticker, levelsForName(ticker));
-  if (!lv) return null;
+  /* AN ALERT FIRES ON A CHANGE SEEN LIVE, NEVER ON THE BOOK FINISHING ITS LOAD: while some of the scope's expiries are
+     still landing the figures are provisional (`complete`), and while another book stands in for the scope's own
+     contracts the walls and the supreme are that book's (`wallsFinal`) — a wall-move or a gamma-flip judged across
+     that hand-over would fire on the load, not on the market. Nothing is read until the book is whole; the walls and
+     the supreme wait for their own contracts. */
+  if (!lv || !lv.complete) return null;
   const chain = snapshotFor(ticker, lv.scope)?.chain ?? [];
-  return { netGex: keptOf(lv.netGex), supreme: lv.supreme, callWall: lv.callWall, putWall: lv.putWall, flip: lv.flip, step: stepOf(chain) };
+  const own = lv.wallsFinal;
+  return { netGex: keptOf(lv.netGex), supreme: own ? lv.supreme : null, callWall: own ? lv.callWall : null, putWall: own ? lv.putWall : null, flip: lv.flip, step: stepOf(chain) };
 }

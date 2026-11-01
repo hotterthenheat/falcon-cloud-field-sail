@@ -175,12 +175,13 @@ const OVERLAY_ROWS: { key: keyof ChartOverlays; label: string; hint: string; pan
   { key: 'volDrift', label: 'Vol drift', hint: 'Realised vol of these bars against the book’s IV.', pane: 'own pane' },
   { key: 'session', label: 'Session levels', hint: 'Previous high, low and close, the opening range, the first hour.', pane: 'on the tape' },
   { key: 'cone', label: 'Expected move', hint: 'The wedge the options priced from here to the horizon.', pane: 'on the tape' },
+  { key: 'wind', label: 'Wind · model forecast', hint: 'A model’s paths for the rest of today’s session: the implied vol, bent by the dealer book. A forecast, not a price.', pane: 'on the tape' },
   { key: 'events', label: 'Events', hint: 'Earnings, FOMC, CPI, NFP, and the largest prints.', pane: 'on the tape' },
   { key: 'alerts', label: 'Alert lines', hint: 'A line where a price alert is waiting.', pane: 'on the tape' },
   { key: 'dexStrike', label: 'Exposure by strike', hint: 'The chain, docked under the tape.', pane: 'own pane' },
 ];
 
-const CLOCK_HELD = new Set<keyof ChartOverlays>(['trails', 'flow', 'netDrift', 'volDrift', 'session', 'cone', 'events']);
+const CLOCK_HELD = new Set<keyof ChartOverlays>(['trails', 'flow', 'netDrift', 'volDrift', 'session', 'cone', 'wind', 'events']);
 /* Book lines and share VWAP have no session to cut on a rule clock. Keyed by the indicator, not the shelf group — search rewrites the group. */
 const CLOCK_HELD_CHART = new Set<keyof ChartIndicators>(['vwap', 'vwapBands', 'flowVwap', 'sideVwap', 'gammaEma', 'gammaVwap']);
 const ROW_STYLE = { gridTemplateColumns: '68px minmax(0,1fr) 88px 28px 28px 44px' } as const;
