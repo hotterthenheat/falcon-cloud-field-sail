@@ -5,7 +5,7 @@
   pressed renames the pane you are in.
 */
 
-import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, X } from 'lucide-react';
 import { ensureBook } from '../../data/book/load';
@@ -37,6 +37,10 @@ interface TickerTabStripProps {
   /** The name alone on a tab — a phone's strip */
   compact?: boolean;
   max?: number;
+  /** WHAT LEADS THE STRIP (ported from the partner tree, 2026-11-01 — openmarket's corner): the desks door */
+  lead?: ReactNode;
+  /** WHAT STANDS AT THE STRIP'S END, pushed to the right edge (openmarket's top row: the search at the far right) */
+  end?: ReactNode;
 }
 
 /* A tab's price and move are the nav's (layout/NavQuote.tsx useNavQuote): the one quote store's reading of the name
@@ -71,7 +75,7 @@ const TabPrice = memo(({ ticker }: { ticker: string }) => {
 });
 TabPrice.displayName = 'TabPrice';
 
-const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compact = false, max = TAB_MAX }: TickerTabStripProps) => {
+const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compact = false, max = TAB_MAX, lead, end }: TickerTabStripProps) => {
   const [open, setOpen] = useState(false);
   /* each tab's name on hover, re-read as names land */
   useSyncExternalStore(subscribeCompanyNames, companyNamesRev, () => 0);
@@ -135,9 +139,13 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
     );
 
   return (
-    <div ref={rootRef} className="shrink-0 flex items-stretch h-8 min-w-0 border-b border-borderSubtle/60 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="The names on this pane" data-ticker-tab-strip={tabs.length}>
+    /* FORTY TALL ON A DESK (the partner tree's measure of openmarket's top row, 2026-11-01 port): a 32px tab STANDING ON
+       THE ROW'S FLOOR, its top corners rounded 8, the text 11.5px medium, the mark 16, a lifted ground under the one in
+       hand with a silver hairline along its top; the "+" a 26px square. The phone keeps its 32px boxes. */
+    <div ref={rootRef} className={`shrink-0 flex ${compact ? 'h-8 items-stretch border-b border-borderSubtle/60' : 'h-10 items-end row-line'} min-w-0 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`} role="tablist" aria-label="The names on this pane" data-ticker-tab-strip={tabs.length}>
+      {lead}
       {paneLabel && (
-        <span className="shrink-0 inline-flex items-center px-2.5 border-r border-borderSubtle/60 font-mono text-t9 uppercase tracking-widest text-textMuted whitespace-nowrap" title={`The tabs of pane ${paneLabel} — the one in hand`} data-ticker-tab-pane={paneLabel}>
+        <span className="shrink-0 self-center inline-flex items-center pl-2 pr-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted whitespace-nowrap" title={`The tabs of pane ${paneLabel} — the one in hand`} data-ticker-tab-pane={paneLabel}>
           Pane {paneLabel}
         </span>
       )}
@@ -148,15 +156,21 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
             key={t}
             role="tab"
             aria-selected={on}
-            className={`group relative shrink-0 inline-flex items-stretch border-r border-borderSubtle/60 font-mono select-none transition-colors ${on ? 'bg-panel text-textPrimary' : 'text-textSecondary hover:bg-ink/[0.04] hover:text-textPrimary'}`}
+            className={`group relative shrink-0 inline-flex items-stretch font-mono select-none transition-colors ${compact ? 'border-r border-borderSubtle/60' : 'h-8 ml-0.5 first:ml-1 rounded-t-lg'} ${
+              on
+                ? compact
+                  ? 'bg-panel text-textPrimary'
+                  : 'bg-ink/[0.07] text-textPrimary shadow-[inset_0_1px_0_0_rgb(var(--silver)/0.45)]'
+                : 'text-textSecondary hover:bg-ink/[0.04] hover:text-textPrimary'
+            }`}
             data-ticker-tab={t}
             data-active={on || undefined}
           >
             {/* the tab in hand carries the silver at its top edge — where you are */}
-            {on && <span aria-hidden className="absolute inset-x-0 top-0 h-px bg-silver/70" />}
-            <button type="button" onClick={() => onPick(t)} title={on ? `${symbolWithName(t)} — on the tape` : `Show ${symbolWithName(t)} on this pane`} className="pl-2.5 pr-1.5 inline-flex items-center gap-2 min-w-0">
-              <CompanyLogo ticker={t} size={14} />
-              <span className="text-t11 font-bold tracking-wide">{t}</span>
+            {on && compact && <span aria-hidden className="absolute inset-x-0 top-0 h-px bg-silver/70" />}
+            <button type="button" onClick={() => onPick(t)} title={on ? `${symbolWithName(t)} — on the tape` : `Show ${symbolWithName(t)} on this pane`} className={`inline-flex items-center min-w-0 gap-2 ${compact ? 'pl-2.5 pr-1.5' : 'pl-[10px] pr-1'}`}>
+              <CompanyLogo ticker={t} size={compact ? 14 : 16} />
+              <span className={compact ? 'text-t11 font-bold tracking-wide' : 'text-t115 font-medium tracking-[0.1px]'}>{t}</span>
               {!compact && <TabPrice ticker={t} />}
             </button>
             <button
@@ -165,7 +179,7 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
               aria-label={`Close the ${t} tab`}
               title={tabs.length === 1 ? 'The last tab stays' : `Close ${t}`}
               disabled={tabs.length === 1}
-              className={`w-5 mr-1 inline-flex items-center justify-center rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.08] transition-opacity disabled:opacity-0 ${on ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'}`}
+              className={`w-5 ${compact ? 'mr-1' : 'mr-1.5 self-center h-5'} inline-flex items-center justify-center rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.08] transition-opacity disabled:opacity-0 ${on ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'}`}
               data-ticker-tab-close={t}
             >
               <X className="w-3 h-3" />
@@ -181,11 +195,16 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
         aria-disabled={full}
         aria-label={full ? 'Five tabs at most — close one to add another' : 'Add a tab — another name on this pane'}
         title={full ? 'Five tabs at most — close one to add another' : `Add a tab — another name on this pane (${tabs.length} of ${max})`}
-        className={`shrink-0 inline-flex items-center justify-center w-8 transition-colors ${full ? 'text-textMuted/40 cursor-not-allowed' : open ? 'bg-ink/[0.1] text-textPrimary' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.06]'}`}
+        className={`shrink-0 inline-flex items-center justify-center transition-colors ${compact ? 'w-8' : 'self-center w-[26px] h-[26px] ml-1.5 rounded-md'} ${full ? 'text-textMuted/40 cursor-not-allowed' : open ? 'bg-ink/[0.1] text-textPrimary' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.06]'}`}
         data-ticker-tab-add
       >
-        <Plus className="w-3.5 h-3.5" />
+        <Plus className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
       </button>
+      {end && (
+        <div className="ml-auto shrink-0 self-center inline-flex items-center gap-1.5 pl-3 pr-3" data-ticker-tab-end>
+          {end}
+        </div>
+      )}
       {menu}
     </div>
   );

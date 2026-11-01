@@ -4,52 +4,75 @@ import { useSyncExternalStore } from 'react';
 ==================================================
   SLAYER TERMINAL - THE DESK'S DOCK, OPEN OR SHUT (pages/terrain/dockStore.ts)
 
-  Which dock room stands beside Terrain's charts, and how wide (ported from the partner tree's data/terrainDock.ts,
-  2026-10-31). Two rooms, the two the desk had no way to see: EARNINGS (the week's reports, the fortnight feed every
-  earnings page reads) and EVENTS (the economic calendar, the reports and the name's expiries on one clock). The
-  strike rail already carries Building, Prints, Regime and Surface, and the book's matrix and calendar live there too —
-  the dock does not repeat them.
+  Which room stands beside Terrain's charts, and how wide each room stands — the partner tree's data/terrainDock.ts,
+  ported whole as a mechanism (2026-11-01, the owner: "the panels and all of that stuff is way better than ours") and
+  filled with OUR rooms. openmarket docks its side panels in one column at the desk's right edge, under the ticker bar,
+  one room at a time — 316px for its trade rail, ~560 for its Earnings and Events. The Panels door on the ticker bar
+  opens a room; the same row, the room's pin on the bar, or the × shuts it. Every room reads the ACTIVE pane's name:
 
-  SHUT BY REST: the owner's word on three panes was "crowded", so nothing opens on its own — the door on the desk bar
-  opens a room, the × or the door again shuts it. The width is the reader's by the grip, narrow by rest (380, against
-  the partner tree's 560). Kept on this machine; storage off is never fatal.
+    ladder   · MATRIX   — the strike rail's Matrix view: put · call · net by strike (the book's field, every leg)
+    heat     · CALENDAR — the strike rail's Calendar view: the book across its expiries, the heat in the cells
+    surface  · SURFACE  — dealer gamma across spot, the skew, the charm/vanna drift (the rail's lenses)
+    regime   · REGIME   — the VIX term structure, the gauges and the two ratios
+    building · BUILDING — Pinpoint's overnight open-interest ledger
+    prints   · PRINTS   — the session's option and stock prints
+    news     · NEWS     — the wire on the name, and its next report
+    earnings · EARNINGS — the week's reports;  events · EVENTS — what lands when
+
+  The strike rail beside each chart stays (R, and its Panels row); the dock is the room for a bigger read.
+  Shut by rest. Kept on this machine; storage off is never fatal.
 ==================================================
 */
 
-export type DockRoom = 'earnings' | 'events';
-export const DOCK_ROOMS: readonly DockRoom[] = ['earnings', 'events'];
+export type DockRoom = 'ladder' | 'heat' | 'surface' | 'regime' | 'building' | 'prints' | 'news' | 'earnings' | 'events';
+export const DOCK_ROOMS: readonly DockRoom[] = ['ladder', 'heat', 'surface', 'regime', 'building', 'prints', 'news', 'earnings', 'events'];
 
-export const DOCK_W_BY_REST = 380;
-export const DOCK_MIN_W = 340;
-export const DOCK_MAX_W = 640;
+/** Measured on openmarket (the partner tree's numbers): the trade rail 316, the Earnings and Events panels ~560. The
+    book's matrix and calendar read better a little wider, so they open at 380. */
+export const DOCK_WIDTH_BY_REST: Record<DockRoom, number> = {
+  ladder: 380,
+  heat: 380,
+  surface: 380,
+  regime: 340,
+  building: 340,
+  prints: 340,
+  news: 316,
+  earnings: 560,
+  events: 560,
+};
+export const DOCK_MIN_W = 316;
+export const DOCK_MAX_W = 820;
 
 const KEY = 'slayer_terrain_dock_v1';
-const W_KEY = 'slayer_terrain_dock_w_v1';
+const W_KEY = 'slayer_terrain_dock_widths_v1';
 
-const isRoom = (v: unknown): v is DockRoom => typeof v === 'string' && (DOCK_ROOMS as readonly string[]).includes(v);
-export const clampDockW = (px: number): number => (Number.isFinite(px) ? Math.min(DOCK_MAX_W, Math.max(DOCK_MIN_W, Math.round(px))) : DOCK_W_BY_REST);
+export const isDockRoom = (v: unknown): v is DockRoom => typeof v === 'string' && (DOCK_ROOMS as readonly string[]).includes(v);
+export const clampDockW = (px: number): number => (Number.isFinite(px) ? Math.min(DOCK_MAX_W, Math.max(DOCK_MIN_W, Math.round(px))) : DOCK_MIN_W);
 
 const read = (): DockRoom | null => {
   try {
     const raw = localStorage.getItem(KEY);
     const got = raw ? (JSON.parse(raw) as unknown) : null;
-    return isRoom(got) ? got : null;
+    return isDockRoom(got) ? got : null;
   } catch {
     return null;
   }
 };
-const readW = (): number => {
+const readWidths = (): Partial<Record<DockRoom, number>> => {
   try {
     const raw = localStorage.getItem(W_KEY);
-    const n = raw ? Number(raw) : NaN;
-    return Number.isFinite(n) ? clampDockW(n) : DOCK_W_BY_REST;
+    const got = raw ? (JSON.parse(raw) as unknown) : null;
+    if (!got || typeof got !== 'object') return {};
+    const out: Partial<Record<DockRoom, number>> = {};
+    for (const [k, v] of Object.entries(got as Record<string, unknown>)) if (isDockRoom(k) && typeof v === 'number' && Number.isFinite(v)) out[k] = clampDockW(v);
+    return out;
   } catch {
-    return DOCK_W_BY_REST;
+    return {};
   }
 };
 
 let current: DockRoom | null = typeof window === 'undefined' ? null : read();
-let width: number = typeof window === 'undefined' ? DOCK_W_BY_REST : readW();
+let widths: Partial<Record<DockRoom, number>> = typeof window === 'undefined' ? {} : readWidths();
 const subs = new Set<() => void>();
 const notify = () => subs.forEach(f => f());
 const subscribe = (f: () => void) => {
@@ -60,7 +83,6 @@ const subscribe = (f: () => void) => {
 };
 
 export const dockRoom = (): DockRoom | null => current;
-export const dockWidth = (): number => width;
 
 export function setDock(room: DockRoom | null): void {
   if (current === room) return;
@@ -72,16 +94,18 @@ export function setDock(room: DockRoom | null): void {
   }
   notify();
 }
-/** The room's door pressed: open it, or shut the dock when it is the one up */
+/** The room's row pressed: open it, or shut the dock when it is the one up */
 export const toggleDock = (room: DockRoom): void => setDock(current === room ? null : room);
 export const closeDock = (): void => setDock(null);
 
-export function setDockWidth(px: number): void {
+/** How wide the room stands — its own remembered width, else openmarket's for its kind */
+export const dockWidth = (room: DockRoom): number => clampDockW(widths[room] ?? DOCK_WIDTH_BY_REST[room]);
+export function setDockWidth(room: DockRoom, px: number): void {
   const w = clampDockW(px);
-  if (w === width) return;
-  width = w;
+  if (widths[room] === w) return;
+  widths = { ...widths, [room]: w };
   try {
-    localStorage.setItem(W_KEY, String(w));
+    localStorage.setItem(W_KEY, JSON.stringify(widths));
   } catch {
     /* storage off */
   }
@@ -89,4 +113,9 @@ export function setDockWidth(px: number): void {
 }
 
 export const useDock = (): DockRoom | null => useSyncExternalStore(subscribe, dockRoom, () => null);
-export const useDockWidth = (): number => useSyncExternalStore(subscribe, dockWidth, () => DOCK_W_BY_REST);
+export const useDockWidth = (room: DockRoom): number =>
+  useSyncExternalStore(
+    subscribe,
+    () => dockWidth(room),
+    () => DOCK_WIDTH_BY_REST[room]
+  );

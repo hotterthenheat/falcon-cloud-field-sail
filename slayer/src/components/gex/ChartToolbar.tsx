@@ -31,7 +31,14 @@ import {
   Palette,
   Play,
   Star,
+  Pin,
+  PanelsTopLeft,
+  CodeXml,
 } from 'lucide-react';
+import SlowTip from '../ui/SlowTip';
+import { useHoverOpen } from '../ui/useHoverOpen';
+import { toggleTfFavourite, useTfFavourites } from '../../data/tfFavourites';
+import { toggleBarPin, useBarPins } from '../../data/barPins';
 import { TIMEFRAMES, frameServed, type Timeframe } from '../../data/timeframe';
 import { TREND_GLYPH, type TrendState } from '../../data/confluence';
 import {
@@ -216,31 +223,28 @@ interface ChartToolbarProps {
       or opens it in a new tab */
   onSnapshot?: () => Promise<HTMLCanvasElement | null> | HTMLCanvasElement | null;
   snapshotName?: string;
+  /** THE TICKER BAR'S TALL FORM (ported from the partner tree, 2026-11-01 — openmarket's row, measured there): Terrain's
+      44px bar under the tab strip carries the active pane's controls — the timeframes as a tray with its favourites and
+      chevron menu, 28px triggers, the right cluster as 32px squares (the word on the slow hover, ui/SlowTip), the
+      pinned panels and the PANELS door; Replay and fullscreen leave the row (Replay is a Panels row, the pane's corner
+      chip is the fullscreen door). The row never wraps. */
+  tall?: boolean;
+  /** What stands right after the left cluster on the tall bar — Terrain's layout door, openmarket's order */
+  afterLeft?: ReactNode;
+  /** THE PANELS (the tall bar only): every side panel and tool the host offers, in sections — the Panels door lists them
+      with a pin beside each, and the pinned ones stand on the bar (data/barPins.ts) */
+  panels?: BarPanel[];
+  /** The fullscreen takeover's row: the timeframe tray and the Indicators door, nothing else */
+  takeover?: boolean;
 }
 
 const TIMEFRAME_OPTIONS = TIMEFRAMES.map(t => ({ value: t.value, label: t.label }));
 
-const PIN_KEY = 'slayer-tf-pins';
-const DEFAULT_PINS: Timeframe[] = ['1m', '5m', '15m', '1h', '1D'];
 const INTERVAL_GROUPS = [
   { id: 'minute' as const, label: 'Minutes' },
   { id: 'hour' as const, label: 'Hours' },
   { id: 'day' as const, label: 'Days' },
 ];
-
-function readPins(): Timeframe[] {
-  try {
-    const raw = localStorage.getItem(PIN_KEY);
-    if (!raw) return DEFAULT_PINS;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return DEFAULT_PINS;
-    const known = new Set(TIMEFRAMES.filter(t => t.menu && frameServed(t.value)).map(t => t.value));
-    const pins = parsed.filter((v): v is Timeframe => typeof v === 'string' && known.has(v as Timeframe));
-    return pins.length ? pins : DEFAULT_PINS;
-  } catch {
-    return DEFAULT_PINS;
-  }
-}
 
 /** The interval list: minutes, hours, then date frames. A star pins a row onto the strip. */
 function IntervalMenu({
@@ -252,7 +256,7 @@ function IntervalMenu({
 }: {
   value: Timeframe;
   onChange: (tf: Timeframe) => void;
-  pins: Timeframe[];
+  pins: readonly Timeframe[];
   onPin: (tf: Timeframe) => void;
   trend?: TrendByTf;
 }) {
@@ -385,6 +389,299 @@ export const TimeframeStrip = ({
   );
 };
 
+/* ---- THE TIMEFRAME TRAY (the tall bar, ported from the partner tree 2026-11-01) --------------------------------
+   openmarket's, measured there: 32px, padding 2, a 1px gap, radius 8, a faint ground; the rungs 28px at 12px/500 with
+   10px sides, radius 6; THE ONE IN HAND IS ITS INK ALONE on the dark tray (a 10% pill on paper, index.css); the chevron
+   22 wide, opening ON THE HOVER (ui/useHoverOpen) and on a press. The menu: 168 wide, sections by unit under 10px bold
+   heads that fold on a press, 30px rows with the whole word, the one in hand inverted on the dark menu, a star at the
+   row's end on its hover — silver when starred. A starred row lands on the tray with the menu still open. */
+const UNIT_OF: Record<string, string> = { minute: 'Minutes', hour: 'Hours', day: 'Days' };
+const unitOf = (tf: Timeframe): string => UNIT_OF[TIMEFRAMES.find(t => t.value === tf)?.group ?? ''] ?? 'Seconds';
+const wordOf = (tf: Timeframe): string => TIMEFRAMES.find(t => t.value === tf)?.menu ?? (tf === '15s' ? '15 seconds' : tf);
+/* a folded unit stays folded while the app runs */
+const foldedUnits = new Set<string>();
+const TF_MENU_W = 168;
+
+const TimeframeRows = ({ value, options, trend, onPick }: { value: Timeframe; options: { value: Timeframe; label: string }[]; trend?: TrendByTf; onPick: (tf: Timeframe) => void }) => {
+  const favourites = useTfFavourites();
+  const [, bump] = useState(0);
+  const units: string[] = [];
+  for (const o of options) if (!units.includes(unitOf(o.value))) units.push(unitOf(o.value));
+  return (
+    <div role="group" aria-label="Timeframe" data-tf-rows>
+      {units.map((unit, ui) => {
+        const folded = foldedUnits.has(unit);
+        return (
+          <div key={unit} className={ui > 0 ? 'mt-1.5 pt-1.5 border-t border-borderSubtle/70' : ''} data-tf-section={unit} data-folded={folded || undefined}>
+            <button
+              type="button"
+              onClick={() => {
+                if (folded) foldedUnits.delete(unit);
+                else foldedUnits.add(unit);
+                bump(n => n + 1);
+              }}
+              aria-expanded={!folded}
+              className="flex items-center justify-between w-full h-6 px-2.5 rounded-md font-mono text-t10 font-bold uppercase tracking-[0.06em] text-textMuted hover:text-textSecondary transition-colors duration-100"
+              data-tf-section-head
+            >
+              <span>{unit}</span>
+              <ChevronDown className={`w-3 h-3 transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] ${folded ? '' : 'rotate-180'}`} aria-hidden />
+            </button>
+            {!folded &&
+              options
+                .filter(o => unitOf(o.value) === unit)
+                .map(opt => {
+                  const active = opt.value === value;
+                  const fav = favourites.includes(opt.value);
+                  return (
+                    <div
+                      key={opt.value}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={active}
+                      onClick={() => onPick(opt.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onPick(opt.value);
+                        }
+                      }}
+                      className={`tf-row group flex items-center justify-between gap-3 h-[30px] px-2.5 rounded-lg cursor-pointer text-t13 transition-colors duration-100 ${
+                        active ? 'tf-row-on font-medium' : 'text-textSecondary'
+                      }`}
+                      data-tf-row={opt.value}
+                    >
+                      <span title={trendTitle(opt.label, trend && opt.value in trend ? trend[opt.value] ?? null : undefined)}>{wordOf(opt.value)}</span>
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          toggleTfFavourite(opt.value);
+                        }}
+                        aria-pressed={fav}
+                        aria-label={fav ? `Take ${opt.label} off the strip` : `Keep ${opt.label} on the strip`}
+                        title={fav ? 'On the strip — press to take it off' : 'Keep it on the strip'}
+                        className={`shrink-0 inline-flex items-center justify-center w-[18px] h-4 rounded transition-[color,opacity,background-color] duration-150 hover:bg-ink/[0.06] ${
+                          fav ? 'opacity-100 text-silver' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-textMuted hover:text-textPrimary'
+                        }`}
+                        data-tf-star={opt.value}
+                        data-on={fav || undefined}
+                      >
+                        <Star className="w-3 h-3" strokeWidth={1.5} fill={fav ? 'currentColor' : 'none'} />
+                      </button>
+                    </div>
+                  );
+                })}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const TimeframeTray = ({ value, onChange, trend, bounds }: { value: Timeframe; onChange: (tf: Timeframe) => void; trend?: TrendByTf; bounds?: RefObject<HTMLElement | null> }) => {
+  const options = TIMEFRAME_OPTIONS.filter(o => frameServed(o.value));
+  const favourites = useTfFavourites();
+  const pinned = options.filter(o => favourites.includes(o.value) || o.value === value);
+  const [more, setMore] = useState(false);
+  const { anchorRef, placed, menuRef } = useAnchoredMenu<HTMLButtonElement>(more, 'bottom', TF_MENU_W, 'start', bounds);
+  const hover = useHoverOpen(true, setMore, menuRef);
+  useEffect(() => {
+    if (!more) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (anchorRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setMore(false);
+    };
+    /* capture: the innermost thing open takes Escape — the desk behind would close its pane on the same key */
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setMore(false);
+    };
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      window.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [more, anchorRef, menuRef]);
+  return (
+    <div role="group" aria-label="Timeframe" className="shrink-0 inline-flex items-center h-8 p-0.5 gap-px rounded-lg bg-ink/[0.04]" data-tf-strip={pinned.length} data-tf-tall="">
+      {pinned.map(opt => {
+        const active = opt.value === value;
+        const state = trend && opt.value in trend ? trend[opt.value] ?? null : undefined;
+        return (
+          <button
+            key={opt.value}
+            aria-pressed={active}
+            onClick={() => onChange(opt.value)}
+            title={trendTitle(opt.label, state)}
+            className={`relative inline-flex items-center h-7 px-2.5 rounded-md font-mono text-t12 font-medium transition-colors duration-200 ${active ? 'text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}
+            data-tf={opt.value}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+      <button
+        ref={anchorRef}
+        type="button"
+        onClick={() => setMore(m => !m)}
+        {...hover.trigger}
+        aria-haspopup="menu"
+        aria-expanded={more}
+        aria-label="Every timeframe — star the ones to keep on the strip"
+        className={`inline-flex items-center justify-center w-[22px] h-7 rounded-md transition-colors duration-200 ${more ? 'text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}
+        data-tf-more
+      >
+        <ChevronDown className={`w-3 h-3 transition-transform ${more ? 'rotate-180' : ''}`} />
+      </button>
+      {more &&
+        placed &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label="Every timeframe"
+            style={{ position: 'fixed', ...placed.box, width: TF_MENU_W }}
+            {...hover.menu}
+            className="tf-menu z-[120] p-1.5 rounded-xl border border-borderMuted shadow-xl shadow-black/25 overflow-y-auto overscroll-contain animate-fade-in"
+            data-tf-menu
+            data-toolbar-menu=""
+          >
+            <TimeframeRows
+              value={value}
+              options={options}
+              trend={trend}
+              onPick={tf => {
+                onChange(tf);
+                setMore(false);
+              }}
+            />
+          </div>,
+          document.body
+        )}
+    </div>
+  );
+};
+
+/* ---- THE PANELS MENU (the tall bar, ported from the partner tree 2026-11-01) -----------------------------------
+   openmarket's Panels door measured there: a card in two columns, sections under 10px bold uppercase heads, 32px rows —
+   a 24px glyph box with a 14px icon, the name at 12.5px medium, the keys as 20px capsules, a 24px pin at the end
+   (filled when set) — the row in use on the lifted ground, a blocked row dimmed with its reason. The pin puts the row
+   on the bar as a 32px icon button; the row itself opens or closes the room. Ours lists OUR rooms. */
+export type BarPanelSection = 'tools' | 'book' | 'tape' | 'news' | 'lists' | 'yours';
+export interface BarPanel {
+  id: string;
+  label: string;
+  /** a lucide icon with no size class — the bar and the menu size it */
+  icon: ReactNode;
+  section: BarPanelSection;
+  /** the room is up (replaying, the rail shown, the drawer open…) */
+  on?: boolean;
+  /** the hotkey, as its key caps */
+  keys?: string[];
+  press: () => void;
+  /** the press leaves the bar (a drawer, a dialog, the takeover): the menu closes with it */
+  closes?: boolean;
+  /** why it cannot be pressed now — printed on the row, the row dimmed */
+  blocked?: string;
+}
+const PANEL_SECTIONS: Record<BarPanelSection, string> = { tools: 'Tools', book: 'The book', tape: 'The tape', news: 'Calendars', lists: 'Lists', yours: 'Yours' };
+/* three blocks of two columns — a section with no rows draws nothing, so a host with fewer rooms shows fewer heads */
+const PANEL_BLOCKS: BarPanelSection[][] = [
+  ['tools', 'book'],
+  ['tape', 'news'],
+  ['lists', 'yours'],
+];
+
+const BarPanelsMenu = ({ panels, pins, close }: { panels: BarPanel[]; pins: readonly string[]; close: () => void }) => {
+  const column = (section: BarPanelSection) => {
+    const rows = panels.filter(p => p.section === section);
+    if (rows.length === 0) return <div className="min-w-0" key={section} />;
+    return (
+      <div className="flex flex-col min-w-0" key={section} data-panels-section={section}>
+        <div className="px-2.5 pt-2 pb-1 text-t10 font-bold uppercase tracking-[0.06em] text-textMuted select-none truncate">{PANEL_SECTIONS[section]}</div>
+        {rows.map(p => {
+          const pinned = pins.includes(p.id);
+          return (
+            <div
+              key={p.id}
+              className={`flex items-center h-8 pl-1.5 pr-1 rounded-md transition-colors ${
+                p.blocked ? 'text-textSecondary' : p.on ? 'bg-ink/[0.08] text-textPrimary' : 'text-textSecondary hover:bg-ink/[0.06] hover:text-textPrimary'
+              }`}
+              data-panel-row={p.id}
+              data-on={p.on ? '' : undefined}
+            >
+              <button
+                type="button"
+                onClick={
+                  p.blocked
+                    ? undefined
+                    : () => {
+                        p.press();
+                        if (p.closes) close();
+                      }
+                }
+                aria-pressed={!!p.on}
+                aria-disabled={p.blocked ? true : undefined}
+                className={`flex-1 min-w-0 flex items-center gap-2 h-full text-left ${p.blocked ? 'cursor-default' : ''}`}
+              >
+                <span className={`w-6 h-6 inline-flex items-center justify-center shrink-0 [&_svg]:w-3.5 [&_svg]:h-3.5 ${p.blocked ? 'opacity-45' : ''}`}>{p.icon}</span>
+                <span className={`flex-1 min-w-0 truncate text-t125 font-medium ${p.blocked ? 'opacity-45' : ''}`}>{p.label}</span>
+                {p.blocked ? (
+                  <span className="shrink-0 text-t105 font-medium text-textMuted whitespace-nowrap underline decoration-dotted decoration-ink/30 underline-offset-[3px]">{p.blocked}</span>
+                ) : (
+                  p.keys && (
+                    <span className="inline-flex items-center gap-[3px] shrink-0">
+                      {p.keys.map(k => (
+                        <kbd key={k} className="inline-flex items-center justify-center min-w-[20px] h-5 px-0.5 rounded border border-ink/[0.12] bg-ink/[0.05] text-t105 font-medium leading-none text-textPrimary">
+                          {k}
+                        </kbd>
+                      ))}
+                    </span>
+                  )
+                )}
+              </button>
+              <SlowTip label={pinned ? 'Unpin from the bar' : 'Pin to the bar'}>
+                <button
+                  type="button"
+                  onClick={() => toggleBarPin(p.id)}
+                  aria-pressed={pinned}
+                  aria-label={pinned ? `Unpin ${p.label} from the bar` : `Pin ${p.label} to the bar`}
+                  className={`ml-0.5 w-6 h-6 inline-flex items-center justify-center rounded-[5px] shrink-0 transition-colors ${
+                    pinned ? 'text-textPrimary [&_svg]:fill-current hover:bg-ink/[0.08]' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.08]'
+                  }`}
+                  data-panel-pin={p.id}
+                  data-pinned={pinned ? '' : undefined}
+                >
+                  <Pin className="w-3.5 h-3.5" />
+                </button>
+              </SlowTip>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+  return (
+    <div className="p-1.5 w-[508px] max-w-[calc(100vw-24px)] flex flex-col" data-panels-menu>
+      {PANEL_BLOCKS.filter(block => block.some(section => panels.some(p => p.section === section))).map((block, i) => (
+        <div key={block.join('+')} className={`grid grid-cols-2 gap-x-2 ${i > 0 ? 'mt-1.5 pt-0.5 border-t border-ink/[0.07]' : ''}`}>
+          {block.map(column)}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/** THE TRIGGER'S CLASSES, two sizes: the hover chip's 22px, and the ticker bar's 28 (ChartToolbar `tall`) */
+const TRIGGER = (tall: boolean) =>
+  tall
+    ? 'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md font-mono text-t11 uppercase tracking-wider whitespace-nowrap transition-colors'
+    : 'hit-24 inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider transition-colors';
+
 /* TradingView-style glyphs beside each chart-style row (Noah, 2026-08-23) —
    hand-drawn 14px marks, all in the house white via currentColor. */
 const STYLE_GLYPHS: Record<ChartStyle, ReactNode> = {
@@ -483,12 +780,29 @@ const Dropdown = ({
   menuSide = 'bottom',
   title,
   bounds,
+  tall = false,
+  square = false,
+  triggerClass,
+  caret = true,
+  badge,
+  hoverOpen,
   children,
 }: {
   label: string;
   icon?: ReactNode;
   open: boolean;
   onToggle: () => void;
+  /** the pointer resting on the trigger opens it, leaving trigger and menu closes it (ui/useHoverOpen) — the bar's style chip */
+  hoverOpen?: (open: boolean) => void;
+  /** the ticker bar's 28px trigger (see ChartToolbar `tall`) */
+  tall?: boolean;
+  /** the bar's right cluster: a 32px square, the icon alone, the word on the slow hover */
+  square?: boolean;
+  /** a trigger in its own dress (the bar's Panels word) */
+  triggerClass?: string;
+  caret?: boolean;
+  /** a count in the square's corner */
+  badge?: number;
   menuSide?: MenuSide;
   /** Hover name — carries the words when a compact trigger drops its label. */
   title?: string;
@@ -501,31 +815,42 @@ const Dropdown = ({
      copy that had it. */
   const { anchorRef, placed, menuRef } = useAnchoredMenu<HTMLButtonElement>(open, menuSide, undefined, 'end', bounds);
 
+  const hover = useHoverOpen(!!hoverOpen, v => hoverOpen?.(v), menuRef);
   const Caret = MENU_SIDE_CARET[placed?.side ?? menuSide];
-  return (
-  <div className="relative">
+  /* ON THE BAR THE WORD COMES ON THE SLOW HOVER (ui/SlowTip), not the browser's title — except on a chip whose hover
+     opens its menu: the menu is the answer (the name stays as the aria-label) */
+  const slow = tall && !!title && !hoverOpen;
+  const trigger = (
     <button
       ref={anchorRef}
       onClick={onToggle}
-      title={title}
-      /* A trigger that drops a menu has to say so, and say whether it is
-         already open — otherwise the only cue is the caret, which is a
-         rotation nobody can hear. In `compact` and `vertical` the label is
-         dropped for the icon, so `title` becomes the accessible name too;
-         without this those triggers announce as an empty button. */
+      {...hover.trigger}
+      title={slow || hoverOpen ? undefined : title}
       aria-haspopup="menu"
       aria-expanded={open}
-      aria-label={label ? undefined : title}
-      className={`hit-24 inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider transition-colors ${
-        open
-          ? 'bg-ink/[0.07] text-textPrimary'
-          : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.03]'
-      }`}
+      aria-label={label && !square ? undefined : title}
+      className={
+        square
+          ? `relative inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors [&_svg]:w-[13px] [&_svg]:h-[13px] ${
+              open ? 'bg-ink/[0.07] text-textPrimary' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.05]'
+            }`
+          : `${triggerClass ?? TRIGGER(tall)} ${open ? 'bg-ink/[0.07] text-textPrimary' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.03]'}`
+      }
+      data-square={square ? '' : undefined}
     >
       {icon}
-      {label}
-      <Caret className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+      {!square && label}
+      {square && badge ? (
+        <span className="absolute top-[1px] right-[1px] min-w-[14px] h-[14px] px-[3px] rounded-[7px] bg-textPrimary text-panel text-t9 font-extrabold leading-[14px] text-center tnum pointer-events-none" data-trigger-badge>
+          {badge}
+        </span>
+      ) : null}
+      {caret && !square && <Caret className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />}
     </button>
+  );
+  return (
+  <div className="relative">
+    {slow ? <SlowTip label={title as string}>{trigger}</SlowTip> : trigger}
     {open && placed && createPortal(
       /*
         THE MENU IS A PORTAL, and that is a correctness fix rather than a
@@ -553,6 +878,7 @@ const Dropdown = ({
       <div
         ref={menuRef}
         data-toolbar-menu=""
+        {...hover.menu}
         style={{
           position: 'fixed',
           left: placed.box.left,
@@ -619,6 +945,10 @@ const ChartToolbar = ({
   rightExtras,
   onSnapshot,
   snapshotName,
+  tall = false,
+  afterLeft,
+  panels,
+  takeover = false,
 }: ChartToolbarProps) => {
   const storeThemeKey = useCandleThemeKey();
   const themeKey = themeKeyProp ?? storeThemeKey;
@@ -626,18 +956,11 @@ const ChartToolbar = ({
   const deskPrefs = useDeskPrefs();
   const { activeTicker } = useMarketData();
   const [openMenu, setOpenMenu] = useState<'snapshot' | 
-    'overlays' | 'candles' | 'style' | 'indicators' | 'alerts' | 'timeframe' | null
+    'overlays' | 'candles' | 'style' | 'indicators' | 'alerts' | 'timeframe' | 'panels' | null
   >(null);
-  const [pins, setPins] = useState<Timeframe[]>(DEFAULT_PINS);
-  useEffect(() => { setPins(readPins()); }, []);
-  const togglePin = (tf: Timeframe) => {
-    if (!frameServed(tf)) return;
-    setPins(prev => {
-      const next = prev.includes(tf) ? prev.filter(v => v !== tf) : [...prev, tf];
-      try { localStorage.setItem(PIN_KEY, JSON.stringify(next)); } catch { /* the strip still updates */ }
-      return next;
-    });
-  };
+  /* the strip's pins are the favourites store's (data/tfFavourites.ts) — one set for every strip, the tall tray's too */
+  const pins = useTfFavourites();
+  const togglePin = toggleTfFavourite;
   const fullIntervals = !timeframes;
   const stripOnly = fullIntervals
     ? TIMEFRAMES.map(t => t.value).filter(v => frameServed(v) && ((v === '15s' ? v === timeframe : pins.includes(v)) || v === timeframe))
@@ -742,6 +1065,82 @@ const ChartToolbar = ({
   const overlayItems = overlayKeys ? OVERLAY_ITEMS.filter(i => overlayKeys.includes(i.key)) : OVERLAY_ITEMS;
   const activeOverlayCount = overlayItems.filter(i => overlays[i.key]).length;
 
+  /* THE BAR'S INDICATORS DOOR (the partner tree's, openmarket's "Indicators | 2" measured: 32 tall, 11px semibold, the
+     icon 12, a 13px hairline at a quarter, then the count) — the same library, leading the right cluster */
+  const indicatorsBar =
+    onIndicators && indicators && paneId ? (
+      <SlowTip label="Indicators and scripts">
+        <button
+          type="button"
+          onClick={() => setLibraryOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={libraryOpen}
+          className={`inline-flex items-center gap-[7px] h-8 px-2.5 rounded-lg text-t11 font-semibold whitespace-nowrap transition-colors ${
+            libraryOpen ? 'bg-ink/[0.07] text-textPrimary' : onPaneCount > 0 ? 'text-textPrimary hover:bg-ink/[0.05]' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.05]'
+          }`}
+          data-scripts-door
+        >
+          <Activity className="w-3 h-3 text-bear" />
+          <span className="leading-none">Indicators</span>
+          {onPaneCount > 0 && (
+            <>
+              <span className="w-px h-[13px] bg-current opacity-25 shrink-0" aria-hidden />
+              <span className="tnum leading-none" data-scripts-count>{onPaneCount}</span>
+            </>
+          )}
+        </button>
+      </SlowTip>
+    ) : null;
+
+  /* THE PANELS ON THE BAR: the host's rooms plus this toolbar's own Scripts row; the pinned ids come from the store */
+  const barPins = useBarPins();
+  const barPanels: BarPanel[] = tall
+    ? [
+        ...(panels ?? []),
+        ...(onIndicators && indicators && paneId
+          ? [{ id: 'scripts', section: 'yours' as const, label: 'Scripts', icon: <CodeXml />, on: libraryOpen, press: () => setLibraryOpen(true), closes: true }]
+          : []),
+      ]
+    : [];
+  const panelById = new Map(barPanels.map(p => [p.id, p]));
+
+  /* the scripts library, mounted once whichever door opens it */
+  const library = onIndicators && indicators && paneId ? (
+    libraryAsked && (
+              <Suspense fallback={null}>
+              <ScriptLibrary
+                open={libraryOpen}
+                onClose={() => setLibraryOpen(false)}
+                paneId={paneId}
+                indicators={indicators}
+                onIndicators={onIndicators}
+                fullscreen={fullscreen}
+                overlays={overlays}
+                onOverlays={onOverlays}
+                coneHorizon={coneHorizon}
+                onConeHorizon={onConeHorizon}
+                trailGreek={trailGreek}
+                onTrailGreek={onTrailGreek}
+                sessionOr={sessionOr}
+                onSessionOr={onSessionOr}
+                barClock={barClock}
+              />
+              </Suspense>
+              )
+  ) : null;
+
+  /* THE TAKEOVER'S ROW (the partner tree's c6d73e5, openmarket's full screen: "everything is gone except for ticker,
+     price, indicator, the exit full screen button and the timeframe change"): the tray and the Indicators door alone */
+  if (takeover)
+    return (
+      <div ref={rootRef} className="flex items-center gap-1 flex-nowrap w-full" data-toolbar-takeover>
+        <TimeframeTray value={timeframe} onChange={onTimeframe} trend={trend} bounds={menuBounds} />
+        <span className="flex-1 min-w-0" data-toolbar-gap="" aria-hidden />
+        {indicatorsBar}
+        {library}
+      </div>
+    );
+
   return (
     <div
       ref={rootRef}
@@ -755,10 +1154,14 @@ const ChartToolbar = ({
                across" — the host's wrapper now grows to the row, so there is. */
             /* ON A TOUCH SCREEN the rows stand 48 apart, centre to centre, so each control's finger box (`.hit-24`,
                44 × 44 there) is its own and not the row's below (the last-targets pass, 2026-10-30) */
-            `items-center gap-2 [@media(pointer:coarse)]:gap-y-6 flex-wrap ${spread ? 'w-full' : ''}`
+            tall
+              ? `items-center gap-1 flex-nowrap ${spread ? 'w-full' : ''}`
+              : `items-center gap-2 [@media(pointer:coarse)]:gap-y-6 flex-wrap ${spread ? 'w-full' : ''}`
       }`}
     >
-      {compact && !keepIntervals ? (
+      {tall ? (
+        <TimeframeTray value={timeframe} onChange={onTimeframe} trend={trend} bounds={menuBounds} />
+      ) : compact && !keepIntervals ? (
         <Dropdown
           label={TIMEFRAME_OPTIONS.find(o => o.value === timeframe)?.label ?? String(timeframe)}
           open={openMenu === 'timeframe'}
@@ -842,15 +1245,25 @@ const ChartToolbar = ({
           timeframes on the left, the lesser important stuff on the right"): beside the timeframes — Candles (the tape's
           SHAPE and its axis), Indicators, Replay. Alerts leads the right cluster with the standing controls. */}
       {(onToggleReplay || onIndicators || onChartStyle || onPriceScale) && (
-        <span className={`flex gap-1 ${vertical ? 'flex-col items-stretch' : 'flex-wrap items-center [@media(pointer:coarse)]:gap-x-[18px] [@media(pointer:coarse)]:gap-y-6'}`} data-toolbar-left>
+        <span className={`flex gap-1 ${vertical ? 'flex-col items-stretch' : tall ? 'items-center ml-2' : 'flex-wrap items-center [@media(pointer:coarse)]:gap-x-[18px] [@media(pointer:coarse)]:gap-y-6'}`} data-toolbar-left>
           {(onChartStyle || onPriceScale) && (
             <Dropdown
-              label={vertical || compact ? '' : 'Candles'}
-              icon={<CandlestickChart className="w-3 h-3 text-textPrimary" />}
+              label={vertical || compact || tall ? '' : 'Candles'}
+              /* on the tall bar the trigger wears the SHAPE IN USE (openmarket's trigger shows its chart type) */
+              icon={
+                tall ? (
+                  <span className="inline-flex text-textPrimary [&>svg]:w-[18px] [&>svg]:h-[13px]" aria-hidden>
+                    {STYLE_GLYPHS[chartStyle]}
+                  </span>
+                ) : (
+                  <CandlestickChart className="w-3 h-3 text-textPrimary" />
+                )
+              }
               title={onPriceScale ? 'Chart style & price scale' : 'Chart style'}
               open={openMenu === 'style'}
               onToggle={() => setOpenMenu(m => (m === 'style' ? null : 'style'))}
-              menuSide={menuSide} bounds={menuBounds}
+              hoverOpen={tall ? v => setOpenMenu(m => (v ? 'style' : m === 'style' ? null : m)) : undefined}
+              menuSide={menuSide} bounds={menuBounds} tall={tall}
             >
               {/*
                 TWO SECTIONS, ONE TRIGGER — the tape's SHAPE and the AXIS it
@@ -1071,6 +1484,7 @@ const ChartToolbar = ({
           )}
           {onIndicators && indicators && paneId && (
             <>
+              {!tall && (
               <button
                 onClick={() => setLibraryOpen(true)}
                 title="Indicators and scripts"
@@ -1091,27 +1505,8 @@ const ChartToolbar = ({
                   </span>
                 )}
               </button>
-              {libraryAsked && (
-              <Suspense fallback={null}>
-              <ScriptLibrary
-                open={libraryOpen}
-                onClose={() => setLibraryOpen(false)}
-                paneId={paneId}
-                indicators={indicators}
-                onIndicators={onIndicators}
-                fullscreen={fullscreen}
-                overlays={overlays}
-                onOverlays={onOverlays}
-                coneHorizon={coneHorizon}
-                onConeHorizon={onConeHorizon}
-                trailGreek={trailGreek}
-                onTrailGreek={onTrailGreek}
-                sessionOr={sessionOr}
-                onSessionOr={onSessionOr}
-                barClock={barClock}
-              />
-              </Suspense>
               )}
+              {library}
             </>
           )}
           {onIndicators && indicators && !paneId && (
@@ -1205,7 +1600,7 @@ const ChartToolbar = ({
           {/* REPLAY STAYS IN THE COMPACT FORM (Noah, 2026-10-17: "where is the replay on the small screen?"): it shed there
               once for a 399px column at 1280 with two panes; the compact budget now carries its icon (TOOLBAR_COMPACT_PX
               in Terrain), the word drops like every other control's. */}
-          {onToggleReplay && (
+          {onToggleReplay && !tall && (
             <button
               onClick={onToggleReplay}
               title={replay ? 'Exit replay — P' : 'Replay session history — P'}
@@ -1228,6 +1623,10 @@ const ChartToolbar = ({
           )}
         </span>
       )}
+
+      {tall && afterLeft && <span className="shrink-0 inline-flex items-center ml-1" data-toolbar-after-left>{afterLeft}</span>}
+      {/* on the tall bar the lesser chips a host brings (the link chip, Compare) stand on the left, after the style */}
+      {tall && rightExtras && <span className="shrink-0 inline-flex items-center gap-1 ml-1" data-toolbar-extras>{rightExtras}</span>}
 
       {/* Spread mode: the divider stops being a line and becomes the spacer
           that shoves every following control to the right edge — the
@@ -1254,7 +1653,8 @@ const ChartToolbar = ({
           (bars/line/area…), not the color theme; Alerts is live since
           2026-08-28 — armed watches, the fired log, and the bell's count. */}
       {(alertTicker || rightExtras) && (
-        <span className={`flex gap-1 ${vertical ? 'flex-col items-stretch' : 'flex-wrap items-center justify-end [@media(pointer:coarse)]:gap-x-[18px] [@media(pointer:coarse)]:gap-y-6'}`} data-toolbar-right>
+        <span className={`flex gap-1 ${vertical ? 'flex-col items-stretch' : tall ? 'items-center justify-end' : 'flex-wrap items-center justify-end [@media(pointer:coarse)]:gap-x-[18px] [@media(pointer:coarse)]:gap-y-6'}`} data-toolbar-right>
+          {tall && indicatorsBar}
           {alertTicker && (
             <Dropdown
               label={vertical || compact ? '' : 'Alerts'}
@@ -1267,17 +1667,17 @@ const ChartToolbar = ({
               title="Alerts"
               open={openMenu === 'alerts'}
               onToggle={() => setOpenMenu(m => (m === 'alerts' ? null : 'alerts'))}
-              menuSide={menuSide} bounds={menuBounds}
+              menuSide={menuSide} bounds={menuBounds} tall={tall} square={tall}
             >
               <AlertsMenu ticker={alertTicker} spot={alertSpot} tf={timeframe} />
             </Dropdown>
           )}
-          {rightExtras}
+          {!tall && rightExtras}
         </span>
       )}
 
       {/* A hairline between the quartet and the standing controls */}
-      {(alertTicker || rightExtras) && (
+      {(alertTicker || rightExtras) && !tall && (
         <span className={vertical ? 'h-px w-4 self-center bg-borderSubtle' : 'w-px h-4 bg-borderSubtle'} aria-hidden />
       )}
 
@@ -1290,7 +1690,7 @@ const ChartToolbar = ({
         title="Overlays"
         open={openMenu === 'overlays'}
         onToggle={() => setOpenMenu(m => (m === 'overlays' ? null : 'overlays'))}
-        menuSide={menuSide} bounds={menuBounds}
+        menuSide={menuSide} bounds={menuBounds} tall={tall} square={tall} badge={tall ? activeOverlayCount : undefined}
       >
         <div className="p-1.5 flex flex-col gap-0.5">
           {overlayItems.map(item => {
@@ -1507,7 +1907,7 @@ const ChartToolbar = ({
         icon={<Palette className="w-3 h-3 text-lilacline" />}
         open={openMenu === 'candles'}
         onToggle={() => setOpenMenu(m => (m === 'candles' ? null : 'candles'))}
-        menuSide={menuSide} bounds={menuBounds}
+        menuSide={menuSide} bounds={menuBounds} tall={tall} square={tall}
       >
         {/* THE CHART ITSELF IN EVERY THEME (Noah, 2026-09-11: "an actual high
             quality image of the layout on the chart like how we have it for
@@ -1606,7 +2006,7 @@ const ChartToolbar = ({
             title="Snapshot — a picture of this chart"
             open={openMenu === 'snapshot'}
             onToggle={() => setOpenMenu(m => (m === 'snapshot' ? null : 'snapshot'))}
-            menuSide={menuSide} bounds={menuBounds}
+            menuSide={menuSide} bounds={menuBounds} tall={tall} square={tall}
           >
             <div className="p-1.5 flex flex-col gap-0.5 min-w-[184px]" data-snapshot-menu>
               <div className="px-2 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">Snapshot · the tape as it stands</div>
@@ -1642,7 +2042,45 @@ const ChartToolbar = ({
         </span>
       )}
 
-      {onToggleFullscreen && (
+      {tall && barPanels.length > 0 && (
+        <>
+          {barPins.map(id => {
+            const p = panelById.get(id);
+            if (!p) return null;
+            return (
+              <SlowTip key={p.id} label={p.blocked ? `${p.label} — ${p.blocked}` : p.label}>
+                <button
+                  type="button"
+                  onClick={p.blocked ? undefined : () => p.press()}
+                  aria-pressed={!!p.on}
+                  aria-label={p.label}
+                  aria-disabled={p.blocked ? true : undefined}
+                  className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors [&_svg]:w-[13px] [&_svg]:h-[13px] ${
+                    p.blocked ? 'text-textMuted opacity-45 cursor-default' : p.on ? 'bg-ink/[0.07] text-textPrimary' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.05]'
+                  }`}
+                  data-bar-pin={p.id}
+                  data-on={p.on ? '' : undefined}
+                >
+                  {p.icon}
+                </button>
+              </SlowTip>
+            );
+          })}
+          <Dropdown
+            label="Panels"
+            icon={<PanelsTopLeft className="w-3 h-3" />}
+            caret={false}
+            triggerClass="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-t11 font-medium whitespace-nowrap transition-colors"
+            open={openMenu === 'panels'}
+            onToggle={() => setOpenMenu(m => (m === 'panels' ? null : 'panels'))}
+            menuSide={menuSide} bounds={menuBounds} tall
+          >
+            <BarPanelsMenu panels={barPanels} pins={barPins} close={() => setOpenMenu(null)} />
+          </Dropdown>
+        </>
+      )}
+
+      {onToggleFullscreen && !tall && (
         <button
           onClick={onToggleFullscreen}
           title={fullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen chart'}
@@ -1652,7 +2090,7 @@ const ChartToolbar = ({
         </button>
       )}
 
-      {onTotalFullscreen && (
+      {onTotalFullscreen && !tall && (
         <button
           onClick={onTotalFullscreen}
           title="Total fullscreen — the taskbar goes too; Esc brings it back"

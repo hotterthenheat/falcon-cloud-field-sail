@@ -1,6 +1,7 @@
-import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
-import { ChevronUp, Code2, Link2, Maximize2, Minimize2, SlidersHorizontal, X } from 'lucide-react';
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { Activity, CalendarCheck, CalendarDays, ChevronUp, Code2, Columns2, Eye, Grid3x3, Hammer, Inbox, Link2, Maximize2, Minimize2, Mountain, Newspaper, PanelsTopLeft, Receipt, Rewind, Rows4, Search, SlidersHorizontal, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { DOCK_ROOM, openEditor } from '../../data/editorDock';
 import { useDeskSession, sessionMeta, type DeskSession } from '../../data/deskSession';
@@ -51,7 +52,16 @@ import StrikeChart, {
   type PriceProjection,
   type PriceScale,
 } from '../../components/gex/StrikeChart';
-import ChartToolbar from '../../components/gex/ChartToolbar';
+import ChartToolbar, { type BarPanel } from '../../components/gex/ChartToolbar';
+import SlowTip from '../../components/ui/SlowTip';
+import Avatar from '../../components/ui/Avatar';
+import { useProfile } from '../../data/profile';
+import { openPalette } from '../../components/layout/paletteDoor';
+import { toggleWatchlist, useWatchlistOpen } from '../../data/nameWatch';
+import { toggleAlertsDrawer, useAlertsDrawer } from '../../data/alertsDrawer';
+import { setDeskPrefs, useDeskPrefs, type ClockZone } from '../../data/deskPrefs';
+import { useResolvedTheme } from '../../theme/theme';
+import DeskDoor from './DeskDoor';
 import { makeCell, useCell, type Cell } from '../../components/gex/hoverCell';
 import { useFadeClose } from '../../components/ui/useFadeClose';
 import CompareControl from '../../components/gex/CompareControl';
@@ -76,7 +86,7 @@ import { useIsBelowXl, useIsPhone, useIsPortraitDesk } from '../../components/ui
 import ScopeChip from '../../components/ui/ScopeChip';
 import { ChartSkeleton, Deferred } from '../../components/ui/Skeleton';
 import SpotPrice from '../../components/gex/SpotPrice';
-import { CANDLE_THEMES, chartGround, pageDefaultCandleKey, usePageDefaultCandleKey, type CandleThemeKey } from '../../components/gex/candleTheme';
+import { CANDLE_THEMES, chartGround, chartSurface, pageDefaultCandleKey, usePageDefaultCandleKey, type CandleThemeKey } from '../../components/gex/candleTheme';
 import { TIMEFRAMES, frameServed, type Timeframe } from '../../data/timeframe';
 import FrameMeter, { frameMeterOn } from '../../components/gex/FrameMeter';
 import { paneLevels } from './paneLevels';
@@ -93,7 +103,7 @@ import DesksDoor from './DesksDoor';
 import type { DeskPreset } from './deskPresets';
 import SessionsClock from './SessionsClock';
 import DeskDock from './DeskDock';
-import { closeDock, setDock, toggleDock, useDock } from './dockStore';
+import { closeDock, setDock, toggleDock, useDock, type DockRoom } from './dockStore';
 import { LAYOUT_COUNTS, MAX_PANES, SYNC_BY_REST, countOf, gridStyleOf, isShape, nextShapeOf, readSync, shapeByRest, type LayoutShape, type SyncCfg } from './layoutShapes';
 
 
@@ -682,6 +692,15 @@ interface PaneProps {
   /** Expanded: the floating desk bar's height. The pane keeps that much (and a margin) clear at its foot, so the bar
       sits under the time axis instead of across the flow pane. 0 when no bar floats over this pane. */
   footRoom?: number;
+  /** THE TICKER BAR (the partner tree's, 2026-11-01 port): the desk's 44px row under the tab strip; the ACTIVE pane
+      portals its identity and its toolbar (the tall form) into it. Null on a phone and before the row mounts. */
+  barSlot?: HTMLElement | null;
+  /** the box the bar's menus stay inside — the desk */
+  barBounds?: RefObject<HTMLElement | null>;
+  /** what rides the bar after the chart style — the layout door and the desk door, openmarket's order */
+  barLead?: ReactNode;
+  /** the desk-wide rows of the Panels door (every strike rail at once) */
+  deskPanels?: BarPanel[];
 }
 
 /** The strike rail's rest width on this desk: a narrow column beside the tape, not two fifths of the pane (the rail took
@@ -743,6 +762,7 @@ const Pane = ({
   drawing, onToggleDrawing, onExitDraw,
   isActive, onActivate, paneCount, closing = false, menuOpen, onMenu,
   boxRef, cell = '', palette, railCut, onRailCut, arriveFocus = null, footRoom = 0,
+  barSlot = null, barBounds, barLead, deskPanels,
 }: PaneProps) => {
   /* the field's scale, for the key in the chart's corner (0 while the field is off) */
   const [fieldScale, setFieldScale] = useState(0);
@@ -1013,6 +1033,12 @@ const Pane = ({
      each dropdown shows its icon. */
   /* IN fullscreen the strip carries the identity, the toolbar and the door on one row: the full form must fit beside
      the identity and the way out, or the compact form rides the row — the docked row's own rule */
+  /* THE ACTIVE PANE STANDS ON THE TICKER BAR (the partner tree's b608857, openmarket's second row): one row for the
+     whole desk, the active pane's — it portals its identity and the tall toolbar into the desk's bar, and every pane's
+     tape keeps a quiet legend and the corner's expand door. The hover toolbar, the inline row and the Tools roll stand
+     down while the bar is there. Not on the phone (one pane, its own head), not in the takeover. */
+  const barDesk = !!barSlot && !expanded && !isPhone;
+  const onBar = barDesk && isActive;
   const toolbarCompact = stripW > 0 && (expanded ? stripW - 24 < ID_ROW_FULL_PX + TOOLBAR_FULL_PX + ROW_DOOR_PX + 36 : stripW - PRICE_GUTTER_PX < TOOLBAR_FULL_PX);
   /* The toolbar rides the identity row when the row has room for the identity at its fullest, a gap, the toolbar as
      it would draw, and the fullscreen door. */
@@ -1021,11 +1047,11 @@ const Pane = ({
   /* Short of the full labels beside the identity, the compact toolbar rides the row before a row of its own is spent
      (a one-up with the rail open: 1073 usable, the identity 514, the full toolbar 994, the compact 350) */
   const inlineCompact = !inlineFull && !expanded && stripInner > 0 && stripInner >= ID_ROW_FULL_PX + MTF_FULL_PX + 24 + TOOLBAR_COMPACT_PX + ROW_DOOR_PX;
-  const toolbarInline = inlineFull || inlineCompact;
+  const toolbarInline = !barDesk && (inlineFull || inlineCompact);
   const toolbarCompactShown = toolbarInline ? inlineCompact : toolbarCompact;
 
   /* The tools button — 3- and 4-pane desks only. */
-  const rollable = !expanded && !isPhone && !toolbarInline && paneCount >= 3;
+  const rollable = !barDesk && !expanded && !isPhone && !toolbarInline && paneCount >= 3;
   const [rolled, setRolled] = useState(false);
   const rollIn = useCallback(() => setRolled(false), []);
   useEffect(() => {
@@ -1186,8 +1212,59 @@ const Pane = ({
     );
   };
 
-  const paneToolbar = (spread: boolean) => (
+  /* THE PANELS ON THE BAR (the partner tree's 24dda10 + bfce19c, openmarket's Panels door over OUR rooms): the pane's
+     replay and takeover, the strike rail, the dock's rooms (the rail's own views at a reading width, the news, the two
+     calendars), the watchlist, the alerts inbox, the Pine editor; the toolbar adds Scripts. Each row knows whether its
+     room is up, its key, and why it cannot open now. */
+  const watchOpen = useWatchlistOpen();
+  const alertsInbox = useAlertsDrawer();
+  const dock = useDock();
+  const dockRow = (id: DockRoom, section: BarPanel['section'], label: string, icon: ReactNode, needsBook = false): BarPanel => ({
+    id,
+    section,
+    label,
+    icon,
+    on: dock === id,
+    press: () => toggleDock(id),
+    closes: true,
+    blocked: belowLg ? 'needs a wider window' : needsBook && !optionable ? 'no listed options' : undefined,
+  });
+  const barPanels: BarPanel[] = barDesk
+    ? [
+        { id: 'replay', section: 'tools', label: 'Replay', icon: <Rewind />, keys: ['P'], on: replay, press: onToggleReplay },
+        { id: 'fullscreen', section: 'tools', label: 'Fullscreen', icon: <Maximize2 />, keys: ['F'], on: expanded, press: onToggleExpand, closes: true },
+        {
+          id: 'rail',
+          section: 'book',
+          label: 'Strike rail',
+          icon: <Columns2 />,
+          keys: ['R'],
+          on: ladder,
+          press: () => onCfg({ ladder: !cfg.ladder }),
+          blocked: belowLg ? 'needs a wider window' : !optionable ? 'no listed options' : undefined,
+        },
+        ...(deskPanels ?? []),
+        dockRow('ladder', 'book', 'Matrix', <Rows4 />, true),
+        dockRow('heat', 'book', 'Calendar', <Grid3x3 />, true),
+        dockRow('surface', 'book', 'Surface', <Mountain />, true),
+        dockRow('regime', 'tape', 'Regime', <Activity />),
+        dockRow('building', 'tape', 'Building', <Hammer />, true),
+        dockRow('prints', 'tape', 'Prints', <Receipt />),
+        dockRow('news', 'news', 'News', <Newspaper />),
+        dockRow('earnings', 'news', 'Earnings', <CalendarCheck />),
+        dockRow('events', 'news', 'Events', <CalendarDays />),
+        { id: 'watchlist', section: 'lists', label: 'Watchlist', icon: <Eye />, on: watchOpen, press: toggleWatchlist, closes: true },
+        { id: 'alerts-inbox', section: 'yours', label: 'Alerts inbox', icon: <Inbox />, on: alertsInbox, press: toggleAlertsDrawer, closes: true },
+        { id: 'pine', section: 'yours', label: 'Pine editor', icon: <Code2 />, press: () => openEditor(null, `terrain:${index + 1}`), closes: true },
+      ]
+    : [];
+
+  const paneToolbar = (spread: boolean, form: 'bar' | 'takeover' | null = null) => (
     <ChartToolbar
+      tall={form === 'bar'}
+      takeover={form === 'takeover'}
+      panels={form === 'bar' ? barPanels : undefined}
+      afterLeft={form === 'bar' ? barLead : undefined}
       minimal
       candles
       rightExtras={paneRightExtras}
@@ -1195,8 +1272,8 @@ const Pane = ({
       snapshotName={snapshotName(ticker, timeframe)}
       compact={toolbarCompactShown}
       /* Docked, the menus are the small ones, and every menu stays inside this pane */
-      dense={!expanded}
-      menuBounds={paneBoxRef}
+      dense={!expanded && form !== 'bar'}
+      menuBounds={form === 'bar' && barBounds ? barBounds : paneBoxRef}
       spread={spread}
       alertTicker={ticker}
       alertSpot={levels.spot}
@@ -1263,6 +1340,19 @@ const Pane = ({
           { role: 'dialog' as const, 'aria-modal': true, tabIndex: -1, 'aria-label': `${ticker} expanded`, style: DOCK_ROOM }
         : {})}
     >
+      {onBar &&
+        barSlot &&
+        createPortal(
+          /* THE TICKER BAR'S CONTENTS — this pane's while it is the active one: the identity (the pane's number, Replay,
+             the symbol chip), then the toolbar in its tall form spread across the row */
+          <div className="flex-1 flex items-center gap-2.5 h-full min-w-0 pl-2 pr-2" data-terrain-bar-pane={index + 1}>
+            <span className="shrink-0 flex items-center gap-2" data-bar-identity>
+              {identityControls}
+            </span>
+            <div className="flex-1 min-w-0">{paneToolbar(true, 'bar')}</div>
+          </div>,
+          barSlot
+        )}
       {/* The pane's own floor, and it has to be here. The wrapper above is `display: contents` when the pane is not
           expanded, so this div is the real grid item. */}
       {/* Activation lives on this div, not the wrapper above: the wrapper is `display: contents` when the pane is not
@@ -1429,7 +1519,7 @@ const Pane = ({
                 {/* The symbol leads, Pulse-style — then a hairline, then everything else spread to the far edge. */}
                 <span className="shrink-0 flex items-center gap-2 pointer-events-auto">{identityControls}</span>
                 <span className="shrink-0 w-px h-4 bg-borderSubtle" aria-hidden />
-                <div className="flex-1 min-w-0">{paneToolbar(true)}</div>
+                <div className="flex-1 min-w-0">{paneToolbar(true, 'takeover')}</div>
                 {/* The way back out, at the far right end of the strip — the mirror of the docked corner chip. */}
                 <button
                   onClick={onToggleExpand}
@@ -1548,7 +1638,7 @@ const Pane = ({
 
               {/* Its own, every one of them — and not there until you reach. Docked only: the expanded pane pins the
                   same toolbar to the top strip instead, where it does not need a hover to exist. */}
-              {!expanded && !toolbarInline && !rollable && (
+              {!barDesk && !expanded && !toolbarInline && !rollable && (
                 <div className="chrome-hover chrome-tap relative z-10 pointer-events-none max-w-full rounded-md bg-canvas/25 backdrop-blur-[3px] px-2 py-1 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100" data-toolbar-row>
                   {paneToolbar(false)}
                 </div>
@@ -1972,6 +2062,22 @@ const Terrain = () => {
   /* The strip's tabs — the active pane's */
   const stripPane = cfg.panes[active] ?? cfg.panes[0];
   const stripTabs = stripPane.tabs.length ? stripPane.tabs : [stripPane.ticker];
+  /* ONE GROUND FOR THE TOP ROWS AND THE TAPE (the partner tree's b608857 + cc8f686): the strip and the bar wear the
+     active pane's chart ground only when it is the page's own */
+  const deskDefaultKey = usePageDefaultCandleKey();
+  const pageGround = useResolvedTheme();
+  const paneKey: CandleThemeKey = stripPane.theme ?? deskDefaultKey;
+  const topKey: CandleThemeKey | null = chartGround(paneKey) === pageGround ? paneKey : null;
+  const topSurfaceBg = topKey ? chartSurface(CANDLE_THEMES[topKey]).bg : 'transparent';
+  const topBg = topSurfaceBg === 'transparent' ? 'rgb(var(--panel))' : topSurfaceBg;
+  const topGround = topKey ? chartGround(topKey) : undefined;
+  const profile = useProfile();
+  const deskPrefs = useDeskPrefs();
+  /* the ticker bar's slot, and the desk's box its menus stay inside */
+  const [barSlot, setBarSlot] = useState<HTMLDivElement | null>(null);
+  const deskBoxRef = useRef<HTMLDivElement | null>(null);
+  /* the phone's Panels door opens the dock's sheet on the book's matrix (its tabs reach every room) */
+  const phoneRoom: DockRoom = 'ladder';
   /* Mirrors for the key handler, which is installed once and must never read a stale closure — the same pattern the
      charts use for their own subscriptions. */
   const activeRef = useRef(0);
@@ -2180,6 +2286,48 @@ const Terrain = () => {
     sourcePane.current = null;
   }, [cfg.layout, expanded, sinks]);
 
+  /* THE BAR'S LEAD after the chart style (openmarket's order): the layout door, and the desk door — the colours, the
+     session and the units the foot strip used to carry */
+  const deskRows = [
+    ...(!belowLg && anyLadder && !pageLight
+      ? [{ key: 'colours', label: 'Colours', control: <DropdownSelect label="Colours" value={cfg.palette} options={PALETTE_OPTIONS} onChange={p => setCfg(prev => ({ ...prev, palette: p }))} title="What the rails' colours mean" testId="terrain-colours" /> }]
+      : []),
+    { key: 'session', label: 'Session', control: <SessionBook /> },
+    { key: 'units', label: 'Units', control: <DistanceUnitPicker dense /> },
+  ];
+  const barLead = (
+    <span className="inline-flex items-center gap-1">
+      <LayoutDoor
+        shape={cfg.shape}
+        onShape={sh => {
+          changeShape(sh);
+          setDeskName(null);
+        }}
+        sync={cfg.sync}
+        onSync={sync => setCfg(prev => ({ ...prev, sync }))}
+        saved={savedDesks}
+        savedMax={MAX_NAMED_LAYOUTS}
+        onRecall={recallDesk}
+        onSave={saveCurrentLayout}
+        onForget={removeNamedLayout}
+      />
+      <DeskDoor rows={deskRows} />
+    </span>
+  );
+  /* the desk-wide row of the Panels door: every strike rail at once (Shift R) */
+  const deskPanels: BarPanel[] = [
+    {
+      id: 'rails',
+      section: 'book',
+      label: 'Every strike rail',
+      icon: <Columns2 />,
+      keys: ['⇧', 'R'],
+      on: anyLadder,
+      press: () => setCfg(prev => ({ ...prev, panes: prev.panes.map(p => ({ ...p, ladder: !anyLadder })) })),
+      blocked: belowLg ? 'needs a wider window' : undefined,
+    },
+  ];
+
   return (
     /* Full bleed, and only from `lg`. */
     <div
@@ -2200,11 +2348,72 @@ const Terrain = () => {
         </p>
       )}
       {expanded === null && (
+        /* THE TOP ROWS (the partner tree's b608857 + cc8f686, openmarket's): the 40px tab strip, then the 44px TICKER BAR
+           the active pane portals its controls into. ONE GROUND: the rows wear the active pane's chart ground — its
+           theme's canvas — and its inks, but only when the tape shares the page's ground; a light tape on the dark page
+           (or a dark one on paper) stands as the island it is, and the rows keep the page's own chrome. */
+        <div className="shrink-0 flex flex-col min-w-0" style={{ background: topBg }} data-chart-chrome={topKey ? '' : undefined} data-chart-ground={topGround} data-terrain-top={topKey ?? 'page'}>
         <TickerTabStrip
           tabs={stripTabs}
           active={stripPane.ticker}
           paneLabel={cfg.layout > 1 && !isPhone ? String(active + 1) : undefined}
           compact={isPhone}
+          /* THE STRIP'S LEAD (the partner tree's 4a11c33, openmarket's corner measured): the desks door — the monitor
+             and its chevron, the desk in hand's name on its menu */
+          lead={!isPhone ? <DesksDoor current={deskName} saved={savedDesks} onRecall={recallDesk} onForget={removeNamedLayout} onPreset={applyPreset} /> : undefined}
+          /* THE STRIP'S END (openmarket's top row: the search and the account at the far right). The sessions clock and
+             the timezone door stand here too — the foot strip that carried them under the charts is gone, so the
+             charts run to the bottom of the page (the owner, 2026-11-01: "push this up so the chart is full"). On a
+             phone: the clock, and the one door to every panel (the dock's sheet). */
+          end={
+            !isPhone ? (
+              <>
+                <SessionsClock />
+                <span className="inline-flex" data-terrain-timezone>
+                  <DropdownSelect<ClockZone>
+                    label="Clock"
+                    value={deskPrefs.clock}
+                    options={[
+                      { value: 'ny', label: 'New York', hint: 'Every axis on New York time — the market’s own clock' },
+                      { value: 'local', label: 'Local', hint: 'Every axis on this machine’s clock' },
+                    ]}
+                    onChange={v => setDeskPrefs({ clock: v })}
+                    title="Whose clock the axes keep"
+                    testId="terrain-timezone"
+                    align="end"
+                  />
+                </span>
+                <button
+                  type="button"
+                  onClick={openPalette}
+                  title="Search pages, names and tools — ⌘K"
+                  className="inline-flex items-center gap-2 h-[30px] px-2.5 rounded-md border border-borderSubtle/70 text-textMuted hover:text-textPrimary hover:bg-ink/[0.04] transition-colors font-mono text-t11 whitespace-nowrap"
+                  data-ask-door
+                >
+                  <Search className="w-3.5 h-3.5 shrink-0" />
+                  <span className="holo-text font-semibold hidden 2xl:inline">Search anything</span>
+                  <kbd className="font-mono text-t9 tracking-wide text-textMuted">⌘K</kbd>
+                </button>
+                <Link to="/settings/account" title={`${profile.name} — your account`} className="inline-flex rounded-full ml-1" data-strip-avatar>
+                  <Avatar profile={profile} size={26} />
+                </Link>
+              </>
+            ) : (
+              <>
+                <SessionsClock compact />
+                <button
+                  type="button"
+                  onClick={() => (dockRoom ? closeDock() : setDock(phoneRoom))}
+                  aria-pressed={!!dockRoom}
+                  aria-label="Panels — the book, the regime, the news and the calendars"
+                  className={`inline-flex items-center justify-center w-8 h-7 rounded-md transition-colors ${dockRoom ? 'bg-ink/[0.1] text-textPrimary' : 'text-textMuted hover:text-textPrimary'}`}
+                  data-phone-panels
+                >
+                  <PanelsTopLeft className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )
+          }
           onPick={t => setPane(active, { ticker: t })}
           onClose={t => {
             const rest = stripTabs.filter(x => x !== t);
@@ -2220,147 +2429,17 @@ const Terrain = () => {
             setPane(active, { ticker: t, tabs: [...stripTabs, t] });
           }}
         />
+        {/* THE TICKER BAR: 44px, measured on openmarket — the active pane's symbol, its timeframes, its style, the layout
+            and desk doors, the lesser controls and the Panels door at the far right (Pane `barSlot`, the tall toolbar) */}
+        {!isPhone && <div ref={setBarSlot} className="shrink-0 h-11 min-w-0 flex items-stretch row-line overflow-hidden" data-terrain-ticker-bar={active + 1} />}
+        </div>
       )}
-      {/* The arrangement controls, floating over the top-right of the grid. There is no page title and no caption any
-          more. */}
-      {!isPhone && (
-      <div
-        /* Bottom right, not top right. */
-        /* Cleared past the rail of the pane that is actually under it. */
-        /* `&& !belowLg` because the rail is hidden by breakpoint and kept in config: below `lg` the flag reads true
-           against a `display: none` element, and the 132px it buys is clearance from nothing. */
-        style={
-          expanded !== null
-            ? {
-                right: (panes[expanded]?.ladder && !belowLg ? panes[expanded]?.ladderW ?? railRestWidth(cfg.layout, true) : 0) + PRICE_GUTTER_PX + 8,
-                bottom: deskBarH > 0 ? DESK_BAR_GAP_PX : TIME_AXIS_PX + 12,
-                /* held inside the screen: a bar wider than the room wraps onto a second line (the pane reserves its
-                   height) instead of running off the left edge with the layout buttons on it */
-                left: DESK_BAR_GAP_PX,
-              }
-            : undefined
-        }
-        /* They come and go with the pane chrome: as solid white controls they were the loudest thing on a desk that
-           had been asked to be quiet. */
-        /* Above the expanded pane, and fixed while it is up. The expanded pane is `fixed inset-0 z-[80]`, and this
-           bar was `absolute z-30` — under it. */
-        /* The desk bar, docked: A row under the grid. */
-        className={
-          expanded !== null
-            ? 'chrome-hover pointer-events-none flex flex-wrap items-center justify-end gap-2 opacity-40 transition-opacity duration-200 hover:opacity-100 focus-within:opacity-100 fixed z-[90]'
-            : 'order-last shrink-0 mt-1 flex items-center justify-end gap-2'
-        }
-        data-terrain-desk-bar={expanded !== null ? 'floating' : 'docked'}
-        ref={deskBarRef}
-        /* Floating over the expanded pane, it is chrome over that tape and wears its ground like the strip does
-           (index.css) — dark words on Stone */
-        data-chart-chrome={expanded !== null ? '' : undefined}
-        data-chart-ground={expanded !== null ? chartGround(panes[expanded]?.theme ?? pageDefaultCandleKey()) : undefined}
-      >
-        {/* THE LAYOUT DOOR (LayoutDoor.tsx): splits 1 · 2 · 3 · 4 · 6 with their shapes, the sync, the saved desks —
-            where the count and the Layouts shelf stood; THE DESKS DOOR beside it (DesksDoor.tsx) */}
-        <LayoutDoor
-          shape={cfg.shape}
-          onShape={sh => {
-            changeShape(sh);
-            setDeskName(null);
-          }}
-          sync={cfg.sync}
-          onSync={sync => setCfg(prev => ({ ...prev, sync }))}
-          saved={savedDesks}
-          savedMax={MAX_NAMED_LAYOUTS}
-          onRecall={recallDesk}
-          onSave={saveCurrentLayout}
-          onForget={removeNamedLayout}
-        />
-        <DesksDoor current={deskName} saved={savedDesks} onRecall={recallDesk} onForget={removeNamedLayout} onPreset={applyPreset} />
-
-        {/* Every pane at once — a convenience over the per-pane ×, not the only way out of the rail. */}
-        {!belowLg && (
-        <button
-          /* Named so a control that removes itself can hand focus here — see the rail's × below. */
-          data-strikes-toggle=""
-          onClick={() => setCfg(prev => ({ ...prev, panes: prev.panes.map(p => ({ ...p, ladder: !anyLadder })) }))}
-          aria-pressed={anyLadder}
-          title={anyLadder ? 'Hide every strike rail — Shift R' : 'Show the strike rail beside every chart — Shift R'}
-          className={`pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-ink/[0.08] backdrop-blur-[3px] font-mono text-t10 uppercase tracking-wider transition-colors ${
-            anyLadder ? 'bg-ink/[0.16] text-textPrimary' : 'bg-canvas/40 text-textSecondary hover:text-textPrimary'
-          }`}
-        >
-          Strikes
-        </button>
-        )}
-
-        {/* The rails' colours, one card for the desk — here rather than in each rail's head, which is 132px on a
-            three-up desk and cannot hold it; hidden with the rails, like the button beside it */}
-        {/* …and not on the light page: on paper the rails walk one tint-to-pole journey whatever the palette, so the
-            card would change nothing the eye can use */}
-        {!belowLg && anyLadder && !pageLight && (
-          <span className="pointer-events-auto inline-flex" data-terrain-colours>
-            {/* The Expiry cut lives in each rail's head beside the view tabs — one desk-wide choice, changed from any
-                pane */}
-            <DropdownSelect label="Colours" value={cfg.palette} options={PALETTE_OPTIONS} onChange={p => setCfg(prev => ({ ...prev, palette: p }))} title="What the rails' colours mean" testId="terrain-colours" />
-          </span>
-        )}
-
-        {/* The desk-wide ruler, in the desk's own cluster — the same four chips the flip strip carries on Pinpoint,
-            one store behind both. */}
-        <span className="pointer-events-auto inline-flex rounded-md border border-ink/[0.08] bg-canvas/40 backdrop-blur-[3px] px-1 py-0.5">
-          <SessionBook />
-        </span>
-        <span className="pointer-events-auto inline-flex rounded-md border border-ink/[0.08] bg-canvas/40 backdrop-blur-[3px] px-1 py-0.5">
-          <DistanceUnitPicker dense />
-        </span>
-
-        {/* THE DOCK'S DOORS (DeskDock.tsx): Earnings and Events beside the charts, shut by rest; not while a pane is
-            fullscreen (the takeover owns the screen) */}
-        {expanded === null && !belowLg && (
-          <span role="group" aria-label="Dock" className="pointer-events-auto inline-flex items-center gap-0.5 border border-ink/[0.08] bg-canvas/40 backdrop-blur-[3px] rounded-md p-0.5" data-terrain-dock-doors>
-            {(['earnings', 'events'] as const).map(r => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => toggleDock(r)}
-                aria-pressed={dockRoom === r}
-                title={r === 'earnings' ? "The week's reports, beside the charts" : 'What lands when — macro, reports, expiries'}
-                className={`px-2 py-1 rounded font-mono text-t10 uppercase tracking-wider transition-colors ${
-                  dockRoom === r ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'
-                }`}
-                data-dock-door={r}
-              >
-                {r === 'earnings' ? 'Earnings' : 'Events'}
-              </button>
-            ))}
-          </span>
-        )}
-
-        {/* The pine door, fullscreen only: the editor docks at the right of the expanded pane (data/editorDock.ts —
-            the pane narrows by --editor-w), a blank script for this pane. */}
-        {expanded !== null && (
-          <button
-            onClick={() => openEditor(null, `terrain:${expanded + 1}`)}
-            title="Write a Pine script for this chart — the editor opens beside it"
-            className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-ink/[0.08] bg-canvas/40 backdrop-blur-[3px] font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors"
-            data-terrain-pine
-          >
-            <Code2 className="w-3 h-3" /> Pine
-          </button>
-        )}
-
-        {/* THE SESSIONS CLOCK (SessionsClock.tsx): New York's clock and the next turn of the tape, on the session module;
-            its card carries the futures week's phase the bar used to print on its own */}
-        <SessionsClock />
-
-        {expanded !== null && (
-          <button
-            onClick={() => closeExpanded()}
-            className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-borderSubtle bg-canvas/70 backdrop-blur-[2px] font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary"
-          >
-            <X className="w-3.5 h-3.5" /> Esc
-          </button>
-        )}
-      </div>
-      )}
+      {/* THE FOOT STRIP IS GONE (2026-11-01): the partner tree's desk keeps no strip under its charts beyond its clock,
+          and the owner asked for the charts to run to the bottom. Every control it carried has a home up top: the layout
+          door and the desk door (colours · session · units) on the ticker bar, the desks door at the strip's lead, the
+          strike rails and the dock's rooms (Earnings · Events) in the Panels door, the sessions clock and the timezone
+          door at the strip's end, the Pine editor a Panels row. The takeover is the tape alone — its own strip's
+          Collapse and Esc are the ways out. */}
 
       {/* The ring and the badge are feedback for people who can see them. A key that rearranges the desk has to say
           so as well, or the whole layer is silent to a screen reader. */}
@@ -2369,7 +2448,7 @@ const Terrain = () => {
       {/* The charts are the page, so the grid takes every pixel the root has left rather than a fraction of the
           viewport. */}
       {/* THE GRID AND THE DOCK SHARE THE ROW: the dock stands beside the charts (they give way), never over a tape */}
-      <div className="relative flex-1 min-h-0 flex items-stretch">
+      <div ref={deskBoxRef} className="relative flex-1 min-h-0 flex items-stretch">
       <div
         /* The stacked-phone minimum lives on the pane, not here — see the note on Pane's own wrapper for why a rule
            here does nothing. */
@@ -2414,7 +2493,11 @@ const Terrain = () => {
             boxRef={el => { paneRefs.current[i] = el; }}
             /* the pane's own area in the shape's grid; none while stacked */
             cell={stacked ? '' : AREA_CLS[i] ?? ''}
-            footRoom={expanded === i && !isPhone ? deskBarH : 0}
+            footRoom={0}
+            barSlot={barSlot}
+            barBounds={deskBoxRef}
+            barLead={i === active ? barLead : undefined}
+            deskPanels={deskPanels}
           />
           </PaneBoundary>
           )
@@ -2422,38 +2505,14 @@ const Terrain = () => {
       </div>
       {/* THE DOCK beside the grid — not on a phone (its sheet is below), not below xl, never over a fullscreen pane */}
       {!isPhone && !belowLg && expanded === null && dockRoom && (
-        <DeskDock room={dockRoom} ticker={stripPane.ticker} names={deskNames} onClose={closeDock} onRoom={setDock} />
+        <DeskDock room={dockRoom} ticker={stripPane.ticker} names={deskNames} mode={modeOf(cfg.palette)} paper={pageLight} onClose={closeDock} onRoom={setDock} />
       )}
       </div>
-      {/* THE PHONE'S FOOT: the dock's two rooms and the sessions clock in one quiet row; a room opens as a sheet */}
-      {isPhone && (
-        <div className="shrink-0 mt-1 flex items-center gap-1.5 overflow-x-auto" data-terrain-phone-foot>
-          {(['earnings', 'events'] as const).map(r => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => toggleDock(r)}
-              aria-pressed={dockRoom === r}
-              className={`shrink-0 px-2.5 py-1.5 rounded-md border border-ink/[0.08] font-mono text-t10 uppercase tracking-wider ${dockRoom === r ? 'bg-ink/[0.16] text-textPrimary' : 'bg-canvas/40 text-textSecondary'}`}
-              data-dock-door={r}
-            >
-              {r === 'earnings' ? 'Earnings' : 'Events'}
-            </button>
-          ))}
-          <span className="ml-auto shrink-0">
-            <SessionsClock compact />
-          </span>
-        </div>
-      )}
       {isPhone && dockRoom && (
         <>
           <span className="fixed inset-0 z-[94] bg-black/40" onClick={closeDock} aria-hidden />
-          <DeskDock room={dockRoom} ticker={stripPane.ticker} names={deskNames} onClose={closeDock} onRoom={setDock} sheet />
+          <DeskDock room={dockRoom} ticker={stripPane.ticker} names={deskNames} mode={modeOf(cfg.palette)} paper={pageLight} onClose={closeDock} onRoom={setDock} sheet />
         </>
-      )}
-      {/* THE PHONE'S WAY IN to the rail's Regime and Building tabs (the rail is not on a phone): one line, a sheet */}
-      {isPhone && panes[active] && (
-        <RegimeDoor ticker={panes[active].ticker} mode={modeOf(cfg.palette)} paper={pageLight} />
       )}
       {meterOn && <FrameMeter />}
     </div>
