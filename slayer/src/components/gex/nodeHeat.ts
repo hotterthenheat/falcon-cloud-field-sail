@@ -8,7 +8,7 @@
 
 import type { KeptLevel } from './nodeStrikes';
 import { HEAT_MODE, heatRampColorFor, ladderRampT, type HeatMode } from './heatmap';
-import { fitEdgeLabels } from './edgeLabelFit';
+import { PHONE_ROW_PX, fitEdgeLabels } from './edgeLabelFit';
 
 export type Rgb = readonly [number, number, number];
 
@@ -252,7 +252,7 @@ export function layoutHeatLabels(
   if (!out.length) return [];
   const fit = fitEdgeLabels(
     out.map((l, i) => ({ id: String(i), y: l.y, prio: l.prio, keep: l.keep })),
-    { h, gap: 2, top: ceiling + 1, bottom: H - 2, reserved: priceY != null && priceY > 0 && priceY < H ? [{ lo: priceY - h / 2, hi: priceY + h / 2 }] : [] },
+    { h, gap: 2, top: ceiling + 1, bottom: H - 2, rowPx: W < 480 ? PHONE_ROW_PX : undefined, reserved: priceY != null && priceY > 0 && priceY < H ? [{ lo: priceY - h / 2, hi: priceY + h / 2 }] : [] },
   );
   const placed: HeatLabel[] = fit.map(p => {
     const { keep: _k, ...l } = out[Number(p.id)];

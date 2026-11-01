@@ -14,6 +14,9 @@
 export const MERGE_PX = 4;
 /** At most one label per this much pane height (CSS px): a 300px pane carries seven, a phone's short pane four */
 export const ROW_PX = 42;
+/** A pane under 480px wide (the phone) spends more height per label: the labels' column is a third of its width, so
+    fewer of them, each a wider band of the chart left clear */
+export const PHONE_ROW_PX = 64;
 /** A label is never led further than this many rows from its own level */
 export const MAX_SHIFT = 2.5;
 

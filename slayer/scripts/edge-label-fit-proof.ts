@@ -8,7 +8,7 @@
     - the 3-pane desk at 1440 (a ~300px plot) and the phone at 390 (a ~220px plot) carry few labels, not a pile.
   Run:  npx tsx scripts/edge-label-fit-proof.ts
 */
-import { MAX_SHIFT, ROW_PX, fitEdgeLabels, labelsOverlap, type EdgeItem, type FitOptions, type Placed } from '../src/components/gex/edgeLabelFit';
+import { MAX_SHIFT, PHONE_ROW_PX, ROW_PX, fitEdgeLabels, labelsOverlap, type EdgeItem, type FitOptions, type Placed } from '../src/components/gex/edgeLabelFit';
 
 let fail = 0;
 const check = (what: string, ok: boolean, detail = '') => {
@@ -141,6 +141,17 @@ function sound(name: string, items: EdgeItem[], o: FitOptions, out: Placed[]): v
   const out = fitEdgeLabels(items, o);
   sound('price row', items, o, out);
   check('price row: the wall is still drawn', out.some(p => p.ids.includes('CW')), show(out));
+}
+
+/* 9. The phone at 390 with the heat's labels: a 560px plot asks a third of its width for the column, so PHONE_ROW_PX —
+   eight labels at most of twelve, the walls, the flip and the top among them */
+{
+  const items: EdgeItem[] = Array.from({ length: 12 }, (_, i) => ({ id: `s${i}`, y: 40 + i * 42, prio: [2, 5, 9, 4.6, 8, 4.4, 3, 9, 4.3, 4.2, 9.5, 4.1][i], keep: [9, 8, 9.5].includes([2, 5, 9, 4.6, 8, 4.4, 3, 9, 4.3, 4.2, 9.5, 4.1][i]) }));
+  const o: FitOptions = { h: 16, gap: 2, top: 10, bottom: 570, rowPx: PHONE_ROW_PX };
+  const out = fitEdgeLabels(items, o);
+  sound('phone heat', items, o, out);
+  check('phone heat: eight at most', out.length <= 8, `${out.length}`);
+  for (const k of ['s2', 's4', 's7', 's10']) check(`phone heat keeps ${k}`, out.some(p => p.ids.includes(k)), show(out));
 }
 
 if (fail) {
