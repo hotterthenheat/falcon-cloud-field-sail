@@ -33,7 +33,7 @@ and their toolbar), and the content of the strikes panel. This file lists each p
 | Pins on the bar (data/barPins.ts) (24dda10, 4fc9c65) | Ported | Pinned by default: Replay, Matrix, Calendar, Strike rail. |
 | Dock: a column at the desk's right edge, one room at a time, the charts giving way, the partner's head (glyph chip, title, sub, name, × with slow word), a grip, a remembered width per room (bfce19c, 86a0bcc, ecd17c3) | Ported | `dockStore.ts` and `DeskDock.tsx`. Widths are 316 to 820. |
 | Dock rooms | Our content | Matrix, Calendar and Surface are our strike rail views (ExposureField on our book store, plus the Skew and Drift lenses). Regime, Building and Prints are our rail boards. News uses our wire. Earnings and Events are the rooms ported earlier. |
-| Net flow room (Trace's pane) | Skipped | NetFlowPane is tied to Trace's page state. It is reachable on Trace. |
+| Net flow room (bfce19c) | Ported, our math | `dock/FlowRoom.tsx`: his room's look (the name, the cut, net calls · net puts · net and its window, the solid call line and dashed put line each point in its meaning's ink, the thin price line on the left scale, the contract floor, the 168px glide card, reset on double-click) and his 316px width. The numbers are ours: the prints are the chart's Flow pane and Net drift prints (`data/paneFlow.ts` on the server's option tape, the same shared store, so no new poll when a chart already reads it) under the desk's flow filters (the same Filters door), and every minute is `flowBuckets.signedFlowBars` split by the contract's side (`dock/flowRoomSeries.ts`). Net calls less net puts is the Net drift's figure; `scripts/flow-room-proof.ts` holds that, and both lines, to the recorded SPX tape. His traceLive minutes are not used. While the terminal is down the room says why and draws nothing. The row is in Panels (Tape section) and in the phone sheet's tabs. |
 | Rows for Replay, Fullscreen, Watchlist and Alerts inbox; Scripts added by the toolbar (24dda10) | Ported | We also added Strike rail (R), Every strike rail (⇧R) and the Pine editor. |
 | Phone: RailDoor line under the chart (57a7484) | Replaced | The phone strip's end has one Panels door that opens the dock as a sheet, with every room as a tab. The chart now runs to the bottom of the screen. |
 
@@ -41,21 +41,55 @@ and their toolbar), and the content of the strikes panel. This file lists each p
 
 | Partner piece | Status | Notes |
 |---|---|---|
-| Sessions clock and timezone door (260a099) | Ported, moved | At the tab strip's end, because the owner asked for the foot strip to go. The clock is our session module (`SessionsClock.tsx`). The timezone door offers New York and Local; the partner's London, Tokyo and UTC need the chart clock to read any zone (`chartTime`), which is not done. |
+| Sessions clock and timezone door (260a099) | Ported, moved | At the tab strip's end, because the owner asked for the foot strip to go. The clock is our session module (`SessionsClock.tsx`). The timezone door has his list: Local, New York, UTC, London, Tokyo (`deskPrefs.CLOCK_ZONES`, also in Settings). `chartTime` formats any zone, and Terrain's chart axis and crosshair now follow the door (labels only; sessions, bars and windows stay New York's; a backtest's own tape keeps New York). The chip prints the chosen zone's clock. The card opens on hover, wears the `tf-menu` ground and `rounded-xl`, and adds Tokyo and London lanes and rows from `shared/marketSession.mjs` WORLD_SESSIONS. Not ported: his eye that hides the clock (we have no Settings switch for it). |
 | Foot strip under the charts | Removed | Its controls moved. Layout and the new Desk door (Colours, Session, Units) are on the ticker bar. Desks is at the strip's lead. Strike rails, Earnings and Events are in Panels. The clock and timezone are at the strip's end. Pine is a Panels row. |
 | Foil price tag on the axis (260a099) | Ported | `price-foil` with `.sig-foil`, and the galaxy on a light tape. This is a StrikeChart chrome change. |
-| Record's edge card (260a099) | Skipped | It needs history-extension hooks inside StrikeChart. The other workers were in that file, so it was left alone. |
+| Record's edge card (260a099) | Ported | StrikeChart: the glass card with the drifting mark (`.edge-mark`, reduced motion stills it) and a × that dismisses it for that world. It shows when the first bar has three bar widths of room before it, every bar held is drawn, and nothing older can come: on our tapes when every session's tape of that grain has found its start (`thetaTape.tapeReach().done`, read only); on a page with no scroll-back, once everything held is drawn. Never in replay, on a rule clock or on a host's own tape. |
 | 8–11px default bar pitch (f5262be) | Ported | Changes `pitchPx` only. The partner's walls-only-while-drawn autoscale was not ported because it changes scale behaviour. |
-| Wheel zoom glide (b608857) | Skipped | This is chart behaviour, kept out of StrikeChart this round. |
+| Wheel zoom glide (b608857, 12f1ef0, abfc34b, a61adbf) | Ported | Our glide keeps a target view and eases toward it (70 ms), the bar under the pointer stays put, the span is held to 0.5–50 px a bar, the glide ends after two still frames, the empty runway after a zoom out is capped at half a window, and the target shifts when older bars land in front. Kept ours: the wheel never freezes the price scale, and a scale frozen by a price-axis drag stays frozen while candles stay in it (`keepCandles` runs on every glide frame). The trails' bitmap cache now keys on the visible logical range (a61adbf). His kinetic drag (`kineticScroll.mouse`) is not ported because it changes how drag works with the drawing tools. |
 | Takeover: only the symbol, the tray, Indicators and the way out (c6d73e5) | Ported | ChartToolbar `takeover`. Kept ours: the strike rail stays beside a fullscreen chart, because strike content is ours. |
 | Editor opens off full screen; the shell steps in by `--editor-w` (c6d73e5) | Ported | |
 | Desk drawing rail, one rail for the desk (DeskDrawRail; 56908d6) | Kept ours | The drawing toolbar is one of the owner's exceptions. |
 | Paper theme: every foil surface uses the galaxy (b942fc3) | Ported | index.css. |
 | Rail tabs in FilterTabs sm (9f7b3c8, 57a7484) | Kept ours | Strike content is an owner exception. |
 
+## The side-by-side sweep (2026-11-01, second round)
+
+Every Terrain file was compared with his after removing comments, normalising formatting, and mapping `text-[Npx]` to
+our `text-tN` tokens. Our type floor (the steps under 11px read 11px in the terminal) is a house rule and stays.
+Fixed to his values:
+
+- Tab strip: the phone row uses the same `row-line` hairline as the desktop row; the strip's end has 16px of right padding.
+- Layout door: the sync rows use his `Switch` (`ui/Switch.tsx`, a 200ms slide with `role="switch"`); the name field and
+  the Save button use his border and ink.
+- Menus stay inside their pane: `ui/useMenuBounds.ts` on DropdownSelect and DropdownMulti, and `data-menu-bounds` on the
+  pane box.
+- Ticker bar: the style chip and its menu use his 22×14 style glyphs.
+- Price tag: the countdown line is hidden as his is (one line, the axis's size). On a dark tape the foil is the silver
+  whatever the page.
+- Sessions clock: a 26px chip, the next-turn words in sentence case and not capitals, the card opens on hover.
+- Earnings room: his five columns (mark · time · company · when · move) at 24/86/1fr/88/92, 52px rows, 24px logos, the
+  sector in the facts, his words ("Before the open", "time not set", "the reaction"), a 136px search box.
+- Events room: his five columns at 28/56/1fr/80/76, "Earlier today", the time column shows the time.
+- Dock search fields use his `bg-ink/[0.03]`.
+
+Kept ours on purpose: the Matrix and Calendar rooms open at 380px, not 316, because their content is the strike rail
+(an owner exception). The dock rooms' contents, the `[@media(pointer:coarse)]` touch gaps, the Escape handling in the
+dock's search field, and the drawing rail styles. His `NameSearchSheet` behind the tab strip's "+" is a separate feature
+we do not have; ours opens the ticker lookup. His foot strip (Strikes, Colours, Pine, the key) stays removed at the
+owner's word.
+
 ## Files touched
 
-New files: `components/ui/SlowTip.tsx`, `components/ui/useHoverOpen.ts`, `data/barPins.ts`, `data/tfFavourites.ts`,
+New files (second round): `pages/terrain/dock/FlowRoom.tsx`, `pages/terrain/dock/flowRoomSeries.ts`,
+`scripts/flow-room-proof.ts`, `components/ui/Switch.tsx`, `components/ui/useMenuBounds.ts`. Changed (second round):
+`StrikeChart.tsx` (record's edge, wheel glide, the axis clock, the price tag's second line), `gexNodesPrimitive.ts`
+(cache key), `chartTime.ts`, `deskPrefs.ts` (clock zones; prefs, not math), `Settings.tsx`, `SessionsClock.tsx`,
+`sessionsClock.ts`, `DeskDock.tsx`, `dockStore.ts`, `Terrain.tsx` (the Net flow row, the door's list, `data-menu-bounds`),
+`ChartToolbar.tsx` (style glyphs), `TickerTabStrip.tsx`, `LayoutDoor.tsx`, `dock/EarningsRoom.tsx`,
+`dock/EventsRoom.tsx`, `dock/dockParts.tsx`, `DropdownSelect.tsx`, `DropdownMulti.tsx`, `index.css`.
+
+New files (first round): `components/ui/SlowTip.tsx`, `components/ui/useHoverOpen.ts`, `data/barPins.ts`, `data/tfFavourites.ts`,
 `data/standalone.ts`, `pages/terrain/DeskDoor.tsx`, and this document.
 
 Changed files: `ChartToolbar.tsx`, `TickerTabStrip.tsx`, `ScopeChip.tsx` (adds a `tall` prop), `Terrain.tsx`, `DeskDock.tsx`,

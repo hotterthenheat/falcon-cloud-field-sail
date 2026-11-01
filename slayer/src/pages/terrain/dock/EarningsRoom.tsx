@@ -22,7 +22,8 @@ import { Chip, ColHeads, DayHead, EmptyLine, SearchField, SlotMark, reportOutAt,
   The week's reports beside the charts (ported from the partner tree, 2026-10-31), on OUR earnings feed — the
   fortnight every earnings page reads (data/earningsFeed.ts useEveryReport: the same shared store, no read of its own;
   last week is read only on the ask, as the Dossier does). Narrow by rest, so the row is four columns, not five: the
-  name's mark · the company with its slot and facts · WHEN · MOVE.
+  name's mark · the slot (its mark and words) · the company with its facts · WHEN · MOVE — the partner's five columns
+  at his 560px.
 
     THE SCOPE — This desk (every name on the panes), Watchlist, All, Major (the names the room would recognise).
     THE WEEK — Monday to Friday, each day its count, paged ‹ ›; a day pressed glides the list to its group, and the
@@ -48,7 +49,7 @@ const SCOPES: readonly { value: Scope; label: string }[] = [
 const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WEEKDAYS = [1, 2, 3, 4, 5] as const;
-const GRID = '22px minmax(0, 1fr) 66px 72px';
+const GRID = '24px 86px minmax(0, 1fr) 88px 92px';
 const PRICED_INK = { RICH: 'text-warn', INLINE: 'text-textPrimary', CHEAP: 'text-bull' } as const;
 
 /** The ISO date of a weekday in a board week (0 = this week, ±1 the ones beside it) */
@@ -79,30 +80,31 @@ const Row = memo(({ e, at, onOpen }: { e: EarningsEvent; at: number; onOpen: (t:
     <button
       type="button"
       onClick={() => onOpen(e.ticker)}
-      className="grid items-center w-full text-left px-3 gap-x-2 h-[50px] border-b border-borderSubtle/50 hover:bg-ink/[0.04] transition-colors"
+      className="grid items-center w-full text-left px-3 gap-x-2 h-[52px] border-b border-borderSubtle/50 hover:bg-ink/[0.04] transition-colors"
       style={{ gridTemplateColumns: GRID }}
       data-dock-report={e.ticker}
       title={`Open ${e.ticker}'s earnings page`}
     >
-      <CompanyLogo ticker={e.ticker} size={22} />
+      <CompanyLogo ticker={e.ticker} size={24} />
+      <span className="flex items-start gap-1.5 min-w-0">
+        <SlotMark slot={e.slot} timeKnown={e.timeKnown} className="w-3 h-3 mt-px shrink-0" />
+        <span className="text-t10 leading-[1.25] text-textSecondary">{slotWords(e.slot, e.timeKnown)}</span>
+      </span>
       <span className="min-w-0">
         <span className="flex items-baseline gap-1.5 min-w-0">
           <span className="text-t12 font-semibold text-textPrimary truncate">{e.name}</span>
           <span className="font-mono text-t10 text-textMuted shrink-0">{e.ticker}</span>
         </span>
-        <span className="flex items-center gap-1 font-mono text-t10 tnum text-textMuted min-w-0">
-          <SlotMark slot={e.slot} timeKnown={e.timeKnown} className="w-2.5 h-2.5 shrink-0" />
-          <span className="truncate">
-            {slotWords(e.slot, e.timeKnown)} · {e.marketCap ? moneyM(e.marketCap / 1e6) : '—'}
-            {(e.estimated || !e.confirmed) && <span className="text-warn"> · date estimated</span>}
-          </span>
+        <span className="block font-mono text-t10 tnum text-textMuted truncate">
+          {e.marketCap ? moneyM(e.marketCap / 1e6) : '—'} · {e.sector}
+          {(e.estimated || !e.confirmed) && <span className="text-warn"> · date estimated</span>}
         </span>
       </span>
       <span className="text-right min-w-0">
         {out ? (
           <>
             <span className={`block font-mono text-t11 font-semibold tnum ${reaction == null ? 'text-textSecondary' : reaction >= 0 ? 'text-bull' : 'text-bear'}`}>{reaction == null ? 'out' : signedPct(reaction)}</span>
-            <span className="block font-mono text-t9 text-textMuted">{reaction == null ? 'reported' : e.moveLive ? 'reacting' : 'reaction'}</span>
+            <span className="block font-mono text-t9 text-textMuted">{reaction == null ? 'reported' : e.moveLive ? 'reacting now' : 'the reaction'}</span>
           </>
         ) : (
           <>
@@ -113,7 +115,7 @@ const Row = memo(({ e, at, onOpen }: { e: EarningsEvent; at: number; onOpen: (t:
       </span>
       <span className="text-right min-w-0">
         <span className={`block font-mono text-t11 font-semibold tnum ${moveInk}`}>{implied != null ? `±${implied.toFixed(1)}%` : '—'}</span>
-        <span className="block font-mono text-t9 tnum text-textMuted truncate">{typical ? `±${e.histAvgMovePct.toFixed(1)}% typ` : 'implied'}</span>
+        <span className="block font-mono text-t9 tnum text-textMuted truncate">{typical ? `±${e.histAvgMovePct.toFixed(1)}% typical` : 'implied'}</span>
       </span>
     </button>
   );
@@ -175,7 +177,7 @@ const EarningsRoom = ({ names }: { names: string[] }) => {
         const sorted = [...list].sort((a, b) => rank(a) - rank(b) || (b.marketCap ?? 0) - (a.marketCap ?? 0));
         const bmo = list.filter(e => e.timeKnown !== false && e.slot === 'BMO').length;
         const amc = list.filter(e => e.timeKnown !== false && e.slot === 'AMC').length;
-        const facts = [`${list.length} ${list.length === 1 ? 'report' : 'reports'}`, bmo ? `${bmo} before` : '', amc ? `${amc} after` : ''].filter(Boolean).join(' · ');
+        const facts = [`${list.length} ${list.length === 1 ? 'report' : 'reports'}`, bmo ? `${bmo} before the open` : '', amc ? `${amc} after the close` : '', list.length - bmo - amc ? `${list.length - bmo - amc} time not set` : ''].filter(Boolean).join(' · ');
         return { wd, iso: dayIso(weekIdx, wd), list: sorted, facts };
       });
   }, [cut, weekIdx]);
@@ -265,10 +267,10 @@ const EarningsRoom = ({ names }: { names: string[] }) => {
   return (
     <div className="flex-1 min-h-0 flex flex-col" data-dock-room="earnings">
       <div className="shrink-0 px-3 pt-2 pb-1.5">
-        <FilterTabs options={SCOPES} value={scope} onChange={setScope} ariaLabel="Whose reports" size="sm" />
+        <FilterTabs options={SCOPES} value={scope} onChange={setScope} ariaLabel="Whose reports" />
       </div>
       <div className="shrink-0 flex items-stretch gap-1 px-3 pb-2" data-dock-week={weekIdx}>
-        <button type="button" onClick={() => setWeekIdx(w => (w > -1 ? ((w - 1) as -1 | 0 | 1) : w))} disabled={weekIdx === -1} aria-label="The week before" className="inline-flex items-center justify-center w-5 rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] disabled:opacity-30 transition-colors">
+        <button type="button" onClick={() => setWeekIdx(w => (w > -1 ? ((w - 1) as -1 | 0 | 1) : w))} disabled={weekIdx === -1} aria-label="The week before" className="inline-flex items-center justify-center w-6 rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] disabled:opacity-30 transition-colors">
           <ChevronLeft className="w-3.5 h-3.5" />
         </button>
         {WEEKDAYS.map(wd => {
@@ -290,27 +292,27 @@ const EarningsRoom = ({ names }: { names: string[] }) => {
             >
               <span className="font-mono text-t9 uppercase tracking-widest leading-none">{DAY[wd]}</span>
               <span className="mt-1 text-t12 font-semibold leading-none tnum">{Number(iso.slice(8, 10))}</span>
-              <span className="mt-0.5 font-mono text-t9 leading-none tnum text-textMuted">{n}</span>
+              <span className={`mt-0.5 font-mono text-t9 leading-none tnum ${n ? 'text-textMuted' : 'text-textMuted/50'}`}>{n}</span>
             </button>
           );
         })}
-        <button type="button" onClick={() => setWeekIdx(w => (w < 1 ? ((w + 1) as -1 | 0 | 1) : w))} disabled={weekIdx === 1} aria-label="The week after" className="inline-flex items-center justify-center w-5 rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] disabled:opacity-30 transition-colors">
+        <button type="button" onClick={() => setWeekIdx(w => (w < 1 ? ((w + 1) as -1 | 0 | 1) : w))} disabled={weekIdx === 1} aria-label="The week after" className="inline-flex items-center justify-center w-6 rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] disabled:opacity-30 transition-colors">
           <ChevronRight className="w-3.5 h-3.5" />
         </button>
       </div>
       <div className="shrink-0 flex items-center gap-1.5 px-3 pb-2 flex-wrap">
-        <SearchField value={q} onChange={setQ} placeholder="Ticker or name" width={112} />
+        <SearchField value={q} onChange={setQ} placeholder="Ticker or name" width={136} />
         <Chip on={slots.has('BMO')} onClick={() => toggleSlot('BMO')} title="Only the reports before the open">
-          <SlotMark slot="BMO" className="w-2.5 h-2.5" /> Before
+          <SlotMark slot="BMO" className="w-2.5 h-2.5" /> Before the open
         </Chip>
         <Chip on={slots.has('AMC')} onClick={() => toggleSlot('AMC')} title="Only the reports after the close">
-          <SlotMark slot="AMC" className="w-2.5 h-2.5" /> After
+          <SlotMark slot="AMC" className="w-2.5 h-2.5" /> After the close
         </Chip>
         <span className="ml-auto">
           <DropdownSelect<Sector | 'any'> label="Sector" value={sector} options={sectorOptions} onChange={setSector} size="sm" align="end" />
         </span>
       </div>
-      <ColHeads grid={GRID} cols={[{ label: '' }, { label: 'Company' }, { label: 'When', right: true }, { label: 'Move', right: true }]} />
+      <ColHeads grid={GRID} cols={[{ label: '' }, { label: 'Time' }, { label: 'Company' }, { label: 'When', right: true }, { label: 'Move', right: true }]} />
       <div ref={scroller} className="relative flex-1 min-h-0 overflow-y-auto overscroll-contain" data-dock-earnings-rows>
         {days.length === 0 ? (
           <EmptyLine>

@@ -44,7 +44,8 @@ const SCOPES: readonly { value: Scope; label: string }[] = [
 ];
 const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const GRID = '18px 46px minmax(0, 1fr) 58px 58px';
+/* the partner's columns at his 560px: the mark · the time · the event · the expected · when */
+const GRID = '28px 56px minmax(0, 1fr) 80px 76px';
 
 interface Row {
   id: string;
@@ -208,7 +209,7 @@ const EventsRoom = ({ names, ticker }: { names: string[]; ticker: string }) => {
       </span>
       <span className="flex items-start gap-1 min-w-0">
         {r.slot && <SlotMark slot={r.slot.slot} timeKnown={r.slot.timeKnown} className="w-2.5 h-2.5 mt-px shrink-0" />}
-        <span className={r.slot ? 'text-t9 leading-[1.2] text-textSecondary' : 'font-mono text-t11 tnum text-textSecondary'}>{r.slot ? (r.slot.timeKnown === false ? 'unset' : r.slot.slot === 'BMO' ? 'before' : 'after') : r.time}</span>
+        <span className={r.slot ? 'text-t9 leading-[1.2] text-textSecondary' : 'font-mono text-t11 tnum text-textSecondary'}>{r.time}</span>
       </span>
       <span className="flex items-center gap-2 min-w-0">
         {r.logo && <CompanyLogo ticker={r.logo} size={18} />}
@@ -228,7 +229,7 @@ const EventsRoom = ({ names, ticker }: { names: string[]; ticker: string }) => {
   return (
     <div className="flex-1 min-h-0 flex flex-col" data-dock-room="events">
       <div className="shrink-0 px-3 pt-2 pb-1.5">
-        <FilterTabs options={SCOPES} value={scope} onChange={setScope} ariaLabel="Which events" size="sm" />
+        <FilterTabs options={SCOPES} value={scope} onChange={setScope} ariaLabel="Which events" />
       </div>
       <div className="shrink-0 flex items-center gap-1.5 px-3 pb-2 flex-wrap">
         <Chip on={kinds.size === 0} onClick={() => setKinds(new Set())}>
@@ -255,7 +256,7 @@ const EventsRoom = ({ names, ticker }: { names: string[]; ticker: string }) => {
           <section aria-label="Earlier today">
             <button type="button" onClick={() => setEarlierOpen(v => !v)} aria-expanded={earlierOpen} className="flex items-center gap-1.5 w-full h-8 px-3 text-left border-b border-borderSubtle/60 hover:bg-ink/[0.03] transition-colors" data-dock-earlier>
               {earlierOpen ? <ChevronDown className="w-3 h-3 text-textMuted" /> : <ChevronRight className="w-3 h-3 text-textMuted" />}
-              <span className="text-t12 font-semibold text-textSecondary">Earlier</span>
+              <span className="text-t12 font-semibold text-textSecondary">Earlier today</span>
               <span className="font-mono text-t10 tnum text-textMuted">{earlier.length}</span>
             </button>
             {earlierOpen && earlier.map(row)}

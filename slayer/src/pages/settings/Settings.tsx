@@ -19,7 +19,7 @@ const PeopleBox = lazy(() => import('./People'));
 import { NAV_ITEMS } from '../../components/layout/nav';
 import { chime } from '../../core/sound';
 import { TIMEFRAMES, frameServed, type Timeframe } from '../../data/timeframe';
-import { setDeskPrefs, useDeskPrefs, type ClockZone } from '../../data/deskPrefs';
+import { CLOCK_ZONES, setDeskPrefs, useDeskPrefs, type ClockZone } from '../../data/deskPrefs';
 import { SAMPLE_PROFILE, setProfile, thisDevice, useProfile, type SignInWay } from '../../data/profile';
 import { ACCOUNTS_ON } from '../../data/supabase';
 import { checkPassword, deleteAccount, leaveAfterDelete, reloadProfile, setPassword, signOut, useAccount } from '../../data/account';
@@ -86,10 +86,8 @@ const OPENS_ON_PAGES: DropdownOption<string>[] = [
   { value: '', label: 'The start page', hint: 'Every page, one picture each — pick where to go' },
   ...NAV_ITEMS.filter(i => i.glyph && i.path !== '/community').map(i => ({ value: i.path, label: i.label, hint: `Every launch opens on ${i.label}` })),
 ];
-const CLOCK_OPTIONS: DropdownOption<ClockZone>[] = [
-  { value: 'local', label: 'Your own', hint: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return "The machine's zone"; } })() },
-  { value: 'ny', label: 'New York', hint: "The market's clock — the open at 09:30, the close at 16:00" },
-];
+/* the zones live with the preference (data/deskPrefs.ts CLOCK_ZONES) — Terrain's timezone door offers the same list */
+const CLOCK_OPTIONS: DropdownOption<ClockZone>[] = CLOCK_ZONES.map(z => ({ value: z.value, label: z.label, hint: z.hint }));
 
 /* Every key the terminal answers to, grouped by where it works, each read off the handler that owns it; `alt` marks alternatives
    ("1 / 2 / 3 / 4") rather than a chord. */

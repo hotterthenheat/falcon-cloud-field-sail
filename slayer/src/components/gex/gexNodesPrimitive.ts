@@ -288,7 +288,12 @@ class FieldRenderer {
       const probeStrike = strikes[Math.min(R - 1, Math.max(rLo, (rLo + rHi) >> 1))] ?? 0;
       const probeA = series.priceToCoordinate(probeStrike) ?? -1;
       const probeB = series.priceToCoordinate(probeStrike + 1) ?? -1;
-      const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${src.focusInk}|${src.look}|${src.keptKey}|${src.concept}|${light}|${heat ? heatPalette() : ''}`;
+      /* THE PAN IS THE LOGICAL RANGE TOO (the partner tree's a61adbf: "the trails keep lagging behind the candles then pop
+         onto them"): the first column's pixel can be null, and then nothing in the key moved under a pan — the stale
+         bitmap was blitted in place. The visible logical range moves with every pan and every glide frame. */
+      const lr = ts.getVisibleLogicalRange();
+      const pan = lr ? `${lr.from.toFixed(3)}:${lr.to.toFixed(3)}` : 'none';
+      const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${pan}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${src.focusInk}|${src.look}|${src.keptKey}|${src.concept}|${light}|${heat ? heatPalette() : ''}`;
       const cached = key === this.cacheKey && !!this.bmp;
       /* A moved view maps the last raster: both axes are affine, so one drawImage puts every cell where this frame's
          scales want it, until the gesture rests (SETTLE_MS) or the view leaves the raster or the scale drifts too far */

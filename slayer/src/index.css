@@ -2443,7 +2443,29 @@ html[data-theme='light'] [data-tf-tall] [data-tf][aria-pressed='false']:hover { 
 .price-foil { color: rgb(var(--panel)); isolation: isolate; }
 .price-foil > .sig-foil { z-index: 0; }
 
+/* THE RECORD'S EDGE (StrikeChart [data-record-edge], the partner tree's 260a099): the mark floats on a slow drift in the
+   glass card where the candles run out; reduced motion stills it */
+.edge-mark { animation: edge-drift 7s ease-in-out infinite alternate; will-change: transform; }
+@keyframes edge-drift {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  35% { transform: translate(2px, -3px) rotate(-4deg); }
+  70% { transform: translate(-2px, 2px) rotate(3deg); }
+  100% { transform: translate(1px, 3px) rotate(0deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .edge-mark { animation: none; }
+}
+
 /* …and on a light tape the foil is the galaxy (tokens.css's paper set), so the figure in the panel's light ink reads */
+/* …and on a dark tape the foil is the holographic silver whatever the page (the partner tree's 260a099: "the foil is the
+   ground's") — a dark tape on the paper page no longer wears the galaxy */
+[data-chart-ground='dark'] .price-foil {
+  --foil-1: 238 241 248;
+  --foil-2: 194 214 240;
+  --foil-3: 228 216 244;
+  --foil-4: 255 255 255;
+  --foil-5: 200 216 236;
+}
 [data-chart-ground='light'] .price-foil {
   --foil-1: 43 45 56;
   --foil-2: 102 113 143;

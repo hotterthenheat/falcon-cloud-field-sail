@@ -1,7 +1,7 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
-import { Activity, CalendarCheck, CalendarDays, ChevronUp, Code2, Columns2, Eye, Grid3x3, Hammer, Inbox, Link2, Maximize2, Minimize2, Mountain, Newspaper, PanelsTopLeft, Receipt, Rewind, Rows4, Search, SlidersHorizontal, UserRound, X } from 'lucide-react';
+import { Activity, CalendarCheck, CalendarDays, ChevronUp, Code2, Columns2, Eye, Grid3x3, Hammer, Inbox, Link2, Maximize2, Minimize2, Mountain, Newspaper, PanelsTopLeft, Receipt, Rewind, Rows4, Search, SlidersHorizontal, UserRound, Waves, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { DOCK_ROOM, openEditor } from '../../data/editorDock';
 import { useDeskSession, sessionMeta, type DeskSession } from '../../data/deskSession';
@@ -60,7 +60,7 @@ import { useAccount } from '../../data/account';
 import { openPalette } from '../../components/layout/paletteDoor';
 import { toggleWatchlist, useWatchlistOpen } from '../../data/nameWatch';
 import { toggleAlertsDrawer, useAlertsDrawer } from '../../data/alertsDrawer';
-import { setDeskPrefs, useDeskPrefs, type ClockZone } from '../../data/deskPrefs';
+import { CLOCK_ZONES, setDeskPrefs, useDeskPrefs, type ClockZone } from '../../data/deskPrefs';
 import { useResolvedTheme } from '../../theme/theme';
 import DeskDoor from './DeskDoor';
 import { useStandalone } from '../../data/standalone';
@@ -1254,6 +1254,7 @@ const Pane = ({
         dockRow('ladder', 'book', 'Matrix', <Rows4 />, true),
         dockRow('heat', 'book', 'Calendar', <Grid3x3 />, true),
         dockRow('surface', 'book', 'Surface', <Mountain />, true),
+        dockRow('flow', 'tape', 'Net flow', <Waves />, true),
         dockRow('regime', 'tape', 'Regime', <Activity />),
         dockRow('building', 'tape', 'Building', <Hammer />, true),
         dockRow('prints', 'tape', 'Prints', <Receipt />),
@@ -1371,6 +1372,9 @@ const Pane = ({
         }}
         onPointerDownCapture={onActivate}
         onFocusCapture={onActivate}
+        /* the box this pane's menus stay inside (ui/useMenuBounds, the partner tree's) — a card opened at a pane's edge
+           ran over the next pane */
+        data-menu-bounds
         className={`relative flex flex-col overflow-hidden animate-soft-in ${
           expanded
             ? 'flex-1 min-h-0'
@@ -2406,10 +2410,8 @@ const Terrain = () => {
                   <DropdownSelect<ClockZone>
                     label="Clock"
                     value={deskPrefs.clock}
-                    options={[
-                      { value: 'ny', label: 'New York', hint: 'Every axis on New York time — the market’s own clock' },
-                      { value: 'local', label: 'Local', hint: 'Every axis on this machine’s clock' },
-                    ]}
+                    /* the partner tree's list (260a099): Local · New York · UTC · London · Tokyo — the same as Settings › Desk › Clock */
+                    options={CLOCK_ZONES.map(z => ({ value: z.value, label: z.label, hint: z.hint, short: z.short }))}
                     onChange={v => setDeskPrefs({ clock: v })}
                     title="Whose clock the axes keep"
                     testId="terrain-timezone"

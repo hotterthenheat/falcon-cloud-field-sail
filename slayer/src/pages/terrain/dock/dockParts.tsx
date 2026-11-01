@@ -101,7 +101,7 @@ export const SearchField = ({ value, onChange, placeholder, width = 150 }: { val
     placeholder={placeholder}
     aria-label={placeholder}
     spellCheck={false}
-    className="h-6 px-2 rounded-md border border-borderSubtle bg-inset text-t11 text-textPrimary placeholder:text-textMuted outline-none focus:border-borderMuted transition-colors"
+    className="h-6 px-2 rounded-md border border-borderSubtle bg-ink/[0.03] text-t11 text-textPrimary placeholder:text-textMuted outline-none focus:border-borderMuted transition-colors"
     style={{ width }}
     data-dock-search
   />

@@ -45,7 +45,7 @@ import { setPaneBars, usePaneScripts } from '../../data/paneScripts';
 import { drawRun, type ScriptHandle } from './scriptLayer';
 import ScriptLegend from './ScriptLegend';
 import ResetViewControl from './ResetViewControl';
-import { NY_TIME, nyTickMarks } from './chartTime';
+import { LOCAL_TIME, NY_TIME, localTickMarks, nyTickMarks } from './chartTime';
 import {
   aggregateCandles,
   aggregateSnapshots,
@@ -80,7 +80,7 @@ import { oiDoubled } from '../../data/oiWatch';
 import { chartGrain, extendChartTape, thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
 import { useThetaDown, useThetaLogin } from '../../data/thetaFeed';
 import { LIVE_LOGIN_FAILED } from '../../copy/feeds';
-import { barInTape, peekPrint, usePrintRev, useTapeRev, useThetaTape } from '../../data/thetaTape';
+import { barInTape, peekPrint, tapeReach, usePrintRev, useTapeRev, useThetaTape } from '../../data/thetaTape';
 import { DECISIONS, hourReadNow, useVolOutlook } from '../../data/volOutlook';
 import { alignShock, amihudSeries, efficiencyRatioSeries, flipDistancePct, gammaRegimeSeries, harBandSeries, hourOfAnnual, MARKET_NAMES, regimeWords, restOfDaySigma, volShockSeries } from '../../data/physicsReads';
 import { sessionCloseMinOn, sessionLengthOn } from '../../core/calendar';
@@ -95,7 +95,8 @@ import ReplayStrip from './ReplayStrip';
 import { commitArm, evaluateAlert, markFired, useAlerts, type AlertContext, type IndicatorSource } from './alertStore';
 import { newsPulse } from '../../data/news';
 import { exposureNowFor, fmtGexUsd as fmtUsd } from '../../data/gex';
-import { ChevronsLeft, ChevronsUp, GripVertical, Lock, PanelLeft, PanelTop, Pencil, Type, Unlock } from 'lucide-react';
+import { ChevronsLeft, ChevronsUp, GripVertical, Lock, PanelLeft, PanelTop, Pencil, Type, Unlock, X as XIcon } from 'lucide-react';
+import SlayerMark from '../../brand/SlayerMark';
 import { DrawingsPrimitive, REST_INK_DARK, REST_INK_LIGHT, fixedPoints, gestureOf, isFreehand, isLineKind, isWordsKind, loadDrawings, needsThirdAnchor, popDrawings, saveDrawings, usesPts, type Drawing, type DrawingKind } from './drawingsPrimitive';
 import DrawRailTools, { DrawFavBar, DrawRailSwitches, DrawSheet, RAIL_ARROW_PAD } from './DrawRailTools';
 import DrawSettings from './DrawSettings';
@@ -498,6 +499,17 @@ export function displayBars(ticker: string, mins: number, alt?: AltBarSpec | nul
 
 /* ThetaData draws the bars where it is the page's source; Pinpoint, Trace and the Dossier draw Unusual Whales' */
 const thetaBars = (): boolean => thetaUseHere() === 'all';
+
+/** THE RECORD'S EDGE's word from the feed (the partner tree's 260a099, his houseCanExtend over OUR tapes): every session's
+    tape of this timeframe's grain that holds bars has found its data's start, and none is still reading older — so no
+    scroll-back can bring an older bar. Read only, off thetaTape's reach; asks nothing. */
+function tapeAtStart(ticker: string, mins: number): boolean {
+  const grain = chartGrain(mins);
+  const sessions: readonly DeskSession[] = grain === 'day' || grain === 'week' ? ['rth'] : ['overnight', 'pre', 'rth', 'post'];
+  const reach = sessions.map(s => tapeReach(ticker, grain, s));
+  const held = reach.filter(r => r.from);
+  return held.length > 0 && held.every(r => r.done) && !reach.some(r => r.loading);
+}
 
 /** A session's window in New York time: "4:00 AM–9:30 AM ET" */
 const etWindow = (session: DeskSession): string => {
@@ -1349,6 +1361,18 @@ const StrikeChart = ({
   const recentHeldRef = useRef(false);
   const worldKeyRef = useRef('');
   const [fullNonce, setFullNonce] = useState(0);
+  /* THE RECORD'S EDGE (the partner tree's 260a099, openmarket's card where its candles run out): the world whose first bar
+     stands in view with room before it and nothing older to come — a glass card at the plot's left says so, the mark
+     adrift in it; dismissed a world at a time. Set from onRange against the ref first, so a still chart renders nothing.
+     The value is the world and how it ends: 'tape' (the feed's tapes reached their start) or 'held' (a page whose bars
+     have no scroll-back: everything held is drawn). */
+  /** the wheel glide's target, reachable from the data effect: bars landing in front shift it, a new world lets it go */
+  const zoomShiftRef = useRef<{ shift: (delta: number) => void; cancel: () => void }>({ shift: () => {}, cancel: () => {} });
+  /** the first bar drawn, for the glide's shift when older bars land in front of it */
+  const firstBarRef = useRef(0);
+  const [edge, setEdge] = useState<string | null>(null);
+  const edgeRef = useRef<string | null>(null);
+  const [edgeGone, setEdgeGone] = useState('');
   /* Mirrored every render, read from a subscription installed once — the same pattern levelsRef and focusPriceRef
      use, and the reason the mount effect never has to re-subscribe. */
   const onCrosshairRef = useRef(onCrosshair);
@@ -2039,8 +2063,11 @@ const StrikeChart = ({
         fontSize: compactRef.current ? 9 : 10,
         attributionLogo: true,
       },
-      // The session cut is New York, so the axis is New York, whatever clock the reader picked in Settings.
-      localization: NY_TIME,
+      /* THE READER'S CLOCK (the partner tree's 260a099, the timezone door on Terrain's strip): the axis and the crosshair
+         speak the zone the desk keeps — New York by rest, or the machine's, UTC, London's or Tokyo's (deskPrefs
+         CLOCK_ZONES); labels only — the session cut, the bars and every window stay New York's. A host's tape that IS
+         the market's day (a backtest, clock 'ny') keeps New York. Re-applied when the choice changes (below). */
+      localization: tapeRef.current?.clock === 'ny' ? NY_TIME : LOCAL_TIME,
       // No grid: the nodes and the levels are the structure; a grid behind them competes with the ribbons
       grid: {
         vertLines: { visible: false },
@@ -2049,9 +2076,11 @@ const StrikeChart = ({
       // The live-price capsule replaces the series' own last-value label and takes the axis's measured width (the
       // priceTag element below) — the axis itself is as wide as its figures; it used to be held open at 74 for a…
       rightPriceScale: { borderColor: s0.line, minimumWidth: 0 },
-      timeScale: { borderColor: s0.line, timeVisible: true, secondsVisible: false, rightOffset: 10, barSpacing: 6, minBarSpacing: 0.5, tickMarkFormatter: nyTickMarks },
+      timeScale: { borderColor: s0.line, timeVisible: true, secondsVisible: false, rightOffset: 10, barSpacing: 6, minBarSpacing: 0.5, tickMarkFormatter: tapeRef.current?.clock === 'ny' ? nyTickMarks : localTickMarks },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
-      handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: true } },
+      /* THE WHEEL'S ZOOM IS OURS (below, onWheelZoom — the partner tree's glide): the library's steps the bar spacing once
+         a notch, in one frame */
+      handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: { time: true, price: true } },
       crosshair: {
         mode: CrosshairMode.Normal,
         vertLine: { color: s0.crosshair, labelBackgroundColor: s0.label },
@@ -2179,6 +2208,20 @@ const StrikeChart = ({
            prepend keeps the view where it is — the time scale counts from the right edge) */
         const r = chart.timeScale().getVisibleLogicalRange();
         if (r && r.from < FULL_TRIGGER && r.to - r.from > 10) extendChartTape(loadedRef.current.ticker, tfMinutes(loadedRef.current.timeframe));
+      }
+      /* THE RECORD'S EDGE: three bar widths of room before the first bar, every bar held drawn, and no older bar to
+         come — on the feed's tapes when they have found their start; on a page whose bars have no scroll-back, once
+         everything held is drawn. Never a host's own tape (a backtest's day), a rule clock, or replay. */
+      {
+        const r = chart.timeScale().getVisibleLogicalRange();
+        const w = loadedRef.current;
+        const room = !!r && r.from < -3 && r.to - r.from > 10 && drawnAllRef.current && !recentHeldRef.current && barCountRef.current > 0 && !tapeRef.current && w.clock === 'time' && !replayRef.current;
+        const how = !room ? null : thetaBars() ? (tapeAtStart(w.ticker, tfMinutes(w.timeframe)) ? 'tape' : null) : 'held';
+        const key = how ? `${w.ticker}|${w.timeframe}|${how}` : null;
+        if (key !== edgeRef.current) {
+          edgeRef.current = key;
+          setEdge(key);
+        }
       }
       /* A synthetic crosshair is anchored to a pixel, not to a time: the model re-derives its bar from the saved x
          on the next update, so panning this pane slides someone else's mark onto a different bar without a word. */
@@ -2365,6 +2408,100 @@ const StrikeChart = ({
     };
     container.addEventListener('wheel', onWheelKeep, { passive: true });
 
+    /* THE WHEEL'S ZOOM GLIDES (the partner tree's b608857 · 12f1ef0 · abfc34b · a61adbf, openmarket's feel): the library's
+       wheel moved the bar spacing once a notch, in the frame the notch landed — a 10% jump, then nothing. Ours keeps a
+       TARGET view and eases the visible range toward it every frame (a 70 ms time constant), so notches in a row read as
+       one glide and a single notch lands softly; the bar under the pointer stays under the pointer. Wheel down widens the
+       view; a sideways wheel still pans through the library; the span is held to half a pixel a bar at the widest and
+       fifty at the narrowest. The glide ends when the library holds the range still for two frames (it clamped), and a
+       zoom out never opens more than half a window of empty runway past the last bar. OURS KEPT: the wheel never freezes
+       the price scale, and a scale the hand froze (a price-axis drag) holds through the glide while candles stay in it —
+       keepCandles runs each frame of the glide, as it ran after each library notch. */
+    let zoomTarget: { from: number; to: number } | null = null;
+    let zoomRaf = 0;
+    let zoomLast = 0;
+    let zoomPrev: { from: number; to: number } | null = null;
+    let zoomStill = 0;
+    const zoomEnd = () => {
+      zoomTarget = null;
+      zoomRaf = 0;
+      zoomLast = 0;
+      zoomPrev = null;
+      zoomStill = 0;
+    };
+    const zoomStep = (now: number) => {
+      const ts = chart.timeScale();
+      const cur = ts.getVisibleLogicalRange();
+      if (!cur || !zoomTarget) {
+        zoomEnd();
+        return;
+      }
+      /* read ACROSS frames: the library applies a set on its next render, so two still frames mean it clamped */
+      const still = !!zoomPrev && Math.abs(cur.from - zoomPrev.from) < 0.005 && Math.abs(cur.to - zoomPrev.to) < 0.005;
+      zoomStill = still ? zoomStill + 1 : 0;
+      if (zoomStill >= 2) {
+        zoomEnd();
+        return;
+      }
+      zoomPrev = cur;
+      const dt = zoomLast ? Math.min(48, now - zoomLast) : 16;
+      zoomLast = now;
+      const a = 1 - Math.exp(-dt / 70);
+      const from = cur.from + (zoomTarget.from - cur.from) * a;
+      const to = cur.to + (zoomTarget.to - cur.to) * a;
+      const done = Math.abs(zoomTarget.from - from) < 0.02 && Math.abs(zoomTarget.to - to) < 0.02;
+      ts.setVisibleLogicalRange(done ? zoomTarget : { from, to });
+      onWheelKeep();
+      if (done) zoomEnd();
+      else zoomRaf = requestAnimationFrame(zoomStep);
+    };
+    /* a press on the tape, or a sideways wheel, is the reader taking the view back: the glide lets go */
+    const cancelZoom = () => {
+      zoomTarget = null;
+      zoomPrev = null;
+    };
+    zoomShiftRef.current = {
+      shift: delta => {
+        if (zoomTarget) zoomTarget = { from: zoomTarget.from + delta, to: zoomTarget.to + delta };
+        if (zoomPrev) zoomPrev = { from: zoomPrev.from + delta, to: zoomPrev.to + delta };
+      },
+      cancel: cancelZoom,
+    };
+    const onWheelZoom = (e: WheelEvent) => {
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+      if (dy === 0 || Math.abs(dy) < Math.abs(e.deltaX)) {
+        cancelZoom();
+        return;
+      }
+      if (e.cancelable) e.preventDefault();
+      const ts = chart.timeScale();
+      const cur = ts.getVisibleLogicalRange();
+      if (!cur) return;
+      const base = zoomTarget ?? cur;
+      /* the cursor's bar, read in the current view and carried into the target's frame */
+      const x = e.clientX - container.getBoundingClientRect().left;
+      const underCursor = ts.coordinateToLogical(x);
+      const t = underCursor == null ? 0.5 : (underCursor - cur.from) / Math.max(1e-6, cur.to - cur.from);
+      const anchor = base.from + t * (base.to - base.from);
+      const width = Math.max(1, ts.width());
+      const span0 = base.to - base.from;
+      const span = Math.min(width / 0.5, Math.max(width / 50, span0 * Math.exp(dy * 0.0015)));
+      const ratio = span / span0;
+      let from = anchor - (anchor - base.from) * ratio;
+      let to = anchor + (base.to - anchor) * ratio;
+      /* the void ahead is capped: never more than half the window past the last bar — the window slides back instead */
+      const len = barCountRef.current;
+      if (len > 0 && to > len - 1 + span * 0.5) {
+        const over = to - (len - 1 + span * 0.5);
+        from -= over;
+        to -= over;
+      }
+      zoomTarget = { from, to };
+      if (!zoomRaf) zoomRaf = requestAnimationFrame(zoomStep);
+    };
+    container.addEventListener('wheel', onWheelZoom, { passive: false });
+    container.addEventListener('pointerdown', cancelZoom);
+
     return () => {
       /* Remember the view before this instance dies (the Weigher's fullscreen portal is a remount); spacing and
          scroll, not the logical range, so a wider pane shows more bars. */
@@ -2379,6 +2516,10 @@ const StrikeChart = ({
       }
       container.removeEventListener('wheel', onWheelKeep);
       if (wheelRaf) cancelAnimationFrame(wheelRaf);
+      zoomShiftRef.current = { shift: () => {}, cancel: () => {} };
+      container.removeEventListener('wheel', onWheelZoom);
+      container.removeEventListener('pointerdown', cancelZoom);
+      if (zoomRaf) cancelAnimationFrame(zoomRaf);
       container.removeEventListener('pointerdown', freezeScale);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(onRange);
       window.clearTimeout(fieldTimer);
@@ -3371,6 +3512,14 @@ const StrikeChart = ({
           window.setTimeout(lift, 40);
         }
       }
+      /* THE GLIDE RIDES THE LANDING (the partner tree's abfc34b): bars landing IN FRONT of the first shift every logical
+         index, and a wheel target kept in the old frame would drag the view into deep history. The target moves with the
+         bars; a new world lets the glide go. */
+      if (newWorld) zoomShiftRef.current.cancel();
+      else if (firstBarRef.current > 0) {
+        const delta = bars.findIndex(b => b.time >= firstBarRef.current);
+        if (delta > 0) zoomShiftRef.current.shift(delta);
+      }
       loadedRef.current = { ticker, timeframe, theme: themeKey, clock: barClock, full, session };
       tapeKeyRef.current = tapeKey;
       /* Armed a frame later: the library reports a range on the setData itself, before it has laid the view out
@@ -3382,6 +3531,10 @@ const StrikeChart = ({
          session paint. Update cannot rewrite older times, so a count jump reloads. */
       candleSeries.setData(bars.map(toMain));
       volumeSeries.setData(bars.map(b => toVolume(b, theme)));
+      if (firstBarRef.current > 0) {
+        const delta = bars.findIndex(b => b.time >= firstBarRef.current);
+        if (delta > 0) zoomShiftRef.current.shift(delta);
+      }
       /* Older sessions filling in do not move the right edge. Snapping there on every arrival is what made the
          price look stuck. */
       if (altSpec || bars[bars.length - 1].time !== prevEdge) showRecent();
@@ -3396,6 +3549,7 @@ const StrikeChart = ({
       volumeSeries.setData([]);
     }
     altCountRef.current = bars.length;
+    firstBarRef.current = bars.length ? bars[0].time : 0;
 
     /* The exposure field on these bars. One column per bar open, as wide as the bar, carried through the session.
        A bad grid is dropped. It is not left forced off, and it is not laid out by spacing every strike down the pane. */
@@ -3510,12 +3664,25 @@ const StrikeChart = ({
     }
   }, [tickDensity, mainNonce]);
 
+  /* The desk's clock changed (Settings, or Terrain's timezone door): the formatters read it on every call, so a fresh
+     set of options is only the nudge that makes the library redraw its labels now */
+  const deskClock = useDeskPrefs().clock;
+  useEffect(() => {
+    if (tapeRef.current?.clock === 'ny') return;
+    try {
+      chartRef.current?.applyOptions({ localization: LOCAL_TIME, timeScale: { tickMarkFormatter: localTickMarks } });
+    } catch {
+      /* chart already gone */
+    }
+  }, [deskClock, mainNonce]);
+
   /* Crossing the breakpoint must not need a remount — the chart is created once and a window drag changes which side
      of it the reader is on. */
   useEffect(() => {
     chartRef.current?.applyOptions({
       handleScroll: { mouseWheel: true },
-      handleScale: { mouseWheel: true },
+      /* the wheel's zoom is the glide's (onWheelZoom), never the library's notch */
+      handleScale: { mouseWheel: false },
     });
   }, [pageScroll]);
 
@@ -5477,6 +5644,43 @@ const StrikeChart = ({
 
         {/* Pinned to the container's right edge and moved down it by transform, so it rides the price scale rather
             than being re-laid out. */}
+        {/* THE RECORD'S EDGE (the partner tree's 260a099): where the candles run out, a glass card at the plot's left — the
+            mark adrift in it (index.css edge-drift), the word that this is as far back as the bars go, and on the feed's
+            tapes a coarser timeframe as the way further. Only the × takes the pointer; the plot under the card still pans. */}
+        {edge && edgeGone !== edge && (() => {
+          const [name, tf, how] = edge.split('|');
+          const daily = tfMinutes(tf as Timeframe) >= 1440;
+          return (
+            <div
+              className="pointer-events-none absolute left-3 top-[34%] z-10 w-[252px] max-w-[calc(100%-24px)] rounded-xl border border-ink/[0.08] bg-panel/[0.92] backdrop-blur-[6px] shadow-xl shadow-black/30 p-3 pr-8 animate-fade-in"
+              role="note"
+              data-record-edge={how}
+            >
+              <button
+                type="button"
+                aria-label="Dismiss"
+                onClick={() => setEdgeGone(edge)}
+                className="pointer-events-auto absolute top-2 right-2 inline-flex items-center justify-center w-5 h-5 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
+                data-record-edge-close
+              >
+                <XIcon className="w-3 h-3" />
+              </button>
+              <div className="flex items-start gap-3">
+                <span className="edge-mark shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-lg bg-ink/[0.05]" aria-hidden>
+                  <SlayerMark size={22} bare label="" />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-t13 font-semibold leading-4 text-textPrimary">The record starts here</div>
+                  <p className="mt-1 text-[11.5px] leading-4 text-textSecondary">
+                    {how === 'tape'
+                      ? `This is as far back as the tape goes for ${name} at ${tf}. ${daily ? 'Every day on record for this name is drawn.' : 'A coarser timeframe reaches further.'}`
+                      : `This is as far back as the bars on this page go for ${name} at ${tf}.`}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
         {priceTag && !replay && (
           <div
             ref={priceTagRef}
@@ -5490,7 +5694,8 @@ const StrikeChart = ({
           >
             <span className="sig-foil" aria-hidden />
             <div className="relative font-mono text-t12 font-bold leading-[14px] tnum" data-price-figure />
-            <div className="relative font-mono text-t9 leading-[11px] tnum opacity-80" data-price-left />
+            {/* the countdown line is kept for the writer but hidden, as the partner's is: a second line made the tag tall */}
+            <div className="relative hidden font-mono text-t9 leading-[11px] tnum" data-price-left />
           </div>
         )}
 

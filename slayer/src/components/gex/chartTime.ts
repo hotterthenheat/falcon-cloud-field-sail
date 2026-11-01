@@ -2,19 +2,24 @@
    so every createChart imports these formatters, which speak the reader's chosen zone. */
 
 import { TickMarkType, type Time, type TickMarkFormatter } from 'lightweight-charts';
-import { readDeskPrefs } from '../../data/deskPrefs';
+import { clockZoneOf, readDeskPrefs } from '../../data/deskPrefs';
 import { MONTHS } from '../../core/calendar';
 
 const two = (n: number) => String(n).padStart(2, '0');
 
-/* The reader's clock (Settings): the machine's zone or New York's. A New York instant comes back as a Date whose fields read
-   New York's wall clock (built from Intl parts) — for labels only, never arithmetic. */
+/* The reader's clock (Settings, and Terrain's timezone door): the machine's zone, New York's, UTC, London's or Tokyo's
+   (deskPrefs CLOCK_ZONES). An instant in a zone comes back as a Date whose fields read that zone's wall clock (built
+   from Intl parts, one formatter a zone, kept) — for labels only, never arithmetic. */
 const NY = 'America/New_York';
-let nyFmt: Intl.DateTimeFormat | null = null;
-function inNewYork(d: Date): Date {
-  nyFmt ??= new Intl.DateTimeFormat('en-US', { timeZone: NY, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+const zoneFmts = new Map<string, Intl.DateTimeFormat>();
+function inZone(d: Date, zone: string): Date {
+  let f = zoneFmts.get(zone);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+    zoneFmts.set(zone, f);
+  }
   const p: Record<string, number> = {};
-  for (const part of nyFmt.formatToParts(d)) if (part.type !== 'literal') p[part.type] = Number(part.value);
+  for (const part of f.formatToParts(d)) if (part.type !== 'literal') p[part.type] = Number(part.value);
   return new Date(p.year, p.month - 1, p.day, p.hour === 24 ? 0 : p.hour, p.minute, p.second);
 }
 
@@ -26,7 +31,8 @@ export type ChartClock = 'reader' | 'ny';
 function chartDate(t: Time, clock: ChartClock = 'reader'): Date {
   if (typeof t === 'number') {
     const d = new Date(t * 1000);
-    return clock === 'ny' || readDeskPrefs().clock === 'ny' ? inNewYork(d) : d;
+    const zone = clock === 'ny' ? NY : clockZoneOf(readDeskPrefs().clock);
+    return zone ? inZone(d, zone) : d;
   }
   if (typeof t === 'string') {
     const [y, m, d] = t.split('-').map(Number);
