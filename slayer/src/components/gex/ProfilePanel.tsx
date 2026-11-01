@@ -1891,7 +1891,7 @@ const ProfilePanel = ({
       )}
       {view === 'prints' && ticker && (
         <div className="absolute inset-x-0 bottom-0 pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-prints>
-          <RegimeTabs.Prints ticker={ticker} />
+          <RegimeTabs.Prints ticker={ticker} onSelect={onSelect} />
         </div>
       )}
       {onField && (!gexSnap || (gexSnap.chain?.length ?? 0) === 0) && (

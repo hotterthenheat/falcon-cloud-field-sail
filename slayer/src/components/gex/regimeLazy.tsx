@@ -4,7 +4,7 @@
 import { lazy, Suspense, type ComponentProps } from 'react';
 
 const VolRegimeView = lazy(() => import('./VolRegimeView'));
-/* the Prints tab (the server's tapes by type and venue) rides the same recharts chunk */
+/* the Prints tab (the server's tapes by type and venue, in Trace's own rows) loads on first open too */
 const PrintsView = lazy(() => import('./PrintsView'));
 
 const Wait = () => <div className="h-full flex items-center justify-center font-mono text-t11 uppercase tracking-widest text-textMuted">Loading…</div>;

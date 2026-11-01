@@ -47,6 +47,7 @@ const qcc = t.marks.find(m => m[2] === 13_000);
 check('the 13,000-share contingent print (QCC, 124) counts in the volume but is no mark: its price is a package\'s, not the market\'s', v(17) === 13_000 && !qcc && stockPrintOf([124, 255, 255, 255, 255], 17, 13_000, 752)!.block);
 const big = t.marks.find(m => Math.abs(m[0] - at('15:00:12.807')) < 1 && m[2] === 2160);
 check(`the 2,160-share Nasdaq TRF print at 15:00:12.807 ($1.62M) is an off-exchange mark — ${big ? `${big[2]} @ ${big[1]}, venue ${big[3]}, kind ${big[4]}, side ${big[5]}` : 'missing'}`, !!big && big[4] === 0 && big[3] === 57);
+check(`the mark carries the quote it printed against, as the Prints tab places it (the Dark Pool room's words): bid ${big?.[6]}, ask ${big?.[7]} — at the bid`, !!big && big[6] === 751.78 && big[7] === 751.8);
 check(`every mark is an off-exchange print of $${(DARK_MARK_NOTIONAL / 1e6).toFixed(0)}M and up or a block (${t.marks.length} marks)`, t.marks.length > 0 && t.marks.every(m => (OFF_EXCHANGE.has(m[3]) && m[1] * m[2] >= DARK_MARK_NOTIONAL) || m[4] === 1 || m[4] === 2));
 check('a block by its condition (75 BLOCK_TRADE) or by size; a cancel is no print', stockPrintOf([75, 255, 255, 255, 255], 3, 500, 50)!.block && stockPrintOf([0], 3, 10_000, 5)!.block && !stockPrintOf([0], 3, 9_999, 5)!.block && stockPrintOf([40], 3, 10, 5) === null);
 

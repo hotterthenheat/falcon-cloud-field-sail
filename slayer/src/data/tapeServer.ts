@@ -53,7 +53,8 @@ import {
 } from './printTags';
 import { printSetsPrice } from './thetaEligible';
 
-export const TAPE_FORMAT = 1;
+/** 2: a stock mark carries the quote it printed against */
+export const TAPE_FORMAT = 2;
 /** Reads in flight at once across every tape */
 export const TAPE_READS = 2;
 /** Terminal slots a second read leaves free, counting itself (data/volOutlookServer.ts KEEP_FREE) */
@@ -284,8 +285,9 @@ export function ingestOptions(t: OptionTape, rootIdx: number, csv: string): numb
 
 /* ---- the stock tape ------------------------------------------------------------------------------------------ */
 
-/** One mark: [ms, price, size, venue, kind (0 off-exchange, 1 a block on an exchange, 2 an off-exchange block), side] */
-export type StockMarkRow = [number, number, number, number, 0 | 1 | 2, number];
+/** One mark: [ms, price, size, venue, kind (0 off-exchange, 1 a block on an exchange, 2 an off-exchange block), side,
+    the bid and the ask in force (0 when none)] */
+export type StockMarkRow = [number, number, number, number, 0 | 1 | 2, number, number, number];
 /** The session's volume at a venue: [venue, shares, prints] */
 export type VenueRow = [number, number, number];
 
@@ -359,8 +361,10 @@ export function ingestStock(t: StockTape, csv: string): number {
        or late report, whose price is not the market's at that minute — data/thetaEligible.ts) */
     if ((read.block || (read.off && notional >= DARK_MARK_NOTIONAL)) && printSetsPrice(rowOf(f, c))) {
       const qms = stampMs(f[c.get('quote_timestamp') ?? -1] ?? '');
-      const side = SIDE_CODE[sideAtQuote(price, num(f[c.get('bid') ?? -1]), num(f[c.get('ask') ?? -1]), Number.isFinite(qms) ? ms - qms : 0)];
-      t.marks.push([ms, price, size, venue, read.off ? (read.block ? 2 : 0) : 1, side]);
+      const bid = num(f[c.get('bid') ?? -1]);
+      const ask = num(f[c.get('ask') ?? -1]);
+      const side = SIDE_CODE[sideAtQuote(price, bid, ask, Number.isFinite(qms) ? ms - qms : 0)];
+      t.marks.push([ms, price, size, venue, read.off ? (read.block ? 2 : 0) : 1, side, bid > 0 ? bid : 0, ask > 0 ? ask : 0]);
     }
     taken++;
   });

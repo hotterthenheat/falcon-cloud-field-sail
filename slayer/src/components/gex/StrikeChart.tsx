@@ -3503,10 +3503,11 @@ const StrikeChart = ({
         lineWidth: 1,
         axisLabelVisible: true,
         axisLabelColor: lineInk,
-        axisLabelTextColor: '#0a0a0a',
+        /* the select ink is light on dark and deep on paper: the label's words take the panel's ground */
+        axisLabelTextColor: printTape && boxElRef.current ? readToken('--panel', undefined, boxElRef.current) : '#0a0a0a',
       })
     );
-  }, [darkRows, overlays.darkpool, replay, mainNonce, levels.spot, revision, printTape]);
+  }, [darkRows, overlays.darkpool, replay, mainNonce, levels.spot, revision, printTape, appTheme]);
 
   /* Terrain's stock prints on the bars: the session's largest off-exchange prints and blocks, each at its price on its
      bar — a circle off-exchange, a square on an exchange; the side's ink (buyer, seller, none) */
