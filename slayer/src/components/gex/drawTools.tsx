@@ -409,6 +409,158 @@ const ICON = {
       <path d="M8 1.8 9.8 5.9 14.2 6.2 10.9 9.1 11.9 13.4 8 11.1 4.1 13.4 5.1 9.1 1.8 6.2 6.2 5.9z" />
     </G>
   ),
+  /* ── phase two — the rest of the toolbar, our own glyphs on the same grid ── */
+  insidefork: (
+    <G>
+      {END(2.4, 12.4)}
+      <path d="M3.6 11.4 14 3.6M6 12.6 14.6 6.4M2.6 8.6 12.6 1.4M8 8 9.5 11" />
+    </G>
+  ),
+  pitchfan: (
+    <G>
+      {END(2.4, 13.4)}
+      <path d="M3.4 12.4 12 2M3.6 12.6 14 5M3.8 12.8 14 8.4M3.8 13 13 12M12 2 13 12" />
+    </G>
+  ),
+  tbfibtime: (
+    <G>
+      <path d="M2 12.5 5 6 8 10" strokeDasharray="1.4 1.4" />
+      <path d="M8 2v12M10.5 2v12M14 2v12" />
+    </G>
+  ),
+  fibarcs: (
+    <G>
+      {END(8, 3)}
+      <path d="M3 3a5 5 0 0 0 10 0M5 3a3 3 0 0 0 6 0M1.2 3a6.8 6.8 0 0 0 13.6 0" />
+      <path d="M8 3 11 10" strokeDasharray="1.4 1.4" />
+    </G>
+  ),
+  gannsq: (
+    <G>
+      <rect x="2" y="3.5" width="12" height="9" rx="0.5" />
+      <path d="M2 12.5 14 3.5M2 12.5 14 8M2 12.5 8 3.5M2 8a6 4.5 0 0 0 6 4.5" />
+    </G>
+  ),
+  cypher: (
+    <G>
+      <path d="M1.5 12 4.5 3 7 8.5 12 1.8 14.5 10.5" />
+      <path d="M1.5 12 7 8.5M7 8.5 14.5 10.5" strokeDasharray="1.4 1.6" />
+    </G>
+  ),
+  elliotttri: (
+    <G>
+      <path d="M1.5 2 4 12 7 4 9.5 10.5 12 6 14.5 9" />
+      <path d="M4 12 14.5 9.5M1.5 2 14.5 8" strokeWidth="0.7" />
+    </G>
+  ),
+  elliottwxy: (
+    <G>
+      <path d="M1.5 3 6 11 9.5 6 14.5 13" />
+      <text x="9.6" y="5" fontSize="4.6" stroke="none" fill="currentColor">Y</text>
+    </G>
+  ),
+  elliottwxyxz: (
+    <G>
+      <path d="M1 3 4 9 6 6.5 9 12 11 9 15 14" />
+      <text x="10.6" y="6.4" fontSize="4.6" stroke="none" fill="currentColor">Z</text>
+    </G>
+  ),
+  cyclic: (
+    <G>
+      <path d="M2.5 2v12M6.3 2v12M10.1 2v12M13.9 2v12" />
+      {END(2.5, 8)}
+      {END(6.3, 8)}
+    </G>
+  ),
+  timecycles: (
+    <G>
+      <path d="M1.5 12a3.2 3.2 0 0 1 6.4 0a3.2 3.2 0 0 1 6.4 0" />
+      <path d="M1 12.5h14" strokeDasharray="1.4 1.4" />
+    </G>
+  ),
+  sine: (
+    <G>
+      <path d="M1 8c1.4-5.4 3.6-5.4 5 0s3.6 5.4 5 0 2.8-4.4 4-2" />
+    </G>
+  ),
+  barspattern: (
+    <G>
+      <path d="M2.5 5v6M4.5 3.5v5M6.5 6v6" />
+      <path d="M9.5 6v6M11.5 4.5v5M13.5 7v6" strokeDasharray="1.2 1.2" />
+    </G>
+  ),
+  ghostfeed: (
+    <G>
+      <rect x="2" y="7" width="2.4" height="4" rx="0.4" />
+      <rect x="6.8" y="4.5" width="2.4" height="4" rx="0.4" strokeDasharray="1 1" />
+      <rect x="11.6" y="2.5" width="2.4" height="4" rx="0.4" strokeDasharray="1 1" />
+      <path d="M3.2 5.5v1.5M3.2 11v1.5M8 3v1.5M12.8 1.2v1.3" />
+    </G>
+  ),
+  sector: (
+    <G>
+      {END(2.4, 12.6)}
+      <path d="M3.8 11.8 13.6 9.4M3.6 11.2 11 3.4M13.6 9.4A10.4 10.4 0 0 0 11 3.4" />
+    </G>
+  ),
+  frvp: (
+    <G>
+      <path d="M2 2.5v11M14 2.5v11" strokeDasharray="1.2 1.2" />
+      <path d="M2 4h4M2 6.2h6.5M2 8.4h9M2 10.6h5M2 12.8h2.5" strokeWidth="1.6" />
+    </G>
+  ),
+  avp: (
+    <G>
+      {END(2.4, 13.4)}
+      <path d="M2.4 2.5v9" strokeDasharray="1.2 1.2" />
+      <path d="M4 4h4M4 6.2h6.5M4 8.4h9M4 10.6h5" strokeWidth="1.6" />
+    </G>
+  ),
+  doublecurve: (
+    <G>
+      {END(2.4, 12.8)}
+      {END(13.6, 3.2)}
+      <path d="M3.4 11.6C5 4 8 6 8 8s3 4 4.6-3.4" />
+    </G>
+  ),
+  arrowmarker: (
+    <G>
+      <path d="M2 11.2 9.2 7.4 8.4 5.8 14 4.4 11.2 9.4 10.4 7.8 3 13z" fill="currentColor" />
+    </G>
+  ),
+  pricenote: (
+    <G>
+      {END(3, 12.6)}
+      <path d="M4.2 11.6 7.6 8" />
+      <rect x="7.2" y="3" width="7.4" height="5" rx="1" />
+      <path d="M9 5.5h3.8" />
+    </G>
+  ),
+  pin: (
+    <G>
+      <circle cx="8" cy="5.4" r="3.4" />
+      <path d="M8 8.8v5.6" />
+      <circle cx="8" cy="5.4" r="1" fill="currentColor" stroke="none" />
+    </G>
+  ),
+  table: (
+    <G>
+      <rect x="2" y="3" width="12" height="10" rx="0.8" />
+      <path d="M2 6.4h12M2 9.7h12M7 3v10" />
+    </G>
+  ),
+  comment: (
+    <G>
+      <path d="M3 2.5h10.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7l-3.5 3v-3H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z" />
+      <path d="M5 5.6h6M5 7.8h4" />
+    </G>
+  ),
+  anchoredtext: (
+    <G>
+      <path d="M3.5 4V3h9v1M8 3v8M6.3 11h3.4" />
+      <path d="M1.5 14.5h3M1.5 14.5v-3" strokeWidth="1.5" />
+    </G>
+  ),
 } satisfies Partial<Record<DrawingKind, JSX.Element>>;
 
 export const DRAW_FAMILIES: DrawFamily[] = [
@@ -433,6 +585,7 @@ export const DRAW_FAMILIES: DrawFamily[] = [
       { tool: 'pitchfork', label: 'Pitchfork', icon: ICON.pitchfork, sub: 'Pitchforks', keys: 'andrews median line' },
       { tool: 'schiff', label: 'Schiff pitchfork', icon: ICON.schiff, sub: 'Pitchforks', keys: 'andrews median' },
       { tool: 'mschiff', label: 'Modified Schiff pitchfork', icon: ICON.mschiff, sub: 'Pitchforks', keys: 'andrews median' },
+      { tool: 'insidefork', label: 'Inside pitchfork', icon: ICON.insidefork, sub: 'Pitchforks', keys: 'andrews median inside' },
     ],
   },
   {
@@ -448,8 +601,12 @@ export const DRAW_FAMILIES: DrawFamily[] = [
       { tool: 'fibcircles', label: 'Fib circles', icon: ICON.fibcircles, sub: 'Fibonacci', keys: 'fibonacci' },
       { tool: 'fibspiral', label: 'Fib spiral', icon: ICON.fibspiral, sub: 'Fibonacci', keys: 'fibonacci golden' },
       { tool: 'fibwedge', label: 'Fib wedge', icon: ICON.fibwedge, sub: 'Fibonacci', keys: 'fibonacci' },
+      { tool: 'tbfibtime', label: 'Trend-based fib time', icon: ICON.tbfibtime, sub: 'Fibonacci', keys: 'fibonacci time projection' },
+      { tool: 'fibarcs', label: 'Fib speed resistance arcs', icon: ICON.fibarcs, sub: 'Fibonacci', keys: 'fibonacci arcs' },
+      { tool: 'pitchfan', label: 'Pitchfan', icon: ICON.pitchfan, sub: 'Fibonacci', keys: 'fibonacci fan pitch' },
       { tool: 'gannbox', label: 'Gann box', icon: ICON.gannbox, sub: 'Gann' },
       { tool: 'gannsquare', label: 'Gann square fixed', icon: ICON.gannsquare, sub: 'Gann' },
+      { tool: 'gannsq', label: 'Gann square', icon: ICON.gannsq, sub: 'Gann', keys: 'wheel angles arcs' },
       { tool: 'gannfan', label: 'Gann fan', icon: ICON.gannfan, sub: 'Gann', keys: 'angles 1x1' },
     ],
   },
@@ -459,12 +616,19 @@ export const DRAW_FAMILIES: DrawFamily[] = [
     short: 'Patterns',
     tools: [
       { tool: 'xabcd', label: 'XABCD pattern', icon: ICON.xabcd, sub: 'Chart patterns', keys: 'harmonic gartley bat butterfly crab' },
+      { tool: 'cypher', label: 'Cypher pattern', icon: ICON.cypher, sub: 'Chart patterns', keys: 'harmonic xabcd' },
       { tool: 'abcd', label: 'ABCD pattern', icon: ICON.abcd, sub: 'Chart patterns', keys: 'harmonic' },
       { tool: 'hs', label: 'Head and shoulders', icon: ICON.hs, sub: 'Chart patterns', keys: 'neckline' },
       { tool: 'tripattern', label: 'Triangle pattern', icon: ICON.tripattern, sub: 'Chart patterns', keys: 'wedge converging' },
       { tool: 'threedrives', label: 'Three drives pattern', icon: ICON.threedrives, sub: 'Chart patterns', keys: '3 drives' },
       { tool: 'elliott5', label: 'Elliott impulse wave (12345)', icon: ICON.elliott5, sub: 'Elliott waves', keys: 'elliot motive' },
       { tool: 'elliott3', label: 'Elliott correction wave (ABC)', icon: ICON.elliott3, sub: 'Elliott waves', keys: 'elliot corrective abc' },
+      { tool: 'elliotttri', label: 'Elliott triangle wave (ABCDE)', icon: ICON.elliotttri, sub: 'Elliott waves', keys: 'elliot triangle abcde' },
+      { tool: 'elliottwxy', label: 'Elliott double combo wave (WXY)', icon: ICON.elliottwxy, sub: 'Elliott waves', keys: 'elliot double combination wxy' },
+      { tool: 'elliottwxyxz', label: 'Elliott triple combo wave (WXYXZ)', icon: ICON.elliottwxyxz, sub: 'Elliott waves', keys: 'elliot triple combination wxyxz' },
+      { tool: 'cyclic', label: 'Cyclic lines', icon: ICON.cyclic, sub: 'Cycles', keys: 'cycle period' },
+      { tool: 'timecycles', label: 'Time cycles', icon: ICON.timecycles, sub: 'Cycles', keys: 'cycle arcs period' },
+      { tool: 'sine', label: 'Sine line', icon: ICON.sine, sub: 'Cycles', keys: 'wave cycle sinus' },
     ],
   },
   {
@@ -474,8 +638,13 @@ export const DRAW_FAMILIES: DrawFamily[] = [
     tools: [
       { tool: 'long', label: 'Long position', icon: ICON.long, sub: 'Positions', keys: 'risk reward target stop' },
       { tool: 'short', label: 'Short position', icon: ICON.short, sub: 'Positions', keys: 'risk reward target stop' },
-      { tool: 'forecast', label: 'Forecast', icon: ICON.forecast, sub: 'Positions', keys: 'projection target prediction' },
+      { tool: 'forecast', label: 'Forecast', icon: ICON.forecast, sub: 'Positions', keys: 'position forecast projection target prediction' },
+      { tool: 'barspattern', label: 'Bars pattern', icon: ICON.barspattern, sub: 'Forecasting', keys: 'copy bars projection fractal' },
+      { tool: 'ghostfeed', label: 'Ghost feed', icon: ICON.ghostfeed, sub: 'Forecasting', keys: 'projected candles' },
+      { tool: 'sector', label: 'Sector', icon: ICON.sector, sub: 'Forecasting', keys: 'projection wedge' },
       { tool: 'avwap', label: 'Anchored VWAP', icon: ICON.avwap, sub: 'Volume', keys: 'volume weighted average price' },
+      { tool: 'frvp', label: 'Fixed range volume profile', icon: ICON.frvp, sub: 'Volume', keys: 'vp poc value area frvp' },
+      { tool: 'avp', label: 'Anchored volume profile', icon: ICON.avp, sub: 'Volume', keys: 'vp poc value area' },
       { tool: 'prange', label: 'Price range', icon: ICON.prange, sub: 'Measure' },
       { tool: 'drange', label: 'Date range', icon: ICON.drange, sub: 'Measure', keys: 'time bars' },
       { tool: 'measure', label: 'Date and price range', icon: ICON.measure, sub: 'Measure', keys: 'measure ruler' },
@@ -488,6 +657,7 @@ export const DRAW_FAMILIES: DrawFamily[] = [
     tools: [
       { tool: 'brush', label: 'Brush', icon: ICON.brush, sub: 'Freehand', keys: 'pen draw' },
       { tool: 'highlighter', label: 'Highlighter', icon: ICON.highlighter, sub: 'Freehand', keys: 'marker' },
+      { tool: 'arrowmarker', label: 'Arrow marker', icon: ICON.arrowmarker, sub: 'Arrows', keys: 'fat arrow' },
       { tool: 'arrow', label: 'Arrow', icon: ICON.arrow, sub: 'Arrows' },
       { tool: 'arrowup', label: 'Arrow mark up', icon: ICON.arrowup, sub: 'Arrows', keys: 'buy' },
       { tool: 'arrowdown', label: 'Arrow mark down', icon: ICON.arrowdown, sub: 'Arrows', keys: 'sell' },
@@ -500,6 +670,7 @@ export const DRAW_FAMILIES: DrawFamily[] = [
       { tool: 'path', label: 'Path', icon: ICON.path, sub: 'Shapes' },
       { tool: 'curve', label: 'Curve', icon: ICON.curve, sub: 'Shapes' },
       { tool: 'arc', label: 'Arc', icon: ICON.arc, sub: 'Shapes', keys: 'bow round' },
+      { tool: 'doublecurve', label: 'Double curve', icon: ICON.doublecurve, sub: 'Shapes', keys: 's curve' },
     ],
   },
   {
@@ -508,7 +679,12 @@ export const DRAW_FAMILIES: DrawFamily[] = [
     short: 'Words',
     tools: [
       { tool: 'text', label: 'Text', icon: ICON.text, sub: 'Words' },
+      { tool: 'anchoredtext', label: 'Anchored text', icon: ICON.anchoredtext, sub: 'Words', keys: 'fixed screen text' },
       { tool: 'note', label: 'Note', icon: ICON.note, sub: 'Words' },
+      { tool: 'pricenote', label: 'Price note', icon: ICON.pricenote, sub: 'Words', keys: 'price tag note' },
+      { tool: 'pin', label: 'Pin', icon: ICON.pin, sub: 'Words', keys: 'pin marker' },
+      { tool: 'table', label: 'Table', icon: ICON.table, sub: 'Words', keys: 'grid cells' },
+      { tool: 'comment', label: 'Comment', icon: ICON.comment, sub: 'Words', keys: 'speech bubble' },
       { tool: 'callout', label: 'Callout', icon: ICON.callout, sub: 'Words' },
       { tool: 'pricelabel', label: 'Price label', icon: ICON.pricelabel, sub: 'Words', keys: 'tag' },
       { tool: 'signpost', label: 'Signpost', icon: ICON.signpost, sub: 'Words', keys: 'sign post event' },
@@ -519,7 +695,7 @@ export const DRAW_FAMILIES: DrawFamily[] = [
     id: 'icons',
     name: 'Icons',
     short: 'Icons',
-    tools: [{ tool: 'stamp', label: 'Emoji stamp', icon: ICON.stamp, sub: 'Stamps', keys: 'emoji icon sticker' }],
+    tools: [{ tool: 'stamp', label: 'Icon, emoji or sticker', icon: ICON.stamp, sub: 'Stamps', keys: 'emoji icon sticker stamp' }],
   },
 ];
 
