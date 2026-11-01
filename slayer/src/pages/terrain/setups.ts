@@ -75,12 +75,12 @@ export const SETUP_KEYS = ['timeframe', 'overlays', 'indicators', 'chartStyle', 
   build, instead of silently never persisting it.
 */
 const OVERLAY_KEYS = Object.keys({
-  trails: 0, levels: 0, darkpool: 0, volume: 0, flow: 0, netDrift: 0, volDrift: 0, dexStrike: 0, session: 0, cone: 0, wind: 0, events: 0, alerts: 0, nodeAlert: 0,
+  trails: 0, levels: 0, darkpool: 0, volume: 0, flow: 0, netDrift: 0, volDrift: 0, dexStrike: 0, session: 0, cone: 0, wind: 0, events: 0, alerts: 0, nodeAlert: 0, extHours: 0, sessionBreaks: 0,
 } satisfies Record<keyof ChartOverlays, number>) as (keyof ChartOverlays)[];
 
 const INDICATOR_KEYS = Object.keys({
   ema9: 0, ema21: 0, ema50: 0, vwap: 0, bb: 0, vwapBands: 0, sma: 0, flowVwap: 0, sideVwap: 0, gammaEma: 0, gammaVwap: 0, rsi: 0, macd: 0, atrPane: 0,
-  harBand: 0, gammaRegime: 0, volShock: 0, effRatio: 0, amihud: 0,
+  harBand: 0, gammaRegime: 0, volShock: 0, effRatio: 0, amihud: 0, sessions: 0,
 } satisfies Record<keyof ChartIndicators, number>) as (keyof ChartIndicators)[];
 
 const STYLE_KEYS = Object.keys({
@@ -189,7 +189,8 @@ export function readSetup(raw: unknown, key: string): StoredSetup | null {
     */
     if (Object.keys(o).length > 0) {
       const filled = {} as ChartOverlays;
-      for (const k of OVERLAY_KEYS) filled[k] = o[k] ?? false;
+      /* the two the desks draw unless asked not to (extended hours, session breaks) stay on in a setup older than them */
+      for (const k of OVERLAY_KEYS) filled[k] = o[k] ?? (k === 'extHours' || k === 'sessionBreaks');
       out.overlays = filled;
     }
   }

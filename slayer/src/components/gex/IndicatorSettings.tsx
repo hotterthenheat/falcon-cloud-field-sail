@@ -81,7 +81,12 @@ const IndicatorSettings = ({ indicator, onClose }: { indicator: keyof ChartIndic
         </div>
         <div className="py-3 min-h-[180px]">
           {current === 'inputs' &&
-            inputs.map(i => (
+            inputs.map(i =>
+              i.kind === 'toggle' ? (
+                <div key={i.id} title={i.tooltip} data-settings-input={i.id}>
+                  <Check on={inputOf(indicator, i) >= 1} onChange={v => setLook(indicator, { inputs: { ...(look.inputs ?? {}), [i.id]: v ? 1 : 0 } })} label={i.title} hint={i.tooltip} />
+                </div>
+              ) : (
               <label key={i.id} className="flex items-center gap-3 h-9" title={i.tooltip}>
                 <span className="w-[150px] shrink-0 text-t12 text-textSecondary">{i.title}</span>
                 <input
@@ -99,7 +104,8 @@ const IndicatorSettings = ({ indicator, onClose }: { indicator: keyof ChartIndic
                 />
                 <span className="font-mono text-t10 text-textMuted tnum">default {i.default}</span>
               </label>
-            ))}
+              ),
+            )}
           {current === 'style' && (
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-3 h-9">

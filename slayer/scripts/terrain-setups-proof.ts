@@ -87,7 +87,8 @@ check(
   !!withJunk?.overlays &&
     !('ghost' in withJunk.overlays) &&
     (['trails', 'levels', 'darkpool', 'volume'] as const).every(k => withJunk.overlays![k] === true) &&
-    Object.entries(withJunk.overlays).every(([k, v]) => v === (['trails', 'levels', 'darkpool', 'volume'].includes(k)))
+    /* the rest fall back to off, except the two the desks draw unless asked not to (extended hours, session breaks) */
+    Object.entries(withJunk.overlays).every(([k, v]) => v === (['trails', 'levels', 'darkpool', 'volume', 'extHours', 'sessionBreaks'].includes(k)))
 );
 
 // 5. a symbol cannot compare against itself

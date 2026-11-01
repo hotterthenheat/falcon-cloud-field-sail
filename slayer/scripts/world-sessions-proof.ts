@@ -6,6 +6,8 @@
   Run:  npx tsx scripts/world-sessions-proof.ts
 */
 import { equityWindowsOn, isEarlyCloseDay, tradingDayOf, worldSessionsBetween, zoneInstant } from '../src/core/session';
+import { sessionMarks } from '../src/data/sessionMarks';
+import type { Candle } from '../src/types/market';
 
 let pass = 0;
 let fail = 0;
@@ -79,6 +81,27 @@ check('Tokyo 2026-11-02 opens 19:00 New York the evening before (EST)', nyOpenHo
   check('Fri 21:00 ET is closed', tradingDayOf(utc(2026, 10, 31, 1)) === null);
   check('Sun 1 Nov 21:00 EST (the day the US clocks changed) opens Monday', tradingDayOf(utc(2026, 11, 2, 2)) === '2026-11-02');
   check('zoneInstant reads New York through nyInstant', zoneInstant('America/New_York', '2026-07-15', 9 * 60) === utc(2026, 7, 15, 13));
+}
+
+/* the chart's marks over 15-minute bars, Thu 29 Oct 04:00 to Fri 30 Oct 19:45 ET (the stock tape has no overnight bars) */
+{
+  const bars: Candle[] = [];
+  for (const [day, start] of [[29, utc(2026, 10, 29, 8)], [30, utc(2026, 10, 30, 8)]] as const)
+    for (let i = 0; i < 64; i++) {
+      const t = start / 1000 + i * 900;
+      const px = 750 + day + (i === 30 ? 5 : 0);
+      bars.push({ time: t, open: px, high: px + 1, low: px - 1, close: px, volume: 1 });
+    }
+  const m = sessionMarks(bars, { ext: true, breaks: true, boxes: ['asia', 'london', 'newYork'] });
+  check('shades: pre and after hours on each day, in order', m.shades.map(s => s.kind).join(',') === 'pre,post,pre,post', m.shades.map(s => s.kind).join(','));
+  check('Thursday pre-market shade runs 04:00–09:15 ET bars', m.shades[0].from === utc(2026, 10, 29, 8) / 1000 && m.shades[0].to === utc(2026, 10, 29, 13, 15) / 1000);
+  check('one session break, at Friday 04:00', m.breaks.length === 1 && m.breaks[0] === utc(2026, 10, 30, 8) / 1000);
+  const ny = m.boxes.filter(b => b.key === 'newYork');
+  check('two New York boxes, 09:30–15:45 bars, high/low of their bars', ny.length === 2 && ny[0].from === utc(2026, 10, 29, 13, 30) / 1000 && ny[0].to === utc(2026, 10, 29, 19, 45) / 1000 && ny[0].high === 785 && ny[0].low === 778, ny.map(b => `${b.low}–${b.high}`).join(' '));
+  const ld = m.boxes.filter(b => b.key === 'london');
+  check('London boxes start at the first bar (04:00 ET, London on GMT, New York on EDT) and end 12:15', ld.length === 2 && ld[0].from === utc(2026, 10, 29, 8) / 1000 && ld[0].to === utc(2026, 10, 29, 16, 15) / 1000);
+  check('Tokyo has no box: its hours (19:00–02:30 ET) hold no bars here', !m.boxes.some(b => b.key === 'asia'));
+  check('off means off', sessionMarks(bars, { ext: false, breaks: false, boxes: [] }).shades.length === 0);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

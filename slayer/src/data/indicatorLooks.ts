@@ -21,6 +21,8 @@ export interface IndicatorInputSpec {
   max: number;
   step: number;
   tooltip?: string;
+  /** A switch (0 off, 1 on) rather than a number */
+  kind?: 'toggle';
 }
 
 export interface IndicatorLook {
