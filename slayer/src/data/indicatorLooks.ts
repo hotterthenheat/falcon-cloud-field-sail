@@ -21,8 +21,11 @@ export interface IndicatorInputSpec {
   max: number;
   step: number;
   tooltip?: string;
-  /** A switch (0 off, 1 on) rather than a number */
-  kind?: 'toggle';
+  /** A switch (0 off, 1 on) rather than a number; or a choice of `options`, its value the option's index */
+  kind?: 'toggle' | 'choice';
+  options?: readonly string[];
+  /** Left out of the legend row's inputs (a style switch, not a parameter) */
+  quiet?: boolean;
 }
 
 export interface IndicatorLook {

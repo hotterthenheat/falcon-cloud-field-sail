@@ -71,6 +71,9 @@ const PROOFS = [
   'world-sessions-proof',
   'after-hours-prints-proof',
   'drawing-geometry-proof',
+  'candle-patterns-proof',
+  'volume-at-price-proof',
+  'tv-levels-proof',
 ];
 
 const goldens = () =>

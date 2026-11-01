@@ -3,10 +3,11 @@
 
 import { compile, explain } from '../core/pine';
 import type { Script } from '../types/scripts';
+import { CANDLE_SOURCES } from './builtinScriptsCandles';
 
 interface BuiltinSource {
   slug: string;
-  group: 'Slayer' | 'Trend' | 'Bands' | 'Momentum' | 'Volume';
+  group: 'Slayer' | 'Trend' | 'Bands' | 'Momentum' | 'Volume' | 'Volatility' | 'Statistics' | 'Candlesticks' | 'Breadth';
   title: string;
   description: string;
   source: string;
@@ -379,6 +380,7 @@ indicator("On-balance volume")
 
 plot(ta.obv(), "OBV", color = #EDE4CD)`,
   },
+  ...CANDLE_SOURCES,
 ];
 
 let cache: Script[] | null = null;

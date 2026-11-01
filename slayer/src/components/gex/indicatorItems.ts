@@ -4,6 +4,7 @@
 import type { ChartIndicators } from './StrikeChart';
 import type { IndicatorInputSpec } from '../../data/indicatorLooks';
 import { PHYSICS_READS, type PhysicsKey } from '../../data/physicsReads';
+import { TV_SPECIAL_ITEMS } from './tvSpecialItems';
 
 interface IndicatorItem {
   key: keyof ChartIndicators;
@@ -12,7 +13,7 @@ interface IndicatorItem {
   /** Takes its own pane under the tape (the sub-pane cap applies) */
   sub?: boolean;
   /** The shelf it sits on. The book lines are not more moving averages. */
-  group?: 'book' | 'physics';
+  group?: 'book' | 'physics' | 'profile' | 'levels' | 'candles';
   /** One of the study's five tested reads: its physics name, plain name and CALCULATED / MODEL tag */
   physics?: PhysicsKey;
   /** What the settings dialog's Inputs tab offers (none: the tab is not shown, as on a fixed formula) */
@@ -47,6 +48,8 @@ export const INDICATOR_ITEMS: IndicatorItem[] = [
   { key: 'volShock', group: 'physics', physics: 'volShock', label: 'Gravitational Wave', hint: 'A strip along the floor when SPY’s last 15 minutes move faster than its last 390 — the market’s vol shock that tends to reach single names within the hour. Off on SPY, QQQ and the indexes themselves. Unit: ratio. Warmup: 130 SPY minutes. Source: SPY’s one-minute bars. Alert: no. Replay: no.', inputs: [{ id: 'flag', title: 'Flag at ratio', default: 2, min: 1.2, max: 5, step: 0.1, tooltip: 'The 15-minute vs 390-minute vol ratio that lights the strip' }] },
   { key: 'effRatio', group: 'physics', physics: 'effRatio', label: 'Reynolds Regime', hint: 'Kaufman efficiency ratio: net move over the path travelled, 0 (all noise) to 1 (a straight line), in its own pane. Regular-session bars only. Unit: 0–1. Warmup: the length. Source: this pane’s bars. Alert: no. Replay: the tape only.', sub: true, inputs: [{ id: 'n', title: 'Length (bars)', default: 60, min: 5, max: 390, step: 1, tooltip: 'Returns in the window; the study used 60 one-minute returns' }] },
   { key: 'amihud', group: 'physics', physics: 'amihud', label: 'Viscosity', hint: 'Amihud illiquidity: the average size of a bar’s move per dollar traded, in bps per $1M, in its own pane. Display only — it says how thick the tape is, not where it goes. Unit: bps per $1M. Warmup: the length. Source: this pane’s bars and share volume. Alert: no. Replay: the tape only.', sub: true, inputs: [{ id: 'n', title: 'Length (bars)', default: 60, min: 10, max: 390, step: 1, tooltip: 'Bars in the window; at least a third of them must trade' }] },
+  /* the volume profiles and auto levels (tvSpecialItems.ts) */
+  ...TV_SPECIAL_ITEMS,
 ];
 
 /** The menu line. The rest of the hint (unit, warmup, source) is the hover, not the row. */

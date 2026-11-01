@@ -81,6 +81,7 @@ const OVERLAY_KEYS = Object.keys({
 const INDICATOR_KEYS = Object.keys({
   ema9: 0, ema21: 0, ema50: 0, vwap: 0, bb: 0, vwapBands: 0, sma: 0, flowVwap: 0, sideVwap: 0, gammaEma: 0, gammaVwap: 0, rsi: 0, macd: 0, atrPane: 0,
   harBand: 0, gammaRegime: 0, volShock: 0, effRatio: 0, amihud: 0, sessions: 0,
+  candlesAll: 0, vrvp: 0, svp: 0, pvp: 0, aavp: 0, pivotsStd: 0, pivotsHL: 0, zigzag: 0, autoFib: 0, autoFibExt: 0, autoPitchfork: 0,
 } satisfies Record<keyof ChartIndicators, number>) as (keyof ChartIndicators)[];
 
 const STYLE_KEYS = Object.keys({

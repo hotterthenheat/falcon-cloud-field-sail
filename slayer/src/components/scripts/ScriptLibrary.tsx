@@ -12,12 +12,13 @@ import { scriptStore } from '../../data/scriptStore';
 import type { ChartScript, PaneId, Script, ScriptInput, ScriptInputValue } from '../../types/scripts';
 import Modal from '../ui/Modal';
 import { INDICATOR_ITEMS, indicatorBlurb, physicsOf } from '../gex/indicatorItems';
+import { TV_SPECIAL_KEYS } from '../gex/tvSpecialItems';
 import IndicatorSettings, { PhysicsTag } from '../gex/IndicatorSettings';
 import { DEFAULT_OVERLAYS, MAX_SUB_PANES, SUB_PANE_ORDER, type ChartIndicators, type ChartOverlays } from '../gex/StrikeChart';
 import { NODE_LOOKS, setDeskPrefs, useDeskPrefs } from '../../data/deskPrefs';
 import { OPENING_RANGES, type OpeningRange } from '../../data/sessionLevels';
 
-type Shelf = 'recent' | 'favourites' | 'mine' | 'slayer' | 'physics' | 'technicals' | 'chart';
+type Shelf = 'recent' | 'favourites' | 'mine' | 'slayer' | 'physics' | 'technicals' | 'candles' | 'levels' | 'chart';
 type Kind = 'slayer' | 'pine' | 'chart';
 
 interface Row {
@@ -43,6 +44,9 @@ const SHELVES: { key: Shelf; label: string; section: 'Personal' | 'Built in' }[]
   /* the five reads the physics study kept, each under its plain name and how it is made */
   { key: 'physics', label: 'Physics reads', section: 'Built in' },
   { key: 'technicals', label: 'Technicals', section: 'Built in' },
+  /* the candlestick patterns (builtinScriptsCandles.ts), and the volume profiles and auto levels (tvSpecialItems.ts) */
+  { key: 'candles', label: 'Candlestick patterns', section: 'Built in' },
+  { key: 'levels', label: 'Profiles and levels', section: 'Built in' },
   { key: 'chart', label: 'Chart tools', section: 'Built in' },
 ];
 
@@ -191,7 +195,7 @@ const OVERLAY_ROWS: { key: keyof ChartOverlays; label: string; hint: string; pan
 
 const CLOCK_HELD = new Set<keyof ChartOverlays>(['trails', 'flow', 'netDrift', 'volDrift', 'session', 'cone', 'wind', 'events']);
 /* Book lines and share VWAP have no session to cut on a rule clock. Keyed by the indicator, not the shelf group — search rewrites the group. */
-const CLOCK_HELD_CHART = new Set<keyof ChartIndicators>(['vwap', 'vwapBands', 'flowVwap', 'sideVwap', 'gammaEma', 'gammaVwap', 'harBand', 'gammaRegime', 'volShock']);
+const CLOCK_HELD_CHART = new Set<keyof ChartIndicators>(['vwap', 'vwapBands', 'flowVwap', 'sideVwap', 'gammaEma', 'gammaVwap', 'harBand', 'gammaRegime', 'volShock', ...TV_SPECIAL_KEYS]);
 /* the kind and shelf columns fold away on a phone */
 const ROW_GRID = 'grid items-center gap-x-2 px-2 grid-cols-[minmax(0,1fr)_28px_28px_36px] sm:grid-cols-[68px_minmax(0,1fr)_88px_28px_28px_44px]';
 
@@ -262,19 +266,23 @@ const ScriptLibrary = ({
   const allRows = useMemo<Record<Shelf, Row[]>>(() => {
     const builtins = builtinScripts();
     const slayer = builtins.filter(s => s.tags[0] === 'Slayer').map(rowFor);
-    const technicals = builtins.filter(s => s.tags[0] !== 'Slayer').map(rowFor);
-    const chartRow = (i: (typeof INDICATOR_ITEMS)[number]): Row => ({ key: `chart:${i.key}`, kind: 'chart', title: i.label, description: i.hint, pane: i.sub ? 'own' : 'overlay', group: i.group === 'book' ? 'From the book' : i.group === 'physics' ? 'Five tested reads' : 'Chart built-ins', chartKey: i.key, on: !!indicators?.[i.key], inputs: [] });
-    const chart: Row[] = INDICATOR_ITEMS.filter(i => i.group !== 'physics').map(chartRow);
+    const technicals = builtins.filter(s => s.tags[0] !== 'Slayer' && s.tags[0] !== 'Candlesticks').map(rowFor);
+    const candlesPine = builtins.filter(s => s.tags[0] === 'Candlesticks').map(rowFor);
+    const chartRow = (i: (typeof INDICATOR_ITEMS)[number]): Row => ({ key: `chart:${i.key}`, kind: 'chart', title: i.label, description: i.hint, pane: i.sub ? 'own' : 'overlay', group: i.group === 'book' ? 'From the book' : i.group === 'physics' ? 'Five tested reads' : i.group === 'profile' ? 'Volume profiles' : i.group === 'levels' ? 'Pivots and auto levels' : i.group === 'candles' ? 'Candlesticks' : 'Chart built-ins', chartKey: i.key, on: !!indicators?.[i.key], inputs: [] });
+    const chart: Row[] = INDICATOR_ITEMS.filter(i => i.group !== 'physics' && i.group !== 'profile' && i.group !== 'levels' && i.group !== 'candles').map(chartRow);
+    /* the combined indicator first, then one script a pattern */
+    const candles: Row[] = [...INDICATOR_ITEMS.filter(i => i.group === 'candles').map(chartRow), ...candlesPine];
+    const levels: Row[] = INDICATOR_ITEMS.filter(i => i.group === 'profile' || i.group === 'levels').map(chartRow);
     const physics: Row[] = indicators ? INDICATOR_ITEMS.filter(i => i.group === 'physics').map(chartRow) : [];
     const myRows = mine.map(rowFor).map(r => ({ ...r, group: 'My scripts' }));
-    const everything = [...slayer, ...physics, ...technicals, ...chart, ...myRows];
+    const everything = [...slayer, ...physics, ...technicals, ...candles, ...levels, ...chart, ...myRows];
     const favs = everything.filter(r => favourites.has(r.key)).map(r => ({ ...r, group: 'Favourites' }));
     /* newest first, from the same list the editor's menu keeps; a script no longer in the library is skipped */
     const recent = recentScripts()
       .map(r => everything.find(x => x.key === r.id))
       .filter((r): r is Row => !!r)
       .map(r => ({ ...r, group: 'Recently used' }));
-    return { recent, favourites: favs, mine: myRows, slayer, physics, technicals, chart };
+    return { recent, favourites: favs, mine: myRows, slayer, physics, technicals, candles, levels, chart };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mine, favourites, indicators, rowFor, recentTick]);
 
@@ -283,7 +291,7 @@ const ScriptLibrary = ({
     if (!q) return allRows[shelf];
     const seen = new Set<string>();
     const out: Row[] = [];
-    for (const s of ['slayer', 'physics', 'technicals', 'chart', 'mine'] as Shelf[]) {
+    for (const s of ['slayer', 'physics', 'technicals', 'candles', 'levels', 'chart', 'mine'] as Shelf[]) {
       for (const r of allRows[s]) {
         if (seen.has(r.key)) continue;
         if (`${r.title} ${r.description} ${r.group}`.toLowerCase().includes(q)) {
@@ -357,10 +365,10 @@ const ScriptLibrary = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, rows, highlight, toggle]);
 
-  const shipped = allRows.slayer.length + allRows.physics.length + allRows.technicals.length + allRows.chart.length;
+  const shipped = allRows.slayer.length + allRows.physics.length + allRows.technicals.length + allRows.candles.length + allRows.levels.length + allRows.chart.length;
   const overlayOn = overlays ? OVERLAY_ROWS.filter(r => !!overlays[r.key]).length : 0;
   const onThisPane = placed.filter(p => p.chart.visible).length + (indicators ? INDICATOR_ITEMS.filter(i => indicators[i.key]).length : 0) + overlayOn;
-  const counts: Record<Shelf, number> = { recent: allRows.recent.length, favourites: allRows.favourites.length, mine: allRows.mine.length, slayer: allRows.slayer.length, physics: allRows.physics.length, technicals: allRows.technicals.length, chart: allRows.chart.length };
+  const counts: Record<Shelf, number> = { recent: allRows.recent.length, favourites: allRows.favourites.length, mine: allRows.mine.length, slayer: allRows.slayer.length, physics: allRows.physics.length, technicals: allRows.technicals.length, candles: allRows.candles.length, levels: allRows.levels.length, chart: allRows.chart.length };
 
   /* the rows, grouped by their heading in order of first appearance */
   const groups = useMemo(() => {

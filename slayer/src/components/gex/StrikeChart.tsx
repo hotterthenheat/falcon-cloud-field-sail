@@ -145,6 +145,8 @@ import type { ExposureProfileData } from '../../types/gex';
 import GapChip, { GAP_GRACE_MS } from './GapChip';
 import { useOvernightLayer } from './useOvernightLayer';
 import { SESSION_INPUT_KEYS, useSessionsLayer } from './useSessionsLayer';
+import { TV_SPECIAL_INKS, TV_SPECIAL_KEYS, tvSpecialRecord, type TvSpecialKey } from './tvSpecialItems';
+import { useTvSpecialLayer } from './useTvSpecialLayer';
 
 /* The shape this chart needs off a print: whatever FlowPrint is, plus the instant it arrived. Declared here rather
    than imported from the provider so a chart never depends on a React context it does not use. */
@@ -266,7 +268,8 @@ export const CHART_STYLES: { value: ChartStyle; label: string }[] = [
 
 /* Indicator overlays — computed chart-side from the same aggregated bars the tape draws, so they agree with it on
    every timeframe. */
-export interface ChartIndicators {
+/* The volume profiles and auto levels (tvSpecialItems.ts) are keys too: vrvp, svp, pvp, aavp, pivotsStd, pivotsHL, zigzag, autoFib, autoFibExt, autoPitchfork */
+export interface ChartIndicators extends Record<TvSpecialKey, boolean> {
   ema9: boolean;
   ema21: boolean;
   ema50: boolean;
@@ -310,6 +313,7 @@ export const DEFAULT_INDICATORS: ChartIndicators = {
   ema9: false, ema21: false, ema50: false, vwap: false,
   bb: false, vwapBands: false, sma: false, flowVwap: false, sideVwap: false, gammaEma: false, gammaVwap: false, rsi: false, macd: false, atrPane: false,
   harBand: false, gammaRegime: false, volShock: false, effRatio: false, amihud: false, sessions: false,
+  ...tvSpecialRecord(false),
 };
 
 /* One categorical ink family for auxiliary lines (indicators here, compare lines in the widget) — hues that carry no
@@ -335,6 +339,7 @@ export const INDICATOR_INKS: Record<keyof ChartIndicators, string> = {
   effRatio: '#9FD3B5',
   amihud: '#C9B3E6',
   sessions: '#B9A9F4',
+  ...TV_SPECIAL_INKS,
 };
 
 /* The regime's two washes: the house's gamma signs (green long, red short — palette.ts), faint enough to sit under
@@ -430,6 +435,8 @@ const INDICATOR_PARTS: Record<keyof ChartIndicators, { pane: 'overlay' | 'sub'; 
   amihud: { pane: 'sub', parts: [{ part: 'line', kind: 'line', ink: INDICATOR_INKS.amihud }] },
   /* no series: its boxes are the sessions layer's (useSessionsLayer.ts) */
   sessions: { pane: 'overlay', parts: [] },
+  /* no series either: the volume profiles and auto levels draw through useTvSpecialLayer.ts */
+  ...tvSpecialRecord<{ pane: 'overlay' | 'sub'; parts: IndicatorPartSpec[] }>({ pane: 'overlay', parts: [] }),
 };
 
 /** The keys the readout prints — single-line overlays only: a five-line band pair would blow the readout row's
@@ -2898,7 +2905,7 @@ const StrikeChart = ({
       .filter(k => !(altSpec && (k === 'vwap' || k === 'vwapBands' || k === 'flowVwap' || k === 'sideVwap' || k === 'gammaEma' || k === 'gammaVwap' || k === 'harBand' || k === 'gammaRegime' || k === 'volShock')))
       /* the market's shock is about the market reaching a single name: not drawn on the market itself */
       .filter(k => !(k === 'volShock' && MARKET_NAMES.has(ticker.trim().toUpperCase())))
-      .filter(k => k !== 'sessions');
+      .filter(k => k !== 'sessions' && !(TV_SPECIAL_KEYS as readonly string[]).includes(k));
     /* Append under whatever product panes are already open. A fixed index lands RSI in the flow pane, or opens a blank one. */
     const product = lastProductPaneIndex();
     const full = fullWorldRef.current === `${ticker}|${timeframe}|${barClock}`;
@@ -3227,6 +3234,18 @@ const StrikeChart = ({
     breaks: overlays.sessionBreaks !== false,
     boxes: indicators.sessions && drawnOn('sessions', tfMinutes(timeframe)) ? SESSION_INPUT_KEYS.filter(k => { const spec = sessionsSpecs.find(x => x.id === k.id); return !spec || inputOf('sessions', spec) >= 1; }).map(k => k.key) : [],
     opacity: lookOf('sessions').opacity ?? 1,
+    signature: `${ticker}|${timeframe}|${revision}|${session}|${mainNonce}|${appTheme}|${looksRev}|${themeKey}`,
+  });
+
+  /* THE VOLUME PROFILES AND AUTO LEVELS (useTvSpecialLayer.ts): the standard desks' visible range / session / periodic /
+     auto anchored profiles, pivot points, zig zag, auto Fib and pitchfork, fractals — over this chart's own bars, the
+     volume from the one-minute bars already held. Time bars only, never a host's tape or a replay. */
+  const tvSpecialExtras = useTvSpecialLayer(candleSeriesRef as MutableRefObject<ISeriesApi<SeriesType> | null>, {
+    bars: () => barsFor(tfMinutes(timeframe), altSpec),
+    minuteBars: () => displayBars(ticker, 1),
+    mins: tfMinutes(timeframe),
+    on: TV_SPECIAL_KEYS.filter(k => indicators[k] && drawnOn(k, tfMinutes(timeframe))),
+    off: !!tape || replay || barClock !== 'time',
     signature: `${ticker}|${timeframe}|${revision}|${session}|${mainNonce}|${appTheme}|${looksRev}|${themeKey}`,
   });
 
@@ -5394,6 +5413,7 @@ const StrikeChart = ({
         : `SPY 15m vs 390m vol · flags at ×${inputOf('volShock', PHYS_INPUT.volShock).toFixed(1)}`;
   }
   if (indicators.amihud) physicsExtras.amihud = 'bps per $1M · display only';
+  Object.assign(physicsExtras, tvSpecialExtras);
   const physicsIdle: Partial<Record<keyof ChartIndicators, string>> = {};
   if (indicators.volShock && MARKET_NAMES.has(ticker.trim().toUpperCase())) physicsIdle.volShock = 'off on the market itself';
   if (altSpec) for (const k of ['harBand', 'gammaRegime', 'volShock'] as const) if (indicators[k]) physicsIdle[k] = 'needs time bars';
