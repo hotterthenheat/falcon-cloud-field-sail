@@ -470,7 +470,8 @@ const ProfilePanel = ({
   const [viewState, setView] = useState<RailView>(lockView ?? 'gex');
   const view = lockView ?? viewState;
   /* THE SURFACE TAB'S LENS (2026-11-01, from the data audit): dealer gamma across spot (the field's profile), or the
-     vol skew and surface off the live chain (SkewView) — one tab, its lens on its head, kept across visits */
+     vol skew and surface off the live chain (SkewView), or the dealers' charm and vanna hedge into the close (DriftView)
+     — one tab, its lens on its head, kept across visits */
   const [lens, setLensState] = useState<SurfaceLens>(readLens);
   const setLens = (v: SurfaceLens) => {
     setLensState(v);
@@ -1895,6 +1896,11 @@ const ProfilePanel = ({
       {view === 'surface' && lens === 'skew' && ticker && (
         <div className="absolute inset-x-0 bottom-0 pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-skew>
           <SurfaceLenses.Skew ticker={ticker} mode={mode} paper={paper} />
+        </div>
+      )}
+      {view === 'surface' && lens === 'drift' && ticker && (
+        <div className="absolute inset-x-0 bottom-0 pointer-events-auto select-text bg-panel" style={{ top: headH }} data-profile-drift>
+          <SurfaceLenses.Drift ticker={ticker} />
         </div>
       )}
       {view === 'building' && ticker && (

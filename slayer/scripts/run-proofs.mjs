@@ -57,6 +57,7 @@ const PROOFS = [
   'hub-proof.mjs',
   'vol-regime-proof.mjs',
   'skew-proof',
+  'charm-drift-proof',
 ];
 
 const goldens = () =>

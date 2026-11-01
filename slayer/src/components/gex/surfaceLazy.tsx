@@ -5,6 +5,7 @@ import { lazy, Suspense, type ComponentProps } from 'react';
 import { Seg } from './railFacts';
 
 const SkewView = lazy(() => import('./SkewView'));
+const DriftView = lazy(() => import('./DriftView'));
 
 const Wait = () => <div className="h-full flex items-center justify-center font-mono text-t11 uppercase tracking-widest text-textMuted">Loading…</div>;
 
@@ -14,13 +15,20 @@ export const SurfaceLenses = {
       <SkewView {...p} />
     </Suspense>
   ),
+  Drift: (p: ComponentProps<typeof DriftView>) => (
+    <Suspense fallback={<Wait />}>
+      <DriftView {...p} />
+    </Suspense>
+  ),
 };
 
-/** What the Surface tab draws: dealer gamma across spot (the field's profile), or the vol skew and surface */
-export type SurfaceLens = 'gamma' | 'skew';
+/** What the Surface tab draws: dealer gamma across spot (the field's profile), the vol skew and surface, or the dealers'
+    charm and vanna hedge into the close */
+export type SurfaceLens = 'gamma' | 'skew' | 'drift';
 const LENSES = [
   { value: 'gamma', label: 'Gamma', hint: 'Dealer gamma across spot — the curve the flip is read off' },
   { value: 'skew', label: 'Skew', hint: 'Implied vol by delta and expiry, against the prior close' },
+  { value: 'drift', label: 'Drift', hint: "The dealers' hedge into the close from charm and vanna" },
 ] as const satisfies readonly { value: SurfaceLens; label: string; hint: string }[];
 
 const KEY = 'slayer_surface_lens';
