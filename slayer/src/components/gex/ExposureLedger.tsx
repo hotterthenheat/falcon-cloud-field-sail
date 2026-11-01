@@ -973,11 +973,12 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
   const book = peekEntry(surface.ticker);
 
   return (
-    <div className="h-full min-h-0 flex flex-col" data-ledger>
+    <div className="h-full min-h-0 flex flex-col" data-ledger title={(surface.skipped ?? 0) > 0 && box.w > 0 && box.w < 260 ? `${surface.skipped} ${surface.skipped === 1 ? 'leg' : 'legs'} skipped, no vol` : undefined}>
       {/* WHAT THE FOCUS KEPT, IN WORDS (the audit's M12, 2026-10-13): the count and the strikes, highest first, each a
           keep — ONE LINE ABOVE THE GRID (the owner, 2026-10-13: laid over the grid's foot it wrapped to three lines, hid
           the last rows and sat at a different height in every column); past the width it scrolls sideways */}
-      {(surface.skipped ?? 0) > 0 && (
+      {/* a narrow rail (a 3- or 4-pane desk) keeps the note in the grid's title, not a row of its own */}
+      {(surface.skipped ?? 0) > 0 && !(box.w > 0 && box.w < 260) && (
         <div className={`shrink-0 h-6 flex items-center px-3 border-b border-borderSubtle ${ground} font-mono text-t11 text-textMuted`} data-legs-skipped={surface.skipped}>
           {surface.skipped} {surface.skipped === 1 ? 'leg' : 'legs'} skipped, no vol
         </div>

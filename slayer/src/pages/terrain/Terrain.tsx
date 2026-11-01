@@ -691,7 +691,8 @@ interface PaneProps {
 /** The strike rail's rest width on this desk: a narrow column beside the tape, not two fifths of the pane (the rail took
     ~40% of a pane's width at the panel's own rest widths). Dragged wider, it keeps the reader's width; the bar's
     STRIKES switch and the panel's × fold it away. */
-const railRestWidth = (panes: number, expanded: boolean): number => Math.max(PROFILE_MIN_W, expanded || panes === 1 ? 320 : panes === 3 ? 180 : 210);
+/* three or four across: the rail at its floor (PROFILE_MIN_W), the chart keeps the room */
+const railRestWidth = (panes: number, expanded: boolean): number => Math.max(PROFILE_MIN_W, expanded || panes === 1 ? 320 : panes >= 3 ? 180 : 210);
 
 /** One pane's fault stays in its cell: the other panes keep drawing, and this one offers to draw again (a new name or
     interval clears it too) — a throw in one chart used to take the whole desk down */
@@ -1521,7 +1522,8 @@ const Pane = ({
                   </span>
                 ) : shownBook ? (
                   <span className="min-w-0 truncate font-mono text-t10 text-textMuted" title="The expiry and the book the nodes and Heaviest are drawn from">
-                    {shownBook.label} · {BOOK_MODE_WORDS[shownBook.kind === 'Flow' ? 'flow' : 'oi'].label}
+                    {/* the book's name rides the rail's own Live / Settled switch beside it: a 3- or 4-pane head says the expiry alone */}
+                    {shownBook.label}{paneCount >= 3 && !expanded ? null : <> · {BOOK_MODE_WORDS[shownBook.kind === 'Flow' ? 'flow' : 'oi'].label}</>}
                   </span>
                 ) : null}
                 {/* First thing the row gives up when the column is narrow (ID_ROW_FULL_PX) — the price it is a delta
