@@ -6,8 +6,22 @@ endpoint name suggests.
 ## Which vendor powers which page
 
 - **Trace and the Dossier read Unusual Whales only.** No ThetaData call leaves their pages.
-- **Pinpoint** reads its greeks, exposure, levels and flow from Unusual Whales, and only its live price and chart
-  candles from ThetaData (stock and index snapshots and bars). No ThetaData greeks or open interest on Pinpoint.
+- **Pinpoint** reads its greeks, exposure, levels and flow from Unusual Whales, and from ThetaData only its live price
+  and chart candles (stock and index snapshots and bars) and the one open-interest read below. No ThetaData greeks on
+  Pinpoint.
+- **Building's open-interest change** (Pinpoint's Building and Terrain's Building tab) is ThetaData's, allowed by the
+  owner on 2026-11-01: the all-expiration open interest (`/option/history/open_interest?expiration=*`) for the two
+  latest report dates, every listed contract, compared contract by contract. Read on the server, never by the browser:
+  `GET /api/oi-change/<T>` (`server/oiChangeApi.mjs`, arithmetic in `shared/oiChange.mjs`), one request per root per
+  report date (SPX reads SPX and SPXW, NDX NDX and NDXP, RUT RUT and RUTW), kept on disk under `.cache/oi-change` and
+  shared by every page and viewer, two history reads at once at most. A report is stamped about 06:30 ET for the
+  previous close, so the change between reports D−1 and D is session D−1's trading; Building's label names both dates.
+  Only when the terminal cannot answer does Building fall back to Unusual Whales' `/stock/{t}/oi-change` list (the
+  movers, every page each way), and its hover text says which source is in use. Each contract's change is still valued
+  at Unusual Whales' per-contract gamma (`data/building.ts valueOiChange`). Proofs: `scripts/oi-change-proof.mjs`, and
+  `scripts/golden/pinpoint-golden.ts` (the recorded Oct 27 and Oct 28 reports against a hand sum, and against the
+  vendor's list for the same date: they agree on every contract both carry; the vendor's whole list missed 47 of SPY's
+  3,999 moved contracts and 15 of NVDA's 1,687, its first page each way 2,999 and 703).
 - **Terrain, Weigher, Compass and Practice** read ThetaData for real-time quotes, NBBO, chains, greeks, bars and
   history, and Unusual Whales for what ThetaData does not carry (exposure, flow, levels).
 - The Weigher's per-contract **gamma** is Unusual Whales' (`/stock/{t}/option-contracts` `gamma`, the rows the name's
@@ -20,8 +34,8 @@ endpoint name suggests.
   read, then the fixed `DEFAULT_R` (4.2%) in `src/core/carry.ts`, and use the holiday table in
   `shared/marketCalendar.mjs`.
 
-Set by the owner on 2026-10-22 (Pinpoint and Dossier on Unusual Whales) and 2026-10-29 (Trace on Unusual Whales
-only; ThetaData for Pinpoint's live price and candles).
+Set by the owner on 2026-10-22 (Pinpoint and Dossier on Unusual Whales), 2026-10-29 (Trace on Unusual Whales
+only; ThetaData for Pinpoint's live price and candles) and 2026-11-01 (ThetaData's open interest for Building).
 
 ## Verified against the live key (2026-10-22)
 

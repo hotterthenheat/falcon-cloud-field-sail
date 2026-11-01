@@ -56,6 +56,7 @@ const PROOFS = [
   'proxy-auth-proof.mjs',
   'hub-proof.mjs',
   'vol-regime-proof.mjs',
+  'oi-change-proof.mjs',
 ];
 
 const goldens = () =>

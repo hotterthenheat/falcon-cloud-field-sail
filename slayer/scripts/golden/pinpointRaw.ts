@@ -337,7 +337,8 @@ export function oiChangeRows(raw: Map<string, unknown>, t: string): { expiry: st
   const seen = new Set<string>();
   const out: { expiry: string; strike: number; right: string; diff: number }[] = [];
   for (const [p, d] of raw) {
-    if (!p.startsWith(`/stock/${t}/oi-change?`)) continue;
+    /* the page's own reads only (no date): the dated walk is the coverage comparison's (vendorOiDiffs) */
+    if (!p.startsWith(`/stock/${t}/oi-change?`) || p.includes('&date=')) continue;
     for (const r of d as Row[]) {
       const sym = String(r.option_symbol);
       if (seen.has(sym) || !n(r.oi_diff_plain)) continue;
@@ -345,6 +346,46 @@ export function oiChangeRows(raw: Map<string, unknown>, t: string): { expiry: st
       const tail = sym.slice(-15);
       out.push({ expiry: `20${tail.slice(0, 2)}-${tail.slice(2, 4)}-${tail.slice(4, 6)}`, strike: Number(tail.slice(7)) / 1000, right: tail[6], diff: n(r.oi_diff_plain) });
     }
+  }
+  return out;
+}
+
+/** The vendor's whole oi-change list for one report date, as Building's fallback walks it (every page each way):
+    expiry|strike|C/P → oi_diff_plain */
+export function vendorOiDiffs(raw: Map<string, unknown>, t: string, date: string): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const [p, d] of raw) {
+    if (!p.startsWith(`/stock/${t}/oi-change?`) || !p.endsWith(`&date=${date}`)) continue;
+    for (const r of d as Row[]) {
+      const tail = String(r.option_symbol).slice(-15);
+      const diff = n(r.oi_diff_plain);
+      if (diff) m.set(`20${tail.slice(0, 2)}-${tail.slice(2, 4)}-${tail.slice(4, 6)}|${Number(tail.slice(7)) / 1000}|${tail[6]}`, diff);
+    }
+  }
+  return m;
+}
+
+/** The terminal's complete change between two recorded all-expiration reports (/option/history/open_interest
+    ?expiration=*), read here straight off the raw answers: expiry|strike|C/P → later − earlier, every contract on either
+    report whose expiry is on or after the later report's date, a contract missing from one counted as 0 there */
+export function terminalOiDiffs(raw: Map<string, unknown>, t: string, later: string, earlier: string): Map<string, number> {
+  const report = (day: string) => {
+    const body = raw.get(`/option/history/open_interest?symbol=${t}&expiration=*&date=${day.replace(/-/g, '')}&format=json`) as { response?: { contract: Row; data: Row[] }[] } | undefined;
+    if (!body?.response) throw new Error(`golden: no recorded terminal report for ${t} ${day}`);
+    const m = new Map<string, number>();
+    for (const r of body.response) {
+      const right = String(r.contract.right)[0];
+      m.set(`${String(r.contract.expiration)}|${n(r.contract.strike)}|${right}`, n(r.data[0]?.open_interest));
+    }
+    return m;
+  };
+  const a = report(later);
+  const b = report(earlier);
+  const out = new Map<string, number>();
+  for (const k of new Set([...a.keys(), ...b.keys()])) {
+    if (k.split('|')[0] < later) continue;
+    const d = (a.get(k) ?? 0) - (b.get(k) ?? 0);
+    if (d) out.set(k, d);
   }
   return out;
 }

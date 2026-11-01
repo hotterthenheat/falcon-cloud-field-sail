@@ -66,6 +66,9 @@ const REGIME_READS = [
   '/index/history/eod?symbol=VIX&start_date=20251029&end_date=20261029&format=json',
 ];
 check(`the Regime reads pass (${REGIME_READS.length}: the index snapshot, 1m and eod history)`, REGIME_READS.every(p => thetaAllowed(p)));
+/* Building's complete open-interest change (server/oiChangeApi.mjs), as it writes it: one root, every expiration, one date */
+const OI_CHANGE_READS = ['/option/history/open_interest?symbol=SPY&expiration=*&date=20261030&format=json', '/option/history/open_interest?symbol=SPXW&expiration=*&date=20261030&format=json'];
+check(`Building's all-expiration open-interest read passes (${OI_CHANGE_READS.length})`, OI_CHANGE_READS.every(p => thetaAllowed(p)));
 
 /* ---- what is shut ---- */
 const FLAT = ['/option/flat_file/trade_quote', '/option/flat_file/eod', '/option/flat_file/open_interest', '/option/flat_file/quote', '/stock/flat_file/trade_quote', '/stock/flat_file/eod', '/stock/flat_file/quote', '/index/flat_file/eod'];

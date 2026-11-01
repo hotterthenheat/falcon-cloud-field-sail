@@ -9,7 +9,7 @@
 import { done, expectEqual, expectNear, freezeClock, installUwFixtures, recordedAt, settleOn } from './uwFixtures';
 import { pruneSet } from './pinpointRaw';
 import { dealerOf } from '../../src/core/dealerSign';
-import { bsVega, byStrike, contractRow, contractOi, contractVols, exposureRows, impliedMove, levelsOfRows, oiChangeRows, phiCdf, pricedFlip, pricedFlowTo, pricedLegs, pricedNet, rawAnswers, termVols, yearsTrading } from './pinpointRaw';
+import { bsVega, byStrike, contractRow, contractOi, contractVols, exposureRows, impliedMove, levelsOfRows, oiChangeRows, phiCdf, pricedFlip, pricedFlowTo, pricedLegs, pricedNet, rawAnswers, terminalOiDiffs, termVols, vendorOiDiffs, yearsTrading } from './pinpointRaw';
 
 const SET = 'pinpoint-2026-10-29';
 const NAMES = ['SPY', 'NVDA'] as const;
@@ -62,6 +62,7 @@ const { higherForStrikes } = await import('../../src/data/liveHigher');
 const { buildBuilding } = await import('../../src/data/building');
 const { buildHedgeFlowLadder } = await import('../../src/data/hedgeFlow');
 const { levelNetPath } = await import('../../src/data/flipLevel');
+const { oiSourceWords, valueOiChange } = await import('../../src/data/building');
 
 const raw = rawAnswers(SET);
 const SQRT_PI_2 = Math.sqrt(Math.PI / 2);
@@ -196,6 +197,8 @@ for (const t of NAMES) {
   const busiest = [...handChange].sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))[0];
   const brow = building.rows.find(r => r.strike === busiest?.[0]);
   expectNear(`${t}: Building's change at ${busiest?.[0]} = Σ oi_diff × row gamma ÷ OI (${(busiest?.[1] ?? 0).toFixed(0)})`, brow?.change ?? NaN, busiest?.[1] ?? NaN, 1e-6);
+  /* the terminal is down in this pass (the oi-change route answers terminal_down): Building values the movers' list and says so */
+  expectEqual(`${t}: with the terminal down Building names the movers' list as its source`, [building.oiSource, /^Source: the shorter list/.test(oiSourceWords(building))], ['movers', true]);
 
   /* the hedge-flow ladder against a fine integral of the independently re-priced rows */
   const legsFront = pricedLegs(rows, new Set([gold.front]), vols, ois);
@@ -253,6 +256,114 @@ for (const t of NAMES) {
     expectNear(`${t} ${k}${right} veta: $vega per session (fd ${vetaFd.toFixed(0)})`, dealerOf(h.veta[leg]), vetaFd, 0.02);
   }
 }
+/*
+  THE COMPLETE CHANGE (the owner, 2026-11-01): Building on the terminal's all-expiration open interest for the two report
+  dates, every listed contract, through the server's own reader (server/oiChangeApi.mjs) on the recorded terminal
+  answers (the Oct 28 and Oct 27 reports, the same pair the vendor's list in this set compares: at 06:47 ET on Oct 29 it
+  had not posted Oct 29's yet, so the reader is asked as of the same hour a day earlier). Checked against a hand sum
+  straight off the raw reports, then against the vendor's whole list for the same date contract by contract.
+*/
+const { createOiChange } = await import('../../server/oiChangeApi.mjs');
+const { dropOiChange } = await import('../../src/data/book/oiChange');
+const LATER = '2026-10-28';
+const EARLIER = '2026-10-27';
+const reader = createOiChange({
+  /* the terminal's answers through the fixture set, as the proxy serves them (theta:… recordings) */
+  theta: async p => {
+    const r = await fetch(`/api/theta${p}`);
+    return { status: r.status, body: await r.text() };
+  },
+  dir: null,
+  now: () => Date.now() - 86_400_000,
+});
+const fixtureFetch = globalThis.fetch;
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  const m = /^\/api\/oi-change\/([A-Z.]+)$/.exec(url);
+  if (!m) return fixtureFetch(input, init);
+  return new Response(JSON.stringify(await reader.change(m[1], { waitMs: 60_000 })), { status: 200, headers: { 'content-type': 'application/json' } });
+}) as typeof fetch;
+/** The vendor's whole list for the report date, walked as Building's fallback walks it (book/oiChange.ts readMovers) */
+async function vendorWalk(t: string): Promise<void> {
+  for (const order of ['desc', 'asc'] as const) {
+    for (let page = 0; page < 14; page++) {
+      const res = await fetch(`/api/uw/stock/${t}/oi-change?limit=500&page=${page}&order=${order}&date=${LATER}`);
+      const rows = ((await res.json()) as { data?: Record<string, unknown>[] }).data ?? [];
+      const zero = rows.some(r => (order === 'desc' ? Number(r.oi_diff_plain) <= 0 : Number(r.oi_diff_plain) >= 0));
+      if (rows.length < 500 || zero) break;
+    }
+  }
+}
+const coverage: string[] = [];
+for (const t of NAMES) {
+  dropOiChange(t);
+  book.ensureOiChange(t, 'full');
+  await settle(t, () => book.peekOiChange(t)?.source === 'terminal');
+  await vendorWalk(t);
+  const rawNow = rawAnswers(SET);
+  const got = book.peekOiChange(t)!;
+  const hand = terminalOiDiffs(rawNow, t, LATER, EARLIER);
+  expectEqual(`${t}: the complete change compares report ${EARLIER} with report ${LATER}`, [got.source, got.lastDate, got.currDate], ['terminal', EARLIER, LATER]);
+  const mine = new Map(got.rows.map(r => [`${r.expiry}|${r.strike}|${r.right}`, r.diff]));
+  const differ = [...hand].filter(([k, d]) => mine.get(k) !== d).length + [...mine.keys()].filter(k => !hand.has(k)).length;
+  expectEqual(`${t}: the complete change is the raw reports' difference, contract by contract (${hand.size.toLocaleString('en-US')} contracts moved)`, [mine.size, differ], [hand.size, 0]);
+  const handSum = [...hand.values()].reduce((a, d) => a + d, 0);
+  expectEqual(`${t}: net contracts added, by hand ${handSum}`, got.rows.reduce((a, r) => a + r.diff, 0), handSum);
+
+  /* Building on it: the busiest front strikes against Σ (later − earlier) × row gamma ÷ OI, by hand */
+  const gold = GOLD[t];
+  const clock = aheadClock(readSessionClock());
+  const snap = book.snapshotFor(t, '0DTE', 'full')!;
+  const profile = buildExposureProfile(snap, '0DTE', LEVELS_WINDOW);
+  const building = buildBuilding(snap, book.bookHistory(t) ?? [], book.bookCandles(t) ?? [], profile, clock, got);
+  const front = byStrike(exposureRows(raw, t), new Set([gold.front]));
+  const ois = contractOi(raw, t);
+  const handChange = new Map<number, number>();
+  for (const [k, d] of hand) {
+    const [expiry, strikeS, right] = k.split('|');
+    if (expiry !== gold.front) continue;
+    const strike = Number(strikeS);
+    const v = front.get(strike);
+    const oi = ois.get(k) ?? 0;
+    if (!v || !(oi > 0)) continue;
+    handChange.set(strike, (handChange.get(strike) ?? 0) + d * ((right === 'C' ? v.c : v.p) / oi));
+  }
+  for (const [k, want] of [...handChange].sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 3)) {
+    const brow = building.rows.find(r => r.strike === k);
+    expectNear(`${t}: Building's change at ${k} on the complete count = Σ (later − earlier) × row gamma ÷ OI (${want.toFixed(0)})`, brow?.change ?? NaN, want, 1e-6);
+  }
+  expectEqual(`${t}: Building names every listed contract as its source, and the two report dates`, [building.oiSource, /^Source: every listed contract/.test(oiSourceWords(building)), /reports of Oct 27 and Oct 28/.test(oiSourceWords(building))], ['terminal', true, true]);
+
+  /* the vendor's whole list for the same date: where both carry a contract they agree; what it leaves out */
+  const vendor = vendorOiDiffs(rawNow, t, LATER);
+  const live = (k: string) => k.split('|')[0] >= LATER;
+  const overlap = [...vendor].filter(([k]) => live(k) && hand.has(k));
+  const agree = overlap.filter(([k, d]) => hand.get(k) === d).length;
+  const vendorOnly = [...vendor.keys()].filter(k => live(k) && !hand.has(k)).length;
+  expectEqual(`${t}: on the overlap (${overlap.length.toLocaleString('en-US')} contracts) the two agree contract by contract`, [agree, vendorOnly], [overlap.length, 0]);
+  const missed = [...hand].filter(([k]) => !vendor.has(k));
+  /* the dollars of the missed change, valued as Building values it (every live expiry, each contract at its own gamma) */
+  const all = book.snapshotFor(t, 'ALL', 'full')!;
+  const chainAll = (all.uwChains?.ALL?.length ? all.uwChains.ALL : all.chain) ?? all.chain;
+  const asChange = (list: [string, number][]) => ({ ...got, rows: list.map(([k, diff]) => { const [expiry, s, right] = k.split('|'); return { expiry, strike: Number(s), right: right as 'C' | 'P', diff, currDate: LATER, lastDate: EARLIER }; }) });
+  const gross = (list: [string, number][]) => [...valueOiChange(all, chainAll, asChange(list)).values()].reduce((a, v) => a + Math.abs(v.call) + Math.abs(v.put), 0);
+  const net = (list: [string, number][]) => [...valueOiChange(all, chainAll, asChange(list)).values()].reduce((a, v) => a + v.call + v.put, 0);
+  const grossAll = gross([...hand]);
+  const grossMissed = gross(missed);
+  const contractsMissedLive = missed.filter(([k]) => k.split('|')[0] >= '2026-10-29');
+  const pct = (a: number, b: number) => `${b ? ((100 * a) / b).toFixed(2) : '0'}%`;
+  const fmt = (v: number) => `${v < 0 ? '−' : ''}$${Math.abs(v) >= 1e6 ? `${(Math.abs(v) / 1e6).toFixed(1)}M` : `${(Math.abs(v) / 1e3).toFixed(0)}K`}`;
+  const line = `${t} ${EARLIER} → ${LATER}: the terminal counts ${hand.size.toLocaleString('en-US')} contracts that moved; the vendor's whole list carries ${vendor.size.toLocaleString('en-US')} (walked as Building walks it); it missed ${missed.length.toLocaleString('en-US')} (${pct(missed.length, hand.size)}; ${contractsMissedLive.length.toLocaleString('en-US')} still live on Oct 29), ${Math.abs(missed.reduce((a, [, d]) => a + d, 0)).toLocaleString('en-US')} net contracts, ${missed.reduce((a, [, d]) => a + Math.abs(d), 0).toLocaleString('en-US')} gross — ${fmt(grossMissed)} of ${fmt(grossAll)} gross dollar gamma of change (${pct(grossMissed, grossAll)}), net ${fmt(net(missed))}`;
+  coverage.push(line);
+  /* …and the first page each way alone (the largest 500 increases and 500 decreases: the Board's and the Agenda's read) */
+  const top = new Set(oiChangeRows(rawNow, t).map(r => `${r.expiry}|${r.strike}|${r.right}`));
+  const topMissed = [...hand].filter(([k]) => !top.has(k));
+  const topGross = gross(topMissed);
+  coverage.push(`${t}   the first page each way alone (${top.size.toLocaleString('en-US')} contracts) misses ${topMissed.length.toLocaleString('en-US')} (${pct(topMissed.length, hand.size)}), ${topMissed.reduce((a, [, d]) => a + Math.abs(d), 0).toLocaleString('en-US')} gross contracts — ${fmt(topGross)} of ${fmt(grossAll)} gross dollar gamma of change (${pct(topGross, grossAll)})`);
+}
+console.log('\nCOVERAGE (the complete change against the vendor\'s list)');
+for (const l of coverage) console.log(`  ${l}`);
+
 console.log(`asked ${asked.length} paths`);
 /* GOLDEN_PRUNE=1 after a re-record: drop answers no read asks for, and the spot-exposure columns nothing reads (the
    volume and bid/ask gamma, delta, vanna and charm), keeping the set small */

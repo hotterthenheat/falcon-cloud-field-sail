@@ -37,6 +37,9 @@ export function installUwFixtures(set: string): Fixtures {
   const real = globalThis.fetch;
   const serve = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    /* Building's complete open-interest change (server/oiChangeApi.mjs) is the server's, not a recording: unless a test
+       serves it (pinpoint-golden.ts), the terminal is down and the page falls back to the movers' list */
+    if (/^\/api\/oi-change\//.test(url)) return new Response(JSON.stringify({ error: 'The terminal is not running.', code: 'terminal_down' }), { status: 503, headers: { 'content-type': 'application/json' } });
     const m = /^\/api\/(uw|theta)(\/.*)$/.exec(url);
     if (!m) return real(input, init);
     const theta = m[1] === 'theta';

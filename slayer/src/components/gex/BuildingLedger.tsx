@@ -9,7 +9,7 @@ import { LEDGER_COLUMNS, LEDGER_COMPACT_COLUMNS, LEDGER_FOLD_H, LEDGER_ROW_H } f
 import { BULL, CALL_WALL, PUT_WALL, SUPREME, alpha } from './paletteInk';
 import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
 import { shownGamma } from './retailSign';
-import { bothWords, changeWhen, leanWord, sideWords, sizeWords, switchedWords, type BuildRow, type Building } from '../../data/building';
+import { bothWords, changeWhen, leanWord, oiSourceWords, sideWords, sizeWords, switchedWords, type BuildRow, type Building } from '../../data/building';
 
 const fmtSigned = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmtDollars(Math.abs(v))}`;
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
@@ -331,13 +331,13 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
         <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">{head}</div>
         <dl className={`flex flex-wrap gap-y-2 ${compact ? 'gap-x-4' : 'gap-x-6'}`} data-build-facts>
           <div>
-            <dt className="text-t10 text-textMuted whitespace-nowrap" title={data.overnight ? `Hedging added in ${changeWhen(data).long} — the overnight open-interest count, each contract valued at the same pricing as the wall now (the live book's own price and minute)${changeWhen(data).pending ? ` · ${changeWhen(data).pending}` : ''}` : undefined}>{changeWhen(data).head}</dt>
+            <dt className="text-t10 text-textMuted whitespace-nowrap" title={data.overnight ? `Hedging added in ${changeWhen(data).long} — the overnight open-interest count, each contract valued at the same pricing as the wall now (the live book's own price and minute)${oiSourceWords(data) ? ` · ${oiSourceWords(data)}` : ''}${changeWhen(data).pending ? ` · ${changeWhen(data).pending}` : ''}` : undefined}>{changeWhen(data).head}</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-build-built>
               {counted ? `+${fmtDollars(data.built)}` : data.loading ? '…' : '—'}
             </dd>
           </div>
           <div>
-            <dt className="text-t10 text-textMuted whitespace-nowrap" title={data.overnight ? `Hedging taken off in ${changeWhen(data).long}` : undefined}>{changeWhen(data).drained}</dt>
+            <dt className="text-t10 text-textMuted whitespace-nowrap" title={data.overnight ? `Hedging taken off in ${changeWhen(data).long}${oiSourceWords(data) ? ` · ${oiSourceWords(data)}` : ''}` : undefined}>{changeWhen(data).drained}</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-build-drained>
               {counted ? `−${fmtDollars(data.drained)}` : data.loading ? '…' : '—'}
             </dd>

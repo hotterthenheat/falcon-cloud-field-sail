@@ -29,7 +29,7 @@ import { BookOrSkeleton } from './BookDown';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
 import { aheadClock } from '../../data/ahead';
 import { fmtDistance, sessionAtr } from '../../data/atr';
-import { buildBuilding, oiWhen, type Building as BuildingData } from '../../data/building';
+import { buildBuilding, oiSourceWords, oiWhen, type Building as BuildingData } from '../../data/building';
 import { unitForName, useNameUnit } from '../../data/distanceUnits';
 import { levelsForName } from '../../data/levelsScope';
 import { readSessionClock } from '../../data/moc';
@@ -213,9 +213,9 @@ const Building = () => {
         </div>
         <p
           className="mt-0.5 text-t11 text-textMuted sm:whitespace-nowrap sm:truncate"
-          title={first.overnight ? `The overnight open-interest count, contract by contract (${oiWhen(first.oiDates).long}), each contract valued at the live book's own price and minute${oiWhen(first.oiDates).pending ? ` · ${oiWhen(first.oiDates).pending}` : ''}` : "Estimated from the day's volume until the overnight open-interest count loads"}
+          title={first.overnight ? `The overnight open-interest count, contract by contract (${oiWhen(first.oiDates, first.oiSource).long}), each contract valued at the live book's own price and minute${oiSourceWords(first) ? ` · ${oiSourceWords(first)}` : ''}${oiWhen(first.oiDates, first.oiSource).pending ? ` · ${oiWhen(first.oiDates, first.oiSource).pending}` : ''}` : "Estimated from the day's volume until the overnight open-interest count loads"}
         >
-          {first.overnight ? `What the overnight open-interest count added and took off · ${oiWhen(first.oiDates).short}` : `${clock.inSession ? "Today's trading" : 'The last session'}, from volume until the open-interest count loads`}
+          {first.overnight ? `What the overnight open-interest count added and took off · ${oiWhen(first.oiDates, first.oiSource).short}` : `${clock.inSession ? "Today's trading" : 'The last session'}, from volume until the open-interest count loads`}
         </p>
       </div>
       <BuildingControls clock={clock} order={order} onOrder={setOrder} window={window} onWindow={setWindow} show={show} onShow={setShow} names={namesDoor} updatedAt={scan.at} moved={counted ? moved : null} total={total} lenses={panes.length < 2} />

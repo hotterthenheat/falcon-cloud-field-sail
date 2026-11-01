@@ -1,4 +1,4 @@
-/* Building: the hedging added or taken off at each strike, so a wall shows forming or draining. The vendor's overnight open-interest change
+/* Building: the hedging added or taken off at each strike, so a wall shows forming or draining. The overnight open-interest change
    is valued at each contract's own gamma (valueOiChange), in the house sign; a wall's |now| − |was| is built or drained. */
 
 import { sessionStarts } from './indicators';
@@ -10,7 +10,7 @@ import { recordDay } from './bookWindow';
 import { datesOf, noFlipWords, smileOf, yearsTo } from './flipLevel';
 import { ownIvDates } from './book/scale';
 import { datesComplete, peekEntry } from './book/store';
-import type { OiChange } from './book/oiChange';
+import type { OiChange, OiSource } from './book/oiChange';
 import { shownGamma } from '../components/gex/retailSign';
 import { CLOSE_MIN, OPEN_MIN, SESSION_MIN, fmtDollars, fmtStrike, hhmm, type AheadClock } from './ahead';
 import type { ExposureProfileData } from '../types/gex';
@@ -106,11 +106,15 @@ export interface Building {
   sentence: string;
   /** False when the snapshots carry no open interest at all */
   hasOi: boolean;
-  /** True when the change is the vendor's overnight open-interest count (yesterday's trading), contract by contract —
+  /** True when the change is the overnight open-interest count (yesterday's trading), contract by contract —
       false when it is the day's volume walked onto the book (a book with no such count) */
   overnight: boolean;
-  /** The open-interest dates the overnight change runs between, when it is the vendor's */
+  /** The open-interest report dates the overnight change runs between */
   oiDates: { from: string; to: string } | null;
+  /** Where the overnight change came from: every listed contract ('terminal'), or the shorter movers' list ('movers') */
+  oiSource: OiSource | null;
+  /** The complete source's count of contracts listed in the later report */
+  oiListed: number | null;
   /** A live book whose overnight count has not landed yet — nothing is counted, the page prints "…" */
   loading: boolean;
 }
@@ -131,30 +135,47 @@ interface OiWhen {
   /** "Oct 22's count is not out yet — it is set before the next open" — null when the count is the latest */
   pending: string | null;
 }
-export function oiWhen(dates: { from: string; to: string } | null | undefined): OiWhen {
+export function oiWhen(dates: { from: string; to: string } | null | undefined, source: OiSource | null = null): OiWhen {
   if (!dates) return { trade: null, short: 'in the overnight open-interest count', long: 'the overnight open-interest count', day: null, pending: null };
   const trade = `${monDay(dates.from)}'s trading`;
   /* the latest session that has finished: today's after its close, else the one before the session on record */
   const rec = recordDay();
   const finished = rec.done ? rec.date : lastSessionBefore(rec.date);
-  /* When the next count is due: uwBook asks the vendor every five minutes from 07:00 ET on a trading day while the count is behind. */
+  /* When the next count is due: data/book/oiChange.ts looks again every five minutes from the stamp (06:35 ET for the complete reports, 07:00 for the movers' list) on a trading day while the count is behind. */
   /* …said from where the clock stands: after the close a count is not late, it is due before the next open. */
   const phase = nySessionPhase();
   const tradingToday = isTradingDay(nyTodayDate());
   const late = tradingToday && phase === 'open' && rec.date === nyIsoDate();
-  const watching = tradingToday && phase === 'before' && nyMinutes() >= 7 * 60;
+  /* the complete reports are stamped about 06:30 ET and looked for from 06:35; the movers' list from 07:00 */
+  const terminal = source === 'terminal';
+  const lookFrom = terminal ? '06:35' : '07:00';
+  const due = terminal ? 'the report is stamped about 06:30 ET' : 'it is usually out before the 9:30 open';
+  const watching = tradingToday && phase === 'before' && nyMinutes() >= (terminal ? 6 * 60 + 35 : 7 * 60);
   const nextOpen = tradingToday && phase === 'before' ? null : nextSessionWord();
   const pending =
     dates.from < finished
       ? late
-        ? `${monDay(finished)}'s count is late today — the vendor usually has it out before the 9:30 open; checked every 5 minutes, used the moment it lands`
+        ? `${monDay(finished)}'s count is late today — ${due}; checked every 5 minutes, used the moment it lands`
         : watching
-          ? `${monDay(finished)}'s count is not out yet — the vendor publishes it before the 9:30 open; checked every 5 minutes, used the moment it lands`
+          ? `${monDay(finished)}'s count is not out yet — ${due}; checked every 5 minutes, used the moment it lands`
           : nextOpen
-            ? `${monDay(finished)}'s count is due before ${nextOpen}'s open; this is ${monDay(dates.from)}'s — looked for from 07:00 ET that morning`
-            : `${monDay(finished)}'s count is due before today's 9:30 open; this is ${monDay(dates.from)}'s — looked for from 07:00 ET`
+            ? `${monDay(finished)}'s count is due before ${nextOpen}'s open; this is ${monDay(dates.from)}'s — looked for from ${lookFrom} ET that morning`
+            : `${monDay(finished)}'s count is due before today's 9:30 open; this is ${monDay(dates.from)}'s — looked for from ${lookFrom} ET`
       : null;
   return { trade, short: `in ${trade}`, long: `${trade} (open interest ${dates.from.slice(5)} → ${dates.to.slice(5)})`, day: monDay(dates.from), pending };
+}
+
+/** Which count Building values and which two reports it compares, for the hover text — no vendor named:
+    "every listed contract: the open-interest reports of Oct 27 and Oct 28 (each stamped about 06:30 ET for the close
+    before), compared contract by contract" */
+export function oiSourceWords(b: Pick<Building, 'oiSource' | 'oiDates' | 'oiListed'>): string {
+  const d = b.oiDates;
+  const pair = d ? `the open-interest reports of ${monDay(d.from)} and ${monDay(d.to)}` : 'the two latest open-interest reports';
+  if (b.oiSource === 'terminal')
+    return `Source: every listed contract${b.oiListed ? ` (${b.oiListed.toLocaleString('en-US')} in the later report)` : ''} — ${pair}, each stamped about 06:30 ET for the close before, compared contract by contract`;
+  if (b.oiSource === 'movers')
+    return `Source: the shorter list of the contracts whose open interest moved most — the complete reports could not be read just now, so smaller changes are left out; ${pair} compared`;
+  return '';
 }
 const DOW_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 /** The next session's weekday, from after today: "Monday" */
@@ -167,10 +188,10 @@ function lastSessionBefore(iso: string): string {
   return isoDate(sessionBefore(new Date(y, m - 1, d)));
 }
 
-/** The change's time words: the vendor's count names the session it counts (oiWhen) — never "today" or "yesterday" */
-export const changeWhen = (b: Pick<Building, 'overnight' | 'inSession'> & { oiDates?: Building['oiDates'] }): { short: string; long: string; head: string; drained: string; grew: string; shrank: string; pending: string | null } => {
+/** The change's time words: the count names the session it counts (oiWhen) — never "today" or "yesterday" */
+export const changeWhen = (b: Pick<Building, 'overnight' | 'inSession'> & { oiDates?: Building['oiDates']; oiSource?: Building['oiSource'] }): { short: string; long: string; head: string; drained: string; grew: string; shrank: string; pending: string | null } => {
   if (b.overnight) {
-    const w = oiWhen(b.oiDates);
+    const w = oiWhen(b.oiDates, b.oiSource ?? null);
     return {
       short: w.short,
       long: w.long,
@@ -206,7 +227,7 @@ interface Valued {
   put: number;
 }
 
-/** The vendor's open-interest change for the contracts in `chain`, each valued at its own gamma: the vendor's per-contract gamma,
+/** The open-interest change (the complete reports, else the movers' list) for the contracts in `chain`, each valued at its own gamma: the vendor's per-contract gamma,
     else the chain's exposure per contract, else Black-Scholes at that contract's (or the expiry's ATM) vol. Expired and out-of-scope dates are left out. */
 export function valueOiChange(snapshot: MarketSnapshot, chain: readonly { strike: number }[], change: OiChange, from?: string): Map<number, Valued> {
   const out = new Map<number, Valued>();
@@ -320,8 +341,8 @@ export function buildBuilding(
   bars: readonly Candle[],
   profile: ExposureProfileData,
   clock: AheadClock,
-  /** The vendor's open-interest change over the last session, contract by contract (uwBook's peekOiChange). When it is
-      in, it is what was built — the day's volume walked onto the book is only the fallback, and only the shape of the day. */
+  /** The open-interest change over the last session, contract by contract (uwBook's peekOiChange: the complete
+      reports, else the movers' list). When it is in, it is what was built — the day's volume walked onto the book is only the fallback, and only the shape of the day. */
   oiChange?: OiChange | null
 ): Building {
   const { ticker, spot } = snapshot;
@@ -473,7 +494,9 @@ export function buildBuilding(
   /* The words, once the scale is known: the verdict, the change, then what stands there. */
   const whenWords = (w: BuildRow['when']) => (w === 'early' ? 'mostly early in the day' : w === 'middle' ? 'mostly through the middle of the day' : w === 'late' ? 'mostly late in the day' : '');
   const oiDates = real && oiChange?.lastDate && oiChange.currDate ? { from: oiChange.lastDate, to: oiChange.currDate } : null;
-  const when = changeWhen({ overnight: real, inSession: clock.inSession, oiDates });
+  const oiSource = real ? (oiChange?.source ?? null) : null;
+  const oiListed = real ? (oiChange?.listed ?? null) : null;
+  const when = changeWhen({ overnight: real, inSession: clock.inSession, oiDates, oiSource });
   const day = when.short;
   /* "before Oct 21's trading" — the state the count starts from */
   const before = real ? `before ${oiWhen(oiDates).trade ?? 'the overnight count'}` : 'at the open';
@@ -650,5 +673,5 @@ export function buildBuilding(
     sentence = parts.join(' ');
   }
 
-  return { ticker, spot, rows, maxAbs, maxChange, built, drained, fastestUp, fastestDown, spotAfter, elapsedMin, minutesLeft, inSession: clock.inSession, heading, sentence, hasOi, overnight: real || loading, oiDates, loading };
+  return { ticker, spot, rows, maxAbs, maxChange, built, drained, fastestUp, fastestDown, spotAfter, elapsedMin, minutesLeft, inSession: clock.inSession, heading, sentence, hasOi, overnight: real || loading, oiDates, oiSource, oiListed, loading };
 }
