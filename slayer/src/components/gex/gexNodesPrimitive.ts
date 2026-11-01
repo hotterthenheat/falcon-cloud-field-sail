@@ -7,6 +7,7 @@ import { NODE_CAP, NODE_SHARE, selectNodeStrikes, type KeptLevel } from './nodeS
 import type { NodeConcept } from './nodeConcept';
 import { PHONE_ROW_PX, fitEdgeLabels } from './edgeLabelFit';
 import { RibbonCache, drawRibbons } from './nodeRibbon';
+import { LEVELS_LABELS, drawLevels, levelInk, pickLevels, spaceLevels, type LevelPick } from './nodeLevels';
 import { heatInks, heatPalette, layoutHeatLabels, onHeatPalette, paintHeatLabels, type HeatLabel } from './nodeHeat';
 
 /*
@@ -213,7 +214,7 @@ class FieldRenderer {
   private drawField(target: DrawTarget): void {
     const src = this.source;
     const heat = src.concept === 'heat';
-    if ((src.look === 'beads' || src.look === 'ribbon') && !heat) return;
+    if ((src.look === 'beads' || src.look === 'ribbon' || src.look === 'levels') && !heat) return;
     const cols = src.cols;
     /* hard bail: never draw a field that can blow the page (too many columns, no strikes, or disabled) */
     if (!src.enabled || !src.chart || !src.series || cols.length === 0 || cols.length > 2000 || src.strikes.length === 0 || !(src.ref > 0)) return;
@@ -704,6 +705,24 @@ class NodesRenderer {
   private zoneRev = -1;
   private zones: Zone[] = [];
   private ribbon = new RibbonCache();
+  private levelsCache = new RibbonCache();
+  private picksRev = -1;
+  private picks: LevelPick[] = [];
+
+  /** The biggest nodes at the newest column (the current book, in the field's model), once per hand-off */
+  private levelPicks(src: GexTrailsPrimitive): LevelPick[] {
+    if (this.picksRev === src.rev) return this.picks;
+    this.picksRev = src.rev;
+    const R = src.strikes.length;
+    const C = src.cols.length;
+    const rows: { strike: number; value: number }[] = [];
+    if (R && C) {
+      const base = (C - 1) * R;
+      for (let r = 0; r < R; r++) rows.push({ strike: src.strikes[r], value: src.values[base + r] });
+    }
+    this.picks = pickLevels(rows);
+    return this.picks;
+  }
 
   /** The three heaviest nodes at the newest column, and the column each became one of them — once per hand-off */
   private zonesFor(src: GexTrailsPrimitive): Zone[] {
@@ -865,7 +884,12 @@ class NodesRenderer {
       src.chips = src.heatLabels.map(l => ({ strike: l.price, left: l.x, top: l.ty - 9, bottom: l.ty + 9 }));
       return;
     }
-    const zones = haveField ? this.zonesFor(src).slice(0, paneH < 240 ? 2 : 3) : [];
+    const levelsLook = src.look === 'levels';
+    const zones = haveField && !levelsLook ? this.zonesFor(src).slice(0, paneH < 240 ? 2 : 3) : [];
+    /* LEVELS (nodeLevels.ts): the book's biggest nodes now, one band each across every candle, spaced so none stacks */
+    const bands = levelsLook && haveField && cN >= 0 ? spaceLevels(this.levelPicks(src), yOf) : [];
+    if (import.meta.env?.DEV && typeof window !== 'undefined' && levelsLook)
+      (window as unknown as { __levelsPick?: unknown }).__levelsPick = bands.map(l => ({ strike: l.strike, value: Math.round(l.value), t: +l.t.toFixed(3), y: Math.round(l.y), merged: l.merged }));
 
     target.useBitmapCoordinateSpace(scope => {
       const ctx = scope.context;
@@ -900,6 +924,30 @@ class NodesRenderer {
         ctx.fillRect(L, T, lw, B - T);
       }
 
+      if (bands.length) {
+        const x0 = ts.logicalToCoordinate(0 as Logical);
+        const lkey = `${src.rev}|${W}|${H}|${hr}|${vr}|${x0 == null ? 'x' : x0.toFixed(1)}|${light}|${src.supremeStrike}|${src.cwStrike}|${src.pwStrike}|${bands.map(l => `${l.strike}@${l.y.toFixed(1)}`).join(',')}`;
+        const drawn = this.levelsCache.paint(ctx, lkey, scope.bitmapSize.width, scope.bitmapSize.height, b =>
+          drawLevels(b, {
+            levels: bands,
+            x0: x0 == null ? 0 : x0 - barSpacing / 2,
+            x1: W,
+            H,
+            hr,
+            vr,
+            ids: { supreme: src.supremeStrike, cw: src.cwStrike, pw: src.pwStrike },
+            light,
+          }),
+        );
+        /* the hover answers on a band's own row, within its swell */
+        const rows = new Map<number, number>();
+        for (const [strike, half] of drawn) {
+          const r = strikes.indexOf(strike);
+          if (r >= 0) rows.set(r, Math.max(2, half));
+        }
+        src.beadRows = rows;
+      }
+
       if (fieldLive && src.look === 'ribbon') {
         /* RIBBON (nodeRibbon.ts): the same grid and window as the beads, each strike a waveform across time */
         const rowOf = (p: number | null): number => {
@@ -929,7 +977,7 @@ class NodesRenderer {
         );
       }
 
-      if (fieldLive && src.look !== 'heat' && src.look !== 'ribbon' && selected.length) {
+      if (fieldLive && src.look !== 'heat' && src.look !== 'ribbon' && src.look !== 'levels' && selected.length) {
         /* the bar pitch the beads stand on: every bar, or every k-th once bars crowd under a few pixels */
         const k = Math.max(1, Math.ceil(BEAD_MIN_PITCH / Math.max(0.1, barSpacing)));
         const pitch = barSpacing * k;
@@ -1022,7 +1070,7 @@ class NodesRenderer {
       }
 
       /* PROFILE: where each strike's net stands now, a short bar in from the plot's right edge */
-      if (haveField && cN >= 0 && rHi > rLo) {
+      if (haveField && cN >= 0 && rHi > rLo && !levelsLook) {
         let top = 0;
         for (let r = rLo; r < rHi; r++) {
           const v = nowAt(r);
@@ -1062,6 +1110,19 @@ class NodesRenderer {
       return strong ? { name: 'Top node', short: 'Top' } : { name: 'Node', short: 'N' };
     };
     const used: number[] = [];
+    /* the levels' names: the largest LEVELS_LABELS drawn bands, each with its role and its size (the rest stay unnamed) */
+    let named0 = 0;
+    for (const l of bands) {
+      if (l.y < 0 || l.y > paneH || named0 >= LEVELS_LABELS) continue;
+      named0++;
+      const strong = l.rank === 0;
+      const role = roleOf(l.strike, strong);
+      const ink = rgba(levelInk(l, { supreme: src.supremeStrike, cw: src.cwStrike, pw: src.pwStrike }, light), 1);
+      const text = narrow ? `${priceText(l.strike)}${role.short === 'N' ? '' : ` ${role.short}`} ${shortDollars(l.value)}` : `${priceText(l.strike)} · ${role.name} · ${signedDollars(l.value)}`;
+      const named = role.short !== 'N' && role.short !== 'Top';
+      tags.push({ price: l.strike, y: l.y, ty: l.y, text, ink, prio: strong ? 10 : named ? 9 : 9 - named0, keep: strong || named0 === 1 || named, w: 0, zone: true });
+      used.push(l.strike);
+    }
     for (const z of zones) {
       if (z.row < rLo || z.row >= rHi || !keep.has(z.row)) continue;
       const strike = strikes[z.row];
@@ -1482,7 +1543,7 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     if (price === null) return null;
     const row = this.rowAt(price);
     /* with no field drawn, only a beaded row answers, and only near its line */
-    if ((this.look === 'beads' || this.look === 'ribbon') && this.concept !== 'heat') {
+    if ((this.look === 'beads' || this.look === 'ribbon' || this.look === 'levels') && this.concept !== 'heat') {
       const rad = this.beadRows?.get(row);
       const yRow = row >= 0 ? this.series.priceToCoordinate(this.strikes[row]) : null;
       if (rad == null || yRow == null || Math.abs(yRow - y) > Math.max(4, rad + 2)) return null;
@@ -1582,6 +1643,7 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     this.look = look;
     /* the raster keys on the hand-off: a new look is a new raster */
     this.rev++;
+    if (this.enabled && this.cols.length) this.onData?.(this.scale());
     this.requestUpdate?.();
   }
 
@@ -1671,6 +1733,20 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     this.values = values;
     if (this.hover && (this.hover.ci >= folded.length || this.cols[this.hover.ci]?.time !== this.hover.time)) this.hover = null;
     this.requestUpdate?.();
-    this.onData?.(enabled ? this.ref : 0);
+    let nowTop = 0;
+    const base = (folded.length - 1) * R;
+    for (let r = 0; r < R; r++) {
+      const v = values[base + r];
+      if (Number.isFinite(v) && Math.abs(v) > nowTop) nowTop = Math.abs(v);
+    }
+    this.nowTop = nowTop;
+    this.onData?.(enabled ? this.scale() : 0);
+  }
+
+  /** The largest node at the newest column — the levels' full strength */
+  nowTop = 0;
+  /** The size drawn at full strength, as the key prints it: the largest node now for the levels, else the field's scale */
+  scale(): number {
+    return this.look === 'levels' && this.nowTop > 0 ? this.nowTop : this.ref;
   }
 }

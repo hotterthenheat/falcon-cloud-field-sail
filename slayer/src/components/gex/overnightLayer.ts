@@ -6,8 +6,8 @@
     a dashed silver line over the night with its name on the field — "SPX (from options)", never a cash print — and the
     VIX's print beside it once the VIX prints (about 03:15). XSP draws a tenth of it.
   - Stock and ETF panes: the overnight session (20:00–04:00, the session module's) has no prints on the feed, so its
-    slots are left empty and labelled "No overnight trading data", rather than the evening's last bar running straight
-    into the morning's first as if nothing had happened between them.
+    slots are left empty — nothing drawn in them, no wash and no words (the owner, 2026-11-01: "remove the sections that
+    say no overnight data available") — rather than the evening's last bar running straight into the morning's first.
 
   Only the latest night is drawn (the one open now, else the one before the latest session), on intraday timeframes,
   never on a host's own tape or a replay. Its slots are whitespace and a line series of the layer's own: the candles,
@@ -33,11 +33,11 @@ const INKS = {
 };
 
 export interface OvernightDraw {
-  /** 'line': the options' implied price; 'gap': the empty, labelled night of a stock */
+  /** 'line': the options' implied price; 'gap': the empty night of a stock (its slots only, nothing drawn) */
   kind: 'line' | 'gap';
   /** The night's slots, epoch seconds, ascending (whitespace for the gap; the line's own points) */
   points: { time: number; value?: number }[];
-  /** "SPX (from options)" / "No overnight trading data" */
+  /** "SPX (from options)"; empty for a gap */
   label: string;
   /** The line's last value as printed, and the VIX beside it */
   valueWord?: string;
@@ -52,7 +52,8 @@ class Renderer {
     const d = src.draw;
     const chart = src.chart;
     const series = src.series;
-    if (!d || !chart || !series || d.points.length < 1) return;
+    /* an empty night draws nothing: its slots are the whole of it */
+    if (!d || d.kind === 'gap' || !chart || !series || d.points.length < 1) return;
     const ts = chart.timeScale();
     const first = ts.timeToCoordinate(d.points[0].time as Time);
     const last = ts.timeToCoordinate(d.points[d.points.length - 1].time as Time);
@@ -70,27 +71,6 @@ class Renderer {
       ctx.save();
       ctx.font = `500 ${10 * vr}px ui-monospace, SFMono-Regular, Menlo, monospace`;
       ctx.textBaseline = 'middle';
-      if (d.kind === 'gap') {
-        /* the empty night: a faint wash over its slots, its name in the middle */
-        ctx.fillStyle = ink.wash;
-        ctx.fillRect(x0 * hr, 0, (x1 - x0) * hr, H * vr);
-        const text = d.label;
-        const tw = ctx.measureText(text).width / hr;
-        ctx.fillStyle = ink.muted;
-        ctx.textAlign = 'center';
-        const mid = ((x0 + x1) / 2) * hr;
-        if (tw + 12 <= x1 - x0) ctx.fillText(text, mid, (H / 2) * vr);
-        else {
-          /* a narrow night (a phone): the words on two lines, a word cut nowhere */
-          const words = text.split(' ');
-          const half = Math.ceil(words.length / 2);
-          const lines = [words.slice(0, half).join(' '), words.slice(half).join(' ')];
-          if (Math.max(...lines.map(l => ctx.measureText(l).width / hr)) + 12 <= x1 - x0)
-            lines.forEach((l, i) => ctx.fillText(l, mid, (H / 2 + (i - 0.5) * 13) * vr));
-        }
-        ctx.restore();
-        return;
-      }
       /* the line's name and its last value over the line's highest point in view, ending where the line ends, kept inside
          the plot: never across the line itself */
       const end = d.points[d.points.length - 1];
