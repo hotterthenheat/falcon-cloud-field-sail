@@ -1757,7 +1757,7 @@ const ChartToolbar = ({
           {overlays.trails && overlayItems.some(i => i.key === 'trails') && (
             <div className="flex items-center gap-2 pl-[26px] pr-2.5 pb-2 -mt-1">
               <span className="font-mono text-t9 uppercase tracking-wider text-textMuted shrink-0">Draw</span>
-              <span role="group" aria-label="How the exposure nodes draw" className="inline-flex items-center gap-0.5 rounded border border-borderMuted p-0.5">
+              <span role="group" aria-label="How the exposure nodes draw" className="inline-flex flex-wrap items-center gap-0.5 rounded border border-borderMuted p-0.5">
                 {NODE_LOOKS.map(l => (
                   <button
                     key={l.value}

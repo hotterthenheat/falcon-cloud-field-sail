@@ -4,6 +4,7 @@
 import { compile, explain } from '../core/pine';
 import type { Script } from '../types/scripts';
 import { SOURCES_MZ } from './builtinScriptsMZ';
+import { CANDLE_SOURCES } from './builtinScriptsCandles';
 import { SOURCES_AL } from './builtinScriptsAL';
 
 interface BuiltinSource {
@@ -492,6 +493,7 @@ plot(obv, "OBV", color = #EDE4CD)
 plot(smooth, "OBV-based MA", color = #F5D76E)`,
   },
   ...SOURCES_MZ,
+  ...CANDLE_SOURCES,
   ...SOURCES_AL,
 ];
 

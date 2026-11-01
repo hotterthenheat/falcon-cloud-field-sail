@@ -58,6 +58,7 @@ const PROOFS = [
   'node-strikes-proof',
   'edge-label-fit-proof',
   'ribbon-proof',
+  'node-levels-proof',
   'physics-reads-proof',
   'exposure-hist-proof',
   'proxy-auth-proof.mjs',
@@ -72,6 +73,9 @@ const PROOFS = [
   'world-sessions-proof',
   'after-hours-prints-proof',
   'drawing-geometry-proof',
+  'candle-patterns-proof',
+  'volume-at-price-proof',
+  'tv-levels-proof',
   'indicators-al-proof',
 ];
 

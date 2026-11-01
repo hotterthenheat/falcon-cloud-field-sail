@@ -86,6 +86,23 @@ const IndicatorSettings = ({ indicator, onClose }: { indicator: keyof ChartIndic
                 <div key={i.id} title={i.tooltip} data-settings-input={i.id}>
                   <Check on={inputOf(indicator, i) >= 1} onChange={v => setLook(indicator, { inputs: { ...(look.inputs ?? {}), [i.id]: v ? 1 : 0 } })} label={i.title} hint={i.tooltip} />
                 </div>
+              ) : i.kind === 'choice' && i.options ? (
+                <label key={i.id} className="flex items-center gap-3 h-9" title={i.tooltip}>
+                  <span className="w-[150px] shrink-0 text-t12 text-textSecondary">{i.title}</span>
+                  <select
+                    value={inputOf(indicator, i)}
+                    onChange={e => setLook(indicator, { inputs: { ...(look.inputs ?? {}), [i.id]: Number(e.target.value) } })}
+                    className={`${field} min-w-0 max-w-[180px]`}
+                    data-settings-input={i.id}
+                  >
+                    {i.options.map((o, k) => (
+                      <option key={o} value={k}>
+                        {o}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="font-mono text-t10 text-textMuted truncate">default {i.options[i.default]}</span>
+                </label>
               ) : (
               <label key={i.id} className="flex items-center gap-3 h-9" title={i.tooltip}>
                 <span className="w-[150px] shrink-0 text-t12 text-textSecondary">{i.title}</span>

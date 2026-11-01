@@ -3,10 +3,11 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronRight, Eye, EyeOff, Lock, Search, Star, Unlock, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Eye, EyeOff, Link2, Link2Off, ListTree, Lock, Redo2, Search, Star, Undo2, Unlock, X } from 'lucide-react';
 import type { DrawingKind } from './drawingsPrimitive';
 import { DRAW_FAMILIES, DRAW_HOTKEY, drawToolDef, familyFace, searchDrawTools, setDrawPref, toggleDrawFavourite, useDrawToolPrefs, type DrawToolDef } from './drawTools';
-import { STAMPS, setStamp } from './drawStamp';
+import { STAMP_SETS, getStampSet, setStamp, type StampSet } from './drawStamp';
+import { setDrawSync, useDrawSync } from './drawingSync';
 
 type Dock = 'left' | 'top';
 type OpenList = { id: string; anchor: DOMRect } | null;
@@ -201,30 +202,49 @@ const ToolList = ({ title, tools, anchor, dock, host, drawTool, favs, onPick, on
 };
 
 /** The Icons family's stamps: a press takes one in hand and arms the stamp tool */
-const StampGrid = ({ current, onPick }: { current: string; onPick: () => void }) => (
-  <div className="px-1.5 pt-2 pb-1">
-    <div className="px-0.5 pb-1 text-t10 text-textMuted">Emoji</div>
-    <div className="grid grid-cols-5 gap-1">
-      {STAMPS.map(e => (
-        <button
-          key={e}
-          type="button"
-          title={`Stamp ${e}`}
-          aria-label={`Stamp ${e}`}
-          aria-pressed={current === e}
-          onClick={() => {
-            setStamp(e);
-            onPick();
-          }}
-          className={`h-8 rounded text-[17px] leading-none transition-colors ${current === e ? 'bg-select/15 ring-1 ring-select/50' : 'hover:bg-ink/[0.08]'}`}
-          data-draw-stamp={e}
-        >
-          {e}
-        </button>
-      ))}
+const StampGrid = ({ current, onPick }: { current: string; onPick: () => void }) => {
+  /* TradingView's three sets — icons, emoji, stickers — ours drawn from plain Unicode */
+  const [set, setSet] = useState<StampSet>(() => getStampSet());
+  const marks = STAMP_SETS.find(s => s.set === set)?.marks ?? [];
+  return (
+    <div className="px-1.5 pt-2 pb-1">
+      <div className="flex gap-1 pb-1.5" role="tablist">
+        {STAMP_SETS.map(s => (
+          <button
+            key={s.set}
+            type="button"
+            role="tab"
+            aria-selected={set === s.set}
+            onClick={() => setSet(s.set)}
+            className={`h-6 px-2 rounded-full text-t10 transition-colors ${set === s.set ? 'bg-ink/[0.1] text-textPrimary font-semibold' : 'text-textSecondary hover:text-textPrimary'}`}
+            data-draw-stamp-set={s.set}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-5 gap-1">
+        {marks.map(e => (
+          <button
+            key={e}
+            type="button"
+            title={`Stamp ${e}`}
+            aria-label={`Stamp ${e}`}
+            aria-pressed={current === e}
+            onClick={() => {
+              setStamp(e, set);
+              onPick();
+            }}
+            className={`h-8 rounded text-[17px] leading-none transition-colors ${set === 'sticker' ? 'rounded-full ring-2 ring-white/70 ' : ''}${current === e ? 'bg-select/15 ring-1 ring-select/50' : 'hover:bg-ink/[0.08]'} ${set === 'icon' ? 'text-textPrimary' : ''}`}
+            data-draw-stamp={e}
+          >
+            {e}
+          </button>
+        ))}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 interface SheetProps {
   host: HTMLElement;
@@ -232,10 +252,12 @@ interface SheetProps {
   drawTool: DrawingKind | 'select';
   onPick: (kind: DrawingKind) => void;
   onClose: () => void;
+  /** The object tree's door — the rail is folded away on a narrow pane, so the sheet carries it */
+  onTree?: () => void;
 }
 
 /** Every tool: search, a tab a family, a grid of named tiles. A bottom sheet where the pane is narrow. */
-export const DrawSheet = ({ host, dock, drawTool, onPick, onClose }: SheetProps) => {
+export const DrawSheet = ({ host, dock, drawTool, onPick, onClose, onTree }: SheetProps) => {
   const prefs = useDrawToolPrefs();
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<string>(prefs.favs.length ? 'favs' : DRAW_FAMILIES[0].id);
@@ -288,7 +310,12 @@ export const DrawSheet = ({ host, dock, drawTool, onPick, onClose }: SheetProps)
       <div className="shrink-0 flex items-center gap-2 px-3 pt-2.5 pb-2">
         <span className="text-t13 font-semibold text-textPrimary">Drawings</span>
         <span className="font-mono text-t9 uppercase tracking-widest text-textMuted">{searching ? `${shown.length} found` : `${DRAW_FAMILIES.reduce((n, f) => n + f.tools.length, 0)} tools`}</span>
-        <button type="button" onClick={onClose} title="Close" aria-label="Close" className="ml-auto inline-flex items-center justify-center w-6 h-6 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06]">
+        {onTree && (
+          <button type="button" onClick={onTree} title="Object tree — every drawing on this chart" aria-label="Object tree" className="ml-auto inline-flex items-center gap-1 h-7 px-2 rounded text-t11 text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]" data-draw-tree-door>
+            <ListTree className="w-3.5 h-3.5" /> Object tree
+          </button>
+        )}
+        <button type="button" onClick={onClose} title="Close" aria-label="Close" className={`${onTree ? '' : 'ml-auto '}inline-flex items-center justify-center w-6 h-6 [@media(pointer:coarse)]:w-8 [@media(pointer:coarse)]:h-8 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06]`}>
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -478,8 +505,23 @@ const StayGlyph = () => (
   </svg>
 );
 
-export const DrawRailSwitches = ({ dock, allLocked, onLockAll }: { dock: Dock; allLocked: boolean; onLockAll: () => void }) => {
+interface SwitchProps {
+  dock: Dock;
+  allLocked: boolean;
+  onLockAll: () => void;
+  /** The object tree (TradingView's): every drawing on this tape, listed */
+  treeOpen?: boolean;
+  onTree?: () => void;
+  /** Undo and redo for drawing changes (Ctrl+Z, Ctrl+Y) */
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+}
+
+export const DrawRailSwitches = ({ dock, allLocked, onLockAll, treeOpen, onTree, onUndo, onRedo, canUndo, canRedo }: SwitchProps) => {
   const prefs = useDrawToolPrefs();
+  const sync = useDrawSync();
   const next = prefs.magnet === 'off' ? 'weak' : prefs.magnet === 'weak' ? 'strong' : 'off';
   const magnetWords = prefs.magnet === 'off' ? 'Magnet off — click for the weak magnet (snaps near a bar\'s open, high, low or close)' : prefs.magnet === 'weak' ? 'Weak magnet — click for the strong magnet (always snaps); hold Ctrl to flip it while drawing' : 'Strong magnet — click to turn the magnet off; hold Ctrl to flip it while drawing';
   const b = (on: boolean) => `shrink-0 inline-flex items-center justify-center rounded transition-colors ${cell(dock)} ${face(on)}`;
@@ -498,6 +540,24 @@ export const DrawRailSwitches = ({ dock, allLocked, onLockAll }: { dock: Dock; a
       <button type="button" onClick={() => setDrawPref({ hideAll: !prefs.hideAll })} title={prefs.hideAll ? 'Show all drawings (Ctrl+Alt+H)' : 'Hide all drawings (Ctrl+Alt+H)'} aria-label={prefs.hideAll ? 'Show all drawings' : 'Hide all drawings'} aria-pressed={prefs.hideAll} className={b(prefs.hideAll)} data-draw-hide-all>
         {prefs.hideAll ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
       </button>
+      <button type="button" onClick={() => setDrawSync(!sync)} title={sync ? 'Sync drawings — on: every pane on this symbol shows the same drawings' : 'Sync drawings — off: each pane keeps its own drawings'} aria-label="Sync drawings" aria-pressed={sync} className={b(sync)} data-draw-sync>
+        {sync ? <Link2 className="w-3.5 h-3.5" /> : <Link2Off className="w-3.5 h-3.5" />}
+      </button>
+      {onTree && (
+        <button type="button" onClick={onTree} title="Object tree — every drawing on this chart: rename, hide, lock, reorder, delete" aria-label="Object tree" aria-pressed={!!treeOpen} className={b(!!treeOpen)} data-draw-tree-door>
+          <ListTree className="w-3.5 h-3.5" />
+        </button>
+      )}
+      {onUndo && (
+        <button type="button" onClick={onUndo} disabled={!canUndo} title="Undo the last drawing change (Ctrl+Z)" aria-label="Undo" className={`${b(false)} disabled:opacity-30`} data-draw-undo>
+          <Undo2 className="w-3.5 h-3.5" />
+        </button>
+      )}
+      {onRedo && (
+        <button type="button" onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Y or Ctrl+Shift+Z)" aria-label="Redo" className={`${b(false)} disabled:opacity-30`} data-draw-redo>
+          <Redo2 className="w-3.5 h-3.5" />
+        </button>
+      )}
     </>
   );
 };

@@ -97,7 +97,10 @@ import { newsPulse } from '../../data/news';
 import { exposureNowFor, fmtGexUsd as fmtUsd } from '../../data/gex';
 import { ChevronsLeft, ChevronsUp, GripVertical, Lock, PanelLeft, PanelTop, Pencil, Type, Unlock, X as XIcon } from 'lucide-react';
 import SlayerMark from '../../brand/SlayerMark';
-import { DrawingsPrimitive, REST_INK_DARK, REST_INK_LIGHT, fixedPoints, gestureOf, isFreehand, isLineKind, isWordsKind, loadDrawings, needsThirdAnchor, popDrawings, saveDrawings, usesPts, type Drawing, type DrawingKind } from './drawingsPrimitive';
+import { DrawingsPrimitive, REST_INK_DARK, REST_INK_LIGHT, canRedo, canUndo, fixedPoints, gestureOf, isFreehand, isLineKind, isWordsKind, loadDrawings, needsThirdAnchor, popDrawings, redoDrawings, saveDrawings, usesPts, type Drawing, type DrawingKind } from './drawingsPrimitive';
+import DrawObjectTree from './DrawObjectTree';
+import { withDefaultTemplate } from './drawTemplates';
+import { drawingsKey, hearDrawings, useDrawSync } from './drawingSync';
 import DrawRailTools, { DrawFavBar, DrawRailSwitches, DrawSheet, RAIL_ARROW_PAD } from './DrawRailTools';
 import DrawSettings from './DrawSettings';
 import { snap45 } from './drawingGeometry';
@@ -145,6 +148,8 @@ import type { ExposureProfileData } from '../../types/gex';
 import GapChip, { GAP_GRACE_MS } from './GapChip';
 import { useOvernightLayer } from './useOvernightLayer';
 import { SESSION_INPUT_KEYS, useSessionsLayer } from './useSessionsLayer';
+import { TV_SPECIAL_INKS, TV_SPECIAL_KEYS, tvSpecialRecord, type TvSpecialKey } from './tvSpecialItems';
+import { useTvSpecialLayer } from './useTvSpecialLayer';
 
 /* The shape this chart needs off a print: whatever FlowPrint is, plus the instant it arrived. Declared here rather
    than imported from the provider so a chart never depends on a React context it does not use. */
@@ -266,7 +271,8 @@ export const CHART_STYLES: { value: ChartStyle; label: string }[] = [
 
 /* Indicator overlays — computed chart-side from the same aggregated bars the tape draws, so they agree with it on
    every timeframe. */
-export interface ChartIndicators {
+/* The volume profiles and auto levels (tvSpecialItems.ts) are keys too: vrvp, svp, pvp, aavp, pivotsStd, pivotsHL, zigzag, autoFib, autoFibExt, autoPitchfork */
+export interface ChartIndicators extends Record<TvSpecialKey, boolean> {
   ema9: boolean;
   ema21: boolean;
   ema50: boolean;
@@ -310,6 +316,7 @@ export const DEFAULT_INDICATORS: ChartIndicators = {
   ema9: false, ema21: false, ema50: false, vwap: false,
   bb: false, vwapBands: false, sma: false, flowVwap: false, sideVwap: false, gammaEma: false, gammaVwap: false, rsi: false, macd: false, atrPane: false,
   harBand: false, gammaRegime: false, volShock: false, effRatio: false, amihud: false, sessions: false,
+  ...tvSpecialRecord(false),
 };
 
 /* One categorical ink family for auxiliary lines (indicators here, compare lines in the widget) — hues that carry no
@@ -335,6 +342,7 @@ export const INDICATOR_INKS: Record<keyof ChartIndicators, string> = {
   effRatio: '#9FD3B5',
   amihud: '#C9B3E6',
   sessions: '#B9A9F4',
+  ...TV_SPECIAL_INKS,
 };
 
 /* The regime's two washes: the house's gamma signs (green long, red short — palette.ts), faint enough to sit under
@@ -430,6 +438,8 @@ const INDICATOR_PARTS: Record<keyof ChartIndicators, { pane: 'overlay' | 'sub'; 
   amihud: { pane: 'sub', parts: [{ part: 'line', kind: 'line', ink: INDICATOR_INKS.amihud }] },
   /* no series: its boxes are the sessions layer's (useSessionsLayer.ts) */
   sessions: { pane: 'overlay', parts: [] },
+  /* no series either: the volume profiles and auto levels draw through useTvSpecialLayer.ts */
+  ...tvSpecialRecord<{ pane: 'overlay' | 'sub'; parts: IndicatorPartSpec[] }>({ pane: 'overlay', parts: [] }),
 };
 
 /** The keys the readout prints — single-line overlays only: a five-line band pair would blow the readout row's
@@ -1127,7 +1137,11 @@ const StrikeChart = ({
     return cols;
   };
   const nameIv = (): number | undefined => (tapeRef.current ? tapeRef.current.iv : peekIv(ticker) ?? undefined);
-  const drawKey = tape?.key ?? ticker;
+  /* the drawings' key: the tape's own, or this pane's own when the reader turned sync drawings off (drawingSync.ts) */
+  const drawSync = useDrawSync();
+  const drawKey = drawingsKey(tape?.key ?? ticker, paneId, drawSync);
+  const drawKeyRef = useRef(drawKey);
+  drawKeyRef.current = drawKey;
   const tapeStamp = tape
     ? `${tape.key}|${tape.bars.length}|${tape.bars.length ? tape.bars[tape.bars.length - 1].time : 0}|${tape.bars.length ? tape.bars[tape.bars.length - 1].close : 0}|${tape.note ?? ''}`
     : '';
@@ -2901,7 +2915,7 @@ const StrikeChart = ({
       .filter(k => !(altSpec && (k === 'vwap' || k === 'vwapBands' || k === 'flowVwap' || k === 'sideVwap' || k === 'gammaEma' || k === 'gammaVwap' || k === 'harBand' || k === 'gammaRegime' || k === 'volShock')))
       /* the market's shock is about the market reaching a single name: not drawn on the market itself */
       .filter(k => !(k === 'volShock' && MARKET_NAMES.has(ticker.trim().toUpperCase())))
-      .filter(k => k !== 'sessions');
+      .filter(k => k !== 'sessions' && !(TV_SPECIAL_KEYS as readonly string[]).includes(k));
     /* Append under whatever product panes are already open. A fixed index lands RSI in the flow pane, or opens a blank one. */
     const product = lastProductPaneIndex();
     const full = fullWorldRef.current === `${ticker}|${timeframe}|${barClock}`;
@@ -3232,6 +3246,18 @@ const StrikeChart = ({
     breaks: overlays.sessionBreaks !== false,
     boxes: indicators.sessions && drawnOn('sessions', tfMinutes(timeframe)) ? SESSION_INPUT_KEYS.filter(k => { const spec = sessionsSpecs.find(x => x.id === k.id); return !spec || inputOf('sessions', spec) >= 1; }).map(k => k.key) : [],
     opacity: lookOf('sessions').opacity ?? 1,
+    signature: `${ticker}|${timeframe}|${revision}|${session}|${mainNonce}|${appTheme}|${looksRev}|${themeKey}`,
+  });
+
+  /* THE VOLUME PROFILES AND AUTO LEVELS (useTvSpecialLayer.ts): the standard desks' visible range / session / periodic /
+     auto anchored profiles, pivot points, zig zag, auto Fib and pitchfork, fractals — over this chart's own bars, the
+     volume from the one-minute bars already held. Time bars only, never a host's tape or a replay. */
+  const tvSpecialExtras = useTvSpecialLayer(candleSeriesRef as MutableRefObject<ISeriesApi<SeriesType> | null>, {
+    bars: () => barsFor(tfMinutes(timeframe), altSpec),
+    minuteBars: () => displayBars(ticker, 1),
+    mins: tfMinutes(timeframe),
+    on: TV_SPECIAL_KEYS.filter(k => indicators[k] && drawnOn(k, tfMinutes(timeframe))),
+    off: !!tape || replay || barClock !== 'time',
     signature: `${ticker}|${timeframe}|${revision}|${session}|${mainNonce}|${appTheme}|${looksRev}|${themeKey}`,
   });
 
@@ -4370,17 +4396,20 @@ const StrikeChart = ({
   }, [alerts, ticker, revision, replay, timeframe, flowRows]);
 
   useEffect(() => {
+    /* undo (Ctrl+Z) and redo (Ctrl+Y, Ctrl+Shift+Z) for drawing changes — not while typing */
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z' || e.shiftKey) return;
-      const prev = popDrawings(ticker);
-      if (!prev) return;
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const k = e.key.toLowerCase();
+      const redo = k === 'y' || (k === 'z' && e.shiftKey);
+      if (k !== 'z' && k !== 'y') return;
+      if (redo ? !redoHistory() : !undoHistory()) return;
       e.preventDefault();
-      shapesRef.current = prev;
-      drawingsRef.current?.setDrawings(prev);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [ticker]);
+  }, [ticker]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ThetaData's bars for this pane and its compares, kept fresh while it is mounted: the one-minute tape (the
      session levels, the ATR and the cone read it) and the timeframe's own grain */
@@ -4658,18 +4687,60 @@ const StrikeChart = ({
   // Drawings ------------------------------------------------------------- Per-ticker load; marks are the user's, so
   // they persist across sessions
   useEffect(() => {
+    /* sync drawings turned off: this pane starts from the tape's shared set, then keeps its own */
+    const shared = tape?.key ?? ticker;
+    if (drawKey !== shared && loadDrawings(drawKey).length === 0) {
+      const from = loadDrawings(shared);
+      if (from.length) saveDrawings(drawKeyRef.current, from);
+    }
     shapesRef.current = loadDrawings(drawKey);
     drawingsRef.current?.setDrawings([...shapesRef.current]);
-  }, [ticker]);
+  }, [drawKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* SYNC: another pane on this tape changed its drawings — take the stored set, unless it is what is already here */
+  useEffect(
+    () =>
+      hearDrawings(key => {
+        if (key !== drawKeyRef.current || editRef.current) return;
+        const next = loadDrawings(key);
+        if (JSON.stringify(next) === JSON.stringify(shapesRef.current)) return;
+        shapesRef.current = next;
+        drawingsRef.current?.setDrawings(next);
+        setSelectedIdx(i => {
+          if (i !== null && i >= next.length) {
+            drawingsRef.current?.setSelected(null);
+            return null;
+          }
+          return i;
+        });
+        forceMarkRef.current();
+      }),
+    []
+  );
+  /** History: the stored set one step back (or forward); the selection is dropped, since its index may name another mark */
+  const applyHistory = (next: Drawing[] | null): boolean => {
+    if (!next) return false;
+    shapesRef.current = next;
+    drawingsRef.current?.setDrawings(next);
+    drawingsRef.current?.setSelected(null);
+    setSelectedIdx(null);
+    forceMarkRef.current();
+    return true;
+  };
+  const undoHistory = () => applyHistory(popDrawings(drawKeyRef.current));
+  const redoHistory = () => applyHistory(redoDrawings(drawKeyRef.current));
+  const forceMarkRef = useRef<() => void>(() => {});
+  const [treeOpen, setTreeOpen] = useState(false);
 
   const commitDrawing = useCallback(
     (raw: Drawing) => {
       /* Made whole first (the primitive's normalise): a position is born with its stop, the VWAP's anchor sits on
          its curve */
-      const d = drawingsRef.current?.normalise(raw) ?? raw;
+      /* the tool's default template first (drawTemplates.ts), then made whole */
+      const styled = withDefaultTemplate(raw);
+      const d = drawingsRef.current?.normalise(styled) ?? styled;
       shapesRef.current = [...shapesRef.current, d];
       drawingsRef.current?.setDrawings(shapesRef.current);
-      saveDrawings(drawKey, shapesRef.current);
+      saveDrawings(drawKeyRef.current, shapesRef.current);
       /* The tool empties into your hand. Placing a mark drops the tool back to Select with the new mark already
          selected, so the very next drag moves it. Want another one? — unless the reader keeps drawing (the rail's
          stay-in-drawing switch, TradingView's), when the tool stays in hand for the next one. */
@@ -4730,6 +4801,7 @@ const StrikeChart = ({
     !compact && (drawing || !!onEnterDraw) && rail.open && rail.dock === 'left' && boxH > 0 && railH > 0 &&
     Math.max(boxH / 2, chromeInset + 8 + railH / 2) + railH / 2 > boxH - markClear - 14;
   const [, forceMark] = useReducer((x: number) => x + 1, 0);
+  forceMarkRef.current = forceMark;
   const [barPos, setBarPos] = useState<{ x: number; y: number } | null>(null);
   const [barMenu, setBarMenu] = useState<'color' | 'tcolor' | 'width' | 'style' | null>(null);
   useEffect(() => setBarMenu(null), [selectedIdx]);
@@ -4740,7 +4812,7 @@ const StrikeChart = ({
       if (i === null) return;
       shapesRef.current = shapesRef.current.map((d, idx) => (idx === i ? { ...d, ...patch } : d));
       drawingsRef.current?.setDrawings(shapesRef.current);
-      saveDrawings(drawKey, shapesRef.current);
+      saveDrawings(drawKeyRef.current, shapesRef.current);
       forceMark();
     },
     [selectedIdx, ticker]
@@ -4759,7 +4831,7 @@ const StrikeChart = ({
     const on = !(shapesRef.current.length > 0 && shapesRef.current.every(d => d.locked));
     shapesRef.current = shapesRef.current.map(d => ({ ...d, locked: on }));
     drawingsRef.current?.setDrawings(shapesRef.current);
-    saveDrawings(drawKey, shapesRef.current);
+    saveDrawings(drawKeyRef.current, shapesRef.current);
     forceMark();
   }, [ticker]);
   /* Clone (TradingView's): the same mark, three bars later, selected so the next drag places it */
@@ -4778,7 +4850,7 @@ const StrikeChart = ({
     const copy: Drawing = { ...o, locked: false, p1: shift(o.p1)!, p2: shift(o.p2), p3: shift(o.p3), ...(pts ? { pts } : {}) };
     shapesRef.current = [...shapesRef.current, copy];
     prim.setDrawings(shapesRef.current);
-    saveDrawings(drawKey, shapesRef.current);
+    saveDrawings(drawKeyRef.current, shapesRef.current);
     const idx = shapesRef.current.length - 1;
     setSelectedIdx(idx);
     prim.setSelected(idx);
@@ -4830,7 +4902,7 @@ const StrikeChart = ({
   const clearDrawings = useCallback(() => {
     shapesRef.current = [];
     drawingsRef.current?.setDrawings([]);
-    saveDrawings(drawKey, []);
+    saveDrawings(drawKeyRef.current, []);
     deselect();
   }, [ticker, deselect]);
 
@@ -4909,17 +4981,18 @@ const StrikeChart = ({
     e.stopPropagation();
     onEnterDraw?.();
     setDrawTool('select');
-    setSelectedIdx(hit.index);
-    prim.setSelected(hit.index);
     const start = pointFromClient(e.clientX, e.clientY);
+    const at = (e.ctrlKey || e.metaKey || e.altKey) && hit.anchor === null ? cloneForDrag(hit.index) : hit.index;
+    setSelectedIdx(at);
+    prim.setSelected(at);
     if (!start) return;
-    editRef.current = { index: hit.index, anchor: hit.anchor, start, orig: shapesRef.current[hit.index], moved: false };
+    editRef.current = { index: at, anchor: hit.anchor, start, orig: shapesRef.current[at], moved: at !== hit.index };
     const move = (ev: PointerEvent) => {
       const pt = pointFromClient(ev.clientX, ev.clientY);
       if (pt) applyEdit(pt);
     };
     const up = () => {
-      if (editRef.current?.moved) saveDrawings(drawKey, shapesRef.current);
+      if (editRef.current?.moved) saveDrawings(drawKeyRef.current, shapesRef.current);
       editRef.current = null;
       window.removeEventListener('pointermove', move);
     };
@@ -4927,12 +5000,62 @@ const StrikeChart = ({
     window.addEventListener('pointerup', up, { once: true });
   };
 
+  /** Ctrl/Alt+drag's copy: the mark at `i`, unlocked, laid on top; its index */
+  const cloneForDrag = (i: number): number => {
+    const o = shapesRef.current[i];
+    if (!o) return i;
+    shapesRef.current = [...shapesRef.current, { ...o, locked: undefined, name: o.name ? `${o.name} copy` : undefined }];
+    drawingsRef.current?.setDrawings(shapesRef.current);
+    return shapesRef.current.length - 1;
+  };
+  /* the object tree's edits: a mark's fields, its delete, its place in the stack */
+  const treePatch = (i: number, patch: Partial<Drawing>) => {
+    if (!shapesRef.current[i]) return;
+    shapesRef.current = shapesRef.current.map((d, k) => (k === i ? { ...d, ...patch } : d));
+    drawingsRef.current?.setDrawings(shapesRef.current);
+    saveDrawings(drawKeyRef.current, shapesRef.current);
+    forceMark();
+  };
+  const treeDelete = (i: number) => {
+    if (!shapesRef.current[i]) return;
+    shapesRef.current = shapesRef.current.filter((_, k) => k !== i);
+    drawingsRef.current?.setDrawings(shapesRef.current);
+    saveDrawings(drawKeyRef.current, shapesRef.current);
+    setSelectedIdx(s => {
+      const n = s === null || s === i ? null : s > i ? s - 1 : s;
+      drawingsRef.current?.setSelected(n);
+      return n;
+    });
+    forceMark();
+  };
+  const treeMove = (from: number, to: number) => {
+    const list = [...shapesRef.current];
+    if (!list[from] || to < 0 || to >= list.length || from === to) return;
+    const [m] = list.splice(from, 1);
+    list.splice(to, 0, m);
+    shapesRef.current = list;
+    drawingsRef.current?.setDrawings(list);
+    saveDrawings(drawKeyRef.current, list);
+    setSelectedIdx(s => {
+      const n = s === from ? to : s === null ? null : s > from && s <= to ? s - 1 : s < from && s >= to ? s + 1 : s;
+      drawingsRef.current?.setSelected(n);
+      return n;
+    });
+    forceMark();
+  };
+  const treeSelect = (i: number) => {
+    if (!drawing) onEnterDraw?.();
+    setDrawTool('select');
+    setSelectedIdx(i);
+    drawingsRef.current?.setSelected(i);
+  };
+
   const deleteSelected = useCallback(() => {
     setSelectedIdx(idx => {
       if (idx !== null && shapesRef.current[idx]) {
         shapesRef.current = shapesRef.current.filter((_, i) => i !== idx);
         drawingsRef.current?.setDrawings(shapesRef.current);
-        saveDrawings(drawKey, shapesRef.current);
+        saveDrawings(drawKeyRef.current, shapesRef.current);
       }
       drawingsRef.current?.setSelected(null);
       return null;
@@ -4972,9 +5095,11 @@ const StrikeChart = ({
         return;
       }
       e.currentTarget.setPointerCapture(e.pointerId);
-      setSelectedIdx(hit.index);
-      drawingsRef.current?.setSelected(hit.index);
-      editRef.current = { index: hit.index, anchor: hit.anchor, start: p, orig: shapesRef.current[hit.index], moved: false };
+      /* Ctrl/Alt+drag (TradingView's): the body drag moves a copy, the original stays */
+      const at = (e.ctrlKey || e.metaKey || e.altKey) && hit.anchor === null ? cloneForDrag(hit.index) : hit.index;
+      setSelectedIdx(at);
+      drawingsRef.current?.setSelected(at);
+      editRef.current = { index: at, anchor: hit.anchor, start: p, orig: shapesRef.current[at], moved: at !== hit.index };
       return;
     }
     /* The click-move-click second press: the anchor in the hand lands. A three-anchor kind moves on to its width
@@ -5098,6 +5223,8 @@ const StrikeChart = ({
         return t === null ? q : { time: t, price: q.price + dPrice };
       };
       next = { ...ed.orig, p1: shift(ed.orig.p1)!, p2: shift(ed.orig.p2), p3: shift(ed.orig.p3) };
+      /* the screen-fixed text moves by the pointer's own travel on the pane */
+      if (ed.orig.kind === 'anchoredtext') next = prim.moveAnchored(ed.orig, ed.start, p);
       if (usesPts(ed.orig.kind) && ed.orig.pts) {
         /* A freehand stroke's points sit between bars: they move by the same k bars and keep their place between
            them */
@@ -5201,7 +5328,7 @@ const StrikeChart = ({
   const onDrawUp = (e?: ReactPointerEvent<HTMLDivElement>) => {
     if (editRef.current) {
       /* An edit is already applied live; release just makes it stored. */
-      if (editRef.current.moved) saveDrawings(drawKey, shapesRef.current);
+      if (editRef.current.moved) saveDrawings(drawKeyRef.current, shapesRef.current);
       editRef.current = null;
       return;
     }
@@ -5399,6 +5526,7 @@ const StrikeChart = ({
         : `SPY 15m vs 390m vol · flags at ×${inputOf('volShock', PHYS_INPUT.volShock).toFixed(1)}`;
   }
   if (indicators.amihud) physicsExtras.amihud = 'bps per $1M · display only';
+  Object.assign(physicsExtras, tvSpecialExtras);
   const physicsIdle: Partial<Record<keyof ChartIndicators, string>> = {};
   if (indicators.volShock && MARKET_NAMES.has(ticker.trim().toUpperCase())) physicsIdle.volShock = 'off on the market itself';
   if (altSpec) for (const k of ['harBand', 'gammaRegime', 'volShock'] as const) if (indicators[k]) physicsIdle[k] = 'needs time bars';
@@ -5778,7 +5906,17 @@ const StrikeChart = ({
                 and holds thirty-four */}
             <DrawRailTools dock={rail.dock} drawing={drawing} drawTool={drawTool} onPick={pickTool} host={boxEl} sheetOpen={sheetOpen} onSheet={setSheetOpen} />
             {/* magnet, stay in drawing mode, lock all, hide all — TradingView's switches under the tools */}
-            <DrawRailSwitches dock={rail.dock} allLocked={allLocked} onLockAll={lockAll} />
+            <DrawRailSwitches
+              dock={rail.dock}
+              allLocked={allLocked}
+              onLockAll={lockAll}
+              treeOpen={treeOpen}
+              onTree={() => setTreeOpen(o => !o)}
+              onUndo={undoHistory}
+              onRedo={redoHistory}
+              canUndo={canUndo(drawKey)}
+              canRedo={canRedo(drawKey)}
+            />
             {drawing && (
               <>
                 <div className={rail.dock === 'left' ? 'mx-1 my-0.5 h-px bg-borderMuted' : 'my-1 mx-0.5 w-px bg-borderMuted'} aria-hidden />
@@ -5845,7 +5983,31 @@ const StrikeChart = ({
             <Pencil className="w-3 h-3" />
           </button>
         )}
-        {sheetOpen && boxEl && <DrawSheet host={boxEl} dock={rail.dock} drawTool={drawing ? drawTool : 'select'} onPick={pickTool} onClose={() => setSheetOpen(false)} />}
+        {sheetOpen && boxEl && (
+          <DrawSheet
+            host={boxEl}
+            dock={rail.dock}
+            drawTool={drawing ? drawTool : 'select'}
+            onPick={pickTool}
+            onClose={() => setSheetOpen(false)}
+            onTree={() => {
+              setSheetOpen(false);
+              setTreeOpen(true);
+            }}
+          />
+        )}
+        {treeOpen && (drawing || !!onEnterDraw) && (
+          <DrawObjectTree
+            drawings={shapesRef.current}
+            selected={selectedIdx}
+            onSelect={treeSelect}
+            onPatch={treePatch}
+            onDelete={treeDelete}
+            onMove={treeMove}
+            onClose={() => setTreeOpen(false)}
+            narrow={compact || (boxW > 0 && boxW < 560)}
+          />
+        )}
         {!compact && onEnterDraw && <DrawFavBar drawTool={drawing ? drawTool : 'select'} onPick={pickTool} />}
         {drawing && settingsOpen && selectedIdx !== null && shapesRef.current[selectedIdx] && drawingsRef.current && (
           <DrawSettings

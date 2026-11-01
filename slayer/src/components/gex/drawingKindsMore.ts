@@ -11,12 +11,6 @@ import { fmtElapsed, measureSpan } from '../../data/measure';
 import type { Drawing, DrawingKind, DrawingPoint } from './drawingsPrimitive';
 import type { KindBar, KindHit, KindRender } from './drawingKinds';
 import {
-  FIB_CIRCLES,
-  FIB_FAN,
-  FIB_TIME_ZONES,
-  FIB_WEDGE,
-  GANN_BOX,
-  GANN_FAN,
   abcdRatios,
   circleThrough,
   fibSpiral,
@@ -24,6 +18,7 @@ import {
   forkLines,
   gannDir,
   intersect,
+  pearsonR,
   regression,
   screenAngle,
   threeDrivesRatios,
@@ -31,6 +26,7 @@ import {
   type ForkVariant,
   type Pt,
 } from './drawingGeometry';
+import { gannName, levelsOf, opt } from './drawingLevels';
 
 const UP = '48,209,88';
 const DOWN = '255,59,48';
@@ -57,19 +53,20 @@ const PATTERN_NAMES: Partial<Record<DrawingKind, string[]>> = {
   hs: ['', 'Left shoulder', '', 'Head', '', 'Right shoulder', ''],
 };
 
-type Piece =
+export type Piece =
+  | { t: 'candle'; x: number; o: number; h: number; l: number; c: number; bw: number; dim?: boolean; stick?: 'hl' | 'oc' }
   | { t: 'seg'; a: Pt; b: Pt; dim?: boolean; dash?: boolean; thin?: boolean }
   | { t: 'poly'; pts: Pt[]; closed?: boolean; dim?: boolean; dash?: boolean }
   | { t: 'fill'; pts: Pt[]; a?: number; rgb?: string; solid?: boolean }
   | { t: 'circle'; c: Pt; r: number; dim?: boolean }
   | { t: 'arc'; c: Pt; r: number; a0: number; a1: number; ccw: boolean; dim?: boolean }
-  | { t: 'words'; text: string; x: number; y: number; dim?: boolean; rgb?: string; px?: number; frame?: boolean; centre?: boolean; solid?: boolean }
-  | { t: 'glyph'; text: string; x: number; y: number; px: number }
+  | { t: 'words'; text: string; x: number; y: number; dim?: boolean; rgb?: string; px?: number; frame?: boolean; centre?: boolean; solid?: boolean; bare?: boolean; bold?: boolean }
+  | { t: 'glyph'; text: string; x: number; y: number; px: number; set?: string }
   | { t: 'flag'; x: number; y: number }
   | { t: 'dot'; p: Pt };
 
 /** What the pieces are laid out in: one space, its own x and y, its own pixel size */
-interface Space {
+export interface Space {
   X(time: number): number | null;
   Y(price: number): number | null;
   w: number;
@@ -80,6 +77,9 @@ interface Space {
   bars: KindBar[];
   barMinutes: number;
   typePx(width?: number): number;
+  /** bar index of a time on the chart's grid, and the time at an index (off either end it keeps counting) */
+  idx(time: number): number | null;
+  timeAt(i: number): number | null;
 }
 
 const NEW_KINDS = new Set<DrawingKind>([
@@ -91,7 +91,7 @@ const NEW_KINDS = new Set<DrawingKind>([
 export const isMoreKind = (k: DrawingKind): boolean => NEW_KINDS.has(k);
 
 /** Where a ray from a through b leaves the box [0, w] */
-const rayTo = (a: Pt, b: Pt, w: number): Pt => {
+export const rayTo = (a: Pt, b: Pt, w: number): Pt => {
   if (b[0] === a[0]) return [a[0], b[1] >= a[1] ? 1e5 : -1e5];
   const xe = b[0] > a[0] ? w : 0;
   return [xe, a[1] + ((b[1] - a[1]) / (b[0] - a[0])) * (xe - a[0])];
@@ -102,7 +102,7 @@ const pctWords = (d: number, base: number): string => `${d >= 0 ? '+' : '−'}${
 const signed = (d: number): string => `${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(2)}`;
 
 /** The regression trend's centre and band over the closes between its anchors — in bar index, so a timeframe change re-reads it */
-export function regressionOf(d: Drawing, bars: KindBar[]): { i0: number; i1: number; slope: number; icept: number; sd: number } | null {
+export function regressionOf(d: Drawing, bars: KindBar[]): { i0: number; i1: number; slope: number; icept: number; sd: number; pearson: number | null } | null {
   if (!d.p2 || bars.length < 2) return null;
   const t0 = Math.min(d.p1.time, d.p2.time);
   const t1 = Math.max(d.p1.time, d.p2.time);
@@ -120,7 +120,7 @@ export function regressionOf(d: Drawing, bars: KindBar[]): { i0: number; i1: num
   const r = regression(xs, ys);
   if (!r) return null;
   i0 = Math.max(0, i0);
-  return { i0, i1, ...r };
+  return { i0, i1, ...r, pearson: pearsonR(xs, ys) };
 }
 
 /** A pivot's word sits above a peak and below a trough */
@@ -187,7 +187,8 @@ function piecesOf(d: Drawing, S: Space, draft: boolean): Piece[] | null {
       const x0 = S.X(S.bars[r.i0].time);
       const x1 = S.X(S.bars[r.i1].time);
       if (x0 === null || x1 === null) return null;
-      const at = (i: number, k: number) => S.Y(r.icept + r.slope * i + k * 2 * r.sd);
+      const K = Math.max(0, Number(opt<number>(d, 'sd', 2)) || 0);
+      const at = (i: number, k: number) => S.Y(r.icept + r.slope * i + k * K * r.sd);
       const lines: Pt[][] = [];
       for (const k of [1, 0, -1]) {
         const y0 = at(r.i0, k);
@@ -195,10 +196,20 @@ function piecesOf(d: Drawing, S: Space, draft: boolean): Piece[] | null {
         if (y0 === null || y1 === null) return null;
         lines.push([[x0, y0], [x1, y1]]);
       }
-      out.push({ t: 'fill', pts: [lines[0][0], lines[0][1], lines[2][1], lines[2][0]], a: 0.05 });
-      out.push({ t: 'seg', a: lines[0][0], b: lines[0][1], dim: true }, { t: 'seg', a: lines[1][0], b: lines[1][1], dash: true }, { t: 'seg', a: lines[2][0], b: lines[2][1], dim: true });
-      out.push({ t: 'words', text: `+2σ ${priceWords(r.icept + r.slope * r.i1 + 2 * r.sd)}`, x: x1 + 6 * s, y: lines[0][1][1], dim: true });
-      out.push({ t: 'words', text: `−2σ ${priceWords(r.icept + r.slope * r.i1 - 2 * r.sd)}`, x: x1 + 6 * s, y: lines[2][1][1], dim: true });
+      const upper = opt<boolean>(d, 'upper');
+      const lower = opt<boolean>(d, 'lower');
+      const kw = `${+K.toFixed(2)}σ`;
+      out.push({ t: 'fill', pts: [(upper ? lines[0] : lines[1])[0], (upper ? lines[0] : lines[1])[1], (lower ? lines[2] : lines[1])[1], (lower ? lines[2] : lines[1])[0]], a: 0.05 });
+      out.push({ t: 'seg', a: lines[1][0], b: lines[1][1], dash: true });
+      if (upper) {
+        out.push({ t: 'seg', a: lines[0][0], b: lines[0][1], dim: true });
+        out.push({ t: 'words', text: `+${kw} ${priceWords(r.icept + r.slope * r.i1 + K * r.sd)}`, x: x1 + 6 * s, y: lines[0][1][1], dim: true });
+      }
+      if (lower) {
+        out.push({ t: 'seg', a: lines[2][0], b: lines[2][1], dim: true });
+        out.push({ t: 'words', text: `−${kw} ${priceWords(r.icept + r.slope * r.i1 - K * r.sd)}`, x: x1 + 6 * s, y: lines[2][1][1], dim: true });
+      }
+      if (opt<boolean>(d, 'pearson') && r.pearson !== null) out.push({ t: 'words', text: `R ${r.pearson.toFixed(3)}`, x: x0 + 4 * s, y: Math.max(lines[0][0][1], lines[2][0][1]) + 14 * v, dim: true });
       return out;
     }
     case 'flattop': {
@@ -231,18 +242,18 @@ function piecesOf(d: Drawing, S: Space, draft: boolean): Piece[] | null {
         return out;
       }
       const v2: ForkVariant = d.kind === 'pitchfork' ? 'standard' : d.kind === 'schiff' ? 'schiff' : 'mschiff';
-      const ls = forkLines(a, b, c, v2);
+      const ls = forkLines(a, b, c, v2, levelsOf(d));
       const med = ls.find(l => l.level === 0)!;
       const origin: Pt = [med.from[0] - med.dir[0], med.from[1] - med.dir[1]];
       const far = (from: Pt, dir: Pt): Pt => (dir[0] === 0 && dir[1] === 0 ? from : rayTo(from, [from[0] + dir[0], from[1] + dir[1]], S.w));
-      const lo = ls.find(l => l.level === -0.5)!;
-      const hi = ls.find(l => l.level === 0.5)!;
-      out.push({ t: 'fill', pts: [lo.from, far(lo.from, lo.dir), far(hi.from, hi.dir), hi.from], a: 0.045 });
+      const lo = ls[0];
+      const hi = ls[ls.length - 1];
+      if (ls.length > 1) out.push({ t: 'fill', pts: [lo.from, far(lo.from, lo.dir), far(hi.from, hi.dir), hi.from], a: 0.045 });
       out.push({ t: 'seg', a: b, b: c, dim: true });
       out.push({ t: 'seg', a: origin, b: far(origin, med.dir) });
       for (const l of ls) {
         if (l.level === 0) continue;
-        const outer = Math.abs(l.level) === 1;
+        const outer = Math.abs(l.level) >= 1;
         out.push({ t: 'seg', a: l.from, b: far(l.from, l.dir), dim: outer, dash: outer });
       }
       if (d.kind !== 'pitchfork') out.push({ t: 'seg', a, b: origin, dim: true, dash: true }, { t: 'dot', p: origin });
@@ -256,7 +267,7 @@ function piecesOf(d: Drawing, S: Space, draft: boolean): Piece[] | null {
       const dx = b[0] - a[0];
       out.push({ t: 'seg', a, b, dim: true, dash: true }, { t: 'dot', p: a }, { t: 'dot', p: b });
       if (Math.abs(dx) < 2 * s) return out;
-      for (const n of FIB_TIME_ZONES) {
+      for (const n of levelsOf(d)) {
         const x = a[0] + n * dx;
         if (x < -2 || x > S.w + 2) continue;
         const major = n === 0 || n === 1 || n === 5 || n === 13 || n === 34 || n === 89;
@@ -271,7 +282,7 @@ function piecesOf(d: Drawing, S: Space, draft: boolean): Piece[] | null {
       const dy = b[1] - a[1];
       out.push({ t: 'poly', pts: [a, [b[0], a[1]], b, [a[0], b[1]]], closed: true, dim: true, dash: true });
       out.push({ t: 'seg', a, b: rayTo(a, b, S.w) }, { t: 'dot', p: a }, { t: 'dot', p: b });
-      for (const r of FIB_FAN) {
+      for (const r of levelsOf(d)) {
         const pp: Pt = [b[0], a[1] + dy * r];
         const tp: Pt = [a[0] + dx * r, b[1]];
         out.push({ t: 'seg', a, b: rayTo(a, pp, S.w), dim: true }, { t: 'seg', a, b: rayTo(a, tp, S.w), dim: true });
@@ -286,7 +297,7 @@ function piecesOf(d: Drawing, S: Space, draft: boolean): Piece[] | null {
       if (R0 < 2) return out;
       /* a ring is named only where it stands clear of the last named one — small circles keep their names apart */
       let named = -Infinity;
-      for (const r of FIB_CIRCLES) {
+      for (const r of levelsOf(d)) {
         out.push({ t: 'circle', c: a, r: R0 * r, dim: r !== 1 });
         if (R0 * r - named < 34 * s) continue;
         named = R0 * r;
@@ -312,7 +323,7 @@ function piecesOf(d: Drawing, S: Space, draft: boolean): Piece[] | null {
       while (sweep > Math.PI) sweep -= 2 * Math.PI;
       while (sweep < -Math.PI) sweep += 2 * Math.PI;
       out.push({ t: 'seg', a, b: [a[0] + R0 * Math.cos(tc), a[1] + R0 * Math.sin(tc)] }, { t: 'dot', p: c });
-      for (const r of FIB_WEDGE) {
+      for (const r of levelsOf(d)) {
         out.push({ t: 'arc', c: a, r: R0 * r, a0: tb, a1: tb + sweep, ccw: sweep < 0, dim: r !== 1 });
         out.push({ t: 'words', text: String(r), x: a[0] + R0 * r * Math.cos(tb) + 3 * s, y: a[1] + R0 * r * Math.sin(tb), dim: true, px: 9 });
       }
@@ -333,7 +344,7 @@ function piecesOf(d: Drawing, S: Space, draft: boolean): Piece[] | null {
       const y1 = Math.max(a[1], bb[1]);
       out.push({ t: 'fill', pts: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], a: 0.04, solid: true });
       out.push({ t: 'poly', pts: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], closed: true });
-      const lv = d.kind === 'gannbox' ? GANN_BOX : ([0, 0.25, 0.5, 0.75, 1] as const);
+      const lv = d.kind === 'gannbox' ? levelsOf(d) : [0, 0.25, 0.5, 0.75, 1];
       for (const r of lv) {
         if (r === 0 || r === 1) continue;
         const x = a[0] + (bb[0] - a[0]) * r;
@@ -343,7 +354,7 @@ function piecesOf(d: Drawing, S: Space, draft: boolean): Piece[] | null {
       if (d.kind === 'gannbox') {
         /* every level is labelled where the box has room for it; a small box keeps its quarters and its half */
         const room = (r: number, span: number, need: number) => (r === 0.382 || r === 0.618 ? span * 0.118 > need : r === 0.25 || r === 0.75 ? span * 0.25 > need : true);
-        for (const r of GANN_BOX) {
+        for (const r of levelsOf(d)) {
           const x = a[0] + (bb[0] - a[0]) * r;
           const y = a[1] + (bb[1] - a[1]) * r;
           const roomX = room(r, x1 - x0, 34 * s);
@@ -375,11 +386,12 @@ function piecesOf(d: Drawing, S: Space, draft: boolean): Piece[] | null {
       if (Math.hypot(dx, dy) < 2) return out;
       const L = Math.hypot(dx, dy);
       let lastTip: Pt | null = null;
-      for (const g of GANN_FAN) {
+      for (const ratio of levelsOf(d)) {
+        const g = ratio >= 1 ? { p: ratio, t: 1, name: gannName(ratio) } : { p: 1, t: 1 / ratio, name: gannName(ratio) };
         const dir = gannDir(dx, dy, g.p, g.t);
         const k = L / Math.hypot(dir[0], dir[1]);
         const tip: Pt = [a[0] + dir[0] * k, a[1] + dir[1] * k];
-        const one = g.p === g.t;
+        const one = Math.abs(g.p - g.t) < 1e-9;
         out.push({ t: 'seg', a, b: rayTo(a, [a[0] + dir[0], a[1] + dir[1]], S.w), dim: !one });
         /* the steep angles crowd at the anchors' distance: a name too near the last one waits for room */
         if (one || !lastTip || Math.hypot(tip[0] - lastTip[0], tip[1] - lastTip[1]) >= 26 * s) {
@@ -519,7 +531,7 @@ function piecesOf(d: Drawing, S: Space, draft: boolean): Piece[] | null {
     }
     case 'stamp': {
       if (!a) return null;
-      out.push({ t: 'glyph', text: d.text ?? '★', x: a[0], y: a[1], px: S.typePx(d.width) * 1.9 });
+      out.push({ t: 'glyph', text: d.text ?? '★', x: a[0], y: a[1], px: S.typePx(d.width) * 1.9, set: String(d.opts?.set ?? 'emoji') });
       return out;
     }
     default:
@@ -530,12 +542,45 @@ function piecesOf(d: Drawing, S: Space, draft: boolean): Piece[] | null {
 // ---- DRAWN ---------------------------------------------------------------------------------------------
 
 /** Draw `d` if it is one of the phase-one kinds. False: not mine. */
+/** The space a paint lays its pieces out in — bitmap px */
+export const renderSpace = (R: KindRender): Space => ({
+  X: R.X,
+  Y: R.Y,
+  w: R.w,
+  h: R.h,
+  s: R.hr,
+  v: R.vr,
+  bars: R.bars,
+  barMinutes: R.barMinutes,
+  typePx: R.typePx,
+  idx: t => R.idx?.(t) ?? null,
+  timeAt: i => R.timeAt?.(i) ?? null,
+});
+/** …and the one a hit test measures in — CSS px */
+export const hitSpace = (H: KindHit, barMinutes = 1): Space => ({
+  X: H.X,
+  Y: H.Y,
+  w: H.w,
+  h: H.h,
+  s: 1,
+  v: 1,
+  bars: H.bars,
+  barMinutes,
+  typePx: H.typePx,
+  idx: t => H.idx?.(t) ?? null,
+  timeAt: i => H.timeAt?.(i) ?? null,
+});
+
 export function renderMore(d: Drawing, R: KindRender): boolean {
   if (!NEW_KINDS.has(d.kind)) return false;
+  const ps = piecesOf(d, renderSpace(R), R.draft);
+  if (ps) drawPieces(ps, R);
+  return true;
+}
+
+/** Stroke, fill and print a list of pieces — every kind built from pieces paints through here */
+export function drawPieces(ps: Piece[], R: KindRender): void {
   const { ctx, hr, vr, ink, alpha } = R;
-  const S: Space = { X: R.X, Y: R.Y, w: R.w, h: R.h, s: hr, v: vr, bars: R.bars, barMinutes: R.barMinutes, typePx: R.typePx };
-  const ps = piecesOf(d, S, R.draft);
-  if (!ps) return true;
   const baseDash = ctx.getLineDash();
   const baseW = ctx.lineWidth;
   const stroke = (dim?: boolean, dash?: boolean, thin?: boolean) => {
@@ -596,34 +641,77 @@ export function renderMore(d: Drawing, R: KindRender): boolean {
     } else if (p.t === 'dot') {
       ctx.fillStyle = `rgba(${ink},${alpha})`;
       R.dot(p.p[0], p.p[1]);
+    } else if (p.t === 'candle') {
+      /* a projected or copied candle: rising hollow, falling filled, in the mark's own ink — never the market's colours */
+      const a = p.dim ? alpha * 0.55 : alpha;
+      const up = p.c <= p.o;
+      ctx.save();
+      ctx.setLineDash([]);
+      ctx.lineWidth = Math.max(1, 1 * hr);
+      ctx.strokeStyle = `rgba(${ink},${a})`;
+      ctx.fillStyle = `rgba(${ink},${a * 0.85})`;
+      if (p.stick === 'hl') {
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.h);
+        ctx.lineTo(p.x, p.l);
+        ctx.stroke();
+      } else if (p.stick === 'oc') {
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.o);
+        ctx.lineTo(p.x, p.c);
+        ctx.lineWidth = Math.max(1.5 * hr, p.bw * 0.5);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.h);
+        ctx.lineTo(p.x, Math.min(p.o, p.c));
+        ctx.moveTo(p.x, Math.max(p.o, p.c));
+        ctx.lineTo(p.x, p.l);
+        ctx.stroke();
+        const top = Math.min(p.o, p.c);
+        const hh = Math.max(1, Math.abs(p.c - p.o));
+        if (up) ctx.strokeRect(p.x - p.bw / 2, top, p.bw, hh);
+        else ctx.fillRect(p.x - p.bw / 2, top, p.bw, hh);
+      }
+      ctx.restore();
     }
   }
   ctx.setLineDash([]);
   for (const p of ps) {
     if (p.t === 'glyph') {
-      ctx.font = `${p.px * vr}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+      /* a sticker sits on a round badge with a white rim; an icon is a plain symbol in the mark's own ink */
+      if (p.set === 'sticker') {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.px * 0.72 * vr, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${ink},${Math.min(1, alpha) * 0.22})`;
+        ctx.fill();
+        ctx.lineWidth = 2.2 * vr;
+        ctx.strokeStyle = `rgba(255,255,255,${Math.min(1, alpha + 0.1)})`;
+        ctx.stroke();
+      }
+      ctx.font = p.set === 'icon' ? `${p.px * vr}px ui-sans-serif, system-ui, "Segoe UI Symbol", "Noto Sans Symbols 2", sans-serif` : `${p.px * vr}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = `rgba(${R.textInk},${Math.min(1, alpha + 0.2)})`;
+      ctx.fillStyle = `rgba(${p.set === 'icon' ? ink : R.textInk},${Math.min(1, alpha + 0.2)})`;
       ctx.fillText(p.text, p.x, p.y);
       ctx.textAlign = 'start';
       continue;
     }
     if (p.t !== 'words' || !p.text) continue;
     const px = p.px ?? 10;
-    ctx.font = R.font(px);
+    ctx.font = p.bold ? R.font(px).replace(/^500 /, '700 ') : R.font(px);
     ctx.textBaseline = 'middle';
     const tw = ctx.measureText(p.text).width;
     const pad = 4 * hr;
     const bw = tw + pad * 2;
     const hh = px * 0.85 * vr;
     let bx = p.centre ? p.x - bw / 2 : p.x;
-    bx = Math.max(2 * hr, Math.min(bx, R.w - bw - 2 * hr));
-    R.wash(bx, p.y - hh, bw, hh * 2, 3 * vr, 'rgba(10,10,10,0.82)', p.frame ? `rgba(${ink},0.45)` : undefined);
+    if (p.bare) bx = p.centre ? p.x - tw / 2 - pad : p.x - pad;
+    else bx = Math.max(2 * hr, Math.min(bx, R.w - bw - 2 * hr));
+    if (!p.bare) R.wash(bx, p.y - hh, bw, hh * 2, 3 * vr, 'rgba(10,10,10,0.82)', p.frame ? `rgba(${ink},0.45)` : undefined);
     ctx.fillStyle = `rgba(${p.rgb ?? R.textInk},${p.dim ? alpha * 0.7 : Math.min(1, alpha + 0.15)})`;
     ctx.fillText(p.text, bx + pad, p.y);
   }
-  return true;
 }
 
 // ---- HIT -----------------------------------------------------------------------------------------------
@@ -631,9 +719,12 @@ export function renderMore(d: Drawing, R: KindRender): boolean {
 /** Is the pointer on `d`? null: not one of the phase-one kinds. */
 export function hitMore(d: Drawing, H: KindHit, barMinutes = 1): boolean | null {
   if (!NEW_KINDS.has(d.kind)) return null;
-  const S: Space = { X: H.X, Y: H.Y, w: H.w, h: H.h, s: 1, v: 1, bars: H.bars, barMinutes, typePx: H.typePx };
-  const ps = piecesOf(d, S, false);
-  if (!ps) return false;
+  const ps = piecesOf(d, hitSpace(H, barMinutes), false);
+  return ps ? hitPieces(ps, H) : false;
+}
+
+/** Is the pointer on any of these pieces (CSS px)? */
+export function hitPieces(ps: Piece[], H: KindHit): boolean {
   const { x, y, BODY } = H;
   const inPoly = (poly: Pt[]): boolean => {
     let inside = false;
@@ -681,6 +772,9 @@ export function hitMore(d: Drawing, H: KindHit, barMinutes = 1): boolean | null 
         break;
       case 'flag':
         if (x >= p.x - 4 && x <= p.x + 16 && y <= p.y + 3 && y >= p.y - 27) return true;
+        break;
+      case 'candle':
+        if (Math.abs(x - p.x) <= Math.max(p.bw / 2, 3) && y >= p.h - 2 && y <= p.l + 2) return true;
         break;
       default:
         break;

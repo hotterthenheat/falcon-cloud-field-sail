@@ -37,10 +37,12 @@ const isClockZone = (v: unknown): v is ClockZone => CLOCK_ZONES.some(z => z.valu
 /** The IANA zone behind a choice; null for the machine's own */
 export const clockZoneOf = (c: ClockZone): string | null => CLOCK_ZONES.find(z => z.value === c)?.zone ?? null;
 
-/** How the exposure nodes draw: dotted strike rows (beads), the filled field behind price (heat), beads over a faint field,
-    or each strike as a waveform ribbon whose thickness is its strength (ribbon) */
-export type NodeLook = 'beads' | 'heat' | 'both' | 'ribbon';
+/** How the exposure nodes draw: the book's biggest nodes as level bands across the chart (levels, the default), dotted
+    strike rows (beads), the filled field behind price (heat), beads over a faint field, or each strike as a waveform
+    ribbon whose thickness is its strength (ribbon) */
+export type NodeLook = 'levels' | 'beads' | 'heat' | 'both' | 'ribbon';
 export const NODE_LOOKS: readonly { value: NodeLook; label: string; hint: string }[] = [
+  { value: 'levels', label: 'Levels', hint: "The biggest nodes of the book now, each a band across the whole chart, its thickness the node's size" },
   { value: 'beads', label: 'Beads', hint: 'A row of dots on each heavy strike, each dot sized by the exposure at that bar' },
   { value: 'heat', label: 'Heat', hint: 'The filled field: every strike, every bar, coloured by its exposure' },
   { value: 'both', label: 'Both', hint: 'The beads over a faint field' },
@@ -84,6 +86,8 @@ interface DeskPrefs {
   clock: ClockZone;
   /** how the exposure nodes draw on the charts */
   nodeLook: NodeLook;
+  /** the looks' revision the stored `nodeLook` was chosen under: an older one opens on the new default once */
+  nodeLookV?: number;
   /** the flow pane's filters */
   flowFilters: FlowFilters;
   /** node pressure: how near a heavy node or the flip, in percent of price, fires the alert */
@@ -91,7 +95,9 @@ interface DeskPrefs {
 }
 
 const KEY = 'slayer_desk_prefs';
-const DEFAULT_DESK_PREFS: DeskPrefs = { opensOn: { ticker: null, timeframe: null, page: null }, alertsSound: true, clock: 'ny', nodeLook: 'both', flowFilters: DEFAULT_FLOW_FILTERS, nodeAlertPct: 0.15 };
+/** The looks' revision: 2 made `levels` the default (2026-11-01) */
+const NODE_LOOK_V = 2;
+const DEFAULT_DESK_PREFS: DeskPrefs = { opensOn: { ticker: null, timeframe: null, page: null }, alertsSound: true, clock: 'ny', nodeLook: 'levels', nodeLookV: NODE_LOOK_V, flowFilters: DEFAULT_FLOW_FILTERS, nodeAlertPct: 0.15 };
 
 function asTimeframe(v: unknown): Timeframe | null {
   if (typeof v !== 'string') return null;
@@ -99,7 +105,7 @@ function asTimeframe(v: unknown): Timeframe | null {
   return known && frameServed(known.value) ? known.value : null;
 }
 
-const asLook = (v: unknown): NodeLook => (v === 'beads' || v === 'heat' || v === 'both' || v === 'ribbon' ? v : 'both');
+const asLook = (v: unknown): NodeLook => (v === 'levels' || v === 'beads' || v === 'heat' || v === 'both' || v === 'ribbon' ? v : 'levels');
 
 /** A stored filter set, field by field against the default */
 export function asFlowFilters(v: unknown): FlowFilters {
@@ -125,7 +131,9 @@ let prefs: DeskPrefs = (() => {
       alertsSound: p.alertsSound ?? true,
       /* New York's clock unless the reader chose the machine's (every time in the app is ET) */
       clock: isClockZone(p.clock) ? p.clock : 'ny',
-      nodeLook: asLook(p.nodeLook),
+      /* a look stored before `levels` was the default opens on it once; a later pick is kept */
+      nodeLook: p.nodeLookV === NODE_LOOK_V ? asLook(p.nodeLook) : 'levels',
+      nodeLookV: NODE_LOOK_V,
       flowFilters: asFlowFilters(p.flowFilters),
       nodeAlertPct: typeof p.nodeAlertPct === 'number' && p.nodeAlertPct > 0 && p.nodeAlertPct <= 5 ? p.nodeAlertPct : 0.15,
     };
