@@ -19,6 +19,7 @@ import { Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, Referen
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../shadcn/chart';
 import { useVolRegime, regimeTrouble, type RegimeQuote, type RegimeRatio } from '../../data/regimeFeed';
 import { TERM } from '../../../shared/volRegime.mjs';
+import { REGULAR_OPEN_MIN } from '../../core/session';
 import { fmtDay, fmtMinute, fmtStamp, ordinal, signed } from './regimeFmt';
 import { FactChip, INK, RailFoot, SectionHead, TICK } from './railFacts';
 import type { HeatMode } from './heatmap';
@@ -174,7 +175,7 @@ const RatioChart = ({ r, mode, paper }: { r: RegimeRatio } & Props) => {
         <ChartContainer config={config} className="aspect-auto h-[116px] w-full font-mono tnum">
           <LineChart data={data} margin={{ top: 4, right: 14, bottom: 0, left: 0 }} accessibilityLayer>
             <CartesianGrid vertical={false} />
-            <XAxis dataKey="m" type="number" domain={[570, 975]} ticks={[570, 720, 870]} tickFormatter={(m: number) => fmtMinute(m).replace(':00', '').replace(' ', '')} tickLine={false} axisLine={false} tick={TICK} tickMargin={4} />
+            <XAxis dataKey="m" type="number" domain={[REGULAR_OPEN_MIN, REGULAR_OPEN_MIN + 405]} ticks={[REGULAR_OPEN_MIN, REGULAR_OPEN_MIN + 150, REGULAR_OPEN_MIN + 300]} tickFormatter={(m: number) => fmtMinute(m).replace(':00', '').replace(' ', '')} tickLine={false} axisLine={false} tick={TICK} tickMargin={4} />
             <YAxis width={40} tickLine={false} axisLine={false} tick={TICK} domain={[lo - pad, hi + pad]} ticks={ticks} tickCount={3} interval={0} tickFormatter={(v: number) => v.toFixed(2)} />
             <defs>
               <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
