@@ -17,6 +17,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 /** The proofs, run in this order: scripts/<name>.ts, or .mjs where it says so */
 const PROOFS = [
   'trace-moneyness-proof',
+  'cn-proof',
   'gamma-sign-proof',
   'lgbm-parity-proof',
   'chart-proof',

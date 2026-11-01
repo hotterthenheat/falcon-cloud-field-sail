@@ -689,6 +689,29 @@ html[data-type-floor] .pal-label {
   .foil-glide::before { animation: none; }
 }
 
+/* THE PILL IN EITHER THEME, for a control that cannot ask the theme in script (the shadcn Button's `holo`): beside
+   `.foil-glide`, the holo foil with dark words on the dark terminal, the galaxy ink with light words on paper — the
+   house's pairing (ui/FilterTabs.tsx). A dark chart host on a light page keeps the holo. */
+.foil-pill {
+  --foil-ink: var(--holo-gradient-bright);
+  color: #0a0a0a;
+}
+[data-theme='light'] .foil-pill:not([data-theme='dark'] *),
+[data-theme='light'].foil-pill {
+  --foil-ink: var(--galaxy-gradient);
+  color: #f4f3ef;
+}
+
+/* THE OVERLAYS' MOTION UNDER REDUCED MOTION (the shadcn components): every animated overlay part wears this, so its
+   state-picked animation (`data-[state=open]:animate-ovl-*`, a stronger selector than a plain motion-reduce utility)
+   stops, and Radix unmounts a closing overlay at once instead of waiting on an exit. */
+@media (prefers-reduced-motion: reduce) {
+  .slayer-motion,
+  .slayer-motion[data-state] {
+    animation: none !important;
+  }
+}
+
 /* THE TAPE on the wire (2026-09-13) rode the landing's marquee (keyframes removed with the
    landing page, 2026-09-19), slower and paused under
    the pointer, until 2026-09-16: it is driven by a frame loop now so it can be

@@ -9,7 +9,7 @@ import { volOutlookMount } from './server/volOutlookApi.mjs';
 import { proxyRegime } from './server/regimeApi.mjs';
 import { superviseTheta } from './theta/supervisor.mjs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import nodePath from 'node:path';
 
 /* The data proxies (server/) run inside the dev and preview servers; their keys stay in this process.
@@ -154,6 +154,8 @@ export default defineConfig(({ mode }) => {
     },
   },
   resolve: {
+    /* `@/` is src/ (the shadcn components' alias; tsconfig.json `paths` says the same to the type checker) */
+    alias: { '@': nodePath.join(nodePath.dirname(fileURLToPath(import.meta.url)), 'src') },
     /* one React, even when the pre-bundle is regenerated mid-session */
     dedupe: ['react', 'react-dom'],
   },

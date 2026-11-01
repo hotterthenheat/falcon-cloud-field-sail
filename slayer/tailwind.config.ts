@@ -27,7 +27,24 @@ export default {
         // The chip's ground (#0c0c0c on dark) and the card's (#121212) — the two
         // shades the pages used to write by hand
         chip: token('chip'),
-        card: token('card'),
+        card: { DEFAULT: token('card'), foreground: token('text-primary') },
+
+        /* SHADCN'S NAMES, ON THE HOUSE TOKENS (2026-11-01). The shadcn components (src/components/shadcn) and anything
+           pasted from shadcn later read these; each is an existing token, never a new value and never a var() alias of
+           one (an alias freezes at :root, and every chart host re-scopes the tokens with data-theme — tokens.css), so a
+           shadcn class follows the box's theme exactly as a house class does. `card`, `primary` and `secondary` carry
+           their DEFAULTs from before (the legacy text aliases below keep `text-primary` / `text-secondary`); shadcn's
+           `bg-primary` is therefore the text ink as a fill with the panel's ground for its words — the house's
+           "where you are" pill (ui/FilterTabs.tsx). Use `bg-secondary` nowhere: on this config it is the grey ink. */
+        background: token('canvas'),
+        foreground: token('text-primary'),
+        popover: { DEFAULT: token('chip'), foreground: token('text-primary') },
+        muted: { DEFAULT: token('inset'), foreground: token('text-muted') },
+        accent: { DEFAULT: token('panel-hover'), foreground: token('text-primary') },
+        destructive: { DEFAULT: token('bear'), foreground: token('text-primary') },
+        border: token('border-subtle'),
+        input: token('border-subtle'),
+        ring: token('select'),
 
         // Borders
         borderSubtle: token('border-subtle'),
@@ -93,8 +110,8 @@ export default {
         darkpool: token('darkpool'),
 
         // Legacy aliases (pre-redesign pages)
-        primary: token('text-primary'),
-        secondary: token('text-secondary'),
+        primary: { DEFAULT: token('text-primary'), foreground: token('panel') },
+        secondary: { DEFAULT: token('text-secondary'), foreground: token('text-primary') },
         silver: token('silver'),
         // positive gamma is the call side's green (paletteInk LONG_GAMMA) — it
         // borrowed the lime accent until 2026-10-13, and the accent is not data
@@ -168,6 +185,33 @@ export default {
         displaySm: 'clamp(2.7rem, 6.3vw, 5.7rem)',
         displayLg: 'clamp(2.75rem, 7.4vw, 7rem)',
         prompt: 'clamp(1.05rem, 2.6vw, 1.6rem)',
+      },
+      /* The overlays' motion, as utilities so a Radix state can pick it (`data-[state=open]:animate-ovl-card-in`). The
+         modal and soft-in keyframes are index.css's own; the sheet's slide is here. Every element wearing one also wears
+         `.slayer-motion`, which index.css stills under reduced motion. */
+      keyframes: {
+        'ovl-sheet-in-right': { from: { transform: 'translateX(48px)', opacity: '0' } },
+        'ovl-sheet-out-right': { to: { transform: 'translateX(48px)', opacity: '0' } },
+        'ovl-sheet-in-left': { from: { transform: 'translateX(-48px)', opacity: '0' } },
+        'ovl-sheet-out-left': { to: { transform: 'translateX(-48px)', opacity: '0' } },
+        'ovl-sheet-in-bottom': { from: { transform: 'translateY(48px)', opacity: '0' } },
+        'ovl-sheet-out-bottom': { to: { transform: 'translateY(48px)', opacity: '0' } },
+        'ovl-fade-out': { to: { opacity: '0' } },
+      },
+      animation: {
+        'ovl-backdrop-in': 'modal-backdrop-in 220ms ease-out both',
+        'ovl-backdrop-out': 'modal-backdrop-out 180ms ease-in both',
+        'ovl-card-in': 'modal-card-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both',
+        'ovl-card-out': 'modal-card-out 180ms cubic-bezier(0.4, 0, 1, 1) both',
+        'ovl-pop-in': 'soft-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) backwards',
+        'ovl-pop-out': 'ovl-fade-out 120ms ease-in both',
+        /* the drawers' glide: 0.5s in, 0.36s out, on the standard curve (the house expo snaps home on a 400px panel) */
+        'ovl-sheet-in-right': 'ovl-sheet-in-right 0.5s cubic-bezier(0.4, 0, 0.2, 1) both',
+        'ovl-sheet-out-right': 'ovl-sheet-out-right 0.36s cubic-bezier(0.4, 0, 0.2, 1) both',
+        'ovl-sheet-in-left': 'ovl-sheet-in-left 0.5s cubic-bezier(0.4, 0, 0.2, 1) both',
+        'ovl-sheet-out-left': 'ovl-sheet-out-left 0.36s cubic-bezier(0.4, 0, 0.2, 1) both',
+        'ovl-sheet-in-bottom': 'ovl-sheet-in-bottom 0.5s cubic-bezier(0.4, 0, 0.2, 1) both',
+        'ovl-sheet-out-bottom': 'ovl-sheet-out-bottom 0.36s cubic-bezier(0.4, 0, 0.2, 1) both',
       },
       fontFamily: {
         // One family site-wide (2026-08-16). `mono` is kept as a token — it
