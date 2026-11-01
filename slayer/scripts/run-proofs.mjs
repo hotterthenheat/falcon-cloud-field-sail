@@ -74,6 +74,7 @@ const PROOFS = [
   'candle-patterns-proof',
   'volume-at-price-proof',
   'tv-levels-proof',
+  'indicators-al-proof',
 ];
 
 const goldens = () =>
