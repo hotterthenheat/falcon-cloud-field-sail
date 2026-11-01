@@ -43,7 +43,7 @@ import { onGlide, promisedWidth } from '../../core/glide';
 import { compile, explain, run as runScript, type Compiled } from '../../core/pine';
 import { setPaneBars, usePaneScripts } from '../../data/paneScripts';
 import { drawRun, type ScriptHandle } from './scriptLayer';
-import ScriptLegend from './ScriptLegend';
+import ScriptLegend, { type ScriptRun } from './ScriptLegend';
 import ResetViewControl from './ResetViewControl';
 import { LOCAL_TIME, NY_TIME, localTickMarks, nyTickMarks } from './chartTime';
 import {
@@ -1291,6 +1291,9 @@ const StrikeChart = ({
   const scriptSigRef = useRef('');
   const compiledRef = useRef<Map<string, Compiled>>(new Map());
   const paneScripts = usePaneScripts(paneId);
+  /* each script's last run, for the legend's values */
+  const scriptRunsRef = useRef(new Map<string, ScriptRun>());
+  const [scriptRunsRev, setScriptRunsRev] = useState(0);
   const indicatorLoadedRef = useRef('');
   /* The main series' style — a ref for the one-time creation effect, a nonce so every effect that hangs price lines
      off the main series knows to re-hang them after a style swap replaces it. */
@@ -3165,6 +3168,7 @@ const StrikeChart = ({
       let result;
       try {
         result = runScript(compiled, bars, { inputs: ps.chart.inputs, ticker, timeframe: String(timeframe), slayer });
+        scriptRunsRef.current.set(ps.chart.id, { result, times: bars.map(b => b.time) });
       } catch (e) {
         if (rebuild) console.warn(`[scripts] ${ps.script.title}: ${explain(e).message}`);
         continue;
@@ -3187,6 +3191,7 @@ const StrikeChart = ({
       panes.forEach((p, i) => p.setStretchFactor(i === 0 ? 64 : Math.max(10, 36 / (panes.length - 1))));
     }
     scriptSigRef.current = sig;
+    if (live.length) setScriptRunsRev(v => v + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paneId, paneScripts, indicators, ticker, revision, timeframe, mainNonce, compares, altSpec, barClock, fullNonce, focusNonce, levels]);
 
@@ -5538,7 +5543,7 @@ const StrikeChart = ({
         {/* …and above a host's own chrome at the foot */}
         <ResetViewControl onReset={resetView} pillClass={footInset > 0 ? 'right-16 bottom-20' : undefined} />
         {/* The scripts on this pane, named at the top left with hide and remove */}
-        {paneId && paneScripts.length > 0 && !replay && <ScriptLegend paneId={paneId} scripts={paneScripts} />}
+        {paneId && paneScripts.length > 0 && !replay && <ScriptLegend paneId={paneId} scripts={paneScripts} chart={getChart} runOf={id => scriptRunsRef.current.get(id)} tick={`${revision}|${scriptRunsRev}`} />}
         {builtinOn.length > 0 && !replay && (
           <IndicatorLegend
             on={builtinOn.map(i => i.key)}
