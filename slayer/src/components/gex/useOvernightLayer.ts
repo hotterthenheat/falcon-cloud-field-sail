@@ -1,5 +1,5 @@
 /* Terrain's overnight layer on one chart (overnightLayer.ts): the SPX line the options imply through the GTH night on
-   SPX, SPXW and XSP panes, the labelled empty night on a stock's or an ETF's. Mounted by StrikeChart for Terrain's panes
+   SPX, SPXW and XSP panes, the empty night's slots (nothing drawn in them) on a stock's or an ETF's. Mounted by StrikeChart for Terrain's panes
    only, intraday timeframes only, never on a host's tape or a replay. */
 
 import { useEffect, useRef, type MutableRefObject } from 'react';
@@ -66,7 +66,7 @@ export function useOvernightLayer(chartRef: MutableRefObject<IChartApi | null>, 
       if (w) {
         const slots: { ms: number }[] = [];
         for (let t = Math.ceil(w.from / 1000 / step) * step; t * 1000 < w.to; t += step) slots.push({ ms: t * 1000 });
-        d = { kind: 'gap', points: stepPoints(slots, step), label: 'No overnight trading data', light: o.light };
+        d = { kind: 'gap', points: stepPoints(slots, step), label: '', light: o.light };
       }
     }
     layer.update(d);
