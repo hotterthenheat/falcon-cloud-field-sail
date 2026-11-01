@@ -4,6 +4,9 @@
 import { fmtElapsed, measureSpan } from '../../data/measure';
 import type { Drawing, DrawingPoint } from './drawingsPrimitive';
 import { hitMore, renderMore } from './drawingKindsMore';
+import { hitTv, renderTv } from './drawingKindsTv';
+import { positionSize, vwapWithBands, type VwapSource } from './drawingGeometry';
+import { opt } from './drawingLevels';
 
 export interface KindBar {
   /** the magnet snaps to it when the tape carries it */
@@ -50,6 +53,9 @@ export interface KindRender {
   typePx(width?: number): number;
   wash(x: number, y: number, w: number, h: number, r: number, fill: string, stroke?: string): void;
   dot(x: number, y: number): void;
+  /** the chart's bar index of a time, and the time at an index (runway included) */
+  idx?(time: number): number | null;
+  timeAt?(i: number): number | null;
 }
 
 /** Everything a kind needs to answer "is the pointer on me" — CSS pixels throughout */
@@ -68,6 +74,8 @@ export interface KindHit {
   bars: KindBar[];
   barsRev: number;
   typePx(width?: number): number;
+  idx?(time: number): number | null;
+  timeAt?(i: number): number | null;
 }
 
 // ---- shared geometry ----------------------------------------------------------
@@ -115,36 +123,29 @@ export const defaultStop = (entry: number, target: number): number => entry - (t
 // ---- the anchored VWAP -----------------------------------------------------------
 
 let vwapRev = -1;
-const vwapCache = new Map<number, { i0: number; v: number[] } | null>();
-/** Volume-weighted average price from the anchor's bar on: Σ(typical × volume) / Σ volume */
-export function avwapSeries(bars: KindBar[], rev: number, anchorTime: number): { i0: number; v: number[] } | null {
+const vwapCache = new Map<string, { i0: number; v: number[]; sd: number[] } | null>();
+/** Volume-weighted average price from the anchor's bar on: Σ(price × volume) / Σ volume, and its σ — the source is
+    TradingView's hlc3 unless the mark chose another (drawingGeometry.vwapWithBands) */
+export function avwapSeries(bars: KindBar[], rev: number, anchorTime: number, src: VwapSource = 'hlc3'): { i0: number; v: number[]; sd: number[] } | null {
   if (rev !== vwapRev) {
     vwapCache.clear();
     vwapRev = rev;
   }
-  const kept = vwapCache.get(anchorTime);
+  const key = `${anchorTime}|${src}`;
+  const kept = vwapCache.get(key);
   if (kept !== undefined) return kept;
   let i0 = bars.findIndex(b => b.time >= anchorTime);
   /* anchored in the empty room right of the last candle: it starts at the last bar there is, and grows as bars print */
   if (i0 < 0 && bars.length) i0 = bars.length - 1;
-  let out: { i0: number; v: number[] } | null = null;
-  if (i0 >= 0) {
-    const v: number[] = [];
-    let pv = 0;
-    let vol = 0;
-    for (let i = i0; i < bars.length; i++) {
-      const b = bars[i];
-      /* a bar with no volume still happened — it counts once, so a quiet tape draws a line rather than nothing */
-      const wgt = b.volume > 0 ? b.volume : 1;
-      pv += ((b.high + b.low + b.close) / 3) * wgt;
-      vol += wgt;
-      v.push(pv / vol);
-    }
-    out = { i0, v };
-  }
-  vwapCache.set(anchorTime, out);
+  let out: { i0: number; v: number[]; sd: number[] } | null = null;
+  if (i0 >= 0) out = { i0, ...vwapWithBands(bars.slice(i0), src) };
+  vwapCache.set(key, out);
   return out;
 }
+const vwapSrc = (d: Drawing): VwapSource => {
+  const v = opt<string>(d, 'src', 'hlc3');
+  return v === 'hl2' || v === 'ohlc4' || v === 'close' ? v : 'hlc3';
+};
 
 // ---- words ---------------------------------------------------------------------------
 
@@ -324,9 +325,20 @@ export function renderKind(d: Drawing, R: KindRender): boolean {
       const risk = Math.abs(stop - entry);
       const pct = (v: number) => `${((v / entry) * 100).toFixed(2)}%`;
       const above = (yy: number, other: number) => (yy < other ? yy - 11 * vr : yy + 11 * vr);
-      label(`Target ${priceWords(target)}  ${reward.toFixed(2)}  ${pct(reward)}`, xa + 4 * hr, above(b[1], a[1]), UP, alpha);
-      label(`Stop ${priceWords(stop)}  ${risk.toFixed(2)}  ${pct(risk)}`, xa + 4 * hr, above(yS, a[1]), DOWN, alpha);
-      label(`${d.kind === 'long' ? 'Long' : 'Short'} ${priceWords(entry)}  reward to risk ${risk > 0 ? (reward / risk).toFixed(2) : '—'}`, xa + 4 * hr, a[1], R.textInk, alpha);
+      /* TradingView's position settings: the account, the risk and the lot size give the quantity, and the quantity
+         gives each level its cash (drawingGeometry.positionSize) */
+      const lot = Number(opt<number>(d, 'lot', 1)) || 1;
+      const size = positionSize(Number(opt<number>(d, 'account', 10000)) || 0, Number(opt<number>(d, 'risk', 1)) || 0, entry, stop, target, lot);
+      const cash = (v: number) => `$${v.toLocaleString('en-US', { maximumFractionDigits: v >= 1000 ? 0 : 2 })}`;
+      label(`Target ${priceWords(target)}  ${reward.toFixed(2)}  ${pct(reward)}  ${cash(size.rewardCash)}`, xa + 4 * hr, above(b[1], a[1]), UP, alpha);
+      label(`Stop ${priceWords(stop)}  ${risk.toFixed(2)}  ${pct(risk)}  ${cash(size.lossCash)}`, xa + 4 * hr, above(yS, a[1]), DOWN, alpha);
+      label(`${d.kind === 'long' ? 'Long' : 'Short'} ${priceWords(entry)}  Qty ${size.qty}  reward to risk ${risk > 0 ? (reward / risk).toFixed(2) : '—'}`, xa + 4 * hr, a[1], R.textInk, alpha);
+      /* the open P&L at the chart's last close, once the entry's bar has printed */
+      const lastBar = R.bars.length ? R.bars[R.bars.length - 1] : null;
+      if (opt<boolean>(d, 'pnl', true) && lastBar && lastBar.time >= d.p1.time && size.qty > 0) {
+        const pnl = (lastBar.close - entry) * size.qty * lot * (d.kind === 'long' ? 1 : -1);
+        label(`Open P&L ${pnl >= 0 ? '+' : '−'}${cash(Math.abs(pnl))} at ${priceWords(lastBar.close)}`, xa + 4 * hr, a[1] + (b[1] < a[1] ? 18 : -18) * vr, pnl >= 0 ? UP : DOWN, alpha * 0.9);
+      }
       ctx.fillStyle = solid;
       R.dot(a[0], a[1]);
       R.dot(b[0], b[1]);
@@ -386,7 +398,7 @@ export function renderKind(d: Drawing, R: KindRender): boolean {
       return true;
     }
     case 'avwap': {
-      const s = avwapSeries(R.bars, R.barsRev, d.p1.time);
+      const s = avwapSeries(R.bars, R.barsRev, d.p1.time, vwapSrc(d));
       if (!s || s.v.length === 0) {
         /* no bars yet (a draft before the tape loads): the anchor alone, so the click still shows */
         const a = pt(d.p1);
@@ -408,6 +420,28 @@ export function renderKind(d: Drawing, R: KindRender): boolean {
         last = [x, y];
       }
       ctx.stroke();
+      /* the bands the mark asked for: ×1, ×2, ×3 of the volume-weighted σ, faint and dashed */
+      for (const m of [1, 2, 3]) {
+        if (!opt<boolean>(d, `b${m}`)) continue;
+        ctx.save();
+        ctx.setLineDash([4 * hr, 4 * hr]);
+        ctx.strokeStyle = `rgba(${ink},${alpha * 0.5})`;
+        for (const sign of [1, -1]) {
+          ctx.beginPath();
+          let started = false;
+          for (let k = 0; k < s.v.length; k++) {
+            const x = R.X(R.bars[s.i0 + k].time);
+            const y = R.Y(s.v[k] + sign * m * s.sd[k]);
+            if (x === null || y === null) continue;
+            if (!started) {
+              ctx.moveTo(x, y);
+              started = true;
+            } else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
       if (first) R.dot(first[0], first[1]);
       if (last) label(`Anchored VWAP  ${priceWords(s.v[s.v.length - 1])}`, last[0] + 6 * hr, last[1], R.textInk, alpha);
       return true;
@@ -516,6 +550,12 @@ export function renderKind(d: Drawing, R: KindRender): boolean {
       ctx.moveTo(cs[0][0], cs[0][1]);
       for (let i = 1; i < cs.length - 1; i++) ctx.quadraticCurveTo(cs[i][0], cs[i][1], (cs[i][0] + cs[i + 1][0]) / 2, (cs[i][1] + cs[i + 1][1]) / 2);
       ctx.lineTo(cs[cs.length - 1][0], cs[cs.length - 1][1]);
+      /* the brush's Fill (TradingView's): the stroke closes on itself and takes the wash */
+      if (d.kind === 'brush' && opt<boolean>(d, 'fill') && cs.length >= 3) {
+        ctx.closePath();
+        ctx.fillStyle = `rgba(${ink},${0.12 * (alpha / 0.8)})`;
+        ctx.fill();
+      }
       ctx.stroke();
       ctx.restore();
       return true;
@@ -599,7 +639,7 @@ export function renderKind(d: Drawing, R: KindRender): boolean {
     }
     default:
       /* the phase-one kinds (drawingKindsMore.ts) — false when it is none of them either */
-      return renderMore(d, R);
+      return renderMore(d, R) || renderTv(d, R);
   }
 }
 
@@ -607,7 +647,7 @@ export function renderKind(d: Drawing, R: KindRender): boolean {
 export function handlePoints(d: Drawing, R: KindRender): XY[] | null {
   if (d.kind === 'brush' || d.kind === 'highlighter') return [];
   if (d.kind === 'avwap') {
-    const s = avwapSeries(R.bars, R.barsRev, d.p1.time);
+    const s = avwapSeries(R.bars, R.barsRev, d.p1.time, vwapSrc(d));
     if (!s || !s.v.length) return null;
     const x = R.X(R.bars[s.i0].time);
     const y = R.Y(s.v[0]);
@@ -685,7 +725,7 @@ export function hitKind(d: Drawing, H: KindHit): boolean | null {
       return near([xa, ya], [xa, yb]) || near([xb, ya], [xb, yb]) || near([xa, my], [xb, my]);
     }
     case 'avwap': {
-      const s = avwapSeries(H.bars, H.barsRev, d.p1.time);
+      const s = avwapSeries(H.bars, H.barsRev, d.p1.time, vwapSrc(d));
       if (!s) return false;
       let prev: XY | null = null;
       for (let k = 0; k < s.v.length; k++) {
@@ -755,6 +795,6 @@ export function hitKind(d: Drawing, H: KindHit): boolean | null {
       return near(a, [a[0] + 12, a[1] - 12]) || (x >= a[0] + 10 && x <= a[0] + 14 + box.w && Math.abs(y - by) <= box.h / 2 + 2);
     }
     default:
-      return hitMore(d, H);
+      return hitMore(d, H) ?? hitTv(d, H);
   }
 }

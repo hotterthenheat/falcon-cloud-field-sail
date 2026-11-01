@@ -5,7 +5,10 @@ import { getDistanceUnit } from '../../data/distanceUnits';
 import { avwapSeries, defaultStop, handlePoints, hitKind, renderKind, type KindBar, type KindHit, type KindRender } from './drawingKinds';
 import { PATTERN_POINTS, regressionOf } from './drawingKindsMore';
 import { magnetPick } from './drawingGeometry';
-import { getStamp } from './drawStamp';
+import { getStamp, getStampSet } from './drawStamp';
+import { levelsOf, opt, visibleOn, type Vis } from './drawingLevels';
+import { anchoredFrac, hitTv, PATTERN_POINTS_TV, renderExtras, hitExtras } from './drawingKindsTv';
+import { publishDrawings } from './drawingSync';
 
 /*
   User drawings layer — trendlines and horizontal levels, sketched directly on
@@ -72,7 +75,12 @@ export type DrawingKind =
   | 'infoline' | 'trendangle' | 'regression' | 'flattop' | 'disjoint' | 'pitchfork' | 'schiff' | 'mschiff'
   | 'fibtime' | 'fibfan' | 'fibcircles' | 'fibspiral' | 'fibwedge' | 'gannbox' | 'gannsquare' | 'gannfan'
   | 'xabcd' | 'abcd' | 'hs' | 'tripattern' | 'threedrives' | 'elliott5' | 'elliott3'
-  | 'forecast' | 'arc' | 'signpost' | 'flag' | 'stamp';
+  | 'forecast' | 'arc' | 'signpost' | 'flag' | 'stamp'
+  /* PHASE TWO OF TRADINGVIEW PARITY (2026-11-01) — drawn and hit in drawingKindsTv.ts */
+  | 'insidefork' | 'pitchfan' | 'tbfibtime' | 'fibarcs' | 'gannsq'
+  | 'cypher' | 'elliotttri' | 'elliottwxy' | 'elliottwxyxz' | 'cyclic' | 'timecycles' | 'sine'
+  | 'barspattern' | 'ghostfeed' | 'sector' | 'frvp' | 'avp'
+  | 'doublecurve' | 'arrowmarker' | 'pricenote' | 'pin' | 'table' | 'comment' | 'anchoredtext';
 
 /** HOW A KIND IS MADE — the gesture reads this rather than a list of its own, the same way the validator reads the shape:
       click     one press places it (a level, a stamp, an anchored VWAP)
@@ -179,6 +187,32 @@ const KIND_SHAPE = {
   flag: { p2: false, p3: false, text: false, g: 'click' },
   /* the stamp's emoji is its words — given at the press from the Icons list's choice (normalise) */
   stamp: { p2: false, p3: false, text: true, g: 'click' },
+  insidefork: { p2: true, p3: true, text: false, g: 'drag' },
+  pitchfan: { p2: true, p3: true, text: false, g: 'drag' },
+  tbfibtime: { p2: true, p3: true, text: false, g: 'drag' },
+  fibarcs: { p2: true, p3: false, text: false, g: 'drag' },
+  gannsq: { p2: true, p3: false, text: false, g: 'drag' },
+  cypher: { p2: false, p3: false, text: false, g: 'clicks' },
+  elliotttri: { p2: false, p3: false, text: false, g: 'clicks' },
+  elliottwxy: { p2: false, p3: false, text: false, g: 'clicks' },
+  elliottwxyxz: { p2: false, p3: false, text: false, g: 'clicks' },
+  cyclic: { p2: true, p3: false, text: false, g: 'drag' },
+  timecycles: { p2: true, p3: false, text: false, g: 'drag' },
+  sine: { p2: true, p3: false, text: false, g: 'drag' },
+  /* two anchors pick the bars to copy, the third sets the copy down */
+  barspattern: { p2: true, p3: true, text: false, g: 'drag' },
+  /* a press a turn of the projected path, sealed by a double-click */
+  ghostfeed: { p2: false, p3: false, text: false, g: 'clicks' },
+  sector: { p2: true, p3: true, text: false, g: 'drag' },
+  frvp: { p2: true, p3: false, text: false, g: 'drag' },
+  avp: { p2: false, p3: false, text: false, g: 'click' },
+  doublecurve: { p2: true, p3: true, text: false, g: 'drag' },
+  arrowmarker: { p2: true, p3: false, text: false, g: 'drag' },
+  pricenote: { p2: true, p3: false, text: false, g: 'drag' },
+  pin: { p2: false, p3: false, text: true, g: 'words' },
+  table: { p2: false, p3: false, text: true, g: 'words' },
+  comment: { p2: false, p3: false, text: true, g: 'words' },
+  anchoredtext: { p2: false, p3: false, text: true, g: 'words' },
 } as const satisfies Record<DrawingKind, { p2: boolean; p3: boolean; text: boolean; g: DrawGesture }>;
 
 export const gestureOf = (kind: DrawingKind): DrawGesture => KIND_SHAPE[kind].g;
@@ -198,7 +232,7 @@ export const isWordsKind = (kind: DrawingKind): boolean => KIND_SHAPE[kind].text
 export const needsThirdAnchor = (kind: DrawingKind): boolean => KIND_SHAPE[kind].p3;
 
 /** A pattern's fixed number of pivots: its run seals itself on the last one. Undefined: a run sealed by a double-click. */
-export const fixedPoints = (kind: DrawingKind): number | undefined => PATTERN_POINTS[kind];
+export const fixedPoints = (kind: DrawingKind): number | undefined => PATTERN_POINTS[kind] ?? PATTERN_POINTS_TV[kind];
 
 /** The kinds a Shift-drag holds to 45° (TradingView's constrain) */
 export const isLineKind = (kind: DrawingKind): boolean =>
@@ -237,6 +271,14 @@ export interface Drawing {
   hidden?: boolean;
   /** Drawn on this timeframe only (the Visibility tab); unset: every timeframe */
   tf?: string;
+  /** The name the object tree lists it under (TradingView's rename); unset: the tool's own name */
+  name?: string;
+  /** Its own levels (fib ratios, Gann angles, pitchfork lines) — unset: its tool's defaults (drawingLevels.ts) */
+  levels?: { v: number; on: boolean }[];
+  /** Its tool's own inputs (account size, VWAP source, rows …) — drawingLevels.ts KIND_OPTS */
+  opts?: Record<string, number | string | boolean>;
+  /** Shown only on these interval ranges (TradingView's Visibility tab) — supersedes `tf` */
+  vis?: Vis;
   /** A horizontal line that follows a live level instead of a frozen price. */
   bind?: 'callWall' | 'putWall' | 'flip' | 'coneHigh' | 'coneLow';
 }
@@ -475,6 +517,8 @@ class DrawingsPaneRenderer {
         typePx,
         wash: (x, y, bw, bh, r, fill, stroke) => wash(ctx, x, y, bw, bh, r, fill, stroke),
         dot: (x, y) => dot(ctx, x, y, 2.2 * vr),
+        idx: time => src.barIndexOf(time),
+        timeAt: i => src.timeAtBarIndex(i),
       };
 
       const render = (d: Drawing, alpha: number, draft = false) => {
@@ -772,9 +816,13 @@ class DrawingsPaneRenderer {
             0, ½ and 1 draw a step brighter: the endpoints anchor the eye and
             the half is the one every reader checks first.
           */
-          const RATIOS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
-          const xa = Math.min(x1, x2);
-          const xb = Math.max(x1, x2);
+          /* its own levels (the settings dialog's Levels tab), reversed and extended as it asks */
+          const RATIOS = levelsOf(d);
+          const rev = opt<boolean>(d, 'reverse');
+          const from = rev ? d.p2.price : d.p1.price;
+          const to = rev ? d.p1.price : d.p2.price;
+          const xa = opt<boolean>(d, 'extL') ? 0 : Math.min(x1, x2);
+          const xb = opt<boolean>(d, 'extR') ? w : Math.max(x1, x2);
           /* Labels sit ON A WASH now — bare 9px text over candles was the
              partner's screenshot's least readable element — and the ratio
              and the price get different weights of the same ink: the ratio
@@ -786,13 +834,13 @@ class DrawingsPaneRenderer {
              flip left half the ratios on each side). */
           let maxBw = 0;
           for (const r of RATIOS) {
-            const price = d.p1.price + (d.p2.price - d.p1.price) * r;
+            const price = from + (to - from) * r;
             const bw2 = ctx.measureText(String(r)).width + ctx.measureText(` ${price.toFixed(2)}`).width + 8 * hr;
             if (bw2 > maxBw) maxBw = bw2;
           }
           const labelsLeft = xb + 4 * hr + maxBw > w - 2 * hr;
           for (const r of RATIOS) {
-            const price = d.p1.price + (d.p2.price - d.p1.price) * r;
+            const price = from + (to - from) * r;
             const yc = series.priceToCoordinate(price);
             if (yc === null) continue;
             const y = yc * vr;
@@ -855,6 +903,8 @@ class DrawingsPaneRenderer {
       for (let i = 0; i < src.drawings.length; i++) {
         if (!src.shows(src.drawings[i])) continue;
         render(src.drawings[i], i === src.selected ? 1 : 0.8);
+        /* the tool's own options over it: a line's extensions and stats, a range's volume (drawingKindsTv.ts) */
+        renderExtras(src.drawings[i], R);
         caption(src.drawings[i], i === src.selected ? 1 : 0.8);
       }
       if (src.draft) render(src.draft, 0.45, true);
@@ -944,7 +994,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
   }
   /** Whether a mark is on the chart now: not hidden, not kept to another timeframe, not under hide-all */
   shows(d: Drawing): boolean {
-    return !this.hideAll && !d.hidden && (!d.tf || !this.timeframe || d.tf === this.timeframe);
+    return !this.hideAll && !d.hidden && visibleOn(d, this.timeframe);
   }
 
   /** MAGNET (TradingView's, strong and weak): a point near a bar takes that bar's open, high, low or close — whichever
@@ -1134,8 +1184,13 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
       const stop = d.p3 ? d.p3.price : defaultStop(d.p1.price, d.p2.price);
       return { ...d, p3: { time: d.p2.time, price: stop } };
     }
-    /* a stamp is born wearing the emoji the Icons list has in hand */
-    if (d.kind === 'stamp' && !d.text) return { ...d, text: getStamp() };
+    /* a stamp is born wearing the emoji the Icons list has in hand, and the set it came from (icon, emoji, sticker) */
+    if (d.kind === 'stamp' && !d.text) return { ...d, text: getStamp(), opts: { ...d.opts, set: getStampSet() } };
+    /* the screen-fixed text keeps where it was put as a fraction of the pane, not as a bar and a price */
+    if (d.kind === 'anchoredtext' && d.opts?.fx === undefined) {
+      const f = anchoredFrac(this, d.p1);
+      if (f) return { ...d, opts: { ...d.opts, fx: f[0], fy: f[1] } };
+    }
     /* the regression's handles sit on its centre line, so what is grabbed is what is drawn */
     if (d.kind === 'regression' && d.p2) {
       const r = regressionOf(d, this.bars);
@@ -1152,6 +1207,28 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
       if (s && s.v.length) return { ...d, p1: { time: this.bars[s.i0].time, price: s.v[0] } };
     }
     return d;
+  }
+
+  /** The plot's height in CSS px — the hit test's and the screen-fixed text's */
+  paneHeight(): number {
+    try {
+      const h = this.chart?.panes()[0]?.getHeight();
+      return h && h > 0 ? h : 4000;
+    } catch {
+      return 4000;
+    }
+  }
+  paneWidth(): number {
+    return this.chart ? this.chart.timeScale().width() : 4000;
+  }
+  /** A screen-fixed text dragged by the pointer from `from` to `to` (both read on the screen as it is now) */
+  moveAnchored(d: Drawing, from: DrawingPoint, to: DrawingPoint): Drawing {
+    const a = anchoredFrac(this, from);
+    const b = anchoredFrac(this, to);
+    if (!a || !b) return d;
+    const fx = Math.max(0, Math.min(0.98, Number(d.opts?.fx ?? a[0]) + b[0] - a[0]));
+    const fy = Math.max(0.01, Math.min(0.99, Number(d.opts?.fy ?? a[1]) + b[1] - a[1]));
+    return { ...d, p1: to, opts: { ...d.opts, fx, fy } };
   }
 
   setBarMinutes(mins: number): void {
@@ -1257,18 +1334,26 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
       X: time => this.timeToX(time),
       Y: price => series.priceToCoordinate(price),
       w: wCss,
-      h: 4000,
+      h: this.paneHeight(),
       distSeg,
       BODY,
       AXIS,
       bars: this.bars,
       barsRev: this.barsRev,
       typePx,
+      idx: time => this.barIndexOf(time),
+      timeAt: i => this.timeAtBarIndex(i),
     };
 
     for (let i = this.drawings.length - 1; i >= 0; i--) {
       const d = this.drawings[i];
       if (!this.shows(d)) continue;
+      if (d.opts && hitExtras(d, H)) return { index: i, anchor: null };
+      /* the screen-fixed text answers where it sits on the pane, not at its stored point */
+      if (d.kind === 'anchoredtext') {
+        if (hitTv(d, H)) return { index: i, anchor: null };
+        continue;
+      }
       const a1 = pt(d.p1);
       const a2 = pt(d.p2);
       const a3 = pt(d.p3);
@@ -1401,9 +1486,14 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
       } else if (d.kind === 'fib') {
         const xa = Math.min(x1, x2);
         const xb = Math.max(x1, x2);
-        for (const r of [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]) {
-          const py = series.priceToCoordinate(d.p1.price + (p2v.price - d.p1.price) * r);
-          if (py !== null && x >= xa - BODY && x <= xb + BODY && Math.abs(y - py) <= BODY) { hit = true; break; }
+        const rev = opt<boolean>(d, 'reverse');
+        const from = rev ? p2v.price : d.p1.price;
+        const to = rev ? d.p1.price : p2v.price;
+        const xa2 = opt<boolean>(d, 'extL') ? 0 : xa;
+        const xb2 = opt<boolean>(d, 'extR') ? wCss : xb;
+        for (const r of levelsOf(d)) {
+          const py = series.priceToCoordinate(from + (to - from) * r);
+          if (py !== null && x >= xa2 - BODY && x <= xb2 + BODY && Math.abs(y - py) <= BODY) { hit = true; break; }
         }
       } else {
         hit = distSeg(x1, y1, x2, y2) <= BODY;
@@ -1437,7 +1527,7 @@ export function loadDrawings(ticker: string): Drawing[] {
       if (shape.text && !(typeof x.text === 'string' && x.text.trim().length > 0)) return false;
       if (usesPts(x.kind)) {
         if (!Array.isArray(x.pts) || x.pts.length < 2) return false;
-        const n = PATTERN_POINTS[x.kind];
+        const n = PATTERN_POINTS[x.kind] ?? PATTERN_POINTS_TV[x.kind];
         if (n !== undefined && x.pts.length !== n) return false;
         if (x.pts.some(q => typeof q?.price !== 'number' || typeof q?.time !== 'number')) return false;
       }
@@ -1448,31 +1538,69 @@ export function loadDrawings(ticker: string): Drawing[] {
   }
 }
 
+/* UNDO AND REDO (Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z), per tape: every save pushes what was stored before it; an undo moves
+   the stored set onto the redo stack, a redo moves it back, and a new change after an undo drops the redo stack — the
+   ordinary editor's history. Fifty steps a tape. */
 const undoStacks = new Map<string, Drawing[][]>();
+const redoStacks = new Map<string, Drawing[][]>();
+const HISTORY = 50;
 let applyingUndo = false;
 
-export function popDrawings(ticker: string): Drawing[] | null {
-  const stack = undoStacks.get(ticker);
+const store = (key: string, drawings: Drawing[]) => {
+  try {
+    if (drawings.length === 0) localStorage.removeItem(storageKey(key));
+    else localStorage.setItem(storageKey(key), JSON.stringify(drawings));
+  } catch {
+    /* storage full/blocked — drawings just won't persist */
+  }
+};
+
+export function popDrawings(key: string): Drawing[] | null {
+  const stack = undoStacks.get(key);
   const prev = stack?.pop() ?? null;
   if (!prev) return null;
+  const redo = redoStacks.get(key) ?? [];
+  redo.push(loadDrawings(key));
+  if (redo.length > HISTORY) redo.shift();
+  redoStacks.set(key, redo);
   applyingUndo = true;
-  saveDrawings(ticker, prev);
+  saveDrawings(key, prev);
   applyingUndo = false;
   return prev;
 }
 
-export function saveDrawings(ticker: string, drawings: Drawing[]): void {
+export function redoDrawings(key: string): Drawing[] | null {
+  const redo = redoStacks.get(key);
+  const next = redo?.pop() ?? null;
+  if (!next) return null;
+  const stack = undoStacks.get(key) ?? [];
+  stack.push(loadDrawings(key));
+  if (stack.length > HISTORY) stack.shift();
+  undoStacks.set(key, stack);
+  applyingUndo = true;
+  saveDrawings(key, next);
+  applyingUndo = false;
+  return next;
+}
+
+export const canUndo = (key: string): boolean => (undoStacks.get(key)?.length ?? 0) > 0;
+export const canRedo = (key: string): boolean => (redoStacks.get(key)?.length ?? 0) > 0;
+
+export function saveDrawings(key: string, drawings: Drawing[]): void {
   try {
     if (!applyingUndo) {
-      const prev = loadDrawings(ticker);
-      const stack = undoStacks.get(ticker) ?? [];
+      const prev = loadDrawings(key);
+      if (JSON.stringify(prev) === JSON.stringify(drawings)) return;
+      const stack = undoStacks.get(key) ?? [];
       stack.push(prev);
-      if (stack.length > 20) stack.shift();
-      undoStacks.set(ticker, stack);
+      if (stack.length > HISTORY) stack.shift();
+      undoStacks.set(key, stack);
+      redoStacks.delete(key);
     }
-    if (drawings.length === 0) localStorage.removeItem(storageKey(ticker));
-    else localStorage.setItem(storageKey(ticker), JSON.stringify(drawings));
   } catch {
-    /* storage full/blocked — drawings just won't persist */
+    /* a stored set that will not parse has no history worth keeping */
   }
+  store(key, drawings);
+  /* every chart on the same tape hears it (TradingView's sync drawings) — drawingSync.ts */
+  publishDrawings(key);
 }

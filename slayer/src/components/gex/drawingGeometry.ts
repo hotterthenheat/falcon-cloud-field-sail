@@ -62,11 +62,12 @@ export function forkMedian(a: Pt, b: Pt, c: Pt, v: ForkVariant): { o: Pt; m: Pt 
 }
 
 /** The fork's lines as origin + direction: the median, the two tines (±0.5 of the B–C spread) and the warning lines (±1) */
-export function forkLines(a: Pt, b: Pt, c: Pt, v: ForkVariant): { level: number; from: Pt; dir: Pt }[] {
+export function forkLines(a: Pt, b: Pt, c: Pt, v: ForkVariant, levels: readonly number[] = [0.5, 1]): { level: number; from: Pt; dir: Pt }[] {
   const { o, m } = forkMedian(a, b, c, v);
   const dir: Pt = [m[0] - o[0], m[1] - o[1]];
   const half: Pt = [(c[0] - b[0]) / 2, (c[1] - b[1]) / 2];
-  return [-1, -0.5, 0, 0.5, 1].map(level => ({ level, from: [m[0] + half[0] * level * 2, m[1] + half[1] * level * 2] as Pt, dir }));
+  const all = [0, ...levels.flatMap(l => (l > 0 ? [l, -l] : []))].sort((x, y) => x - y);
+  return all.map(level => ({ level, from: [m[0] + half[0] * level * 2, m[1] + half[1] * level * 2] as Pt, dir }));
 }
 
 /** Where a line from `from` along `dir` reaches x = `xe` (the pane's right edge); null for a line with no run */
@@ -159,6 +160,23 @@ export function regression(xs: number[], ys: number[]): { slope: number; icept: 
   return { slope, icept, sd: Math.sqrt(ss / n) };
 }
 
+/** Pearson's correlation of y on x — the regression trend's R; null when either side does not vary */
+export function pearsonR(xs: number[], ys: number[]): number | null {
+  const n = Math.min(xs.length, ys.length);
+  if (n < 2) return null;
+  const mx = xs.slice(0, n).reduce((a, b) => a + b, 0) / n;
+  const my = ys.slice(0, n).reduce((a, b) => a + b, 0) / n;
+  let sxy = 0;
+  let sxx = 0;
+  let syy = 0;
+  for (let i = 0; i < n; i++) {
+    sxy += (xs[i] - mx) * (ys[i] - my);
+    sxx += (xs[i] - mx) ** 2;
+    syy += (ys[i] - my) ** 2;
+  }
+  return sxx === 0 || syy === 0 ? null : sxy / Math.sqrt(sxx * syy);
+}
+
 // ---- angles and arcs ----------------------------------------------------------------------------------
 
 /** The trend angle as the eye reads it: degrees above the horizontal on screen (y grows downward), −180…180 */
@@ -204,4 +222,238 @@ export function magnetPick(ys: number[], y: number, reach: number | null): numbe
   if (best < 0) return null;
   if (reach !== null && bd > reach) return null;
   return best;
+}
+
+// ==== PHASE TWO (2026-11-01): the arithmetic under drawingKindsTv.ts ===================================================
+
+/** The inside pitchfork (TradingView's help: the origin halfway between points 1 and 2, the median along them, point 3
+    setting the spread): the median from the midpoint of A and B along A→B; each further line is the median moved by
+    `level` of C's vertical offset from it, both sides */
+export function insideForkLines(a: Pt, b: Pt, c: Pt, levels: readonly number[] = [0.5, 1]): { level: number; from: Pt; dir: Pt }[] {
+  const o: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const dir: Pt = [b[0] - a[0], b[1] - a[1]];
+  const yAt = (x: number) => (dir[0] === 0 ? o[1] : o[1] + (dir[1] / dir[0]) * (x - o[0]));
+  const off = c[1] - yAt(c[0]);
+  const all = [0, ...levels.flatMap(l => (l > 0 ? [l, -l] : []))].sort((x, y) => x - y);
+  return all.map(level => ({ level, from: [o[0], o[1] + off * level] as Pt, dir }));
+}
+
+/** The pitchfan: rays from A through the points `level` of the way from the B–C midpoint toward C (positive) or B
+    (negative); ±1 pass through C and B, 0 is the pitchfork's median */
+export function pitchfanTargets(b: Pt, c: Pt, levels: readonly number[]): { level: number; to: Pt }[] {
+  const m: Pt = [(b[0] + c[0]) / 2, (b[1] + c[1]) / 2];
+  const h: Pt = [(c[0] - b[0]) / 2, (c[1] - b[1]) / 2];
+  const all = [0, ...levels.flatMap(l => (l > 0 ? [l, -l] : []))].sort((x, y) => x - y);
+  return all.map(level => ({ level, to: [m[0] + h[0] * level, m[1] + h[1] * level] as Pt }));
+}
+
+/** Trend-based fib time: from the third point's bar, the first leg's bar span times each ratio (bar indices) */
+export const tbFibTimeBars = (i1: number, i2: number, i3: number, levels: readonly number[]): number[] => levels.map(r => i3 + r * Math.abs(i2 - i1));
+
+/** Cyclic lines and time cycles: every whole interval from the first anchor, inside [from, to] (bar indices) */
+export function cycleBars(i1: number, i2: number, from: number, to: number, cap = 400): number[] {
+  const s = Math.abs(i2 - i1);
+  if (s === 0) return [i1];
+  const out: number[] = [];
+  let k = Math.max(0, Math.ceil((from - i1) / s));
+  for (; out.length < cap; k++) {
+    const i = i1 + k * s;
+    if (i > to) break;
+    out.push(i);
+  }
+  return out;
+}
+
+/** The sine line: point 1 a crest (or trough), point 2 the next trough (or crest) — half a period apart, the amplitude
+    half their vertical distance. y at any x on the same axes. */
+export function sineAt(x: number, a: Pt, b: Pt): number {
+  const half = b[0] - a[0];
+  const mid = (a[1] + b[1]) / 2;
+  const amp = (a[1] - b[1]) / 2;
+  if (half === 0) return mid;
+  return mid + amp * Math.cos((Math.PI * (x - a[0])) / half);
+}
+
+/** Cypher (TradingView's help): B retraces XA (0.382–0.618), C extends XA (1.13–1.414, read |XC| / |XA|), D retraces
+    the whole XC leg (0.786, read |CD| / |XC|) */
+export function cypherRatios(x: number, a: number, b: number, c: number, d: number): { b: number | null; c: number | null; d: number | null } {
+  const xa = Math.abs(a - x);
+  const xc = Math.abs(c - x);
+  return { b: xa === 0 ? null : Math.abs(b - a) / xa, c: xa === 0 ? null : xc / xa, d: xc === 0 ? null : Math.abs(d - c) / xc };
+}
+
+/** A long or short position's size (TradingView's account size, risk and lot size): the cash at risk, the quantity
+    that risks it (whole lots), and what the target and the stop are worth at that quantity */
+export function positionSize(account: number, riskPct: number, entry: number, stop: number, target: number, lot = 1): { riskCash: number; qty: number; rewardCash: number; lossCash: number } {
+  const riskCash = (account * riskPct) / 100;
+  const L = Math.max(lot, 1e-9);
+  const per = Math.abs(entry - stop) * L;
+  const qty = per > 0 ? Math.floor(riskCash / per + 1e-9) : 0;
+  return { riskCash, qty, rewardCash: qty * Math.abs(target - entry) * L, lossCash: qty * Math.abs(entry - stop) * L };
+}
+
+/** A bar as the volume tools read it */
+export interface VolBar {
+  open?: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+/** The volume profile (fixed range / anchored): each bar's volume spread evenly over the price rows its high–low covers
+    (a bar with no range puts it all in its close's row), split up or down by its own candle (close ≥ open; without an
+    open, against the previous close). The point of control is the fullest row; the value area grows from it one row at
+    a time toward the fuller neighbour until it holds `vaPct` of the volume. */
+export function volumeProfile(bars: VolBar[], rows = 24, vaPct = 70): { lo: number; hi: number; step: number; up: number[]; down: number[]; poc: number; vah: number; val: number; total: number } | null {
+  if (!bars.length) return null;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const b of bars) {
+    lo = Math.min(lo, b.low);
+    hi = Math.max(hi, b.high);
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+  const n = Math.max(1, Math.min(500, Math.round(rows)));
+  if (hi === lo) hi = lo + 1e-9;
+  const step = (hi - lo) / n;
+  const up = new Array<number>(n).fill(0);
+  const down = new Array<number>(n).fill(0);
+  const rowOf = (p: number) => Math.max(0, Math.min(n - 1, Math.floor((p - lo) / step)));
+  bars.forEach((b, i) => {
+    const v = b.volume > 0 ? b.volume : 0;
+    if (v === 0) return;
+    const ref = b.open ?? (i > 0 ? bars[i - 1].close : b.close);
+    const into = b.close >= ref ? up : down;
+    const span = b.high - b.low;
+    if (span <= 0) {
+      into[rowOf(b.close)] += v;
+      return;
+    }
+    for (let r = rowOf(b.low); r <= rowOf(b.high); r++) {
+      const a = Math.max(b.low, lo + r * step);
+      const z = Math.min(b.high, lo + (r + 1) * step);
+      if (z > a) into[r] += (v * (z - a)) / span;
+    }
+  });
+  const tot = up.map((u, r) => u + down[r]);
+  const total = tot.reduce((s, x) => s + x, 0);
+  let poc = 0;
+  tot.forEach((x, r) => {
+    if (x > tot[poc]) poc = r;
+  });
+  let a = poc;
+  let z = poc;
+  let held = tot[poc];
+  const want = (total * Math.max(0, Math.min(100, vaPct))) / 100;
+  while (held < want - 1e-9 && (a > 0 || z < n - 1)) {
+    const below = a > 0 ? tot[a - 1] : -1;
+    const above = z < n - 1 ? tot[z + 1] : -1;
+    if (above >= below) held += tot[++z];
+    else held += tot[--a];
+  }
+  return { lo, hi, step, up, down, poc, vah: lo + (z + 1) * step, val: lo + a * step, total };
+}
+
+/** The anchored VWAP's price source (TradingView's: hlc3 by default) */
+export type VwapSource = 'hlc3' | 'hl2' | 'ohlc4' | 'close';
+export const vwapPrice = (b: VolBar, src: VwapSource): number =>
+  src === 'close' ? b.close : src === 'hl2' ? (b.high + b.low) / 2 : src === 'ohlc4' ? ((b.open ?? b.close) + b.high + b.low + b.close) / 4 : (b.high + b.low + b.close) / 3;
+
+/** The anchored VWAP and its standard deviation, bar by bar from the anchor: Σ(p·v)/Σv, and √(Σ(v·p²)/Σv − vwap²) */
+export function vwapWithBands(bars: VolBar[], src: VwapSource = 'hlc3'): { v: number[]; sd: number[] } {
+  const v: number[] = [];
+  const sd: number[] = [];
+  let pv = 0;
+  let pv2 = 0;
+  let vol = 0;
+  for (const b of bars) {
+    /* a bar with no volume still happened — it counts once, so a quiet tape draws a line */
+    const w = b.volume > 0 ? b.volume : 1;
+    const p = vwapPrice(b, src);
+    pv += p * w;
+    pv2 += p * p * w;
+    vol += w;
+    const m = pv / vol;
+    v.push(m);
+    sd.push(Math.sqrt(Math.max(0, pv2 / vol - m * m)));
+  }
+  return { v, sd };
+}
+
+/** The ghost feed's candles along a hand-drawn path of (bar index, price) points: one candle a bar; each opens at the
+    last one's close and closes on the path; its wicks reach out so its high–low is the average range `avgHL`.
+    Deterministic — a projection the reader drew, never invented prices. */
+export function ghostCandles(path: Pt[], avgHL: number): { i: number; o: number; h: number; l: number; c: number }[] {
+  if (path.length < 2) return [];
+  const at = (i: number): number => {
+    for (let k = 1; k < path.length; k++) {
+      const [x0, y0] = path[k - 1];
+      const [x1, y1] = path[k];
+      if (i <= x1 || k === path.length - 1) return x1 === x0 ? y1 : y0 + ((y1 - y0) * (i - x0)) / (x1 - x0);
+    }
+    return path[path.length - 1][1];
+  };
+  const out: { i: number; o: number; h: number; l: number; c: number }[] = [];
+  const i0 = Math.round(path[0][0]);
+  const i1 = Math.round(path[path.length - 1][0]);
+  let prev = path[0][1];
+  for (let i = i0 + 1; i <= i1 && out.length < 600; i++) {
+    const c = at(i);
+    const o = prev;
+    const pad = Math.max(0, (avgHL - Math.abs(c - o)) / 2);
+    out.push({ i, o, h: Math.max(o, c) + pad, l: Math.min(o, c) - pad, c });
+    prev = c;
+  }
+  return out;
+}
+
+/** The chart's own average bar range over its last `n` bars — the ghost feed's default */
+export function avgRange(bars: VolBar[], n = 50): number {
+  const s = bars.slice(-n);
+  if (!s.length) return 0;
+  return s.reduce((t, b) => t + (b.high - b.low), 0) / s.length;
+}
+
+/** Bars pattern: a copy of the bars between two anchors, set down from a third — its first bar at the third's bar and
+    its first close at the third's price; mirrored turns it upside down round that price, flipped runs it backward */
+export function barsPatternCopy(src: VolBar[], at: number, price: number, mirrored: boolean, flipped: boolean): { i: number; o: number; h: number; l: number; c: number }[] {
+  if (!src.length) return [];
+  const seq = flipped ? [...src].reverse() : src;
+  /* the copy's first close sits on the third point: flipped, that close is the last bar's open */
+  const base = flipped ? seq[0].open ?? seq[0].close : seq[0].close;
+  const map = (p: number) => (mirrored ? price - (p - base) : price + (p - base));
+  return seq.map((b, k) => {
+    const o0 = flipped ? b.close : b.open ?? b.close;
+    const c0 = flipped ? b.open ?? b.close : b.close;
+    const hi = map(b.high);
+    const lo = map(b.low);
+    return { i: at + k, o: map(o0), h: Math.max(hi, lo), l: Math.min(hi, lo), c: map(c0) };
+  });
+}
+
+/** The double curve: an S through both ends — a cubic whose first control is the third point and whose second is that
+    point mirrored through the ends' midpoint, so the curve crosses the midpoint */
+export function doubleCurve(a: Pt, b: Pt, c: Pt, steps = 40): Pt[] {
+  const m: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const c2: Pt = [2 * m[0] - c[0], 2 * m[1] - c[1]];
+  const out: Pt[] = [];
+  for (let k = 0; k <= steps; k++) {
+    const t = k / steps;
+    const u = 1 - t;
+    out.push([
+      u * u * u * a[0] + 3 * u * u * t * c[0] + 3 * u * t * t * c2[0] + t * t * t * b[0],
+      u * u * u * a[1] + 3 * u * u * t * c[1] + 3 * u * t * t * c2[1] + t * t * t * b[1],
+    ]);
+  }
+  return out;
+}
+
+/** Volume as the readouts print it */
+export function fmtVolume(v: number): string {
+  const a = Math.abs(v);
+  if (a >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
+  if (a >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  if (a >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
+  return String(Math.round(v));
 }
