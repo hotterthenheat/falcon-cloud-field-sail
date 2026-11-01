@@ -245,7 +245,9 @@ check('no vol means no cone', blank.past.length === 0 && blank.forward.length ==
   check('flow filters: under the premium floor or past the DTE cap fails', !passesFlow(p(t0, 'C', 'ASK', 40_000, { sweep: true }), f) && !passesFlow(p(t0, 'C', 'ASK', 60_000, { sweep: true, dte: 30 }), f));
   const q = flowQuery('SPY', f);
   check('flow filters ask the tape the same narrowing', q.single === true && q.otm === true && q.side === 'ASK' && q.codes?.[0] === 'isoi' && q.maxDte === 14 && q.minPremium === 50_000, JSON.stringify(q));
-  check('flow caption reads the filters', flowCaption(f) === 'FLOW · SINGLE LEG · OTM · ASK · SWEEP · DTE 0–14 · ≥$50K', flowCaption(f));
+  /* the type first, then whether spread legs lean in the net (2026-10-31: the type filter and the legs chip) */
+  check('flow caption reads the filters', flowCaption(f) === 'FLOW · SWEEPS · NO LEGS · OTM · ASK · DTE 0–14 · ≥$50K', flowCaption(f));
+  check('flow pane: a spread leg leans by its side once the legs are counted in', signedFlowBars([p(t0 + 980, 'C', 'ASK', 999_000, { legs: 2 })], bars, 900, true)[1].net === 999_000);
 }
 
 /* TM6 — a synced crosshair finds the bar on the follower's own, session-anchored buckets. Two SPY panes on 1h (bars at

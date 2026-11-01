@@ -1356,6 +1356,8 @@ const Pane = ({
               pageScroll={belowLg}
               frameless
               onGapNotes={setGapLines}
+              /* the option and stock prints from the server's tapes, tagged by type (data/tapeFeed.ts) */
+              printTape
             />
             </Deferred>
             {/* The pane's corner chip row: the field's key (the model, its switch, the colour scale and the cut's net

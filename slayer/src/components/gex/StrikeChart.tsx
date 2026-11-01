@@ -7,6 +7,8 @@ import {
 import { Eraser, MousePointer2, Trash2 } from 'lucide-react';
 import {
   createChart,
+  createSeriesMarkers,
+  type ISeriesMarkersPluginApi,
   AreaSeries,
   BarSeries,
   BaselineSeries,
@@ -112,10 +114,12 @@ import { cumulativeDrift, driftPeak } from '../../data/driftSeries';
 import { impliedVolLine, realizedVol, volCeiling } from '../../data/volDrift';
 import type { FlowPrint } from '../../types/trace';
 import { useChartDarkPrints, useChartFlowPrints } from '../../data/chartFeeds';
+import { useOptionTape, useStockTape } from '../../data/tapeFeed';
+import { stockMarkers, tapeDarkLines, tapeEventPrints } from './tapeMarks';
 import { usePaneFlow } from '../../data/paneFlow';
 import { feedHeaders } from '../../data/feedGate';
 import { checkPressure, type PressureLevel } from '../../data/nodePressure';
-import { FLOW_CHIPS, flowCaption, passesFlow, signedFlowBars, type SignedFlowBar as SignedFlowBarT } from '../../data/flowBuckets';
+import { FLOW_CHIPS, flowCaption, flowSign, legsInNet, passesFlow, signedFlowBars, type SignedFlowBar as SignedFlowBarT } from '../../data/flowBuckets';
 import { setDeskPrefs, useDeskPrefs, type FlowFilters } from '../../data/deskPrefs';
 import { INDICATOR_ITEMS, indicatorBlurb } from './indicatorItems';
 import StrikeExposureBand, { type BandMetric } from './StrikeExposureBand';
@@ -160,6 +164,8 @@ const PANE_LABEL_LOOK: Record<string, string> = {
 /** Dark prints far from the tape blow the price scale. Keep the largest ones near spot. */
 const DARK_NEAR = 0.1;
 const DARK_CAP = 12;
+/** Terrain's tape draws this many as lines; its other prints are marks on the bars */
+const TAPE_DARK_LINES = 4;
 function darkNear(rows: readonly DarkPoolPrint[], spot: number): DarkPoolPrint[] {
   const near = rows.filter(p => {
     if (!(p.price > 0) || !Number.isFinite(p.price) || !(p.notional > 0)) return false;
@@ -524,6 +530,9 @@ interface StrikeChartProps {
   prints?: DarkPoolPrint[];
   /** Trace's option prints, for the flow pane. */
   flowPrints?: readonly StampedFlowPrint[];
+  /** Terrain: the option prints (the flow pane, the net drift, the events lane) and the stock prints (the dark-pool
+      overlay: off-exchange prints and blocks) come from the server's tapes (data/tapeFeed.ts), tagged by type */
+  printTape?: boolean;
   /** Comparison symbols drawn as lines over/under the tape */
   compares?: CompareEntry[];
   /** The main (right) price scale's mode. A `percent` comparison overrides it; see `priceScaleLockedBy`. */
@@ -861,6 +870,7 @@ const StrikeChart = ({
   overlays = DEFAULT_OVERLAYS,
   prints = [],
   flowPrints,
+  printTape = false,
   compares = NO_COMPARES,
   priceScale = 'normal',
   sessionOr = 15,
@@ -1048,18 +1058,25 @@ const StrikeChart = ({
   const altSpec = useMemo(() => barClockSpec(barClock), [barClock]);
   /* A host that already has prints wins. An empty list is not a feed — the chart asks while the overlay is on. */
   const hostFlow = flowPrints && flowPrints.length > 0 ? flowPrints : null;
-  const darkFeed = useChartDarkPrints(ticker, !!overlays.darkpool && !replay && prints.length === 0);
-  const darkRows = prints.length > 0 ? prints : darkFeed.rows;
+  const darkFeed = useChartDarkPrints(ticker, !!overlays.darkpool && !replay && prints.length === 0 && !printTape);
+  /* Terrain's dark-pool overlay: the stock tape's off-exchange prints and blocks, at their price and minute */
+  const stockTape = useStockTape(ticker, !!overlays.darkpool && !replay && prints.length === 0 && printTape);
+  const tapeDark = useMemo(() => (printTape ? tapeDarkLines(stockTape.marks) : []), [printTape, stockTape.marks]);
+  const darkRows = prints.length > 0 ? prints : printTape ? tapeDark : darkFeed.rows;
   /* The events lane and the premium VWAPs read the name's newest prints; the flow pane and the net drift read the pane's
      own store (data/paneFlow.ts), the tape under the pane's filters, back to the vendor session's start */
   const flowWanted = !!overlays.events || !!indicators.flowVwap || !!indicators.sideVwap;
-  const flowFeed = useChartFlowPrints(ticker, flowWanted && !replay && !hostFlow && barClock === 'time');
-  const flowRows: readonly StampedFlowPrint[] = hostFlow ?? flowFeed.rows;
+  const flowFeed = useChartFlowPrints(ticker, flowWanted && !replay && !hostFlow && barClock === 'time' && !printTape);
   const desk = useDeskPrefs();
   const flowFilters = desk.flowFilters;
+  const legsIn = legsInNet(flowFilters);
+  /* on Terrain the lane and the VWAPs read the server's tape: its whole prints, of the pane's type, legs only when counted */
+  const optionTape = useOptionTape(ticker, flowWanted && !replay && !hostFlow && barClock === 'time' && printTape);
+  const tapeFlowRows = useMemo(() => (printTape ? tapeEventPrints(optionTape.rows, flowFilters) : []), [printTape, optionTape.rows, flowFilters]);
+  const flowRows: readonly StampedFlowPrint[] = hostFlow ?? (printTape ? tapeFlowRows : flowFeed.rows);
   const nodeLook = desk.nodeLook;
   const paneFlowOn = (!!overlays.flow || !!overlays.netDrift) && !replay && !altSpec && barClock === 'time';
-  const paneFlowFeed = usePaneFlow(ticker, flowFilters, paneFlowOn && !hostFlow);
+  const paneFlowFeed = usePaneFlow(ticker, flowFilters, paneFlowOn && !hostFlow, printTape ? 'tape' : 'vendor');
   const paneFlowRows = useMemo<readonly FlowPrint[]>(
     () => (hostFlow ? hostFlow.filter(p => passesFlow(p, flowFilters)) : paneFlowFeed.rows),
     [hostFlow, paneFlowFeed.rows, flowFilters],
@@ -2293,7 +2310,7 @@ const StrikeChart = ({
     const chart = chartRef.current;
     if (!chart) return;
     const fmins = tfMinutes(timeframe);
-    const fbars = overlays.flow && paneFlowOn && paneFlowRows.length && barsIn ? signedFlowBars(paneFlowRows, drawnTimes(), fmins * 60) : [];
+    const fbars = overlays.flow && paneFlowOn && paneFlowRows.length && barsIn ? signedFlowBars(paneFlowRows, drawnTimes(), fmins * 60, legsIn) : [];
     /* no print under the filters lands on these bars (a quiet name, a backtest day the tape no longer holds): no pane */
     const off = !overlays.flow || altSpec || !paneFlowOn || !fbars.some(b => b.count > 0);
     if (off) {
@@ -2343,18 +2360,32 @@ const StrikeChart = ({
       }),
     );
     if (max > 0) net.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: { minValue: -max, maxValue: max } }) });
-    /* the caption's figure: the newest session's net, from its first bar */
+    /* the caption's figure: the newest session's net, from its first bar — on the server's tape, the session it holds
+       (an overnight or a weekend after it is a newer stretch of bars with no option prints) */
     let from = bars.length - 1;
     while (from > 0 && bars[from].time - bars[from - 1].time < 3 * 3600) from--;
+    const span = paneFlowFeed.span;
     let sum = 0;
     let count = 0;
-    for (let i = Math.max(0, from); i < bars.length; i++) {
-      sum += bars[i].net;
-      count += bars[i].count;
+    if (span) {
+      /* the session's every print under the filters, whichever of its bars the tape has drawn */
+      for (const p of paneFlowRows) {
+        const ms = p.epochMs ?? 0;
+        if (ms < span.from || ms >= span.to) continue;
+        const sign = flowSign(p, legsIn);
+        if (!sign) continue;
+        sum += sign * p.premium;
+        count += (p as FlowPrint & { aggregate?: number }).aggregate ?? 1;
+      }
+    } else {
+      for (let i = Math.max(0, from); i < bars.length; i++) {
+        sum += bars[i].net;
+        count += bars[i].count;
+      }
     }
     setFlowSum(prev => (prev && prev.net === sum && prev.prints === count ? prev : { net: sum, prints: count }));
     remeasurePaneLabels();
-  }, [overlays.flow, paneFlowRows, paneFlowOn, timeframe, ticker, themeKey, remeasurePaneLabels, altSpec, revision, tapeRev, session, mainNonce, fullNonce, barsIn]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [overlays.flow, paneFlowRows, paneFlowOn, legsIn, timeframe, ticker, themeKey, remeasurePaneLabels, altSpec, revision, tapeRev, session, mainNonce, fullNonce, barsIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* The net drift: the same signed premium the flow pane bars, kept as a running total through each session, one line
      in its own pane. */
@@ -2362,7 +2393,7 @@ const StrikeChart = ({
     const chart = chartRef.current;
     if (!chart) return;
     const dmins = tfMinutes(timeframe);
-    const dbars = overlays.netDrift && paneFlowOn && paneFlowRows.length && barsIn ? signedFlowBars(paneFlowRows, drawnTimes(), dmins * 60) : [];
+    const dbars = overlays.netDrift && paneFlowOn && paneFlowRows.length && barsIn ? signedFlowBars(paneFlowRows, drawnTimes(), dmins * 60, legsIn) : [];
     if (!overlays.netDrift || altSpec || !paneFlowOn || !dbars.some(b => b.count > 0)) {
       const old = driftCallsRef.current;
       driftCallsRef.current = null;
@@ -2397,7 +2428,7 @@ const StrikeChart = ({
     });
     line.setData(pts);
     remeasurePaneLabels();
-  }, [overlays.netDrift, paneFlowRows, paneFlowOn, timeframe, ticker, themeKey, remeasurePaneLabels, altSpec, revision, tapeRev, session, mainNonce, fullNonce, barsIn]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [overlays.netDrift, paneFlowRows, paneFlowOn, legsIn, timeframe, ticker, themeKey, remeasurePaneLabels, altSpec, revision, tapeRev, session, mainNonce, fullNonce, barsIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* The volatility drift: what the underlying is doing against what the option market says it expects. Realised is
      measured from the same aggregated bars the tape draws, so the two agree on every timeframe. */
@@ -3351,7 +3382,13 @@ const StrikeChart = ({
     });
     prim.setData({
       events: cut == null ? built : built.filter(e => e.time != null && e.time <= cut),
-      barTimes: (cut == null ? bars : bars.filter(b => b.time <= cut)).map(b => b.time),
+      /* the bars the tape draws, never the whole store: the lane maps a time to a logical index on the drawn series, and a
+         list longer than it (a deep history held but not drawn) put every glyph thousands of pixels off the plot */
+      barTimes: (() => {
+        const drawn = drawnTimes();
+        const times = drawn.length ? drawn : bars.map(b => b.time);
+        return cut == null ? times : times.filter(t => t <= cut);
+      })(),
       barMinutes: mins,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3455,19 +3492,39 @@ const StrikeChart = ({
     printLinesRef.current = [];
     if (!overlays.darkpool || replay) return;
     const spot = lastCloseRef.current && lastCloseRef.current > 0 ? lastCloseRef.current : levels.spot;
-    printLinesRef.current = darkNear(darkRows, spot).map(print =>
+    /* Terrain's tape: the few largest off-exchange prints as lines, in the highlight ink; the rest are marks on the bars */
+    const lineInk = printTape && boxElRef.current ? readToken('--select', undefined, boxElRef.current) : DARK_POOL;
+    printLinesRef.current = darkNear(darkRows, spot).slice(0, printTape ? TAPE_DARK_LINES : undefined).map(print =>
       candleSeries.createPriceLine({
         price: print.price,
-        color: DARK_POOL,
+        color: lineInk,
         title: `DP ${fmtUsd(print.notional)}${print.time ? ` · ${print.time}` : print.date ? ` · ${print.date}` : ''}`,
         lineStyle: LineStyle.Dashed,
         lineWidth: 1,
         axisLabelVisible: true,
-        axisLabelColor: DARK_POOL,
+        axisLabelColor: lineInk,
         axisLabelTextColor: '#0a0a0a',
       })
     );
-  }, [darkRows, overlays.darkpool, replay, mainNonce, levels.spot, revision]);
+  }, [darkRows, overlays.darkpool, replay, mainNonce, levels.spot, revision, printTape]);
+
+  /* Terrain's stock prints on the bars: the session's largest off-exchange prints and blocks, each at its price on its
+     bar — a circle off-exchange, a square on an exchange; the side's ink (buyer, seller, none) */
+  const stockMarksRef = useRef<{ series: unknown; api: ISeriesMarkersPluginApi<Time> } | null>(null);
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    const held = stockMarksRef.current;
+    const on = printTape && !!overlays.darkpool && !replay && !!series && !altSpec;
+    if (!on) {
+      if (held && held.series === series) held.api.setMarkers([]);
+      return;
+    }
+    if (!held || held.series !== series) stockMarksRef.current = { series, api: createSeriesMarkers(series!, []) };
+    const el = boxElRef.current ?? undefined;
+    const inks = { buy: readToken('--glacier', undefined, el), sell: readToken('--ember', undefined, el), none: readToken('--text-secondary', undefined, el) };
+    stockMarksRef.current!.api.setMarkers(stockMarkers(stockTape.marks, drawnTimes(), tfMinutes(timeframe) * 60, inks));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [printTape, stockTape.marks, overlays.darkpool, replay, mainNonce, revision, timeframe, altSpec, barsIn]);
 
   // Tween the rungs to their new scan values — the ladder glides, never teleports
   useEffect(() => {
@@ -4454,7 +4511,12 @@ const StrikeChart = ({
       overlays.flow || overlays.netDrift || overlays.volDrift || overlays.session || overlays.cone || overlays.events
       || indicators.vwap || indicators.vwapBands || indicators.flowVwap || indicators.sideVwap || indicators.gammaEma || indicators.gammaVwap
     )) push('Book lines and VWAP need time bars');
-    if (overlays.darkpool) {
+    if (overlays.darkpool && printTape && prints.length === 0) {
+      if (stockTape.index) push('Dark pool — an index has no stock prints');
+      else if (stockTape.fault) push(`Dark pool — ${stockTape.fault}`);
+      else if (!stockTape.ready) push('Dark pool — waiting on the prints');
+      else if (stockTape.ready && !stockTape.marks.length && (stockTape.complete || stockTape.live)) push('Dark pool — no large off-exchange print or block yet');
+    } else if (overlays.darkpool) {
       const spot = lastCloseRef.current && lastCloseRef.current > 0 ? lastCloseRef.current : levels.spot;
       const away = darkRows.length > 0 && darkNear(darkRows, spot).length === 0;
       if (prints.length === 0 && darkFeed.fault) push('Dark pool — the feed did not answer');
@@ -4463,9 +4525,9 @@ const StrikeChart = ({
       else if (away) push('Dark pool — prints are away from this tape');
     }
     if (!clock && flowRows.length === 0 && (indicators.flowVwap || indicators.sideVwap)) {
-      const why = !hostFlow && flowFeed.fault
+      const why = !hostFlow && printTape && optionTape.fault ? optionTape.fault : !hostFlow && flowFeed.fault
         ? 'the feed did not answer'
-        : !hostFlow && !flowFeed.ready
+        : !hostFlow && !(printTape ? optionTape.ready : flowFeed.ready)
           ? 'waiting on the feed'
           : 'no option prints on this name';
       push(`Flow VWAP — ${why}`);
@@ -4754,7 +4816,8 @@ const StrikeChart = ({
                   </span>
                 )}
                 {FLOW_CHIPS.map(c => {
-                  const opt = c.options.find(o => o.value === flowFilters[c.key]) ?? c.options[0];
+                  /* the Spread legs type counts its legs whatever the Legs chip holds: the chip says so */
+                  const opt = c.key === 'leg' && legsIn ? (c.options.find(o => o.value === 'all') ?? c.options[0]) : (c.options.find(o => o.value === flowFilters[c.key]) ?? c.options[0]);
                   const narrowed = opt.value !== 'all';
                   return (
                     <Fragment key={c.key}>
