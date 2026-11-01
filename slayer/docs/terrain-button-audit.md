@@ -22,14 +22,19 @@ inert.
 
 | | Controls |
 |---|---|
-| Tested | 455 |
-| OK | 435 |
-| Fixed (defects found, fixed, re-tested) | 13 |
-| Theta-off (control works; its content or placement waits on the terminal) | 7 |
+| Tested | 533 |
+| OK | 509 |
+| Fixed (defects found, fixed, re-tested) | 19 |
+| Theta-off (control works; its content waits on the terminal) | 5 |
 | Open issues | 0 |
 
-Every control is counted once, in its first applicable column. A control that was both Fixed and Theta-off is counted
-as Fixed. The phone and light-theme passes re-ran the same controls and are not counted a second time.
+Each control is counted once, under its section's n. Fixed controls: the wordmark, Sign in, the layout door's one-chart
+shape, Back to live, the rail's 7 view tabs and its × at 3 panes, the 4 node looks, the 2 session-wash rows, and the Events
+expiry rows. Theta-off: Alt+R, the Skew and
+Drift lenses, the Regime room, and the Net flow room's prints. Placing all 62 drawing tools is Theta-off as well, but it
+is an action, not a control (see Drawing tools). The phone and light-theme passes re-ran the same controls and are not
+counted a second time. The whole suite was run again on the tree merged with main (c8b4448), which also covers worker K's
+Net flow room, the clock zones and the sessions hover.
 
 ## Defects found and fixed
 
@@ -58,7 +63,8 @@ as Fixed. The phone and light-theme passes re-ran the same controls and are not 
 | Tab × (close; the last tab stays, with a reason) | 1 | OK |
 | + Add a tab, its search field, a name row | 3 | OK, the 5-tab cap shows "n of 5" |
 | Market sessions clock (dialog) | 1 | OK, from our session module |
-| Clock door: New York, Local | 3 | OK, saved in desk prefs |
+| Clock door: Your own, New York, UTC, London, Tokyo (merged from main) | 6 | OK, each saved in desk prefs and named on the door |
+| Sessions card on hover (merged from main) | 1 | OK, opens the market-sessions card |
 | ⌘K door, its field, a destination | 3 | OK |
 | Sign-in door | 1 | OK, opens /signin. That page says the account service is not set up on this build, which is honest. Leaving Terrain: Fixed (#1). |
 | Sidebar: edge reveal, keep notch, collapse to icons, stand-alone notch | 4 | OK |
@@ -93,8 +99,8 @@ as Fixed. The phone and light-theme passes re-ran the same controls and are not 
 | Replay (P) + Back to live | 2 | OK. Picking a replay bar: Theta-off (no bars). Narrow-pane wrap: Fixed (#8). |
 | Pinned bar buttons: Matrix, Calendar, Strike rail | 3 | OK |
 | Panels door | 1 | OK |
-| Panels rows: Replay, Fullscreen, Strike rail, Every strike rail, Matrix, Calendar, Surface, Regime, Building, Prints, News, Earnings, Events, Watchlist, Alerts inbox, Pine editor, Scripts | 17 | OK |
-| Panels pins (one per row) | 17 | OK, each pins and unpins its bar button |
+| Panels rows: Replay, Fullscreen, Strike rail, Every strike rail, Matrix, Calendar, Surface, Net flow, Regime, Building, Prints, News, Earnings, Events, Watchlist, Alerts inbox, Pine editor, Scripts | 18 | OK |
+| Panels pins (one per row) | 18 | OK, each pins and unpins its bar button |
 
 ## Keyboard (as documented in the UI)
 
@@ -119,6 +125,7 @@ as Fixed. The phone and light-theme passes re-ran the same controls and are not 
 | Expiries picker: Next session, This week, Nearest n, From, Through, month ‹ ›, expiry days | 7 | OK. Days with no listed expiry are inert by design. |
 | Surface: Gamma lens | 1 | OK, our book |
 | Surface: Skew lens, Drift lens | 2 | Theta-off: "the market data terminal is not answering" |
+| Net flow room (merged from main): room, Filters door and its rows | 2 | Filters OK. The prints the room sums are Theta-off ("no prints: the market data terminal is not answering"). |
 | Regime room | 1 | Theta-off: the VIX term structure waits on the terminal |
 | Building: Expiry, Show, Wall-now term, steady-strike folds | 4 | OK, from our OI-change reader |
 | Prints: Less/More by type, Less/More by venue | 2 | OK. The option prints by type and the venue split are Theta-off. |
@@ -171,7 +178,7 @@ as Fixed. The phone and light-theme passes re-ran the same controls and are not 
 | Rail door, Select, Move to top/left, Hide the tools | 4 | OK |
 | Family flyouts: Trend, Fib, Patterns, Measure, Shapes, Words, Icons, Favourites | 8 | OK |
 | Tool picks (16 trend, 11 fib, 7 patterns, 7 measure, 14 shapes, 6 words, 1 stamp) | 62 | OK, each tool goes in hand |
-| Placing each tool on the chart | 62 | Theta-off. A mark needs a price scale, and with no bars the series has none. To prove the tools themselves, the test set synthetic candles on the pane's series, in the test browser only, through the dev build's `window.__charts`. Nothing ships. Under that harness, 62/62 placed, including the 5–7-point patterns. |
+| Placing each tool on the chart | (not counted as controls) | Theta-off. A mark needs a price scale, and with no bars the series has none. To prove the tools themselves, the test set synthetic candles on the pane's series, in the test browser only, through the dev build's `window.__charts`. Nothing ships. Under that harness, 62/62 placed, including the 5–7-point patterns. |
 | Magnet, Stay in drawing mode, Lock all, Hide all | 4 | OK |
 | Favourites: star a tool, favourites list, "Show the favourites bar", pick from the bar, put the bar away | 5 | OK |
 | Every-tool sheet: search, 8 tabs, a tile | 3 | OK |
@@ -186,11 +193,11 @@ as Fixed. The phone and light-theme passes re-ran the same controls and are not 
 | Tab, +, clock | 3 | OK |
 | Pane toolbar (two rows): Timeframe, Chart style, Indicators, Replay, Alerts, Link, Candle theme, Snapshot | 8 | OK, all hit-testable |
 | Symbol picker, Live/Settled, Expand/Collapse, drawing rail | 6 | OK |
-| Panels sheet: 9 room tabs and its close | 10 | OK. No horizontal overflow, and no control off screen in any room. |
+| Panels sheet: 10 room tabs and its close | 11 | OK. No horizontal overflow, and no control off screen in any room. |
 
 ## Gates
 
 - `bash /tmp/qa/ci-local.sh` → CI_LOCAL_OK
 - `npx vite build` → built
 - Smoke `/terrain`: 1440 `err=0 nan=0 vendor=0 overflow=false`; 390 `err=0 nan=0 vendor=0 overflow=false`
-- The full sweep re-run after the fixes, 1440 dark: 0 console errors. Before the fixes it logged 3× "Object is disposed".
+- The full sweep re-run after the fixes and again on the merged tree (main c8b4448), 1440 dark: no console error on Terrain. Before the fixes it logged 3× "Object is disposed". The only errors left are 503s on /pinpoint and /dossier pages reached through ⌘K and the Events rows, which are off Terrain.
