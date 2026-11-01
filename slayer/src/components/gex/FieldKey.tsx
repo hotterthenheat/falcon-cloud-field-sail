@@ -4,6 +4,7 @@
    day's record starts, yesterday — is the chip's hover. */
 import { memo, useSyncExternalStore } from 'react';
 import { BEAD_RAMP_CSS, FIELD_RAMP_CSS } from './gexNodesPrimitive';
+import { RIBBON_RAMP_CSS } from './nodeRibbon';
 import { heatPalette, heatRampCss, onHeatPalette } from './nodeHeat';
 import { nodeConcept } from './nodeConcept';
 import { fmtUsd } from '../../data/gex';
@@ -63,7 +64,7 @@ function FieldKey({ ticker, cut, cutWords, scale, oiNet, compact = false }: Fiel
   const yesterday = cut ? priorSessionWords(ticker, cut) : null;
   /* the dev-only heat (nodeConcept.ts) wears its own ramp */
   const pal = useSyncExternalStore(onHeatPalette, heatPalette, heatPalette);
-  const ramp = nodeConcept() === 'heat' ? heatRampCss(pal) : nodeLook === 'heat' ? FIELD_RAMP_CSS : BEAD_RAMP_CSS;
+  const ramp = nodeConcept() === 'heat' ? heatRampCss(pal) : nodeLook === 'heat' ? FIELD_RAMP_CSS : nodeLook === 'ribbon' ? RIBBON_RAMP_CSS : BEAD_RAMP_CSS;
   const title = [
     `${words.name}: ${words.line}.`,
     scale > 0 ? `Full light: ${fmtUsd(scale)} per 1% move — short gamma (pushes a move along) left, long gamma (holds it back) right.` : 'No reading in this session yet.',
