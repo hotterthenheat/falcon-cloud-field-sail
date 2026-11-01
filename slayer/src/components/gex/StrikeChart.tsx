@@ -104,7 +104,7 @@ import { drawingsKey, hearDrawings, useDrawSync } from './drawingSync';
 import DrawRailTools, { DrawFavBar, DrawRailSwitches, DrawSheet, RAIL_ARROW_PAD } from './DrawRailTools';
 import DrawSettings from './DrawSettings';
 import { snap45 } from './drawingGeometry';
-import { drawPrefs, drawToolLabel, registerDrawChart, rememberDrawTool, touchDrawChart, useDrawToolPrefs } from './drawTools';
+import { drawPrefs, drawToolLabel, registerDrawChart, rememberDrawTool, reportDrawState, setRailPrefs, touchDrawChart, useDrawToolPrefs, useRailPrefs } from './drawTools';
 import {
   CANDLE_THEMES,
   chartGround,
@@ -674,6 +674,9 @@ interface StrikeChartProps {
   onEnterDraw?: () => void;
   /** Whether this host has headroom for the top dock. */
   railTopOk?: boolean;
+  /** NOAH'S DESK RAIL (DeskDrawRail): the host draws the drawing rail outside the chart and drives it by `paneId` — the
+      chart draws no rail, no slim tab and no sheet door of its own; drawing itself, the mark bar and the settings stay. */
+  hostRail?: boolean;
   /** Room a host's own chrome takes at the price pane's foot, in px — the replay card stands that much higher. 0 when
       nothing of the host's is there. */
   footInset?: number;
@@ -766,38 +769,7 @@ import { defaultStop } from './drawingKinds';
 import { BULL, CALL_WALL, PUT_WALL, SUPREME, FOCUS, DARK_POOL, ALERT as ALERT_INK } from './palette';
 
 // Level lines are created once per overlay/ticker, then their prices are
-/* The rail's two reader preferences One tiny store, module-wide, persisted — so hiding or re-docking the rail on any
-   chart does it on every chart at once, which is the only version a reader can predict. */
-type RailDock = 'left' | 'top';
-const RAIL_KEY = 'slayer_draw_rail';
-let railPrefs: { dock: RailDock; open: boolean } = (() => {
-  try {
-    const raw = JSON.parse(localStorage.getItem(RAIL_KEY) ?? '{}') as { dock?: string; open?: boolean };
-    return { dock: raw.dock === 'top' ? 'top' : 'left', open: raw.open !== false };
-  } catch {
-    return { dock: 'left', open: true };
-  }
-})();
-const railListeners = new Set<() => void>();
-function setRailPrefs(patch: Partial<{ dock: RailDock; open: boolean }>): void {
-  railPrefs = { ...railPrefs, ...patch };
-  try {
-    localStorage.setItem(RAIL_KEY, JSON.stringify(railPrefs));
-  } catch {
-    /* Storage off — the choice lives for the session */
-  }
-  railListeners.forEach(fn => fn());
-}
-const railSubscribe = (fn: () => void) => {
-  railListeners.add(fn);
-  return () => {
-    railListeners.delete(fn);
-  };
-};
-const railSnapshot = () => railPrefs;
-function useRailPrefs(): { dock: RailDock; open: boolean } {
-  return useSyncExternalStore(railSubscribe, railSnapshot, railSnapshot);
-}
+/* The rail's two reader preferences (hide, dock) live in drawTools.tsx (useRailPrefs), where Terrain's desk rail reads them too. */
 
 /* The strip's gap: a host's strip lays its timeframes at the left and its menus at the right with a spacer between
    (ChartToolbar `[data-toolbar-gap]`). */
@@ -1000,6 +972,7 @@ const StrikeChart = ({
   onExitDraw,
   onEnterDraw,
   railTopOk = true,
+  hostRail = false,
   footInset = 0,
   bookDate = null,
   replay = false,
@@ -4791,14 +4764,14 @@ const StrikeChart = ({
     return () => ro.disconnect();
   }, [rail.open, rail.dock, drawing]);
   /* The open rail docked down the left covers the plot's left 50 px: the legend and the panes' titles start past it */
-  const railGutter = !compact && (drawing || !!onEnterDraw) && rail.open && rail.dock === 'left' ? 58 : undefined;
+  const railGutter = !hostRail && !compact && (drawing || !!onEnterDraw) && rail.open && rail.dock === 'left' ? 58 : undefined;
   const leftDockStyle = rail.dock === 'left' && boxH > 0 ? { top: Math.max(boxH / 2, chromeInset + 8 + railH / 2), maxHeight: Math.max(120, boxH - chromeInset - 16) } : undefined;
   /* …and never over the TradingView mark in the bottom-left corner, which its licence keeps seen and clickable. On a
      short pane (a desk of three or four) the rail, held under the chrome, reaches the corner: there the mark steps
      right of the rail's column (index.css [data-tv-mark-beside]) rather than the rail losing its foot to a scroll. A
      finger's 44px box round the mark reaches 12.5px above it, hence the 14. */
   const markBeside =
-    !compact && (drawing || !!onEnterDraw) && rail.open && rail.dock === 'left' && boxH > 0 && railH > 0 &&
+    !hostRail && !compact && (drawing || !!onEnterDraw) && rail.open && rail.dock === 'left' && boxH > 0 && railH > 0 &&
     Math.max(boxH / 2, chromeInset + 8 + railH / 2) + railH / 2 > boxH - markClear - 14;
   const [, forceMark] = useReducer((x: number) => x + 1, 0);
   forceMarkRef.current = forceMark;
@@ -4897,7 +4870,6 @@ const StrikeChart = ({
   /* The command palette arms a tool on the chart the pointer was last over (drawTools.tsx) */
   const chartId = useRef(Symbol('chart')).current;
   const canDraw = !!onEnterDraw;
-  useEffect(() => (canDraw ? registerDrawChart(chartId, kind => pickToolRef.current(kind)) : undefined), [canDraw, chartId]);
 
   const clearDrawings = useCallback(() => {
     shapesRef.current = [];
@@ -5062,6 +5034,48 @@ const StrikeChart = ({
     });
     editRef.current = null;
   }, [ticker]);
+
+  /* THE HANDLE A RAIL OUTSIDE THIS CHART HOLDS (Noah's, drawTools.tsx): the hands read through a ref so the registration is
+     one effect for the chart's life; and the chart says what its drawing is doing by its pane's name, so the desk rail
+     wears the tool in hand, lights its lock, its tree and its undo */
+  const handleRef = useRef({ arm: pickTool, select: () => setDrawTool('select'), deleteSelected, clear: clearDrawings, lockAll, toggleTree: () => setTreeOpen(o => !o), undo: undoHistory, redo: redoHistory });
+  handleRef.current = { arm: pickTool, select: () => setDrawTool('select'), deleteSelected, clear: clearDrawings, lockAll, toggleTree: () => setTreeOpen(o => !o), undo: undoHistory, redo: redoHistory };
+  useEffect(
+    () =>
+      canDraw
+        ? registerDrawChart(
+            chartId,
+            {
+              arm: kind => handleRef.current.arm(kind),
+              select: () => handleRef.current.select(),
+              deleteSelected: () => handleRef.current.deleteSelected(),
+              clear: () => handleRef.current.clear(),
+              lockAll: () => handleRef.current.lockAll(),
+              toggleTree: () => handleRef.current.toggleTree(),
+              undo: () => void handleRef.current.undo(),
+              redo: () => void handleRef.current.redo(),
+            },
+            paneId ?? null
+          )
+        : undefined,
+    [canDraw, chartId, paneId]
+  );
+  /* after every render — the marks live in a ref, so no dependency list could see a lock or a new mark; the store compares
+     the fields and tells nobody when nothing moved */
+  useEffect(() => {
+    if (!canDraw || !paneId) return;
+    const marks = shapesRef.current;
+    reportDrawState(paneId, {
+      drawing: !!drawing,
+      tool: drawTool,
+      selected: selectedIdx !== null,
+      count: marks.length,
+      locked: marks.length > 0 && marks.every(d => d.locked),
+      treeOpen,
+      canUndo: canUndo(drawKey),
+      canRedo: canRedo(drawKey),
+    });
+  });
 
   /* Delete and backspace remove the selected mark — the key every drawing tool honours, beside the rail's bin. Not
      while typing a note. */
@@ -5709,7 +5723,7 @@ const StrikeChart = ({
             /* The flow pane's caption is its filters, each a chip that steps to its next setting — short words on a narrow
                pane, and clear of the drawing rail down the left */
             const capNarrow = (widthRef.current || containerRef.current?.clientWidth || 1200) < 640;
-            const railLeft = !compact && (drawing || !!onEnterDraw) && rail.dock === 'left';
+            const railLeft = !hostRail && !compact && (drawing || !!onEnterDraw) && rail.dock === 'left';
             const step =(key: keyof FlowFilters) => {
               const chip = FLOW_CHIPS.find(c => c.key === key);
               if (!chip) return;
@@ -5842,7 +5856,7 @@ const StrikeChart = ({
             onPointerUp={onDrawUp}
           />
         )}
-        {!compact && (drawing || onEnterDraw) && !rail.open && (
+        {!hostRail && !compact && (drawing || onEnterDraw) && !rail.open && (
           /* The way back — a slim tab at the docked edge, always there, so a hidden toolbar is one click from found
              (TV's collapse grammar). */
           <button
@@ -5862,7 +5876,7 @@ const StrikeChart = ({
             <Pencil className="w-3 h-3" />
           </button>
         )}
-        {!compact && (drawing || onEnterDraw) && rail.open && (
+        {!hostRail && !compact && (drawing || onEnterDraw) && rail.open && (
           /* The tool rail — persistent, and the reader's to place. Solid, not ghost chrome. Clicking any tool arms
              draw mode with that tool in hand; while drawing it grows its editing tail. */
           <div
@@ -5970,7 +5984,7 @@ const StrikeChart = ({
         )}
         {/* ON A narrow pane the sheet is the toolbar: the rail is off there, and until now the only door to drawing
             was the `d` key — which a phone has not got. A slim tab at the edge opens every tool as a bottom sheet. */}
-        {compact && (drawing || onEnterDraw) && (
+        {!hostRail && compact && (drawing || onEnterDraw) && (
           <button
             onClick={() => setSheetOpen(o => !o)}
             title="Drawing tools"
@@ -5983,7 +5997,7 @@ const StrikeChart = ({
             <Pencil className="w-3 h-3" />
           </button>
         )}
-        {sheetOpen && boxEl && (
+        {!hostRail && sheetOpen && boxEl && (
           <DrawSheet
             host={boxEl}
             dock={rail.dock}
@@ -6229,7 +6243,7 @@ const StrikeChart = ({
           <div
             aria-live="polite"
             className={`absolute z-30 pointer-events-none rounded border border-borderMuted bg-panel/95 px-1.5 py-0.5 font-mono text-t9 font-semibold uppercase tracking-widest text-select shadow-lg shadow-black/40 ${
-              rail.dock === 'left' || !rail.open ? 'left-[54px] top-1/2 -translate-y-1/2' : 'top-11 left-[calc(50%-48px)] -translate-x-1/2'
+              hostRail ? 'left-2 top-1/2 -translate-y-1/2' : rail.dock === 'left' || !rail.open ? 'left-[54px] top-1/2 -translate-y-1/2' : 'top-11 left-[calc(50%-48px)] -translate-x-1/2'
             }`}
           >
             {drawTool === 'select' ? 'Select' : drawToolLabel(drawTool)}

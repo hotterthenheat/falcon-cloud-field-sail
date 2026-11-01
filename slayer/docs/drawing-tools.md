@@ -75,7 +75,7 @@ Phase 1 made 62 kinds; phase 2 adds 24, so the chart has **86**.
 
 | TradingView | Ours |
 |---|---|
-| Grouped toolbar, fly-outs, favourites, favourites bar | ✓ (seven families; the sheet lists all 86 with search) |
+| Grouped toolbar, fly-outs, favourites, favourites bar | ✓ (Noah's seven families — see "UI: Noah's" below; the sheet lists all 86 with search) |
 | Floating toolbar on a selected drawing (colour, text, width, style, settings, clone, lock, delete) | ✓ |
 | Settings dialog | ✓ Style, Text, Coordinates, Visibility; **new** Inputs (each tool's own settings above) and Levels |
 | Per-tool level editing | **new**: fib ratios on/off, edit, add, remove, reset; Gann fan angles; pitchfork lines; regression σ |
@@ -84,6 +84,36 @@ Phase 1 made 62 kinds; phase 2 adds 24, so the chart has **86**.
 | Visibility by timeframe range | **new**: seconds, minutes, hours, days, weeks, months — each on/off with a from–to range. Older marks kept to one timeframe still read |
 | Clone: Ctrl+drag / Alt+drag | **new** (Ctrl, ⌘ or Alt held: a body drag moves a copy; the floating toolbar's clone stays) |
 | Undo / redo | **new**: Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z, fifty steps a tape, and rail buttons. (Before, undo was keyed by the ticker while saves were keyed by the tape, so a tape's undo could miss.) |
-| Sync drawings | **new**: rail switch. On (default): every pane on the same symbol shows the same drawings and a change in one appears in the others at once — this also stops a pane with a stale list from writing it over a newer one. Off: each pane keeps its own set (seeded from the shared one) |
+| Sync drawings | **new**: the object tree's head switch (and the takeover's pane rail). On (default): every pane on the same symbol shows the same drawings and a change in one appears in the others at once — this also stops a pane with a stale list from writing it over a newer one. Off: each pane keeps its own set (seeded from the shared one) |
 | Magnet weak/strong, stay in drawing mode, lock all, hide all, hotkeys, Shift constrain, Shift+click measure | ✓ |
 | Alerts on drawings, snap to indicators | ✗ not built |
+
+## UI: Noah's
+
+The owner's word (2026-11-01): take the drawing-tools UI from Noah's tree whole, and keep every one of our tools and
+features working inside it. His files: `src/components/gex/DeskDrawRail.tsx`, `DrawRailTools.tsx`, `drawTools.tsx`, the
+`hostRail` wiring in `StrikeChart.tsx`, the mount in `pages/terrain/Terrain.tsx` and the `[data-desk-rail]` rules in
+`index.css` (his commits fb1af64, 25c03ee, 68d6d08, a3c65f1, b608857, 56908d6, cc8f686). His drawn marks — handles, the
+selection, labels, line styles — are drawn by the same `drawingsPrimitive.ts` code as ours (his file is ours without the
+phase-one and phase-two kinds), so the look of a drawing on the tape did not need porting; his floating mark bar is the
+same bar as ours (ours adds Settings, Clone and Text).
+
+| Noah's | Ours, now |
+|---|---|
+| One desk rail, full height at Terrain's left edge, whatever the layout; the panes draw none (`hostRail`) | ✓ `DeskDrawRail.tsx`, mounted by Terrain beside the grid; drives the active pane by its `paneId` (`drawChartFor`) and wears its state (`reportDrawState` / `useDrawChartState`) |
+| 48px rail, 36×36 faces at its centre, 20px glyphs, groups 17px apart with a hairline, housekeeping at the foot, rows fixed (the rail scrolls on a short window) | ✓ (`BIG_CELL`, `RailRule big`). At 1440×900 the whole rail fits with no scroll |
+| A family's button wears its last tool; the chevron is an overlay at the face's right edge; TradingView's corner triangle at rest | ✓ (`ListButton big`; the triangle also on the pane rail) |
+| Fly-out list glides out of the arrow (8px, 180ms, framer-motion) | ✓ `ToolList`; the object tree and the settings dialog glide the same way |
+| Seven families: trend, fib, measure, shapes, brushes, arrows, words | ✓ the same seven doors. Ours he has no door for sit in the closest of his: chart patterns and Elliott waves → **Shapes and patterns**; cyclic lines, time cycles, sine → **Fibonacci, Gann and cycles**; icons, emoji and stickers (the stamp and its grid) → **Annotation** (the grid is the list's foot). All 86 tools; search finds every one |
+| Search (every tool, the sheet) and the star (favourites) | ✓ ours: the sheet keeps its Object-tree door; the favourites list keeps "Show the favourites bar" |
+| Switches: ruler (date and price range, one shot), magnet, lock every mark, hide every mark | ✓ ruler; magnet is ours (off → weak → strong, Ctrl flips it); **stay in drawing mode** (ours) sits with them; lock all is the pane's; hide all is ours (every chart, Ctrl+Alt+H) |
+| Housekeeping: remove every mark (second press within 3 s confirms), hide the rail, the active pane's number | ✓; ours added there: **object tree**, **undo**, **redo** (dimmed when there is nothing to undo or redo) |
+| Hidden: a 14px column with a slim tab | ✓ (the same `open` every rail keeps, now in `drawTools.tsx` `useRailPrefs`) |
+| The rail wears the active tape's ground and colour when the tape shares the page's ground; paper and black ink on the light page | ✓ (`ground`/`bg` from Terrain's top rows; `index.css` leaves `[data-desk-rail]` out of the always-black rail rule) |
+| The takeover keeps the pane's own rail; the phone its sheet door | ✓ (the pane rail is unchanged apart from the corner triangle and the glide) |
+| — (no object tree) | Our tree, restyled in his list language: the glass panel, the mono caps head with the count, 28px rows with the tool's glyph, his glide. **Sync drawings** moved from the rail into the tree's head (it says whose list that is) |
+| — (no settings dialog, no templates, no level editing) | Our dialog in his language: mono caps head, his sheet's pill tabs, the glass, his glide; the Template menu is one of his lists. Style, Inputs, Levels, Text, Coordinates, Visibility unchanged |
+| His `DrawChartHandle` (arm, select, delete selected, clear, lock all, hide all) | ours: arm, select, delete selected, clear, lock all, **toggle tree, undo, redo**; hide all stays a reader preference |
+
+Hotkeys (Alt+T/H/V/C/F/I, Alt+Shift+R, Ctrl+Alt+H, Ctrl+Z/Y, Delete) answer on the chart the pointer was last over, as
+before. Proof: `scripts/drawing-geometry-proof.ts` (unchanged maths) passes in `run-proofs.mjs`.

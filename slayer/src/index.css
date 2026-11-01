@@ -1261,7 +1261,7 @@ body.room-walled { animation: room-flicker 11s linear infinite; }
    below — dark words on the dark glass, the very thing it was there to stop.) */
 [data-chart-chrome],
 [data-chart-ink],
-[data-chart-rail],
+[data-chart-rail]:not([data-desk-rail]),
 [data-chart-glass] {
   /* The base ink is set HERE, not only inherited: the host's box is a
      [data-theme] island whose computed colour (tokens.css) would otherwise
@@ -1360,8 +1360,10 @@ html[data-theme='light'] [data-chart-ground='light']:is([data-chart-chrome], [da
 [data-chart-ground='light']:is([data-chart-frame]) :is([class~='bg-canvas/25'], [class~='bg-canvas/40'], [class~='bg-canvas/70']) {
   background-color: rgb(var(--canvas) / 0.72);
 }
-/* The drawing rail over a light tape: its 60% black read as grey, so it goes solid */
-[data-chart-ground='light'] [data-chart-rail] {
+/* The drawing rail over a light tape: its 60% black read as grey, so it goes solid — the pane's rail alone. Noah's desk
+   rail (DeskDrawRail, data-desk-rail) is the page's: paper and black ink on the light page ("this toolbar should turn
+   white with the icon colors becoming black"). */
+[data-chart-ground='light'] [data-chart-rail]:not([data-desk-rail]) {
   background-color: rgb(10 10 10 / 0.94);
 }
 /* The silver is a token now (text-silver …), re-scoped above; on a light

@@ -20,6 +20,7 @@ import { useSessionQuote } from '../../data/sessionQuote';
 import { asOfText } from '../../components/ui/states';
 import { barInTape, peekPrint, peekTape, usePrintRev, useTapeRev, useThetaTape, wantPrint } from '../../data/thetaTape';
 import { thetaChartBars } from '../../data/thetaCandles';
+import DeskDrawRail from '../../components/gex/DeskDrawRail';
 import { fmtUsd } from '../../data/gex';
 import { CALENDAR_DTES } from '../../data/exposureSurface';
 import { expiryFor } from '../../core/calendar';
@@ -1439,6 +1440,9 @@ const Pane = ({
               onEnterDraw={chartEnterDraw}
               /* Only the takeover has a top band to spare. */
               railTopOk={expanded}
+              /* docked, the desk draws Noah's one rail (DeskDrawRail) and the panes draw none; the takeover keeps its own,
+                 and the phone its sheet door */
+              hostRail={!isPhone && !expanded}
               /* IN fullscreen the desk bar floats over the pane's foot (the bar below: `fixed`, 12px above the time
                  axis), where the replay card also lives — the bar lay across the card's controls. */
               footInset={expanded && !(footRoom > 0) ? 44 : 0}
@@ -2101,6 +2105,12 @@ const Terrain = () => {
   /* the ticker bar's slot, and the desk's box its menus stay inside */
   const [barSlot, setBarSlot] = useState<HTMLDivElement | null>(null);
   const deskBoxRef = useRef<HTMLDivElement | null>(null);
+  /* the desk's box as state too: Noah's desk rail flies its lists and its sheet out into it */
+  const [deskBox, setDeskBox] = useState<HTMLDivElement | null>(null);
+  const deskBoxEl = useCallback((el: HTMLDivElement | null) => {
+    deskBoxRef.current = el;
+    setDeskBox(el);
+  }, []);
   /* the phone's Panels door opens the dock's sheet on the book's matrix (its tabs reach every room) */
   const phoneRoom: DockRoom = 'ladder';
   /* Mirrors for the key handler, which is installed once and must never read a stale closure — the same pattern the
@@ -2489,7 +2499,20 @@ const Terrain = () => {
       {/* The charts are the page, so the grid takes every pixel the root has left rather than a fraction of the
           viewport. */}
       {/* THE GRID AND THE DOCK SHARE THE ROW: the dock stands beside the charts (they give way), never over a tape */}
-      <div ref={deskBoxRef} className="relative flex-1 min-h-0 flex items-stretch">
+      <div ref={deskBoxEl} className="relative flex-1 min-h-0 flex items-stretch">
+      {/* NOAH'S DESK RAIL (DeskDrawRail): one drawing rail, full height at the desk's left edge, whatever the layout ("one big
+          toolbar on the side no matter the layout"). It drives the active pane by name; the panes draw none. Not on a
+          phone: one pane there, with its own sheet door. */}
+      {!isPhone && (
+        <DeskDrawRail
+          pane={`terrain:${active + 1}`}
+          host={deskBox}
+          label={cfg.layout > 1 ? String(active + 1) : undefined}
+          title={cfg.layout > 1 ? `Draws on pane ${active + 1} · ${stripPane.ticker}` : `Draws on ${stripPane.ticker}`}
+          ground={topGround}
+          bg={topBg}
+        />
+      )}
       <div
         /* The stacked-phone minimum lives on the pane, not here — see the note on Pane's own wrapper for why a rule
            here does nothing. */

@@ -1,8 +1,14 @@
 /* The drawing rail's middle: one button a family (wearing its last tool; a chevron, long press or right click opens the list),
-   the list, the sheet of every tool (a bottom sheet on a narrow pane) and the starred row. List and sheet portal into the chart box so the rail's scroll cannot clip them. */
+   the list, the sheet of every tool (a bottom sheet on a narrow pane) and the starred row. List and sheet portal into the chart box so the rail's scroll cannot clip them.
+
+   NOAH'S UI (his DrawRailTools.tsx and DeskDrawRail.tsx, 2026-10-31, openmarket measured): `big` is his desk rail's size —
+   a 36×36 face centred in a 48px rail, a 20px glyph, the family's chevron an overlay at the face's right edge, and
+   TradingView's corner triangle on every button that holds more tools (40% ink at rest, gone under the pointer where the
+   chevron takes over). A family's list glides out of the arrow (8px of travel, 180ms on the house's ease). */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDown, ChevronRight, Eye, EyeOff, Link2, Link2Off, ListTree, Lock, Redo2, Search, Star, Undo2, Unlock, X } from 'lucide-react';
 import type { DrawingKind } from './drawingsPrimitive';
 import { DRAW_FAMILIES, DRAW_HOTKEY, drawToolDef, familyFace, searchDrawTools, setDrawPref, toggleDrawFavourite, useDrawToolPrefs, type DrawToolDef } from './drawTools';
@@ -16,6 +22,8 @@ const LONG_PRESS_MS = 420;
 
 interface RailToolsProps {
   dock: Dock;
+  /** Noah's desk rail size: a 36px cell, a 20px glyph, the chevron an overlay. The pane rail over a tape keeps the small size. */
+  big?: boolean;
   /** Draw mode is on — only then is a tool "in hand" */
   drawing: boolean;
   drawTool: DrawingKind | 'select';
@@ -32,13 +40,20 @@ interface RailToolsProps {
    right padding follows so the icons stay in one column. RAIL_ARROW_PAD is that padding, for StrikeChart's own
    buttons in the rail. */
 export const RAIL_ARROW_PAD = 'pr-[10px] [@media(pointer:coarse)]:pr-[24px]';
-const cell = (dock: Dock) => (dock === 'left' ? `h-[26px] w-full ${RAIL_ARROW_PAD}` : 'w-[24px] h-full');
-const listCell = (dock: Dock) => (dock === 'left' ? 'h-[26px] w-full' : 'w-[34px] [@media(pointer:coarse)]:w-[48px] h-full');
-const face = (on: boolean) => (on ? 'bg-select/15 text-select' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04]');
-const Rule = ({ dock }: { dock: Dock }) => <div className={dock === 'left' ? 'mx-1 my-0.5 h-px bg-borderMuted' : 'my-1 mx-0.5 w-px bg-borderMuted'} aria-hidden />;
+/** Noah's desk cell: a 36×36 face centred in the 48px rail (openmarket's, measured), the rows stacked with no air between */
+export const BIG_CELL = 'h-[36px] w-[36px] mx-auto shrink-0';
+const cell = (dock: Dock, big = false) => (dock === 'left' ? (big ? BIG_CELL : `h-[26px] w-full ${RAIL_ARROW_PAD}`) : 'w-[24px] h-full');
+const listCell = (dock: Dock, big = false) => (dock === 'left' ? (big ? 'h-[36px] w-full' : 'h-[26px] w-full') : 'w-[34px] [@media(pointer:coarse)]:w-[48px] h-full');
+export const railFace = (on: boolean) => (on ? 'bg-select/15 text-select' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04]');
+const face = railFace;
+/** big: Noah's group gap — rows 36 apart, 53 across a group, so 17px with the hairline in the middle */
+export const RailRule = ({ dock, big = false }: { dock: Dock; big?: boolean }) => (
+  <div className={dock === 'left' ? (big ? 'mx-1.5 my-2 h-px shrink-0 bg-borderMuted' : 'mx-1 my-0.5 h-px bg-borderMuted') : 'my-1 mx-0.5 w-px bg-borderMuted'} aria-hidden />
+);
+const Rule = RailRule;
 
 /** One of the rail's buttons that opens a list: the face takes the tool, the corner tick opens the rest */
-const ListButton = ({ dock, on, title, listTitle, icon, onFace, onList, open, testId }: { dock: Dock; on: boolean; title: string; listTitle: string; icon: ReactNode; onFace: (anchor: DOMRect | null) => void; onList: (anchor: DOMRect) => void; open: boolean; testId: string }) => {
+const ListButton = ({ dock, big = false, on, title, listTitle, icon, onFace, onList, open, testId }: { dock: Dock; big?: boolean; on: boolean; title: string; listTitle: string; icon: ReactNode; onFace: (anchor: DOMRect | null) => void; onList: (anchor: DOMRect) => void; open: boolean; testId: string }) => {
   const wrap = useRef<HTMLDivElement | null>(null);
   const held = useRef<number | null>(null);
   const swallow = useRef(false);
@@ -52,7 +67,7 @@ const ListButton = ({ dock, on, title, listTitle, icon, onFace, onList, open, te
   };
   useEffect(() => clearHold, []);
   return (
-    <div ref={wrap} className={`group/fam relative shrink-0 flex items-stretch ${listCell(dock)}`} data-draw-family={testId}>
+    <div ref={wrap} className={`group/fam relative shrink-0 flex items-stretch ${big ? 'justify-center' : ''} ${listCell(dock, big)}`} data-draw-family={testId}>
       <button
         type="button"
         title={title}
@@ -78,9 +93,14 @@ const ListButton = ({ dock, on, title, listTitle, icon, onFace, onList, open, te
           if (swallow.current) return;
           onFace(wrap.current?.getBoundingClientRect() ?? null);
         }}
-        className={`w-[24px] shrink-0 inline-flex items-center justify-center rounded transition-colors text-t14 ${face(on || open)}`}
+        className={`relative shrink-0 inline-flex items-center justify-center rounded transition-colors ${big ? 'w-[36px] text-[20px]' : 'w-[24px] text-t14'} ${face(on || open)}`}
       >
         {icon}
+        {/* THE CORNER TRIANGLE (Noah, 2026-10-31: "show the bottom right arrow like they have and like how tradingview has"):
+            a button that holds more tools — 40% ink at rest, gone under the pointer where the chevron takes over */}
+        <svg aria-hidden width={big ? 5 : 4} height={big ? 5 : 4} viewBox="0 0 4 4" className={`absolute ${big ? 'right-[3px] bottom-[3px]' : 'right-[2px] bottom-[2px]'} opacity-40 transition-opacity group-hover/fam:opacity-0`} data-draw-family-corner>
+          <path d="M0 4L4 4L4 0Z" fill="currentColor" />
+        </svg>
       </button>
       <button
         type="button"
@@ -89,10 +109,10 @@ const ListButton = ({ dock, on, title, listTitle, icon, onFace, onList, open, te
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={openList}
-        className={`w-[10px] [@media(pointer:coarse)]:w-[24px] shrink-0 inline-flex items-center justify-center rounded-r text-textSecondary hover:text-textPrimary hover:bg-ink/[0.1] transition-opacity focus-visible:opacity-100 group-hover/fam:opacity-100 [@media(hover:none)]:opacity-100 ${open ? 'opacity-100 text-textPrimary bg-ink/[0.1]' : 'opacity-0'}`}
+        className={`${big ? 'absolute right-0 top-0 h-full w-[10px] [@media(pointer:coarse)]:w-[14px] z-10' : 'w-[10px] [@media(pointer:coarse)]:w-[24px]'} shrink-0 inline-flex items-center justify-center rounded-r text-textSecondary hover:text-textPrimary hover:bg-ink/[0.1] transition-opacity focus-visible:opacity-100 group-hover/fam:opacity-100 [@media(hover:none)]:opacity-100 ${open ? 'opacity-100 text-textPrimary bg-ink/[0.1]' : 'opacity-0'}`}
         data-draw-family-more
       >
-        {dock === 'left' ? <ChevronRight className="w-2.5 h-2.5 -mx-px" strokeWidth={2.6} /> : <ChevronDown className="w-2.5 h-2.5 -mx-px" strokeWidth={2.6} />}
+        {dock === 'left' ? <ChevronRight className={big ? 'w-3 h-3 -mx-px' : 'w-2.5 h-2.5 -mx-px'} strokeWidth={2.6} /> : <ChevronDown className="w-2.5 h-2.5 -mx-px" strokeWidth={2.6} />}
       </button>
     </div>
   );
@@ -158,8 +178,11 @@ const ToolList = ({ title, tools, anchor, dock, host, drawTool, favs, onPick, on
     };
   }, [onClose]);
   let lastSub: string | null = null;
+  /* THE LIST GLIDES OUT OF THE ARROW (Noah, 2026-10-31: "the dropdown for the tools when i click the right arrow needs to be
+     smooth"): from the rail's edge, 8px of travel and a touch of scale, 180ms on the house's ease; back the same way */
+  const from = dock === 'left' ? { x: -8, y: 0 } : { x: 0, y: -6 };
   return createPortal(
-    <div
+    <motion.div
       ref={box}
       role="menu"
       aria-label={title}
@@ -167,6 +190,10 @@ const ToolList = ({ title, tools, anchor, dock, host, drawTool, favs, onPick, on
       data-draw-list
       className="absolute z-50 w-[232px] overflow-y-auto rounded-md border border-borderMuted bg-panel/95 backdrop-blur-md p-1 shadow-2xl shadow-black/60 select-none"
       style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, maxHeight: pos?.maxH, visibility: pos ? 'visible' : 'hidden' }}
+      initial={{ opacity: 0, scale: 0.97, ...from }}
+      animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+      exit={{ opacity: 0, scale: 0.98, ...from, transition: { duration: 0.14, ease: [0.4, 0, 1, 1] } }}
+      transition={{ duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }}
     >
       <div className="px-2 pt-1.5 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">{title}</div>
       {tools.length === 0 && empty && <div className="px-2 py-3 text-t11 leading-snug text-textSecondary">{empty}</div>}
@@ -196,7 +223,7 @@ const ToolList = ({ title, tools, anchor, dock, host, drawTool, favs, onPick, on
         );
       })}
       {footer}
-    </div>,
+    </motion.div>,
     host
   );
 };
@@ -391,7 +418,8 @@ export const DrawSheet = ({ host, dock, drawTool, onPick, onClose, onTree }: She
 };
 
 /** The rail's middle: a button a family, the search, the star */
-const DrawRailTools = ({ dock, drawing, drawTool, onPick, host, sheetOpen, onSheet }: RailToolsProps) => {
+const DrawRailTools = ({ dock, big = false, drawing, drawTool, onPick, host, sheetOpen, onSheet }: RailToolsProps) => {
+  const glyph = big ? 'w-5 h-5' : 'w-3.5 h-3.5';
   const prefs = useDrawToolPrefs();
   const [list, setList] = useState<OpenList>(null);
   const close = useRef(() => setList(null)).current;
@@ -404,7 +432,7 @@ const DrawRailTools = ({ dock, drawing, drawTool, onPick, host, sheetOpen, onShe
 
   return (
     <>
-      <Rule dock={dock} />
+      <Rule dock={dock} big={big} />
       {DRAW_FAMILIES.map(f => {
         const worn = familyFace(f, prefs);
         const inHand = drawing && f.tools.some(t => t.tool === drawTool);
@@ -415,6 +443,7 @@ const DrawRailTools = ({ dock, drawing, drawTool, onPick, host, sheetOpen, onShe
             key={f.id}
             testId={f.id}
             dock={dock}
+            big={big}
             on={inHand}
             open={list?.id === f.id}
             title={shownTool.label}
@@ -428,33 +457,36 @@ const DrawRailTools = ({ dock, drawing, drawTool, onPick, host, sheetOpen, onShe
           />
         );
       })}
-      <Rule dock={dock} />
+      <Rule dock={dock} big={big} />
       <button
         type="button"
         onClick={() => onSheet(!sheetOpen)}
         title="Every drawing tool"
         aria-label="Every drawing tool"
         aria-expanded={sheetOpen}
-        className={`shrink-0 inline-flex items-center justify-center rounded transition-colors ${cell(dock)} ${face(sheetOpen)}`}
+        className={`shrink-0 inline-flex items-center justify-center rounded transition-colors ${cell(dock, big)} ${face(sheetOpen)}`}
         data-draw-sheet-door
       >
-        <Search className="w-3.5 h-3.5" />
+        <Search className={glyph} />
       </button>
       <ListButton
         testId="favs"
         dock={dock}
+        big={big}
         on={false}
         open={list?.id === 'favs'}
         title="Your favourites"
         listTitle="Your favourites"
-        icon={<Star className="w-3.5 h-3.5" fill={favTools.length ? 'currentColor' : 'none'} />}
+        icon={<Star className={glyph} fill={favTools.length ? 'currentColor' : 'none'} />}
         onFace={anchor => {
           if (anchor) setList(cur => (cur?.id === 'favs' ? null : { id: 'favs', anchor }));
         }}
         onList={anchor => setList(cur => (cur?.id === 'favs' ? null : { id: 'favs', anchor }))}
       />
+      <AnimatePresence>
       {list && host && (openFamily || list.id === 'favs') && (
         <ToolList
+          key={list.id}
           title={openFamily ? openFamily.name : 'Your favourites'}
           tools={openFamily ? openFamily.tools : favTools}
           empty="Star a tool in any list and it is kept here."
@@ -466,7 +498,7 @@ const DrawRailTools = ({ dock, drawing, drawTool, onPick, host, sheetOpen, onShe
           onPick={onPick}
           onClose={close}
           footer={
-            list.id === 'icons' ? (
+            list.id === 'words' ? (
               <StampGrid
                 current={prefs.stamp}
                 onPick={() => {
@@ -483,6 +515,7 @@ const DrawRailTools = ({ dock, drawing, drawTool, onPick, host, sheetOpen, onShe
           }
         />
       )}
+      </AnimatePresence>
     </>
   );
 };
@@ -490,16 +523,16 @@ const DrawRailTools = ({ dock, drawing, drawTool, onPick, host, sheetOpen, onShe
 /* ---- TradingView's switches under the tools: magnet, stay in drawing mode, lock all, hide all ------------------------- */
 
 /** Our magnet: a horseshoe, with a bar under it when it is strong */
-const MagnetGlyph = ({ strong }: { strong: boolean }) => (
-  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden>
+export const MagnetGlyph = ({ strong, className = 'w-3.5 h-3.5' }: { strong: boolean; className?: string }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden>
     <path d="M4 2.5v5.5a4 4 0 0 0 8 0V2.5" />
     <path d="M2.6 2.5h2.8M10.6 2.5h2.8" strokeWidth="2" />
     {strong && <path d="M3.5 15h9" strokeWidth="1.6" />}
   </svg>
 );
 /** Stay in drawing mode: a pencil with a loop */
-const StayGlyph = () => (
-  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+export const StayGlyph = ({ className = 'w-3.5 h-3.5' }: { className?: string }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
     <path d="M10.5 2.5 13.5 5.5 6 13H3v-3z" />
     <path d="M1.8 15.2c2-1.4 4.2.9 6.2-.4 1-.6 1.6-1.4 3-1.2" />
   </svg>

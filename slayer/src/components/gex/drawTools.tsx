@@ -6,7 +6,10 @@ import type { ReactNode } from 'react';
 import type { DrawingKind } from './drawingsPrimitive';
 import { getStamp, subscribeStamp } from './drawStamp';
 
-type DrawFamilyId = 'trend' | 'fib' | 'patterns' | 'measure' | 'shapes' | 'words' | 'icons';
+/* NOAH'S SEVEN DOORS (his desk rail): trend, fib, measure, shapes, brushes, arrows, words. Our tools he has no door for sit in
+   the closest of his: the chart patterns and Elliott waves with the shapes, the cycles with the fib and Gann tools, the
+   icons, emoji and stickers with the annotations. */
+export type DrawFamilyId = 'trend' | 'fib' | 'measure' | 'shapes' | 'brushes' | 'arrows' | 'words';
 
 export interface DrawToolDef {
   tool: DrawingKind;
@@ -18,7 +21,7 @@ export interface DrawToolDef {
   keys?: string;
 }
 
-interface DrawFamily {
+export interface DrawFamily {
   id: DrawFamilyId;
   name: string;
   /** The sheet's tab — six of them share one row, so each is a word */
@@ -590,7 +593,7 @@ export const DRAW_FAMILIES: DrawFamily[] = [
   },
   {
     id: 'fib',
-    name: 'Fibonacci and Gann',
+    name: 'Fibonacci, Gann and cycles',
     short: 'Fib',
     tools: [
       { tool: 'fib', label: 'Fib retracement', icon: ICON.fib, sub: 'Fibonacci', keys: 'fibonacci' },
@@ -608,24 +611,6 @@ export const DRAW_FAMILIES: DrawFamily[] = [
       { tool: 'gannsquare', label: 'Gann square fixed', icon: ICON.gannsquare, sub: 'Gann' },
       { tool: 'gannsq', label: 'Gann square', icon: ICON.gannsq, sub: 'Gann', keys: 'wheel angles arcs' },
       { tool: 'gannfan', label: 'Gann fan', icon: ICON.gannfan, sub: 'Gann', keys: 'angles 1x1' },
-    ],
-  },
-  {
-    id: 'patterns',
-    name: 'Patterns',
-    short: 'Patterns',
-    tools: [
-      { tool: 'xabcd', label: 'XABCD pattern', icon: ICON.xabcd, sub: 'Chart patterns', keys: 'harmonic gartley bat butterfly crab' },
-      { tool: 'cypher', label: 'Cypher pattern', icon: ICON.cypher, sub: 'Chart patterns', keys: 'harmonic xabcd' },
-      { tool: 'abcd', label: 'ABCD pattern', icon: ICON.abcd, sub: 'Chart patterns', keys: 'harmonic' },
-      { tool: 'hs', label: 'Head and shoulders', icon: ICON.hs, sub: 'Chart patterns', keys: 'neckline' },
-      { tool: 'tripattern', label: 'Triangle pattern', icon: ICON.tripattern, sub: 'Chart patterns', keys: 'wedge converging' },
-      { tool: 'threedrives', label: 'Three drives pattern', icon: ICON.threedrives, sub: 'Chart patterns', keys: '3 drives' },
-      { tool: 'elliott5', label: 'Elliott impulse wave (12345)', icon: ICON.elliott5, sub: 'Elliott waves', keys: 'elliot motive' },
-      { tool: 'elliott3', label: 'Elliott correction wave (ABC)', icon: ICON.elliott3, sub: 'Elliott waves', keys: 'elliot corrective abc' },
-      { tool: 'elliotttri', label: 'Elliott triangle wave (ABCDE)', icon: ICON.elliotttri, sub: 'Elliott waves', keys: 'elliot triangle abcde' },
-      { tool: 'elliottwxy', label: 'Elliott double combo wave (WXY)', icon: ICON.elliottwxy, sub: 'Elliott waves', keys: 'elliot double combination wxy' },
-      { tool: 'elliottwxyxz', label: 'Elliott triple combo wave (WXYXZ)', icon: ICON.elliottwxyxz, sub: 'Elliott waves', keys: 'elliot triple combination wxyxz' },
       { tool: 'cyclic', label: 'Cyclic lines', icon: ICON.cyclic, sub: 'Cycles', keys: 'cycle period' },
       { tool: 'timecycles', label: 'Time cycles', icon: ICON.timecycles, sub: 'Cycles', keys: 'cycle arcs period' },
       { tool: 'sine', label: 'Sine line', icon: ICON.sine, sub: 'Cycles', keys: 'wave cycle sinus' },
@@ -652,15 +637,9 @@ export const DRAW_FAMILIES: DrawFamily[] = [
   },
   {
     id: 'shapes',
-    name: 'Geometric shapes',
+    name: 'Shapes and patterns',
     short: 'Shapes',
     tools: [
-      { tool: 'brush', label: 'Brush', icon: ICON.brush, sub: 'Freehand', keys: 'pen draw' },
-      { tool: 'highlighter', label: 'Highlighter', icon: ICON.highlighter, sub: 'Freehand', keys: 'marker' },
-      { tool: 'arrowmarker', label: 'Arrow marker', icon: ICON.arrowmarker, sub: 'Arrows', keys: 'fat arrow' },
-      { tool: 'arrow', label: 'Arrow', icon: ICON.arrow, sub: 'Arrows' },
-      { tool: 'arrowup', label: 'Arrow mark up', icon: ICON.arrowup, sub: 'Arrows', keys: 'buy' },
-      { tool: 'arrowdown', label: 'Arrow mark down', icon: ICON.arrowdown, sub: 'Arrows', keys: 'sell' },
       { tool: 'rect', label: 'Rectangle', icon: ICON.rect, sub: 'Shapes', keys: 'box zone' },
       { tool: 'rotrect', label: 'Rotated rectangle', icon: ICON.rotrect, sub: 'Shapes' },
       { tool: 'circle', label: 'Circle', icon: ICON.circle, sub: 'Shapes' },
@@ -671,6 +650,39 @@ export const DRAW_FAMILIES: DrawFamily[] = [
       { tool: 'curve', label: 'Curve', icon: ICON.curve, sub: 'Shapes' },
       { tool: 'arc', label: 'Arc', icon: ICON.arc, sub: 'Shapes', keys: 'bow round' },
       { tool: 'doublecurve', label: 'Double curve', icon: ICON.doublecurve, sub: 'Shapes', keys: 's curve' },
+      { tool: 'xabcd', label: 'XABCD pattern', icon: ICON.xabcd, sub: 'Chart patterns', keys: 'harmonic gartley bat butterfly crab' },
+      { tool: 'cypher', label: 'Cypher pattern', icon: ICON.cypher, sub: 'Chart patterns', keys: 'harmonic xabcd' },
+      { tool: 'abcd', label: 'ABCD pattern', icon: ICON.abcd, sub: 'Chart patterns', keys: 'harmonic' },
+      { tool: 'hs', label: 'Head and shoulders', icon: ICON.hs, sub: 'Chart patterns', keys: 'neckline' },
+      { tool: 'tripattern', label: 'Triangle pattern', icon: ICON.tripattern, sub: 'Chart patterns', keys: 'wedge converging' },
+      { tool: 'threedrives', label: 'Three drives pattern', icon: ICON.threedrives, sub: 'Chart patterns', keys: '3 drives' },
+      { tool: 'elliott5', label: 'Elliott impulse wave (12345)', icon: ICON.elliott5, sub: 'Elliott waves', keys: 'elliot motive' },
+      { tool: 'elliott3', label: 'Elliott correction wave (ABC)', icon: ICON.elliott3, sub: 'Elliott waves', keys: 'elliot corrective abc' },
+      { tool: 'elliotttri', label: 'Elliott triangle wave (ABCDE)', icon: ICON.elliotttri, sub: 'Elliott waves', keys: 'elliot triangle abcde' },
+      { tool: 'elliottwxy', label: 'Elliott double combo wave (WXY)', icon: ICON.elliottwxy, sub: 'Elliott waves', keys: 'elliot double combination wxy' },
+      { tool: 'elliottwxyxz', label: 'Elliott triple combo wave (WXYXZ)', icon: ICON.elliottwxyxz, sub: 'Elliott waves', keys: 'elliot triple combination wxyxz' },
+    ],
+  },
+  /* NOAH'S DESK RAIL GIVES THE BRUSHES AND THE ARROWS A DOOR EACH (his drawTools.tsx, 2026-10-31: "only a few things and
+     doesnt even fit to cover the full height of the sidebar") — the shapes family held them behind one button. */
+  {
+    id: 'brushes',
+    name: 'Brushes',
+    short: 'Brush',
+    tools: [
+      { tool: 'brush', label: 'Brush', icon: ICON.brush, sub: 'Freehand', keys: 'pen draw' },
+      { tool: 'highlighter', label: 'Highlighter', icon: ICON.highlighter, sub: 'Freehand', keys: 'marker' },
+    ],
+  },
+  {
+    id: 'arrows',
+    name: 'Arrows',
+    short: 'Arrows',
+    tools: [
+      { tool: 'arrow', label: 'Arrow', icon: ICON.arrow, sub: 'Arrows' },
+      { tool: 'arrowmarker', label: 'Arrow marker', icon: ICON.arrowmarker, sub: 'Arrows', keys: 'fat arrow' },
+      { tool: 'arrowup', label: 'Arrow mark up', icon: ICON.arrowup, sub: 'Arrows', keys: 'buy' },
+      { tool: 'arrowdown', label: 'Arrow mark down', icon: ICON.arrowdown, sub: 'Arrows', keys: 'sell' },
     ],
   },
   {
@@ -689,17 +701,12 @@ export const DRAW_FAMILIES: DrawFamily[] = [
       { tool: 'pricelabel', label: 'Price label', icon: ICON.pricelabel, sub: 'Words', keys: 'tag' },
       { tool: 'signpost', label: 'Signpost', icon: ICON.signpost, sub: 'Words', keys: 'sign post event' },
       { tool: 'flag', label: 'Flag mark', icon: ICON.flag, sub: 'Marks', keys: 'flag' },
+      { tool: 'stamp', label: 'Icon, emoji or sticker', icon: ICON.stamp, sub: 'Icons', keys: 'emoji icon sticker stamp' },
     ],
-  },
-  {
-    id: 'icons',
-    name: 'Icons',
-    short: 'Icons',
-    tools: [{ tool: 'stamp', label: 'Icon, emoji or sticker', icon: ICON.stamp, sub: 'Stamps', keys: 'emoji icon sticker stamp' }],
   },
 ];
 
-const ALL_DRAW_TOOLS: DrawToolDef[] = DRAW_FAMILIES.flatMap(f => f.tools);
+export const ALL_DRAW_TOOLS: DrawToolDef[] = DRAW_FAMILIES.flatMap(f => f.tools);
 const BY_KIND = new Map<DrawingKind, DrawToolDef>(ALL_DRAW_TOOLS.map(t => [t.tool, t]));
 const FAMILY_OF = new Map<DrawingKind, DrawFamilyId>(DRAW_FAMILIES.flatMap(f => f.tools.map(t => [t.tool, f.id] as const)));
 
@@ -798,11 +805,80 @@ export const drawPrefs = (): DrawToolPrefs => prefs;
 /** The tool a family's button wears: the last one used from it, else its first */
 export const familyFace = (f: DrawFamily, p: DrawToolPrefs): DrawToolDef => f.tools.find(t => t.tool === p.last[f.id]) ?? f.tools[0];
 
-// ---- arming a tool from outside a chart (the command palette) -------------------------
+// ---- the rail's two reader preferences ---------------------------------------------------
 
-/* A chart that can draw registers itself; the one the pointer was last over answers. With one chart on the page it is that one. */
+/* Hide the rail down to its slim tab, and dock it left or top. One store, module-wide, persisted — hiding the rail on any
+   chart does it on every chart, Terrain's desk rail included (Noah's drawTools.tsx; it lived in StrikeChart). */
+export type RailDock = 'left' | 'top';
+export interface RailPrefs {
+  dock: RailDock;
+  open: boolean;
+}
+const RAIL_KEY = 'slayer_draw_rail';
+let railPrefs: RailPrefs = (() => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RAIL_KEY) ?? '{}') as { dock?: string; open?: boolean };
+    return { dock: raw.dock === 'top' ? 'top' : 'left', open: raw.open !== false };
+  } catch {
+    return { dock: 'left', open: true };
+  }
+})();
+const railListeners = new Set<() => void>();
+export function setRailPrefs(patch: Partial<RailPrefs>): void {
+  railPrefs = { ...railPrefs, ...patch };
+  try {
+    localStorage.setItem(RAIL_KEY, JSON.stringify(railPrefs));
+  } catch {
+    /* storage off — the choice lives for the session */
+  }
+  railListeners.forEach(fn => fn());
+}
+const railSubscribe = (fn: () => void) => {
+  railListeners.add(fn);
+  return () => {
+    railListeners.delete(fn);
+  };
+};
+const railSnapshot = () => railPrefs;
+export const useRailPrefs = (): RailPrefs => useSyncExternalStore(railSubscribe, railSnapshot, railSnapshot);
+
+// ---- driving a chart's drawing from outside it (the command palette, Terrain's desk rail) ----
+
+/* A chart that can draw registers a HANDLE and, when its host names it (StrikeChart `paneId`), that name — so a rail
+   standing outside the charts (Terrain's one desk rail, Noah's DeskDrawRail) drives the active pane by name and reads
+   what its drawing is doing. The command palette and the hotkeys keep the older door: the chart the pointer was last
+   over answers, and with one chart on the page it is that one. */
+export interface DrawChartHandle {
+  arm: (kind: DrawingKind) => void;
+  select: () => void;
+  deleteSelected: () => void;
+  clear: () => void;
+  /** Every mark locked in place, or every one freed */
+  lockAll: () => void;
+  /** The object tree, open or shut */
+  toggleTree: () => void;
+  undo: () => void;
+  redo: () => void;
+}
+/** What a named chart's drawing is doing, for a rail outside it */
+export interface DrawChartState {
+  drawing: boolean;
+  tool: DrawingKind | 'select';
+  selected: boolean;
+  /** how many marks the chart holds */
+  count: number;
+  /** every mark locked */
+  locked: boolean;
+  treeOpen: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+const AT_REST: DrawChartState = { drawing: false, tool: 'select', selected: false, count: 0, locked: false, treeOpen: false, canUndo: false, canRedo: false };
+const noop = () => {};
 type Arm = (kind: DrawingKind) => void;
-const charts = new Map<symbol, Arm>();
+const charts = new Map<symbol, { handle: DrawChartHandle; pane: string | null }>();
+const states = new Map<string, DrawChartState>();
+const stateListeners = new Set<() => void>();
 let lastTouched: symbol | null = null;
 /* TradingView's drawing keys, on the chart the pointer was last over: Alt+T trend line, Alt+H horizontal line, Alt+V
    vertical line, Alt+C cross line, Alt+F fib retracement, Alt+Shift+R rectangle, Alt+I info line; Ctrl+Alt+H hides or
@@ -823,15 +899,18 @@ const onHotkey = (e: KeyboardEvent) => {
   if (!kind) return;
   if (armDrawTool(kind)) e.preventDefault();
 };
-export function registerDrawChart(id: symbol, arm: Arm): () => void {
+export function registerDrawChart(id: symbol, handle: DrawChartHandle | Arm, pane: string | null = null): () => void {
   if (!hotkeys && typeof window !== 'undefined') {
     hotkeys = true;
     window.addEventListener('keydown', onHotkey);
   }
-  charts.set(id, arm);
+  const h: DrawChartHandle =
+    typeof handle === 'function' ? { arm: handle, select: noop, deleteSelected: noop, clear: noop, lockAll: noop, toggleTree: noop, undo: noop, redo: noop } : handle;
+  charts.set(id, { handle: h, pane });
   return () => {
     charts.delete(id);
     if (lastTouched === id) lastTouched = null;
+    if (pane && ![...charts.values()].some(c => c.pane === pane) && states.delete(pane)) stateListeners.forEach(fn => fn());
   };
 }
 export const touchDrawChart = (id: symbol): void => {
@@ -839,8 +918,31 @@ export const touchDrawChart = (id: symbol): void => {
 };
 export const canArmDrawTool = (): boolean => charts.size > 0;
 export function armDrawTool(kind: DrawingKind): boolean {
-  const arm = (lastTouched && charts.get(lastTouched)) || [...charts.values()][0];
-  if (!arm) return false;
-  arm(kind);
+  const c = (lastTouched && charts.get(lastTouched)) || [...charts.values()][0];
+  if (!c) return false;
+  c.handle.arm(kind);
   return true;
 }
+/** The chart a host named — null until it has mounted */
+export function drawChartFor(pane: string | null | undefined): DrawChartHandle | null {
+  if (!pane) return null;
+  for (const c of charts.values()) if (c.pane === pane) return c.handle;
+  return null;
+}
+const sameState = (a: DrawChartState, b: DrawChartState) =>
+  a.drawing === b.drawing && a.tool === b.tool && a.selected === b.selected && a.count === b.count && a.locked === b.locked && a.treeOpen === b.treeOpen && a.canUndo === b.canUndo && a.canRedo === b.canRedo;
+/** A named chart says what its drawing is doing; a rail outside it listens */
+export function reportDrawState(pane: string, next: DrawChartState): void {
+  const cur = states.get(pane);
+  if (cur && sameState(cur, next)) return;
+  states.set(pane, next);
+  stateListeners.forEach(fn => fn());
+}
+const stateSubscribe = (fn: () => void) => {
+  stateListeners.add(fn);
+  return () => {
+    stateListeners.delete(fn);
+  };
+};
+export const useDrawChartState = (pane: string | null | undefined): DrawChartState =>
+  useSyncExternalStore(stateSubscribe, () => (pane ? states.get(pane) ?? AT_REST : AT_REST), () => AT_REST);

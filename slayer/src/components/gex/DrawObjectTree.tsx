@@ -1,11 +1,15 @@
 /* THE OBJECT TREE (TradingView's): every drawing on this tape in one list, the one drawn on top first — select it,
    rename it (double-click or the pencil), hide it, lock it, move it up or down the stack (drag a row, or the arrows),
-   delete it. A panel on the chart's right; a bottom sheet on a narrow pane. */
+   delete it. A panel on the chart's right; a bottom sheet on a narrow pane.
+   In Noah's visual language (his rail's fly-out lists): the dark glass panel, the mono caps head, rows of 28 with the
+   tool's glyph, the select ink for the one in hand, and his glide in (8px, 180ms). Its head carries our sync switch. */
 
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Eye, EyeOff, Lock, Pencil, Trash2, Unlock, X } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { ArrowDown, ArrowUp, Eye, EyeOff, Link2, Link2Off, Lock, Pencil, Trash2, Unlock, X } from 'lucide-react';
 import type { Drawing } from './drawingsPrimitive';
 import { drawToolDef, drawToolLabel } from './drawTools';
+import { setDrawSync, useDrawSync } from './drawingSync';
 
 interface Props {
   drawings: Drawing[];
@@ -22,6 +26,7 @@ interface Props {
 const DrawObjectTree = ({ drawings, selected, onSelect, onPatch, onDelete, onMove, onClose, narrow }: Props) => {
   const [editing, setEditing] = useState<number | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
+  const sync = useDrawSync();
   const box = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -37,27 +42,39 @@ const DrawObjectTree = ({ drawings, selected, onSelect, onPatch, onDelete, onMov
   const iconBtn = 'inline-flex items-center justify-center w-6 h-6 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.08] [@media(pointer:coarse)]:w-8 [@media(pointer:coarse)]:h-8';
 
   return (
-    <div
+    <motion.div
       ref={box}
+      initial={{ opacity: 0, ...(narrow ? { y: 12 } : { x: 8 }), scale: 0.98 }}
+      animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+      transition={{ duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }}
       role="dialog"
       aria-label="Object tree"
       data-chart-rail
       data-draw-tree
       onPointerDown={e => e.stopPropagation()}
-      className={`absolute z-50 flex flex-col border border-borderMuted bg-panel/95 backdrop-blur-md shadow-2xl shadow-black/60 select-none animate-fade-in ${
-        narrow ? 'inset-x-0 bottom-0 max-h-[70%] rounded-t-xl border-b-0' : 'right-2 top-12 w-[340px] max-h-[calc(100%-64px)] rounded-lg'
+      className={`absolute z-50 flex flex-col border border-borderMuted bg-panel/95 backdrop-blur-md p-1 shadow-2xl shadow-black/60 select-none ${
+        narrow ? 'inset-x-0 bottom-0 max-h-[70%] rounded-t-xl border-b-0' : 'right-2 top-12 w-[320px] max-h-[calc(100%-64px)] rounded-md'
       }`}
     >
-      <div className="shrink-0 flex items-center gap-2 px-3 pt-2.5 pb-2 border-b border-borderMuted">
-        <span className="text-t13 font-semibold text-textPrimary">Object tree</span>
-        <span className="font-mono text-t9 uppercase tracking-widest text-textMuted">
-          {drawings.length} drawing{drawings.length === 1 ? '' : 's'}
-        </span>
-        <button type="button" onClick={onClose} title="Close" aria-label="Close" className={`ml-auto ${iconBtn}`}>
+      <div className="shrink-0 flex items-center gap-2 pl-2 pr-0.5 pt-1 pb-1">
+        <span className="font-mono text-t9 uppercase tracking-widest text-textMuted">Object tree</span>
+        <span className="font-mono text-t9 tnum text-textMuted">· {drawings.length}</span>
+        <button
+          type="button"
+          onClick={() => setDrawSync(!sync)}
+          title={sync ? 'Sync drawings — on: every pane on this symbol shows the same drawings' : 'Sync drawings — off: each pane keeps its own drawings'}
+          aria-label="Sync drawings"
+          aria-pressed={sync}
+          className={`ml-auto inline-flex items-center gap-1 h-6 px-1.5 rounded text-t10 transition-colors ${sync ? 'bg-select/15 text-select' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'}`}
+          data-draw-sync
+        >
+          {sync ? <Link2 className="w-3 h-3" /> : <Link2Off className="w-3 h-3" />} Sync
+        </button>
+        <button type="button" onClick={onClose} title="Close" aria-label="Close" className={iconBtn}>
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-1">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {drawings.length === 0 && <div className="px-3 py-6 text-center text-t11 leading-snug text-textSecondary">No drawings on this chart yet. Pick a tool from the rail and they are listed here.</div>}
         {order.map(i => {
           const d = drawings[i];
@@ -81,10 +98,10 @@ const DrawObjectTree = ({ drawings, selected, onSelect, onPatch, onDelete, onMov
                 setDrag(null);
               }}
               onDragEnd={() => setDrag(null)}
-              className={`group flex items-center gap-1.5 h-8 [@media(pointer:coarse)]:h-10 pl-2 pr-1 rounded transition-colors ${on ? 'bg-select/15' : 'hover:bg-ink/[0.05]'} ${drag === i ? 'opacity-50' : ''} ${d.hidden ? 'opacity-60' : ''}`}
+              className={`group flex items-center gap-2.5 h-7 [@media(pointer:coarse)]:h-10 pl-2 pr-1 rounded transition-colors ${on ? 'bg-select/15' : 'hover:bg-ink/[0.06]'} ${drag === i ? 'opacity-50' : ''} ${d.hidden ? 'opacity-60' : ''}`}
               data-draw-tree-row={i}
             >
-              <span className={`text-t14 inline-flex shrink-0 ${on ? 'text-select' : 'text-textSecondary'}`}>{def?.icon}</span>
+              <span className={`text-t15 inline-flex shrink-0 ${on ? 'text-select' : 'text-textSecondary'}`}>{def?.icon}</span>
               {editing === i ? (
                 <input
                   autoFocus
@@ -131,7 +148,7 @@ const DrawObjectTree = ({ drawings, selected, onSelect, onPatch, onDelete, onMov
           );
         })}
       </div>
-    </div>
+    </motion.div>
   );
 };
 
