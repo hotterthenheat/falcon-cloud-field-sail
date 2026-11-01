@@ -64,6 +64,7 @@ const PROOFS = [
   'charm-drift-proof',
   'overnight-proof',
   'wind-proof',
+  'terrain-desk-proof',
 ];
 
 const goldens = () =>
