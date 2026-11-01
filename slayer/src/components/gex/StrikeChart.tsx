@@ -74,13 +74,18 @@ import { KeyLevelsPrimitive, KEY_LEVEL_KEYS, KEY_LEVEL_WORDS, type KeyLevelKey, 
 import { LADDER_HIT_W, nearRule } from './ladderPaint';
 import PointerCard, { CardRow, PointerFollowCard, letGoWords } from '../ui/PointerCard';
 import { CellView, makeCell } from './hoverCell';
-import { nyClock, nyMinutes, nyParts, nyWallTime } from '../../core/nyTime';
+import { nyClock, nyIsoDate, nyMinutes, nyParts, nyWallTime } from '../../core/nyTime';
 import { beepAlert } from '../../data/alertSound';
 import { oiDoubled } from '../../data/oiWatch';
 import { chartGrain, extendChartTape, thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
 import { useThetaDown, useThetaLogin } from '../../data/thetaFeed';
 import { LIVE_LOGIN_FAILED } from '../../copy/feeds';
-import { barInTape, peekPrint, usePrintRev, useTapeRev } from '../../data/thetaTape';
+import { barInTape, peekPrint, usePrintRev, useTapeRev, useThetaTape } from '../../data/thetaTape';
+import { DECISIONS, hourReadNow, useVolOutlook } from '../../data/volOutlook';
+import { alignShock, amihudSeries, efficiencyRatioSeries, flipDistancePct, gammaRegimeSeries, harBandSeries, hourOfAnnual, MARKET_NAMES, regimeWords, restOfDaySigma, volShockSeries } from '../../data/physicsReads';
+import { sessionCloseMinOn, sessionLengthOn } from '../../core/calendar';
+import { drawnOn, inkAt, inputOf, lookOf, useLooksRev, type IndicatorInputSpec } from '../../data/indicatorLooks';
+import IndicatorLegend from './IndicatorLegend';
 import { contractsLive } from '../../data/compassSession';
 import { sameName } from '../../data/spotGexBook';
 import { nodeScore } from '../../data/nodeScore';
@@ -169,6 +174,8 @@ const PANE_LABEL_LOOK: Record<string, string> = {
   rsi: 'RSI 14',
   macd: 'MACD',
   atrPane: 'ATR 14',
+  effRatio: 'Reynolds Regime · efficiency ratio',
+  amihud: 'Viscosity · Amihud illiquidity',
 };
 
 /** Dark prints far from the tape blow the price scale. Keep the largest ones near spot. */
@@ -276,11 +283,23 @@ export interface ChartIndicators {
   macd: boolean;
   /** ATR of this pane's bars — distinct from the session-ATR ruler. */
   atrPane: boolean;
+  /* The study's five tested reads (research/physics/REPORT.md, data/physicsReads.ts) */
+  /** Volatility Half-Life: the HAR forecast as a band around price (MODEL) */
+  harBand: boolean;
+  /** Potential Energy: long / short dealer gamma shading behind the candles (CALCULATED) */
+  gammaRegime: boolean;
+  /** Gravitational Wave: SPY's 15-minute vol shock, flagged on single names (CALCULATED) */
+  volShock: boolean;
+  /** Reynolds Regime: Kaufman efficiency ratio, own pane (CALCULATED) */
+  effRatio: boolean;
+  /** Viscosity: Amihud illiquidity, own pane, display only (CALCULATED) */
+  amihud: boolean;
 }
 
 export const DEFAULT_INDICATORS: ChartIndicators = {
   ema9: false, ema21: false, ema50: false, vwap: false,
   bb: false, vwapBands: false, sma: false, flowVwap: false, sideVwap: false, gammaEma: false, gammaVwap: false, rsi: false, macd: false, atrPane: false,
+  harBand: false, gammaRegime: false, volShock: false, effRatio: false, amihud: false,
 };
 
 /* One categorical ink family for auxiliary lines (indicators here, compare lines in the widget) — hues that carry no
@@ -300,18 +319,43 @@ export const INDICATOR_INKS: Record<keyof ChartIndicators, string> = {
   rsi: '#A9C77F',
   macd: '#8FB8D8',
   atrPane: '#C0C7CF',
+  harBand: '#A7C4D9',
+  gammaRegime: BULL,
+  volShock: '#E3B58C',
+  effRatio: '#9FD3B5',
+  amihud: '#C9B3E6',
 };
 
+/* The regime's two washes: the house's gamma signs (green long, red short — palette.ts), faint enough to sit under
+   the candles */
+const LONG_GAMMA_WASH = 'rgba(48,209,88,0.075)';
+/** The wash at the Style tab's opacity: 0.3 (the default) is a 7.5% tint, 1 is a 25% one */
+const gammaWash = (sign: 1 | -1, opacity = 0.3): string => `rgba(${sign > 0 ? '48,209,88' : '255,59,48'},${Math.round(0.25 * opacity * 1000) / 1000})`;
+/** The physics reads' one input each (indicatorItems.ts carries the specs the settings dialog shows) */
+const physInput = (key: keyof ChartIndicators): IndicatorInputSpec => INDICATOR_ITEMS.find(i => i.key === key)!.inputs![0];
+const PHYS_INPUT = {
+  get harBand() { return physInput('harBand'); },
+  get volShock() { return physInput('volShock'); },
+  get effRatio() { return physInput('effRatio'); },
+  get amihud() { return physInput('amihud'); },
+};
+/** The vol-shock strip under its flag: the axis ink, quiet */
+const SHOCK_QUIET = 'rgba(226,234,244,0.16)';
+
 /* What each indicator draws, and where, as data. */
-export const SUB_PANE_ORDER: (keyof ChartIndicators)[] = ['rsi', 'macd', 'atrPane'];
+export const SUB_PANE_ORDER: (keyof ChartIndicators)[] = ['rsi', 'macd', 'atrPane', 'effRatio', 'amihud'];
 export const MAX_SUB_PANES = 2;
 
 interface IndicatorPartSpec {
   part: string;
-  kind: 'line' | 'hist';
+  kind: 'line' | 'hist' | 'shade';
   ink: string;
   dashed?: boolean;
   faint?: boolean;
+  /** Dotted rather than dashed */
+  dotted?: boolean;
+  /** Its own hidden price scale on the tape (a shade fills the whole height; a strip sits along the floor) */
+  scale?: { id: string; top: number; bottom: number };
 }
 const INDICATOR_PARTS: Record<keyof ChartIndicators, { pane: 'overlay' | 'sub'; parts: IndicatorPartSpec[] }> = {
   ema9: { pane: 'overlay', parts: [{ part: 'line', kind: 'line', ink: INDICATOR_INKS.ema9 }] },
@@ -358,6 +402,19 @@ const INDICATOR_PARTS: Record<keyof ChartIndicators, { pane: 'overlay' | 'sub'; 
     ],
   },
   atrPane: { pane: 'sub', parts: [{ part: 'line', kind: 'line', ink: INDICATOR_INKS.atrPane }] },
+  harBand: {
+    pane: 'overlay',
+    parts: [
+      { part: 'up', kind: 'line', ink: INDICATOR_INKS.harBand, dashed: true },
+      { part: 'dn', kind: 'line', ink: INDICATOR_INKS.harBand, dashed: true },
+      { part: 'hourUp', kind: 'line', ink: INDICATOR_INKS.harBand, dotted: true, faint: true },
+      { part: 'hourDn', kind: 'line', ink: INDICATOR_INKS.harBand, dotted: true, faint: true },
+    ],
+  },
+  gammaRegime: { pane: 'overlay', parts: [{ part: 'shade', kind: 'shade', ink: LONG_GAMMA_WASH, scale: { id: 'phys-gamma', top: 0, bottom: 0 } }] },
+  volShock: { pane: 'overlay', parts: [{ part: 'strip', kind: 'hist', ink: INDICATOR_INKS.volShock, scale: { id: 'phys-shock', top: 0.9, bottom: 0 } }] },
+  effRatio: { pane: 'sub', parts: [{ part: 'line', kind: 'line', ink: INDICATOR_INKS.effRatio }] },
+  amihud: { pane: 'sub', parts: [{ part: 'line', kind: 'line', ink: INDICATOR_INKS.amihud }] },
 };
 
 /** The keys the readout prints — single-line overlays only: a five-line band pair would blow the readout row's
@@ -932,6 +989,17 @@ const StrikeChart = ({
   const timeframe = servedTf.current;
   const bookRev = useBookRev();
   const bookMinutes = useBookMinutes(ticker);
+  /* The physics reads' inputs, asked for only while their indicator is on: the vol outlook fit and today's minutes
+     (the very reads Pulse's Vol outlook tile makes), and SPY's minutes for the market's vol shock — one shared tape,
+     not a request of their own */
+  const looksRev = useLooksRev();
+  const getChart = useCallback(() => chartRef.current, []);
+  const getIndicatorSeries = useCallback((id: string) => indicatorSeriesRef.current.get(id) as ISeriesApi<SeriesType> | undefined, []);
+  const harOn = !!indicators.harBand;
+  const shockOn = !!indicators.volShock && !MARKET_NAMES.has(ticker.trim().toUpperCase());
+  const volOutlook = useVolOutlook(ticker, harOn);
+  const harMinutes = useThetaTape(ticker, '1m', 'rth', harOn);
+  const marketMinutes = useThetaTape('SPY', '1m', 'rth', shockOn);
   const session = useDeskSession();
   const volsRev = useConeRev();
   const deskSessionRef = useRef(session);
@@ -2403,7 +2471,7 @@ const StrikeChart = ({
       { key: 'netDrift', series: driftCallsRef.current },
       { key: 'volDrift', series: rvRef.current },
     ];
-    for (const key of ['rsi', 'macd', 'atrPane'] as const) {
+    for (const key of ['rsi', 'macd', 'atrPane', 'effRatio', 'amihud'] as const) {
       const series = indicatorSeriesRef.current.get(`${key}:line`);
       wanted.push({ key, series: series ?? null });
     }
@@ -2669,11 +2737,13 @@ const StrikeChart = ({
     /* On a rule clock the session-anchored pair is out: vwapSeries cuts sessions by comparing bar gaps against the
        bar interval, and rule bars have no interval — it would cut sessions mid-day and draw a VWAP of nothing. */
     const active = allKeys.filter(k => indicators[k] && (INDICATOR_PARTS[k].pane === 'overlay' || subsActive.includes(k)))
-      .filter(k => !(altSpec && (k === 'vwap' || k === 'vwapBands' || k === 'flowVwap' || k === 'sideVwap' || k === 'gammaEma' || k === 'gammaVwap')));
+      .filter(k => !(altSpec && (k === 'vwap' || k === 'vwapBands' || k === 'flowVwap' || k === 'sideVwap' || k === 'gammaEma' || k === 'gammaVwap' || k === 'harBand' || k === 'gammaRegime' || k === 'volShock')))
+      /* the market's shock is about the market reaching a single name: not drawn on the market itself */
+      .filter(k => !(k === 'volShock' && MARKET_NAMES.has(ticker.trim().toUpperCase())));
     /* Append under whatever product panes are already open. A fixed index lands RSI in the flow pane, or opens a blank one. */
     const product = lastProductPaneIndex();
     const full = fullWorldRef.current === `${ticker}|${timeframe}|${barClock}`;
-    const sig = `${ticker}|${timeframe}|${barClock}|${session}|${active.join(',')}|${product}|${mainNonce}|${full ? 'full' : 'recent'}`;
+    const sig = `${ticker}|${timeframe}|${barClock}|${session}|${active.join(',')}|${product}|${mainNonce}|${full ? 'full' : 'recent'}|${looksRev}`;
     const rebuild = indicatorLoadedRef.current !== sig;
     if (rebuild) {
       for (const s of indicatorSeriesRef.current.values()) {
@@ -2688,26 +2758,59 @@ const StrikeChart = ({
       for (const key of active) {
         const spec = INDICATOR_PARTS[key];
         const paneIndex = spec.pane === 'overlay' ? 0 : appendAt++;
+        /* The settings dialog's Style and Visibility tabs (data/indicatorLooks.ts): ink, opacity, thickness, the
+           price-scale label, the eye and the timeframe bands. Off the record a line draws as it always did. */
+        const look = lookOf(key);
+        const shown = drawnOn(key, mins);
+        const scaleLabel = look.scaleLabel !== false;
+        const width = (Math.min(4, Math.max(1, Math.round(look.width ?? 1))) as 1 | 2 | 3 | 4);
         for (const part of spec.parts) {
+          const lead = part.part === spec.parts[0].part;
+          const base = look.ink && (lead || spec.parts.every(p => p.ink === spec.parts[0].ink)) ? look.ink : part.ink;
+          const ink = inkAt(base, (part.faint ? 0.6 : 1) * (look.opacity ?? 1));
           const series =
-            part.kind === 'hist'
-              ? /* a histogram part prints its value on its pane's axis too */
-                chart.addSeries(HistogramSeries, { color: part.ink, priceLineVisible: false, lastValueVisible: true, priceFormat: { type: 'price', precision: 2, minMove: 0.01 } }, paneIndex)
+            part.kind === 'hist' || part.kind === 'shade'
+              ? /* a histogram part prints its value on its pane's axis too; a shade or a floor strip rides its own
+                   hidden scale on the tape */
+                chart.addSeries(
+                  HistogramSeries,
+                  {
+                    color: ink,
+                    priceLineVisible: false,
+                    lastValueVisible: part.kind === 'hist' && !part.scale && scaleLabel,
+                    visible: shown,
+                    priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+                    ...(part.scale ? { priceScaleId: part.scale.id } : {}),
+                  },
+                  paneIndex
+                )
               : chart.addSeries(
                   LineSeries,
                   {
-                    color: part.ink,
-                    lineWidth: 1,
-                    lineStyle: part.dashed ? 2 : 0,
-                    ...(part.faint ? { color: part.ink + '99' } : {}),
+                    color: ink,
+                    lineWidth: width,
+                    lineStyle: part.dotted ? 1 : part.dashed ? 2 : 0,
                     ...(spec.pane === 'overlay' ? { priceScaleId: 'right' } : {}),
                     priceLineVisible: false,
                     /* Every line prints its last value on its axis in its own ink; MACD's signal alone stays quiet. */
-                    lastValueVisible: part.part !== 'signal',
+                    lastValueVisible: part.part !== 'signal' && scaleLabel,
                     crosshairMarkerVisible: false,
+                    visible: shown,
+                    ...(key === 'amihud' ? { priceFormat: { type: 'price', precision: 4, minMove: 0.0001 } } : {}),
+                    /* the efficiency ratio lives on 0 … 1, so its pane always shows the whole range */
+                    ...(key === 'effRatio' ? { autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 1 } }) } : {}),
                   },
                   paneIndex
                 );
+          if (part.scale) {
+            try {
+              chart.priceScale(part.scale.id, paneIndex).applyOptions({ visible: false, scaleMargins: { top: part.scale.top, bottom: part.scale.bottom } });
+            } catch {
+              /* a scale the chart has not made yet takes its margins with the first data */
+            }
+          }
+          /* the regime's wash goes behind the candles, not over them */
+          if (part.kind === 'shade') series.setSeriesOrder(0);
           indicatorSeriesRef.current.set(`${key}:${part.part}`, series);
           /* The RSI pane's 30/70 rails — the two numbers the oscillator is read against, drawn once with the series.
              Unlabelled on the axis; the levels are the pane's grammar, not its data. */
@@ -2770,6 +2873,33 @@ const StrikeChart = ({
         }
         case 'atrPane':
           return { line: atrBarSeries(bars, 14) };
+        case 'effRatio':
+          return { line: efficiencyRatioSeries(bars, mins, inputOf('effRatio', PHYS_INPUT.effRatio)) };
+        case 'amihud':
+          return { line: amihudSeries(bars, mins, inputOf('amihud', PHYS_INPUT.amihud)) };
+        case 'gammaRegime': {
+          const gamma = alignGamma(bars, (bookMinutes ?? []).map(m => ({ time: m.time, levels: [{ value: m.net }] })), mins * 60);
+          return { shade: gammaRegimeSeries(bars, mins, gamma) };
+        }
+        case 'volShock':
+          return { strip: alignShock(bars, mins, volShockSeries(marketMinutes.bars)) };
+        case 'harBand': {
+          const liveDay = nyIsoDate(Date.now());
+          const dayAnnual = volOutlook.state === 'ready' && volOutlook.target === liveDay ? volOutlook.forecast : NaN;
+          /* the next hour stands at the last decision minute (10:00, 10:15 … 15:00) a bar's end has reached: one read
+             per decision, not per bar */
+          const byDecision = new Map<number, number | null>();
+          const hourAt = (endMs: number): number | null => {
+            if (volOutlook.state !== 'ready') return null;
+            const closed = nyMinutes(endMs) - REGULAR_OPEN_MIN;
+            const j = [...DECISIONS].reverse().find(d => d <= closed);
+            if (j == null) return null;
+            if (!byDecision.has(j)) byDecision.set(j, hourReadNow(ticker, harMinutes.bars, endMs)?.forecast ?? null);
+            return byDecision.get(j) ?? null;
+          };
+          const b = harBandSeries(bars, mins, liveDay, dayAnnual, hourAt, inputOf('harBand', PHYS_INPUT.harBand));
+          return { up: b.up, dn: b.dn, hourUp: b.hourUp, hourDn: b.hourDn };
+        }
         case 'flowVwap':
         case 'sideVwap': {
           const sec = (at: number) => (at > 1e12 ? Math.floor(at / 1000) : at);
@@ -2797,9 +2927,23 @@ const StrikeChart = ({
       for (const [part, vals] of Object.entries(values)) {
         const s = indicatorSeriesRef.current.get(`${key}:${part}`);
         if (!s) continue;
-        const pts = bars.map((b, i) =>
-          vals[i] === null ? { time: b.time as UTCTimestamp } : { time: b.time as UTCTimestamp, value: vals[i] as number }
-        );
+        /* the regime's wash and the shock strip carry their colour per bar */
+        const flag = key === 'volShock' ? inputOf('volShock', PHYS_INPUT.volShock) : 0;
+        const opacity = lookOf(key).opacity ?? 1;
+        const pointInk = (v: number): string | undefined =>
+          key === 'gammaRegime'
+            ? gammaWash(v > 0 ? 1 : -1, lookOf(key).opacity)
+            : key === 'volShock'
+              ? v >= flag ? inkAt(lookOf(key).ink ?? INDICATOR_INKS.volShock, 0.85 * opacity) : SHOCK_QUIET
+              : undefined;
+        const pts = bars.map((b, i) => {
+          const v = vals[i];
+          if (v === null) return { time: b.time as UTCTimestamp };
+          const color = pointInk(v);
+          /* a shade fills the pane's height: every regime bar is 1 on its own hidden scale */
+          const value = key === 'gammaRegime' ? 1 : v;
+          return color ? { time: b.time as UTCTimestamp, value, color } : { time: b.time as UTCTimestamp, value };
+        });
         /* A length change, including the first bar after an empty tape, reloads. update() on an empty series throws and the line never appears. */
         const stale = rebuild || bars.length !== indAltCountRef.current;
         try {
@@ -2813,7 +2957,7 @@ const StrikeChart = ({
     indAltCountRef.current = bars.length;
     remeasurePaneLabels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators, ticker, revision, timeframe, mainNonce, compares, altSpec, barClock, fullNonce, focusNonce, flowRows, bookMinutes, session, lastProductPaneIndex, remeasurePaneLabels]);
+  }, [indicators, ticker, revision, timeframe, mainNonce, compares, altSpec, barClock, fullNonce, focusNonce, flowRows, bookMinutes, session, lastProductPaneIndex, remeasurePaneLabels, looksRev, volOutlook, harMinutes.bars, marketMinutes.bars]);
 
   /* The scripts on this pane — the Pine runtime. */
   useEffect(() => {
@@ -4862,6 +5006,12 @@ const StrikeChart = ({
         const gamma = alignGamma(drawn, (bookMinutes ?? []).map(m => ({ time: m.time, levels: [{ value: m.net }] })), mins * 60);
         if (!gammaMoves(gamma)) push('Gamma lines — the minute gamma has not moved');
       }
+      if (indicators.effRatio && n < inputOf('effRatio', PHYS_INPUT.effRatio)) push(`Efficiency ratio — needs ${inputOf('effRatio', PHYS_INPUT.effRatio)} bars`);
+      if (indicators.amihud && drawn.every(b => !(b.volume > 0))) push('Amihud — these bars have no share volume');
+      if (indicators.harBand && volOutlook.state === 'offline') push('Vol half-life — live data is offline; the forecast comes back when the feed answers');
+      else if (indicators.harBand && mins >= 1440) push('Vol half-life — draws on intraday bars');
+      if (indicators.gammaRegime && !(bookMinutes ?? []).length) push('Gamma regime — waiting on the book’s minute gamma');
+      if (indicators.volShock && !MARKET_NAMES.has(ticker.trim().toUpperCase()) && marketMinutes.bars.length === 0) push('Market vol shock — waiting on SPY’s minutes');
     }
     return lines;
   })();
@@ -4911,6 +5061,46 @@ const StrikeChart = ({
     }
   }
   const builtinOn = INDICATOR_ITEMS.filter(item => indicators[item.key]);
+  /* The physics reads' context lines: the band's width and the shock half-life, the regime and the flip, the shock's
+     source — each from the same reads the series draw, with the honest word when the read is not in */
+  const physicsExtras: Partial<Record<keyof ChartIndicators, string>> = {};
+  if (indicators.harBand) {
+    const o = volOutlook;
+    const liveDay = nyIsoDate(Date.now());
+    const k = inputOf('harBand', PHYS_INPUT.harBand);
+    if (o.state === 'offline') physicsExtras.harBand = 'live data is offline';
+    else if (o.state === 'thin') physicsExtras.harBand = 'not enough history to fit';
+    else if (!o.origin) physicsExtras.harBand = 'fitting the forecast…';
+    else {
+      const half = Number.isFinite(o.halfLife) ? ` · shocks halve in ~${o.halfLife.toFixed(1)} sessions` : '';
+      const left = sessionCloseMinOn(liveDay) - nyMinutes(Date.now());
+      const rest = o.target === liveDay && left > 0 ? restOfDaySigma(o.forecast, left, sessionLengthOn(liveDay)) : NaN;
+      const hr = o.target === liveDay ? hourReadNow(ticker, harMinutes.bars) : null;
+      const hourPct = hr ? hourOfAnnual(hr.forecast) * 100 * k : NaN;
+      physicsExtras.harBand = Number.isFinite(rest)
+        ? `±${(rest * 100 * k).toFixed(2)}% rest of day${Number.isFinite(hourPct) ? ` · ±${hourPct.toFixed(2)}% next hour` : ''}${half}`
+        : `forecast for ${o.target}: ${(o.forecast * 100).toFixed(1)}% a year${half}`;
+    }
+  }
+  if (indicators.gammaRegime) {
+    const last = bookMinutes?.length ? bookMinutes[bookMinutes.length - 1] : null;
+    if (!last || !Number.isFinite(last.net) || last.net === 0) physicsExtras.gammaRegime = 'waiting on the book’s minute gamma';
+    else {
+      const d = flipDistancePct(last.spot ?? NaN, levels.flip);
+      physicsExtras.gammaRegime = `${regimeWords(last.net > 0 ? 1 : -1)}${d == null ? '' : ` · flip ${Math.abs(d).toFixed(2)}% ${d >= 0 ? 'below' : 'above'}`}`;
+    }
+  }
+  if (indicators.volShock) {
+    physicsExtras.volShock = MARKET_NAMES.has(ticker.trim().toUpperCase())
+      ? 'off on the market itself'
+      : marketMinutes.bars.length === 0
+        ? 'waiting on SPY’s minutes'
+        : `SPY 15m vs 390m vol · flags at ×${inputOf('volShock', PHYS_INPUT.volShock).toFixed(1)}`;
+  }
+  if (indicators.amihud) physicsExtras.amihud = 'bps per $1M · display only';
+  const physicsIdle: Partial<Record<keyof ChartIndicators, string>> = {};
+  if (indicators.volShock && MARKET_NAMES.has(ticker.trim().toUpperCase())) physicsIdle.volShock = 'off on the market itself';
+  if (altSpec) for (const k of ['harBand', 'gammaRegime', 'volShock'] as const) if (indicators[k]) physicsIdle[k] = 'needs time bars';
   const legendTop = (chromeInset > 0 ? chromeInset + 4 : 8) + (paneScripts.length > 0 ? paneScripts.length * 23 : 0);
 
   return (
@@ -5054,23 +5244,18 @@ const StrikeChart = ({
         {/* The scripts on this pane, named at the top left with hide and remove */}
         {paneId && paneScripts.length > 0 && !replay && <ScriptLegend paneId={paneId} scripts={paneScripts} />}
         {builtinOn.length > 0 && !replay && (
-          <div
-            className="absolute left-3 z-10 flex flex-col items-start gap-[3px] pointer-events-auto"
-            style={{ top: legendTop }}
-            data-indicator-legend
-          >
-            {builtinOn.map(item => (
-              <div key={item.key} className="inline-flex items-center gap-1.5 h-[20px] pl-1.5 pr-1 rounded bg-canvas/75 backdrop-blur-[2px] font-mono text-t105 leading-none" title={indicatorBlurb(item.hint)}>
-                <span className="inline-block w-2 h-[3px] rounded-full shrink-0" style={{ background: INDICATOR_INKS[item.key] }} aria-hidden />
-                <span className="whitespace-nowrap text-textPrimary">{item.label}</span>
-                {onIndicators && (
-                  <button type="button" onClick={() => onIndicators({ ...indicators, [item.key]: false })} title={`Turn ${item.label} off`} className="p-0.5 rounded text-textMuted hover:text-textPrimary">
-                    ×
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
+          <IndicatorLegend
+            on={builtinOn.map(i => i.key)}
+            top={legendTop}
+            mins={tfMinutes(timeframe)}
+            chart={getChart}
+            seriesOf={getIndicatorSeries}
+            tick={`${revision}|${looksRev}|${bookMinutes?.length ?? 0}|${harMinutes.bars.length}|${marketMinutes.bars.length}`}
+            extras={physicsExtras}
+            idle={physicsIdle}
+            narrow={compact || (widthRef.current || 1200) < 520}
+            onRemove={onIndicators ? key => onIndicators({ ...indicators, [key]: false }) : undefined}
+          />
         )}
         {/* What is not in yet: one small chip in the plot's top-right corner, clear of the candles' left edge and the
             legends — the full lines on hover. A host with its own corner row takes them instead (onGapNotes). */}

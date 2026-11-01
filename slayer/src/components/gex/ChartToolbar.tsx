@@ -1129,7 +1129,7 @@ const ChartToolbar = ({
               <div className="p-1.5 flex flex-col gap-0.5 w-[min(300px,80vw)]">
                 {(() => {
                   const items = indicatorKeys ? INDICATOR_ITEMS.filter(i => indicatorKeys.includes(i.key)) : INDICATOR_ITEMS;
-                  const firstSub = items.findIndex(i => i.sub);
+                  const firstSub = items.findIndex(i => i.sub && i.group !== 'physics');
                   return items.map((item, idx) => {
                   const on = indicators[item.key];
                   const subsOn = SUB_PANE_ORDER.filter(k => indicators[k]).length;
@@ -1139,7 +1139,7 @@ const ChartToolbar = ({
                   /* T-15 — session-anchored VWAP has no session cuts to
                      find on a rule clock; the chart skips it and this row
                      says why instead of ticking a line that is not there. */
-                  const heldByClock = (barClock ?? 'time') !== 'time' && (item.key === 'vwap' || item.key === 'vwapBands' || item.group === 'book');
+                  const heldByClock = (barClock ?? 'time') !== 'time' && (item.key === 'vwap' || item.key === 'vwapBands' || item.group === 'book' || item.key === 'harBand' || item.key === 'gammaRegime' || item.key === 'volShock');
                   const capped = (!!item.sub && !on && subsOn >= MAX_SUB_PANES) || heldByClock;
                   const prev = items[idx - 1];
                   return (
@@ -1149,6 +1149,9 @@ const ChartToolbar = ({
                     )}
                     {item.group !== 'book' && !item.sub && prev?.group === 'book' && (
                       <div className="px-2.5 pt-2 font-mono text-t9 uppercase tracking-widest text-textMuted">On the tape</div>
+                    )}
+                    {item.group === 'physics' && prev?.group !== 'physics' && (
+                      <div className="px-2.5 pt-2 font-mono text-t9 uppercase tracking-widest text-textMuted">Physics reads · tested</div>
                     )}
                     {idx === firstSub && (
                       <div className="px-2.5 pt-2 font-mono text-t9 uppercase tracking-widest text-textMuted">

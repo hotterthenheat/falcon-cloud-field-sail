@@ -11,11 +11,12 @@ import { bumpLibrary, getPaneBars, liftFromPane, placeOnPane, updateOnPane, useL
 import { scriptStore } from '../../data/scriptStore';
 import type { ChartScript, PaneId, Script, ScriptInput, ScriptInputValue } from '../../types/scripts';
 import Modal from '../ui/Modal';
-import { INDICATOR_ITEMS, indicatorBlurb } from '../gex/indicatorItems';
+import { INDICATOR_ITEMS, indicatorBlurb, physicsOf } from '../gex/indicatorItems';
+import IndicatorSettings, { PhysicsTag } from '../gex/IndicatorSettings';
 import { MAX_SUB_PANES, SUB_PANE_ORDER, type ChartIndicators, type ChartOverlays } from '../gex/StrikeChart';
 import { OPENING_RANGES, type OpeningRange } from '../../data/sessionLevels';
 
-type Shelf = 'recent' | 'favourites' | 'mine' | 'slayer' | 'technicals' | 'chart';
+type Shelf = 'recent' | 'favourites' | 'mine' | 'slayer' | 'physics' | 'technicals' | 'chart';
 type Kind = 'slayer' | 'pine' | 'chart';
 
 interface Row {
@@ -38,6 +39,8 @@ const SHELVES: { key: Shelf; label: string; section: 'Personal' | 'Built in' }[]
   { key: 'favourites', label: 'Favourites', section: 'Personal' },
   { key: 'mine', label: 'My scripts', section: 'Personal' },
   { key: 'slayer', label: 'Slayer', section: 'Built in' },
+  /* the five reads the physics study kept, each under its plain name and how it is made */
+  { key: 'physics', label: 'Physics reads', section: 'Built in' },
   { key: 'technicals', label: 'Technicals', section: 'Built in' },
   { key: 'chart', label: 'Chart tools', section: 'Built in' },
 ];
@@ -183,9 +186,9 @@ const OVERLAY_ROWS: { key: keyof ChartOverlays; label: string; hint: string; pan
 
 const CLOCK_HELD = new Set<keyof ChartOverlays>(['trails', 'flow', 'netDrift', 'volDrift', 'session', 'cone', 'wind', 'events']);
 /* Book lines and share VWAP have no session to cut on a rule clock. Keyed by the indicator, not the shelf group — search rewrites the group. */
-const CLOCK_HELD_CHART = new Set<keyof ChartIndicators>(['vwap', 'vwapBands', 'flowVwap', 'sideVwap', 'gammaEma', 'gammaVwap']);
-const ROW_STYLE = { gridTemplateColumns: '68px minmax(0,1fr) 88px 28px 28px 44px' } as const;
-const ROW_GRID = 'grid items-center gap-x-2 px-2';
+const CLOCK_HELD_CHART = new Set<keyof ChartIndicators>(['vwap', 'vwapBands', 'flowVwap', 'sideVwap', 'gammaEma', 'gammaVwap', 'harBand', 'gammaRegime', 'volShock']);
+/* the kind and shelf columns fold away on a phone */
+const ROW_GRID = 'grid items-center gap-x-2 px-2 grid-cols-[minmax(0,1fr)_28px_28px_36px] sm:grid-cols-[68px_minmax(0,1fr)_88px_28px_28px_44px]';
 
 const ScriptLibrary = ({
   open,
@@ -210,6 +213,7 @@ const ScriptLibrary = ({
   const [favourites, setFavourites] = useState<Set<string>>(new Set());
   const [highlight, setHighlight] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [settingsFor, setSettingsFor] = useState<keyof ChartIndicators | null>(null);
   /* bumped when something is remembered, so the Recently used shelf re-reads */
   const [recentTick, setRecentTick] = useState(0);
   const version = useLibraryVersion();
@@ -253,16 +257,18 @@ const ScriptLibrary = ({
     const builtins = builtinScripts();
     const slayer = builtins.filter(s => s.tags[0] === 'Slayer').map(rowFor);
     const technicals = builtins.filter(s => s.tags[0] !== 'Slayer').map(rowFor);
-    const chart: Row[] = INDICATOR_ITEMS.map(i => ({ key: `chart:${i.key}`, kind: 'chart', title: i.label, description: i.hint, pane: i.sub ? 'own' : 'overlay', group: i.group === 'book' ? 'From the book' : 'Chart built-ins', chartKey: i.key, on: !!indicators?.[i.key], inputs: [] }));
+    const chartRow = (i: (typeof INDICATOR_ITEMS)[number]): Row => ({ key: `chart:${i.key}`, kind: 'chart', title: i.label, description: i.hint, pane: i.sub ? 'own' : 'overlay', group: i.group === 'book' ? 'From the book' : i.group === 'physics' ? 'Five tested reads' : 'Chart built-ins', chartKey: i.key, on: !!indicators?.[i.key], inputs: [] });
+    const chart: Row[] = INDICATOR_ITEMS.filter(i => i.group !== 'physics').map(chartRow);
+    const physics: Row[] = indicators ? INDICATOR_ITEMS.filter(i => i.group === 'physics').map(chartRow) : [];
     const myRows = mine.map(rowFor).map(r => ({ ...r, group: 'My scripts' }));
-    const everything = [...slayer, ...technicals, ...chart, ...myRows];
+    const everything = [...slayer, ...physics, ...technicals, ...chart, ...myRows];
     const favs = everything.filter(r => favourites.has(r.key)).map(r => ({ ...r, group: 'Favourites' }));
     /* newest first, from the same list the editor's menu keeps; a script no longer in the library is skipped */
     const recent = recentScripts()
       .map(r => everything.find(x => x.key === r.id))
       .filter((r): r is Row => !!r)
       .map(r => ({ ...r, group: 'Recently used' }));
-    return { recent, favourites: favs, mine: myRows, slayer, technicals, chart };
+    return { recent, favourites: favs, mine: myRows, slayer, physics, technicals, chart };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mine, favourites, indicators, rowFor, recentTick]);
 
@@ -271,7 +277,7 @@ const ScriptLibrary = ({
     if (!q) return allRows[shelf];
     const seen = new Set<string>();
     const out: Row[] = [];
-    for (const s of ['slayer', 'technicals', 'chart', 'mine'] as Shelf[]) {
+    for (const s of ['slayer', 'physics', 'technicals', 'chart', 'mine'] as Shelf[]) {
       for (const r of allRows[s]) {
         if (seen.has(r.key)) continue;
         if (`${r.title} ${r.description} ${r.group}`.toLowerCase().includes(q)) {
@@ -345,10 +351,10 @@ const ScriptLibrary = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, rows, highlight, toggle]);
 
-  const shipped = allRows.slayer.length + allRows.technicals.length + allRows.chart.length;
+  const shipped = allRows.slayer.length + allRows.physics.length + allRows.technicals.length + allRows.chart.length;
   const overlayOn = overlays ? OVERLAY_ROWS.filter(r => !!overlays[r.key]).length : 0;
   const onThisPane = placed.filter(p => p.chart.visible).length + (indicators ? INDICATOR_ITEMS.filter(i => indicators[i.key]).length : 0) + overlayOn;
-  const counts: Record<Shelf, number> = { recent: allRows.recent.length, favourites: allRows.favourites.length, mine: allRows.mine.length, slayer: allRows.slayer.length, technicals: allRows.technicals.length, chart: allRows.chart.length };
+  const counts: Record<Shelf, number> = { recent: allRows.recent.length, favourites: allRows.favourites.length, mine: allRows.mine.length, slayer: allRows.slayer.length, physics: allRows.physics.length, technicals: allRows.technicals.length, chart: allRows.chart.length };
 
   /* the rows, grouped by their heading in order of first appearance */
   const groups = useMemo(() => {
@@ -409,13 +415,14 @@ const ScriptLibrary = ({
 
         {/* One size on every shelf: the shelves and the rows share a fixed height and the rows scroll inside it,
             so five Slayer scripts and eighteen technicals open the same card. */}
-        <div className="grid gap-4 h-[56vh] min-h-0 overflow-hidden" style={{ gridTemplateColumns: '176px minmax(0,1fr)' }} data-library>
+        {/* A phone stacks them: the shelves as one scrolling row over the rows */}
+        <div className="grid gap-3 sm:gap-4 h-[60vh] sm:h-[56vh] min-h-0 overflow-hidden grid-cols-1 grid-rows-[auto_minmax(0,1fr)] sm:grid-rows-1 sm:grid-cols-[176px_minmax(0,1fr)]" data-library>
           {/* THE SHELVES */}
-          <nav className="flex flex-col gap-1 pr-4 border-r border-borderSubtle overflow-y-auto" aria-label="Shelves">
+          <nav className="flex sm:flex-col gap-1 sm:pr-4 sm:border-r border-borderSubtle overflow-x-auto sm:overflow-x-hidden sm:overflow-y-auto" aria-label="Shelves">
             {(['Personal', 'Built in'] as const).map(section => (
-              <div key={section} className="mb-2">
-                <div className="px-2 pb-1 font-mono text-t8 uppercase tracking-widest text-textSecondary">{section}</div>
-                {SHELVES.filter(s => s.section === section && (s.key !== 'chart' || !!onIndicators)).map(s => {
+              <div key={section} className="flex sm:block shrink-0 gap-1 sm:mb-2">
+                <div className="hidden sm:block px-2 pb-1 font-mono text-t8 uppercase tracking-widest text-textSecondary">{section}</div>
+                {SHELVES.filter(s => s.section === section && ((s.key !== 'chart' && s.key !== 'physics') || !!onIndicators)).map(s => {
                   const on = shelf === s.key && !q;
                   return (
                     <button
@@ -426,7 +433,7 @@ const ScriptLibrary = ({
                       }}
                       aria-pressed={on}
                       data-library-shelf={s.key}
-                      className={`w-full flex items-center justify-between h-8 px-2 rounded-md text-t12 transition-colors ${on ? 'bg-silver/[0.08] text-textPrimary shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'text-textPrimary hover:bg-ink/[0.05]'}`}
+                      className={`shrink-0 whitespace-nowrap gap-2 sm:w-full flex items-center justify-between h-8 px-2 rounded-md text-t12 transition-colors ${on ? 'bg-silver/[0.08] text-textPrimary shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'text-textPrimary hover:bg-ink/[0.05]'}`}
                     >
                       <span className={on ? 'font-semibold' : ''}>{s.label}</span>
                       <span className="font-mono text-t10 tnum text-textPrimary">{counts[s.key]}</span>
@@ -441,10 +448,10 @@ const ScriptLibrary = ({
               new search fades its rows up softly (the house soft-in, keyed) instead of
               swapping them in a frame */}
           <div className="min-w-0 min-h-0 h-full flex flex-col overflow-hidden" role="table" aria-label="Scripts">
-            <div style={ROW_STYLE} className={`${ROW_GRID} h-7 font-mono text-t8 uppercase tracking-widest text-textSecondary border-b border-borderSubtle shrink-0`} role="row">
-              <span>Kind</span>
+            <div className={`${ROW_GRID} h-7 font-mono text-t8 uppercase tracking-widest text-textSecondary border-b border-borderSubtle shrink-0`} role="row">
+              <span className="hidden sm:block">Kind</span>
               <span>Name</span>
-              <span>Shelf</span>
+              <span className="hidden sm:block">Shelf</span>
               <span />
               <span />
               <span className="text-right">On</span>
@@ -458,8 +465,8 @@ const ScriptLibrary = ({
                   const held = (barClock ?? 'time') !== 'time' && CLOCK_HELD.has(r.key);
                   return (
                     <div key={r.key}>
-                      <div role="row" style={ROW_STYLE} className={`${ROW_GRID} min-h-[46px] overflow-hidden rounded-md ${on ? 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : ''}`}>
-                        <span className="inline-flex w-fit items-center font-mono text-t8 font-semibold uppercase tracking-widest rounded px-1.5 py-0.5 border bg-ink/[0.1] border-borderMuted text-textPrimary">chart</span>
+                      <div role="row" className={`${ROW_GRID} min-h-[46px] overflow-hidden rounded-md ${on ? 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : ''}`}>
+                        <span className="hidden sm:inline-flex w-fit items-center font-mono text-t8 font-semibold uppercase tracking-widest rounded px-1.5 py-0.5 border bg-ink/[0.1] border-borderMuted text-textPrimary">chart</span>
                         <button
                           type="button"
                           disabled={held}
@@ -470,7 +477,7 @@ const ScriptLibrary = ({
                           <span className="font-semibold text-t12 text-textPrimary truncate max-w-full">{r.label}</span>
                           <span className="text-t10 text-textSecondary truncate max-w-full">{held ? 'Needs time bars' : r.hint}</span>
                         </button>
-                        <span className="font-mono text-t10 text-textPrimary whitespace-nowrap truncate">{r.pane}</span>
+                        <span className="hidden sm:block font-mono text-t10 text-textPrimary whitespace-nowrap truncate">{r.pane}</span>
                         <span />
                         <span />
                         <span className="flex justify-end">
@@ -526,6 +533,9 @@ const ScriptLibrary = ({
             {groups.map(g => (
               <div key={g.title}>
                 <div className="px-2 pt-3 pb-1 font-mono text-t8 uppercase tracking-widest text-textSecondary">{g.title}</div>
+                {g.title === 'Five tested reads' && (
+                  <p className="px-2 pb-1 font-mono text-t10 text-textSecondary leading-snug" data-physics-note>Five reads the physics study tested out of sample, each under its plain name. CALCULATED is measured from the data; MODEL is a forecast. None claims a direction.</p>
+                )}
                 {g.title === 'Slayer' && (
                   <p className="px-2 pb-1 font-mono text-t10 text-textSecondary leading-snug">slayer.netGex is the minute net on the house sign. Negative is call-dominant. A bar with no snapshot is na.</p>
                 )}
@@ -539,13 +549,13 @@ const ScriptLibrary = ({
                       <div
                         role="row"
                         onMouseEnter={() => setHighlight(idx)}
-                        style={ROW_STYLE}
+                       
                         className={`${ROW_GRID} min-h-[46px] overflow-hidden rounded-md transition-colors ${hi ? 'bg-silver/[0.06]' : ''} ${r.on ? 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : ''}`}
                         data-library-row={r.key}
                         data-on={r.on || undefined}
                       >
                         {/* The kind as a filled tag: SLAYER the house's silver tag, PINE and CHART the chip ground */}
-                        <span className={`inline-flex w-fit items-center font-mono text-t8 font-semibold uppercase tracking-widest rounded px-1.5 py-0.5 border ${r.kind === 'slayer' ? 'bg-silverFill border-silverFill text-onfoil' : 'bg-ink/[0.1] border-borderMuted text-textPrimary'}`} data-library-kind={r.kind}>{KIND_WORD[r.kind]}</span>
+                        <span className={`hidden sm:inline-flex w-fit items-center font-mono text-t8 font-semibold uppercase tracking-widest rounded px-1.5 py-0.5 border ${r.kind === 'slayer' ? 'bg-silverFill border-silverFill text-onfoil' : 'bg-ink/[0.1] border-borderMuted text-textPrimary'}`} data-library-kind={r.kind}>{KIND_WORD[r.kind]}</span>
                         <span className="min-w-0 flex flex-col justify-center gap-px overflow-hidden">
                           {r.script && fullscreen ? (
                             <button onClick={() => edit(r.script!)} className="min-w-0 max-w-full truncate text-left font-semibold text-t12 text-textPrimary hover:underline underline-offset-2" title="Open in the editor">
@@ -556,17 +566,28 @@ const ScriptLibrary = ({
                               {r.title}
                             </span>
                           ) : (
-                            <button type="button" disabled={held} onClick={() => void toggle(r)} className="min-w-0 max-w-full truncate text-left font-semibold text-t12 text-textPrimary disabled:cursor-default">
-                              {r.title}
+                            <button type="button" disabled={held} onClick={() => void toggle(r)} className="min-w-0 max-w-full flex items-center gap-1.5 text-left font-semibold text-t12 text-textPrimary disabled:cursor-default">
+                              <span className="truncate">{r.title}</span>
+                              {r.chartKey && physicsOf(r.chartKey) && (
+                                <>
+                                  <span className="hidden sm:inline truncate font-normal text-textSecondary">{physicsOf(r.chartKey)!.plain}</span>
+                                  <PhysicsTag tag={physicsOf(r.chartKey)!.tag} />
+                                </>
+                              )}
                             </button>
                           )}
                           <span className="text-t10 text-textSecondary truncate" title={held ? 'Needs time bars — the pane is on a rule clock' : r.description}>{held && r.chartKey ? 'Needs time bars' : r.kind === 'chart' ? indicatorBlurb(r.description) : r.description}</span>
                           {r.script?.status === 'error' && <span className="font-mono text-t8 uppercase tracking-widest text-bear">does not read</span>}
                         </span>
-                        <span className="font-mono text-t10 text-textPrimary whitespace-nowrap truncate" title={r.pane === 'own' ? 'Takes its own pane under the tape — two at most' : 'Draws on the tape itself'}>
+                        <span className="hidden sm:block font-mono text-t10 text-textPrimary whitespace-nowrap truncate" title={r.pane === 'own' ? 'Takes its own pane under the tape — two at most' : 'Draws on the tape itself'}>
                           {r.pane === 'own' ? 'own pane' : 'on the tape'}
                         </span>
                         <span>
+                          {r.on && r.chartKey && (
+                            <button onClick={() => setSettingsFor(r.chartKey!)} title="Its settings — inputs, style, visibility" className="p-1 rounded text-textSecondary hover:text-textPrimary transition-colors" data-library-gear>
+                              <Settings2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           {r.on && r.placed && (r.inputs.length > 0 || (r.script?.meta?.alerts.length ?? 0) > 0) && paneId && (
                             <button onClick={() => setExpanded(x => (x === r.key ? null : r.key))} aria-pressed={expanded === r.key} title={r.inputs.length > 0 ? 'Its inputs and alerts' : 'Its alerts'} className={`p-1 rounded transition-colors ${expanded === r.key ? 'text-textPrimary bg-ink/[0.06]' : 'text-textSecondary hover:text-textPrimary'}`} data-library-gear>
                               <Settings2 className="w-3.5 h-3.5" />
@@ -613,6 +634,7 @@ const ScriptLibrary = ({
           <span className="ml-auto shrink-0 whitespace-nowrap">↑↓ move · ↵ toggle · esc close</span>
         </div>
       </Modal>
+      {settingsFor && <IndicatorSettings indicator={settingsFor} onClose={() => setSettingsFor(null)} />}
     </>
   );
 };

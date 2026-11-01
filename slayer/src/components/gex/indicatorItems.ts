@@ -2,6 +2,8 @@
    kept apart from the toolbar so the library can read them without an import cycle. */
 
 import type { ChartIndicators } from './StrikeChart';
+import type { IndicatorInputSpec } from '../../data/indicatorLooks';
+import { PHYSICS_READS, type PhysicsKey } from '../../data/physicsReads';
 
 interface IndicatorItem {
   key: keyof ChartIndicators;
@@ -10,7 +12,11 @@ interface IndicatorItem {
   /** Takes its own pane under the tape (the sub-pane cap applies) */
   sub?: boolean;
   /** The shelf it sits on. The book lines are not more moving averages. */
-  group?: 'book';
+  group?: 'book' | 'physics';
+  /** One of the study's five tested reads: its physics name, plain name and CALCULATED / MODEL tag */
+  physics?: PhysicsKey;
+  /** What the settings dialog's Inputs tab offers (none: the tab is not shown, as on a fixed formula) */
+  inputs?: IndicatorInputSpec[];
 }
 
 /* The order is the menu's order: the book first, then the tape, then the
@@ -31,6 +37,11 @@ export const INDICATOR_ITEMS: IndicatorItem[] = [
   { key: 'rsi', label: 'RSI 14', hint: 'Wilder momentum, 30 and 70 rails, in its own pane. Unit: 0–100. Warmup: 14 bars. Source: this pane’s closes. Alert: yes. Replay: the tape only.', sub: true },
   { key: 'macd', label: 'MACD', hint: '12/26 EMAs, a 9-bar signal, and the histogram, in its own pane. Unit: price. Warmup: 26 bars. Source: this pane’s closes. Alert: no. Replay: the tape only.', sub: true },
   { key: 'atrPane', label: 'ATR 14', hint: 'Wilder average true range of the bars on this pane. Unit: price. Warmup: 14 bars. Source: this pane’s bars. Alert: no. Replay: the tape only.', sub: true },
+  { key: 'harBand', group: 'physics', physics: 'harBand', label: 'Volatility Half-Life', hint: 'The HAR model’s forecast of today’s realised vol, as a band around price: the rest of the day’s 1σ move (dashed, narrowing to the bell) and the next hour’s (dotted). The legend carries the current shock half-life. A forecast, not a price. Unit: price. Warmup: a year of minute bars, fitted on the server. Source: the vol outlook fit behind Pulse’s Vol outlook tile, and today’s minutes. Alert: no. Replay: no.', inputs: [{ id: 'k', title: 'Band width (σ)', default: 1, min: 0.5, max: 3, step: 0.5, tooltip: 'How many forecast standard deviations the band spans' }] },
+  { key: 'gammaRegime', group: 'physics', physics: 'gammaRegime', label: 'Potential Energy', hint: 'Shading behind the candles from the book’s minute net gamma: long gamma, where moves tend to be damped, and short gamma, where moves tend to extend. The legend gives the distance to the flip. A vol regime, not a magnet. Unit: sign. Warmup: the book’s first minute. Source: the live book’s minute net gamma and flip. Alert: no. Replay: no.' },
+  { key: 'volShock', group: 'physics', physics: 'volShock', label: 'Gravitational Wave', hint: 'A strip along the floor when SPY’s last 15 minutes move faster than its last 390 — the market’s vol shock that tends to reach single names within the hour. Off on SPY, QQQ and the indexes themselves. Unit: ratio. Warmup: 130 SPY minutes. Source: SPY’s one-minute bars. Alert: no. Replay: no.', inputs: [{ id: 'flag', title: 'Flag at ratio', default: 2, min: 1.2, max: 5, step: 0.1, tooltip: 'The 15-minute vs 390-minute vol ratio that lights the strip' }] },
+  { key: 'effRatio', group: 'physics', physics: 'effRatio', label: 'Reynolds Regime', hint: 'Kaufman efficiency ratio: net move over the path travelled, 0 (all noise) to 1 (a straight line), in its own pane. Regular-session bars only. Unit: 0–1. Warmup: the length. Source: this pane’s bars. Alert: no. Replay: the tape only.', sub: true, inputs: [{ id: 'n', title: 'Length (bars)', default: 60, min: 5, max: 390, step: 1, tooltip: 'Returns in the window; the study used 60 one-minute returns' }] },
+  { key: 'amihud', group: 'physics', physics: 'amihud', label: 'Viscosity', hint: 'Amihud illiquidity: the average size of a bar’s move per dollar traded, in bps per $1M, in its own pane. Display only — it says how thick the tape is, not where it goes. Unit: bps per $1M. Warmup: the length. Source: this pane’s bars and share volume. Alert: no. Replay: the tape only.', sub: true, inputs: [{ id: 'n', title: 'Length (bars)', default: 60, min: 10, max: 390, step: 1, tooltip: 'Bars in the window; at least a third of them must trade' }] },
 ];
 
 /** The menu line. The rest of the hint (unit, warmup, source) is the hover, not the row. */
@@ -39,3 +50,9 @@ export function indicatorBlurb(hint: string): string {
   if (cut.length > 110) return `${cut.slice(0, 107)}…`;
   return cut.endsWith('.') ? cut : `${cut}.`;
 }
+
+/** A physics row's two names and its tag */
+export const physicsOf = (key: keyof ChartIndicators) => {
+  const item = INDICATOR_ITEMS.find(i => i.key === key);
+  return item?.physics ? PHYSICS_READS[item.physics] : null;
+};

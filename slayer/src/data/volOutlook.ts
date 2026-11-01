@@ -759,14 +759,16 @@ export function ensureVolOutlook(ticker: string): void {
 
 export const peekVolOutlook = (ticker: string): VolOutlook | null => store.get(ticker.trim().toUpperCase()) ?? null;
 
-export function useVolOutlook(ticker: string): VolOutlook {
+/** `on` false: no ask at all (a chart read that is switched off), the store still read */
+export function useVolOutlook(ticker: string, on = true): VolOutlook {
   const t = ticker.trim().toUpperCase();
   useEffect(() => {
+    if (!on) return;
     ensureVolOutlook(t);
     /* a closed session lands at the bell: look again every ten minutes */
     const id = window.setInterval(() => ensureVolOutlook(t), 10 * 60_000);
     return () => window.clearInterval(id);
-  }, [t]);
+  }, [t, on]);
   useSyncExternalStore(
     fn => {
       listeners.add(fn);

@@ -56,6 +56,7 @@ const PROOFS = [
   'node-strikes-proof',
   'edge-label-fit-proof',
   'ribbon-proof',
+  'physics-reads-proof',
   'exposure-hist-proof',
   'proxy-auth-proof.mjs',
   'hub-proof.mjs',
