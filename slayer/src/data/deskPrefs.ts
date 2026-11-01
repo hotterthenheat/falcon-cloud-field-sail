@@ -8,12 +8,14 @@ import { PRINT_TYPES, type PrintType } from './printTags';
 
 export type ClockZone = 'local' | 'ny';
 
-/** How the exposure nodes draw: dotted strike rows (beads), the filled field behind price (heat), or beads over a faint field */
-export type NodeLook = 'beads' | 'heat' | 'both';
+/** How the exposure nodes draw: dotted strike rows (beads), the filled field behind price (heat), beads over a faint field,
+    or each strike as a waveform ribbon whose thickness is its strength (ribbon) */
+export type NodeLook = 'beads' | 'heat' | 'both' | 'ribbon';
 export const NODE_LOOKS: readonly { value: NodeLook; label: string; hint: string }[] = [
   { value: 'beads', label: 'Beads', hint: 'A row of dots on each heavy strike, each dot sized by the exposure at that bar' },
   { value: 'heat', label: 'Heat', hint: 'The filled field: every strike, every bar, coloured by its exposure' },
   { value: 'both', label: 'Both', hint: 'The beads over a faint field' },
+  { value: 'ribbon', label: 'Ribbon', hint: 'Each heavy strike as a ribbon across time, its thickness the exposure at that bar' },
 ];
 
 /** Which option prints the flow pane sums. Each is a narrowing or "all". */
@@ -68,7 +70,7 @@ function asTimeframe(v: unknown): Timeframe | null {
   return known && frameServed(known.value) ? known.value : null;
 }
 
-const asLook = (v: unknown): NodeLook => (v === 'beads' || v === 'heat' || v === 'both' ? v : 'both');
+const asLook = (v: unknown): NodeLook => (v === 'beads' || v === 'heat' || v === 'both' || v === 'ribbon' ? v : 'both');
 
 /** A stored filter set, field by field against the default */
 export function asFlowFilters(v: unknown): FlowFilters {

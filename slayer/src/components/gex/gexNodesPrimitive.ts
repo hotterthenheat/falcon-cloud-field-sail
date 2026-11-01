@@ -6,6 +6,7 @@ import type { NodeLook } from '../../data/deskPrefs';
 import { NODE_CAP, NODE_SHARE, selectNodeStrikes, type KeptLevel } from './nodeStrikes';
 import type { NodeConcept } from './nodeConcept';
 import { PHONE_ROW_PX, fitEdgeLabels } from './edgeLabelFit';
+import { RibbonCache, drawRibbons } from './nodeRibbon';
 import { heatInks, heatPalette, layoutHeatLabels, onHeatPalette, paintHeatLabels, type HeatLabel } from './nodeHeat';
 
 /*
@@ -212,7 +213,7 @@ class FieldRenderer {
   private drawField(target: DrawTarget): void {
     const src = this.source;
     const heat = src.concept === 'heat';
-    if (src.look === 'beads' && !heat) return;
+    if ((src.look === 'beads' || src.look === 'ribbon') && !heat) return;
     const cols = src.cols;
     /* hard bail: never draw a field that can blow the page (too many columns, no strikes, or disabled) */
     if (!src.enabled || !src.chart || !src.series || cols.length === 0 || cols.length > 2000 || src.strikes.length === 0 || !(src.ref > 0)) return;
@@ -697,6 +698,7 @@ class NodesRenderer {
   private sel: number[] = [];
   private zoneRev = -1;
   private zones: Zone[] = [];
+  private ribbon = new RibbonCache();
 
   /** The three heaviest nodes at the newest column, and the column each became one of them — once per hand-off */
   private zonesFor(src: GexTrailsPrimitive): Zone[] {
@@ -893,7 +895,36 @@ class NodesRenderer {
         ctx.fillRect(L, T, lw, B - T);
       }
 
-      if (fieldLive && src.look !== 'heat' && selected.length) {
+      if (fieldLive && src.look === 'ribbon') {
+        /* RIBBON (nodeRibbon.ts): the same grid and window as the beads, each strike a waveform across time */
+        const rowOf = (p: number | null): number => {
+          if (p == null) return -1;
+          for (let r = rLo; r < rHi; r++) if (Math.abs(strikes[r] - p) < 1e-6) return r;
+          return -1;
+        };
+        const flipY = src.flipPrice != null ? yOf(src.flipPrice) : null;
+        const x0 = ts.timeToCoordinate(cols[first].time as Time);
+        const pA = yOf(strikes[rLo]) ?? -1;
+        const pB = yOf(strikes[rHi - 1]) ?? -1;
+        const rkey = `${src.rev}|${W}|${H}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${rLo}|${rHi}|${pA.toFixed(2)}|${pB.toFixed(2)}|${hr}|${vr}|${strongRow}|${light}|${src.supremeStrike}|${src.cwStrike}|${src.pwStrike}|${flipY?.toFixed(2)}`;
+        src.beadRows = this.ribbon.paint(ctx, rkey, scope.bitmapSize.width, scope.bitmapSize.height, b =>
+          drawRibbons(b, {
+            vals, R, strikes, first, last, rLo, rHi, ref, barSpacing, hr, vr, W, H,
+            xOf: c => ts.timeToCoordinate(cols[c].time as Time),
+            yOf,
+            roomOf: r => rowGap(r) / 2 - 0.5,
+            topRow: strongRow,
+            supremeRow: rowOf(src.supremeStrike),
+            cwRow: rowOf(src.cwStrike),
+            pwRow: rowOf(src.pwStrike),
+            flipY,
+            crown,
+            light,
+          }),
+        );
+      }
+
+      if (fieldLive && src.look !== 'heat' && src.look !== 'ribbon' && selected.length) {
         /* the bar pitch the beads stand on: every bar, or every k-th once bars crowd under a few pixels */
         const k = Math.max(1, Math.ceil(BEAD_MIN_PITCH / Math.max(0.1, barSpacing)));
         const pitch = barSpacing * k;
@@ -1446,7 +1477,7 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     if (price === null) return null;
     const row = this.rowAt(price);
     /* with no field drawn, only a beaded row answers, and only near its line */
-    if (this.look === 'beads' && this.concept !== 'heat') {
+    if ((this.look === 'beads' || this.look === 'ribbon') && this.concept !== 'heat') {
       const rad = this.beadRows?.get(row);
       const yRow = row >= 0 ? this.series.priceToCoordinate(this.strikes[row]) : null;
       if (rad == null || yRow == null || Math.abs(yRow - y) > Math.max(4, rad + 2)) return null;
