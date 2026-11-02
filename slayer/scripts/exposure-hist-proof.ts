@@ -22,6 +22,11 @@ import { FLOW_FORMAT, HIST_FORMAT, flowOf, lastVols, nyStampMs, readBars, readIv
 import { ALL } from '../src/data/book/exposureSegs';
 import { nyWallTime } from '../src/core/nyTime';
 import { getCarry } from '../src/core/carry';
+import { createExposureHist } from '../src/data/exposureHistServer';
+import { gunzipSync } from 'node:zlib';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 let fail = 0;
 const check = (what: string, ok: boolean, detail = '') => {
@@ -272,6 +277,17 @@ const at = (segs: number[], t: number) => {
     const own = rebuildDay(fx.inputs, '2026-10-30');
     return own.series.every(s => s[2][s[2].length - 4] < nyWallTime(2026, 10, 30, 16, 0));
   })());
+}
+
+/* A name the terminal cannot rebuild (VIX, SPX: no stock bars) and a day still trading answer 200 with no series, never a
+   404 — the browser printed each 404 as a console error, one a day in view on Terrain's VIX (live, 2026-11-01). */
+{
+  const hist = createExposureHist({ dir: mkdtempSync(join(tmpdir(), 'hist-proof-')), theta: async () => ({ status: 472, body: '' }), now: () => nyWallTime(2026, 11, 1, 20, 30) });
+  for (const [t, day, why] of [['VIX', '2026-10-30', 'no bars to rebuild from'], ['SPY', '2026-11-02', 'a day not finished'], ['SPY', '2026-10-31', 'a Saturday']] as const) {
+    const got = await hist.answer(t, day, 'book');
+    const body = JSON.parse(gunzipSync(got.gz).toString('utf8')) as { series: unknown[] };
+    check(`nothing to serve is an empty answer, not a 404: ${t} ${day} (${why})`, got.status === 200 && Array.isArray(body.series) && body.series.length === 0, `status ${got.status}`);
+  }
 }
 
 console.log(fail ? `\n${fail} FAILED` : '\nexposure rebuild: all ok');
