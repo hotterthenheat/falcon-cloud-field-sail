@@ -96,7 +96,7 @@ check('ETF options 16:14 open, 16:15 shut', open('2026-11-02 16:14', 'etfOption'
 /* ---- the words ---- */
 const sat = ny('2026-10-31 12:00');
 check('Saturday badge: "Closed · overnight opens Sun 8:00 PM ET"', sessionBadge(sessionAt(sat)) === 'Closed · overnight opens Sun 8:00 PM ET', sessionBadge(sessionAt(sat)));
-check('Sunday 20:30 badge: "Overnight · live"', sessionBadge(sessionAt(ny('2026-11-01 20:30'))) === 'Overnight · live');
+check('Sunday 20:30 badge: "Overnight · open" (no overnight stock prints on either feed)', sessionBadge(sessionAt(ny('2026-11-01 20:30'))) === 'Overnight · open');
 check('Monday 05:00 badge: "Pre-market · live"', sessionBadge(sessionAt(ny('2026-11-02 05:00'))) === 'Pre-market · live');
 check('Monday 10:00 badge: "Regular · live"', sessionBadge(sessionAt(ny('2026-11-02 10:00'))) === 'Regular · live');
 check('Monday 17:00 badge: "After hours · live"', sessionBadge(sessionAt(ny('2026-11-02 17:00'))) === 'After hours · live');

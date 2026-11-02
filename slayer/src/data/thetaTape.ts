@@ -816,9 +816,8 @@ export function tapeWords(t: TapeRead, session: DeskSession): string | null {
   if (t.state === 'offline') return offlineWords(t.takenAt);
   if (t.state === 'kept') return `Kept bars · as of ${etClock(t.takenAt)}`;
   if (t.state === 'live' && !t.bars.length) {
-    return session === 'overnight'
-      ? 'No overnight prints on this feed. The cash close is not shown in its place.'
-      : `${sessionMeta(session).label} has no prints on this name.`;
+    /* an overnight with no prints says nothing: the gap stays empty (owner, 1 Nov) */
+    return session === 'overnight' ? null : `${sessionMeta(session).label} has no prints on this name.`;
   }
   return null;
 }
