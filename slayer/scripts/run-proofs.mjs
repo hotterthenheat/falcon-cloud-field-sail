@@ -40,6 +40,8 @@ const PROOFS = [
   'session-proof',
   'session-literal-proof',
   'symbol-directory-proof',
+  'name-search-proof',
+  'name-card-proof.mjs',
   'opening-lean-proof',
   'tape-cache-proof',
   'walls-flip-proof',

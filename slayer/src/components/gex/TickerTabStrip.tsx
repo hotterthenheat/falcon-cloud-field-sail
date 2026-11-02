@@ -1,12 +1,11 @@
 /*
   The tab strip across the top of Terrain: one tab per name the ACTIVE pane holds (logo, name, price, change), the
-  active tab lit, a close on each, and a "+" that opens the ticker lookup and adds the pick as a new tab. Five at most —
+  active tab lit, a close on each, and a "+" that opens the name search (ui/NameSearchSheet.tsx) and adds the pick as a new tab. Five at most —
   the sixth press is disabled and says so. On a multi-pane desk the active pane's number leads the strip, so a tab
   pressed renames the pane you are in.
 */
 
-import { memo, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { memo, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Plus, X } from 'lucide-react';
 import { ensureBook } from '../../data/book/load';
 import { useNavQuote } from '../layout/NavQuote';
@@ -15,12 +14,9 @@ import { extTag } from '../../core/session';
 import { asOfText } from '../ui/states';
 import CompanyLogo from '../ui/CompanyLogo';
 import { companyNamesRev, subscribeCompanyNames, symbolWithName } from '../../data/tickers';
-import TickerLookup from '../ui/TickerLookup';
-import useFocusTrap from '../ui/useFocusTrap';
-import { useAnchoredMenu } from '../ui/useAnchoredMenu';
+import NameSearchSheet from '../ui/NameSearchSheet';
 
 export const TAB_MAX = 5;
-const MENU_W = 288;
 
 interface TickerTabStripProps {
   /** Every name the pane holds, the active one among them */
@@ -79,32 +75,6 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
   const [open, setOpen] = useState(false);
   /* each tab's name on hover, re-read as names land */
   useSyncExternalStore(subscribeCompanyNames, companyNamesRev, () => 0);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const { anchorRef, placed } = useAnchoredMenu<HTMLButtonElement>(open, 'bottom', MENU_W, 'start');
-  useFocusTrap(open, menuRef);
-
-  /* outside press and Escape close the lookup — the ScopeChip's rule, pointerdown so a Radix trigger's press is heard */
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (rootRef.current?.contains(t) || menuRef.current?.contains(t)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.stopPropagation();
-      setOpen(false);
-    };
-    window.addEventListener('pointerdown', onDown);
-    window.addEventListener('keydown', onKey, true);
-    return () => {
-      window.removeEventListener('pointerdown', onDown);
-      window.removeEventListener('keydown', onKey, true);
-    };
-  }, [open]);
-
   const full = tabs.length >= max;
   const tabKey = tabs.join(',');
   useEffect(() => {
@@ -112,37 +82,17 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
     for (const t of tabKey.split(',').filter(Boolean)) ensureBook(t, 'board');
   }, [tabKey]);
 
-  const menu =
-    open &&
-    placed &&
-    createPortal(
-      <div
-        ref={menuRef}
-        role="dialog"
-        aria-label="Add a tab — another name on this pane"
-        style={{ position: 'fixed', ...placed.box }}
-        className="z-[120] w-72 border border-borderMuted bg-panel/80 backdrop-blur-xl backdrop-saturate-150 rounded-md shadow-2xl shadow-black/60 overflow-x-hidden overflow-y-auto overscroll-contain animate-slide-in"
-        data-ticker-tabs-menu
-      >
-        <div className="px-2.5 py-1.5 border-b border-borderSubtle text-t10 text-textMuted">
-          A new tab on this pane — {tabs.length} of {max} open
-        </div>
-        <TickerLookup
-          active={active}
-          onPick={sym => {
-            setOpen(false);
-            if (sym) onAdd(sym);
-          }}
-        />
-      </div>,
-      document.body
-    );
+  /* THE NAME SEARCH (ui/NameSearchSheet.tsx, the partner tree's sheet) where a 288px lookup hung under the "+": a price
+     on every row the browser already holds, the highlighted name read beside the list, the star for the watchlist */
+  const menu = (
+    <NameSearchSheet open={open} onClose={() => setOpen(false)} mode="add" current={active} tabsLine={`${tabs.length} of ${max} tabs open`} onPick={sym => sym && onAdd(sym)} />
+  );
 
   return (
     /* FORTY TALL ON A DESK (the partner tree's measure of openmarket's top row, 2026-11-01 port): a 32px tab STANDING ON
        THE ROW'S FLOOR, its top corners rounded 8, the text 11.5px medium, the mark 16, a lifted ground under the one in
        hand with a silver hairline along its top; the "+" a 26px square. The phone keeps its 32px boxes. */
-    <div ref={rootRef} className={`shrink-0 flex ${compact ? 'h-8 items-stretch' : 'h-10 items-end'} min-w-0 row-line overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`} role="tablist" aria-label="The names on this pane" data-ticker-tab-strip={tabs.length}>
+    <div className={`shrink-0 flex ${compact ? 'h-8 items-stretch' : 'h-10 items-end'} min-w-0 row-line overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`} role="tablist" aria-label="The names on this pane" data-ticker-tab-strip={tabs.length}>
       {lead}
       {paneLabel && (
         <span className="shrink-0 self-center inline-flex items-center pl-2 pr-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted whitespace-nowrap" title={`The tabs of pane ${paneLabel} — the one in hand`} data-ticker-tab-pane={paneLabel}>
@@ -188,7 +138,6 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
         );
       })}
       <button
-        ref={anchorRef}
         type="button"
         onClick={() => !full && setOpen(!open)}
         disabled={full}

@@ -63,6 +63,10 @@ Also note:
 - `/stock/{t}/spot-exposures/expiry-strike` without `expirations[]` returns every expiry's rows (one per strike and
   expiry, 500 a page) — the Board's All-expiries load reads a name's dates in one walk rather than one call a date.
 - `/option-trades/exchange-breakdown/{date}` is gated to the API Advanced plan (422 "Missing access for the option tape" on this key) — not called, and the Live Tape's exchange panel is removed. It is the only route the three products used that this key refuses (browser sweep 2026-10-22: 40 pages, 7,621 calls, 146 distinct endpoints, every other one 200).
+- Terrain's name search reads a name's report, wire, insiders and Congress in ONE request, `GET /api/name-card/<T>`
+  (`server/nameCard.mjs`, behind the `/api/uw` gate): four hub reads of the browser's own allowlisted paths in the
+  background lane, a copy up to 10 minutes old reused, the composed card kept 3 minutes server-side and asked at most
+  once in 5 minutes per name by the browser (`src/data/nameCard.ts`), only after the pointer rests 450 ms.
 - The Congress page needs only `/congress/*` (all open on this key); stock ownership ("Who is in it") reads `/institution/{t}/ownership` (open). The enterprise `/stock/{t}/ownership` and `/politician-portfolios/*` are extras the pages do not depend on.
 - **The key allows only 3 concurrent requests, across everyone using it** (UW answers 429 "You have exceeded 3
   concurrent requests" and sometimes 500 past that). `server/uwProxy.mjs` therefore runs at most 3 upstream calls at

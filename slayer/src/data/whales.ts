@@ -167,6 +167,17 @@ export async function uwCall(path: string, priority = false, low = false): Promi
   return copyOf(got);
 }
 
+/** Hand the shared entry an answer another route already carried (Terrain's name search card, data/nameCard.ts): the
+    next uwCall of the path within `keepMs` (the reuse window at least) takes it without a request. A path already
+    being read is left be. */
+export function seedUwAnswer(path: string, data: unknown, at: number | null, keepMs = REUSE_MS): void {
+  const key = canonPath(path);
+  const had = shared.get(key);
+  if (had && (!had.done || Date.now() - had.at < REUSE_MS)) return;
+  /* the entry's instant is set forward so the reuse check (now − at < REUSE_MS) holds for keepMs */
+  shared.set(key, { at: Date.now() + Math.max(0, keepMs - REUSE_MS), done: true, p: Promise.resolve({ status: 200, data, error: null, at }) });
+}
+
 /** ms since the server's hub took an answer from the vendor, or null when the proxy did not say */
 export const uwAge = (a: Pick<UwAnswer, 'at'>, now = Date.now()): number | null => (a.at ? Math.max(0, now - a.at) : null);
 

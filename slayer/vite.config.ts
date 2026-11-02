@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { proxyUw } from './server/uwProxy.mjs';
+import { proxyNameCard } from './server/nameCard.mjs';
 import { proxyTheta } from './server/thetaProxy.mjs';
 import { proxyLogo } from './server/logoProxy.mjs';
 import { compassMount, installProcessLogger } from './server/compassApi.mjs';
@@ -35,6 +36,8 @@ const dataProxies = (): Plugin => {
     if (tape) use('/api/tape', (req, res) => void tape.handle(req, res));
     /* Terrain's option chain and its prior close (server/terrainApi.mjs): read once here for every pane and viewer */
     use('/api/terrain', (req, res) => void proxyTerrain(req, res));
+    /* a name's card for Terrain's name search (server/nameCard.mjs): four hub reads in one answer */
+    use('/api/name-card', (req, res) => void proxyNameCard(req, res));
     use('/api/uw', (req, res) => void proxyUw(req, res));
     use('/api/theta', (req, res) => void proxyTheta(req, res));
     use('/api/logo', (req, res) => void proxyLogo(req, res));

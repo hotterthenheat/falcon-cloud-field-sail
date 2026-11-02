@@ -113,7 +113,7 @@ const subscribe = (fn: () => void) => {
 const get = () => state;
 export const useNameWatch = (): NameWatch => useSyncExternalStore(subscribe, get, get);
 const count = (w: NameWatch) => w.sections.reduce((n, s) => n + s.names.length, 0);
-const isWatchedName = (symbol: string, w: NameWatch = state): boolean => w.sections.some(s => s.names.some(n => n.symbol === symbol.toUpperCase()));
+export const isWatchedName = (symbol: string, w: NameWatch = state): boolean => w.sections.some(s => s.names.some(n => n.symbol === symbol.toUpperCase()));
 /** The section a name stands in, or null */
 const sectionOf = (symbol: string, w: NameWatch = state): WatchSection | null => w.sections.find(s => s.names.some(n => n.symbol === symbol.toUpperCase())) ?? null;
 

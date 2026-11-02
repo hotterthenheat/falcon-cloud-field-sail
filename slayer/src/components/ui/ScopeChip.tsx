@@ -46,9 +46,12 @@ interface ScopeChipProps {
   arrive?: boolean;
   /** 28 tall on Terrain's ticker bar, with every other trigger there (the partner tree's b608857) */
   tall?: boolean;
+  /** The host draws the picker itself (Terrain's name search, ui/NameSearchSheet.tsx): the chip is the door alone and
+      reports its open state through onOpenChange */
+  external?: boolean;
 }
 
-const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside = true, open: openProp, onOpenChange, title, full = false, arrive = true, tall = false }: ScopeChipProps) => {
+const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside = true, open: openProp, onOpenChange, title, full = false, arrive = true, tall = false, external = false }: ScopeChipProps) => {
   const [selfOpen, setSelfOpen] = useState(false);
   const arriving = useWorking(useNameArriving(arrive ? ticker : null));
   const open = openProp ?? selfOpen;
@@ -58,13 +61,13 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
   };
   const rootRef = useRef<HTMLSpanElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const { anchorRef, placed } = useAnchoredMenu<HTMLButtonElement>(open, 'bottom', MENU_W, 'start');
-  useFocusTrap(open, menuRef);
+  const { anchorRef, placed } = useAnchoredMenu<HTMLButtonElement>(open && !external, 'bottom', MENU_W, 'start');
+  useFocusTrap(open && !external, menuRef);
 
   /* Outside click and Escape close it; Escape is captured on window so the desk behind never sees it. pointerdown, not
      mousedown: Radix triggers prevent the compatibility mousedown, so two menus could stay open. */
   useEffect(() => {
-    if (!open) return;
+    if (!open || external) return;
     const onDown = (e: PointerEvent) => {
       const t = e.target as Node;
       if (rootRef.current?.contains(t) || menuRef.current?.contains(t)) return;
@@ -104,6 +107,7 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
   const change = live && Number.isFinite(live.changePct) ? live.changePct : null;
 
   const menu =
+    !external &&
     open &&
     placed &&
     createPortal(

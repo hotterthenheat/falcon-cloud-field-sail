@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { proxyUw } from './server/uwProxy.mjs';
+import { proxyNameCard } from './server/nameCard.mjs';
 import { proxyTheta } from './server/thetaProxy.mjs';
 import { proxyLogo } from './server/logoProxy.mjs';
 import { compassMount, installProcessLogger } from './server/compassApi.mjs';
@@ -60,6 +61,10 @@ app.use('/api/tape', (req, res) => {
 /* Terrain's option chain and its prior close (server/terrainApi.mjs): read once here for every pane and viewer */
 app.use('/api/terrain', (req, res) => {
   void proxyTerrain(req, res, __dirname);
+});
+/* a name's card for Terrain's name search (server/nameCard.mjs): four hub reads in one answer, behind the /api/uw gate */
+app.use('/api/name-card', (req, res) => {
+  void proxyNameCard(req, res);
 });
 app.use('/api/uw', (req, res) => {
   void proxyUw(req, res);

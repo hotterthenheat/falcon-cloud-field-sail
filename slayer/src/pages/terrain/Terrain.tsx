@@ -1,4 +1,4 @@
-import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type RefObject } from 'react';
+import { Component, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ErrorInfo, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { Activity, CalendarCheck, CalendarDays, ChevronUp, Code2, Columns2, Eye, Grid3x3, Hammer, Inbox, Link2, Maximize2, Minimize2, Mountain, Newspaper, PanelsTopLeft, Receipt, Rewind, Rows4, Search, SlidersHorizontal, UserRound, Waves, X } from 'lucide-react';
@@ -86,6 +86,7 @@ import { buildFlowFromRows } from '../../data/hedgeFlow';
 import useFocusTrap from '../../components/ui/useFocusTrap';
 import { useIsBelowXl, useIsPhone, useIsPortraitDesk } from '../../components/ui/useMediaQuery';
 import ScopeChip from '../../components/ui/ScopeChip';
+import NameSearchSheet from '../../components/ui/NameSearchSheet';
 import { ChartSkeleton, Deferred } from '../../components/ui/Skeleton';
 import SpotPrice from '../../components/gex/SpotPrice';
 import { CANDLE_THEMES, chartGround, chartSurface, usePageDefaultCandleKey, type CandleThemeKey } from '../../components/gex/candleTheme';
@@ -99,7 +100,7 @@ import {
   SETUP_KEYS, applySetup, captureSetup, evict, readSetups, symKey, type SetupMap,
 } from './setups';
 import { flipRing, stepSymbol, stepTf } from './paneKeys';
-import { hasListedOptions, useDirectoryRev } from '../../data/symbolDirectory';
+import { hasListedOptions, loadDirectory, useDirectoryRev } from '../../data/symbolDirectory';
 import LayoutDoor from './LayoutDoor';
 import DesksDoor from './DesksDoor';
 import type { DeskPreset } from './deskPresets';
@@ -1135,8 +1136,10 @@ const Pane = ({
           onPick={t => onCfg({ ticker: t, tabs: tabsAfter(cfg.tabs, ticker, t) })}
           open={menuOpen === 'symbol'}
           onOpenChange={o => onMenu(o ? 'symbol' : null)}
+          /* the desk draws the name search (ui/NameSearchSheet.tsx) — the chip is its door */
+          external
           /* The ring ↑/↓ walks is invisible, so the one control it moves is where it gets named. */
-          title="Switch ticker — S · ↑ ↓ step your symbols"
+          title="Switch ticker — S · ⌘K · ↑ ↓ step your symbols"
           tall={barDesk}
         />
       </span>
@@ -1634,8 +1637,9 @@ const Pane = ({
                     onPick={t => onCfg({ ticker: t, tabs: tabsAfter(cfg.tabs, ticker, t) })}
                     open={menuOpen === 'symbol'}
                     onOpenChange={o => onMenu(o ? 'symbol' : null)}
+                    external
                     /* The ring ↑/↓ walks is invisible, so the one control it moves is where it gets named. */
-                    title="Switch ticker — S · ↑ ↓ step your symbols"
+                    title="Switch ticker — S · ⌘K · ↑ ↓ step your symbols"
                   />
                   {/* The link chip: ∅ → A → B → ∅. Letters, not colours — the palette's inks all mean something
                       already, and a letter reads at 9px where a fourth colour would need a legend. */}
@@ -1835,6 +1839,29 @@ export interface TerrainArrival {
 }
 
 /** Terrain — the charts-only desk. */
+/* THE DESK'S NAME SEARCH, asked through a store of its own: the pane it switches and the letter it opens holding */
+type SheetAsk = { pane: number; seed: string } | null;
+let sheetAsk: SheetAsk = null;
+const sheetSubs = new Set<() => void>();
+const setSheet = (next: SheetAsk): void => {
+  sheetAsk = next;
+  sheetSubs.forEach(fn => fn());
+};
+const subscribeSheet = (fn: () => void) => {
+  sheetSubs.add(fn);
+  return () => {
+    sheetSubs.delete(fn);
+  };
+};
+const DeskNameSheet = ({ tickerOf, onPick, onPages }: { tickerOf: (pane: number) => string | null; onPick: (pane: number, ticker: string) => void; onPages: () => void }) => {
+  const ask = useSyncExternalStore(subscribeSheet, () => sheetAsk, () => null);
+  /* a desk left with the sheet up (a route change) opens shut next time */
+  useEffect(() => () => setSheet(null), []);
+  const current = ask ? tickerOf(ask.pane) : null;
+  if (!ask || !current) return null;
+  return <NameSearchSheet open mode="switch" seed={ask.seed} current={current} onClose={() => setSheet(null)} onPages={onPages} onPick={t => onPick(ask.pane, t)} />;
+};
+
 const Terrain = () => {
   /* the exposure book and ThetaData's bars both move the panes */
   const revision = useBookRev() + useTapeRev();
@@ -2141,6 +2168,11 @@ const Terrain = () => {
   /** Which pane has a menu open, and which menu — so `s` and `c` can open one without every pane growing its own
       piece of state. */
   const [menu, setMenu] = useState<{ pane: number; which: 'symbol' | 'compare' | 'tabs' } | null>(null);
+  /* THE NAME SEARCH (components/ui/NameSearchSheet.tsx, the partner tree's sheet): one for the desk, on the pane it
+     switches — opened by the pane's symbol chip, `s`, ⌘K, the strip's search door, or a letter typed on the desk (that
+     letter its first). The pick goes through setPane, so Symbol sync and the link letters carry it to the other panes. */
+  /* its open state lives in a small store (sheetAsk above the desk), not here: opening it re-renders the sheet alone,
+     never the desk and its panes — the sheet is up inside a frame */
   /* The key handler has to know a menu is up. */
   const menuOpenRef = useRef(false);
   menuOpenRef.current = menu !== null;
@@ -2256,16 +2288,52 @@ const Terrain = () => {
           return;
         case 's':
           e.preventDefault();
-          setMenu({ pane: i, which: 'symbol' });
+          setMenu(null);
+          setSheet({ pane: i, seed: '' });
           return;
         case 'c':
           e.preventDefault();
           setMenu({ pane: i, which: 'compare' });
           return;
       }
+      /* TYPE A NAME ON THE DESK: any other letter opens the name search with that letter in its field (the desk's own
+         letters above keep their jobs); not while a menu or the sheet is up */
+      if (/^[a-zA-Z]$/.test(e.key) && !menuOpenRef.current && !sheetAsk && !document.querySelector('[aria-modal="true"]')) {
+        e.preventDefault();
+        setSheet({ pane: i, seed: e.key });
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  /* ⌘K ON TERRAIN IS THE NAME SEARCH (the owner, 2026-11-02): taken on the window's capture, ahead of the shell's
+     palette binding, from anywhere on the desk; pressed in the sheet it closes it. A field that is not the sheet's (the
+     palette's own input) keeps the key for its owner. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== 'k') return;
+      const t = e.target as HTMLElement | null;
+      const inSheet = !!t?.closest?.('[data-name-search]');
+      const field = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (field && !inSheet) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (sheetAsk) setSheet(null);
+      else {
+        if (menuOpenRef.current) setMenu(null);
+        setSheet({ pane: activeRef.current, seed: '' });
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
+  /* the listings' chunk is read while the desk idles, so the sheet's first open lists every name at once */
+  useEffect(() => {
+    const go = () => void loadDirectory();
+    const w = window as Window & { requestIdleCallback?: (fn: () => void, o?: { timeout: number }) => number };
+    if (w.requestIdleCallback) w.requestIdleCallback(go, { timeout: 2500 });
+    else window.setTimeout(go, 800);
   }, []);
 
   /* Crosshair sync — one pane's hover, marking the same moment on the others. Imperative, and that is the design
@@ -2431,8 +2499,10 @@ const Terrain = () => {
                 </span>
                 <button
                   type="button"
-                  onClick={openPalette}
-                  title="Search pages, names and tools — ⌘K"
+                  onClick={() => {
+                    setSheet({ pane: active, seed: '' });
+                  }}
+                  title="Search every name — ⌘K (pages and tools from the sheet's foot)"
                   className="inline-flex items-center gap-2 h-[30px] px-2.5 rounded-md border border-borderSubtle/70 text-textMuted hover:text-textPrimary hover:bg-ink/[0.04] transition-colors font-mono text-t11 whitespace-nowrap"
                   data-ask-door
                 >
@@ -2554,7 +2624,14 @@ const Terrain = () => {
             railCut={cfg.railCut}
             onRailCut={c => setCfg(prev => ({ ...prev, railCut: c }))}
             menuOpen={menu?.pane === i ? menu.which : null}
-            onMenu={which => setMenu(which ? { pane: i, which } : null)}
+            onMenu={which => {
+              if (which === 'symbol') {
+                if (menuOpenRef.current) setMenu(null);
+                setSheet(sheetAsk?.pane === i ? null : { pane: i, seed: '' });
+                return;
+              }
+              setMenu(which ? { pane: i, which } : null);
+            }}
             boxRef={el => { paneRefs.current[i] = el; }}
             /* the pane's own area in the shape's grid; none while stacked */
             cell={stacked ? '' : AREA_CLS[i] ?? ''}
@@ -2579,6 +2656,16 @@ const Terrain = () => {
           <DeskDock room={dockRoom} ticker={stripPane.ticker} names={deskNames} mode={modeOf(cfg.palette)} paper={pageLight} onClose={closeDock} onRoom={setDock} sheet />
         </>
       )}
+      <DeskNameSheet
+        tickerOf={i => cfgRef.current.panes[i]?.ticker ?? null}
+        onPages={openPalette}
+        onPick={(i, t) => {
+          const q = cfgRef.current.panes[i];
+          if (!q || symKey(t) === symKey(q.ticker)) return;
+          setPane(i, { ticker: t, tabs: tabsAfter(q.tabs, q.ticker, t) });
+          setAnnounce(`${t} on chart ${i + 1}`);
+        }}
+      />
       {meterOn && <FrameMeter />}
     </div>
   );
