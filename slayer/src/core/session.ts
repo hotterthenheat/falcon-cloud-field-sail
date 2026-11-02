@@ -123,9 +123,12 @@ export function nextOpenLine(s: MarketSessionAt): string | null {
   return `${KIND_WORD[s.next.kind]} opens ${whenWords(s.next.at, s.at)}`;
 }
 
-/** The rail's badge: "Overnight · live", "Pre-market · live", "Regular · live", "After hours · live",
+/** The rail's badge: "Overnight · open", "Pre-market · live", "Regular · live", "After hours · live",
     "Closed · overnight opens Sun 8:00 PM ET" */
 export function sessionBadge(s: MarketSessionAt = sessionAt(Date.now())): string {
+  /* Overnight is open, but neither stock feed carries overnight prints, so the badge says the session is open,
+     never that the data is live (index options' overnight quotes speak for themselves where they show) */
+  if (s.phase === 'overnight') return `${PHASE_LABEL[s.phase]} · open`;
   if (s.phase !== 'closed') return `${PHASE_LABEL[s.phase]} · live`;
   const next = s.nextPhase;
   return next ? `Closed · ${KIND_WORD[next.kind]} opens ${whenWords(next.at, s.at)}` : 'Closed';

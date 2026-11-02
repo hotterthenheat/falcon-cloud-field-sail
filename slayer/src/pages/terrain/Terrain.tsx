@@ -511,8 +511,9 @@ function useStable<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) 
 
 /* The head's price and its move off the regular close, off ThetaData. The chart series stays the full join.
    The number is the last real bar of the session on the desk, not the newest bar of another session. */
-const SESSION_EMPTY: Record<DeskSession, string> = {
-  overnight: 'No overnight prints',
+/* no note for an overnight with no prints: the gap stays empty (owner, 1 Nov) */
+const SESSION_EMPTY: Record<DeskSession, string | null> = {
+  overnight: null,
   pre: 'No premarket prints',
   rth: 'No regular prints',
   post: 'No after-hours prints',

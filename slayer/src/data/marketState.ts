@@ -13,7 +13,7 @@ interface MarketState {
   word: 'live' | 'closed';
   /** the short form the rail and the footer print: "overnight", "pre-market", "market open", "after hours", "closed for the weekend" */
   short: string;
-  /** the rail's badge: "Overnight · live" … "Closed · overnight opens Sun 8:00 PM ET" */
+  /** the rail's badge: "Overnight · open" … "Closed · overnight opens Sun 8:00 PM ET" */
   badge: string;
   /** one plain sentence */
   line: string;
