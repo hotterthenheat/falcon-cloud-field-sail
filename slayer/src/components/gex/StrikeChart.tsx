@@ -2669,6 +2669,11 @@ const StrikeChart = ({
      bought at the ask and puts sold at the bid up, puts bought and calls sold down (data/flowBuckets.ts). Built on
      demand and torn down when off or when the name has no prints under the filters. */
   const flowBarsRef = useRef<SignedFlowBarT[]>([]);
+  /* The flow pane's symmetric scale, read by the autoscale provider set once at the series' birth. Not an applyOptions
+     per run: options left pending on a histogram while another series' setData re-indexes the time scale (the full
+     history landing) made the library re-colour stale items in its hit test — "Value is null", the pane gone, whenever
+     the pointer rested on the flow pane during a load (seen live 2026-11-01). */
+  const flowMaxRef = useRef(0);
   /** The bar times the tape draws now — the candles' own, never the whole store: a pane series holding times the price
       series does not would shift every logical index and pull the view off its runway */
   const drawnTimes = (): number[] => (candleSeriesRef.current?.data() ?? []).map(d => Number(d.time));
@@ -2701,7 +2706,17 @@ const StrikeChart = ({
     if (!net) {
       /* Appended, never a fixed index. Compare-in-pane mode may already own a pane. */
       const paneIndex = chart.panes().length;
-      net = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' as const }, lastValueVisible: false, priceLineVisible: false, base: 0 }, paneIndex);
+      net = chart.addSeries(
+        HistogramSeries,
+        {
+          priceFormat: { type: 'volume' as const },
+          lastValueVisible: false,
+          priceLineVisible: false,
+          base: 0,
+          autoscaleInfoProvider: () => (flowMaxRef.current > 0 ? { priceRange: { minValue: -flowMaxRef.current, maxValue: flowMaxRef.current } } : null),
+        },
+        paneIndex,
+      );
       flowCallsRef.current = net;
       try {
         chart.panes()[0]?.setStretchFactor(PRICE_STRETCH);
@@ -2726,7 +2741,7 @@ const StrikeChart = ({
         return { time: b.time as UTCTimestamp, value: b.net, color: b.net >= 0 ? `rgba(48,209,88,${a})` : `rgba(255,69,58,${a})` };
       }),
     );
-    if (max > 0) net.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: { minValue: -max, maxValue: max } }) });
+    flowMaxRef.current = max;
     /* the caption's figure: the newest session's net, from its first bar — on the server's tape, the session it holds
        (an overnight or a weekend after it is a newer stretch of bars with no option prints) */
     let from = bars.length - 1;
