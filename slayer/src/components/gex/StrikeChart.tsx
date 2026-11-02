@@ -45,6 +45,7 @@ import { drawRun, type ScriptHandle } from './scriptLayer';
 import ScriptLegend, { type ScriptRun } from './ScriptLegend';
 import ResetViewControl from './ResetViewControl';
 import { LOCAL_TIME, NY_TIME, createZonedChart, localTickMarks, nyTickMarks, rezoneAxis } from './chartTime';
+import { tailOnly } from './barPass';
 import {
   aggregateCandles,
   aggregateSnapshots,
@@ -3544,7 +3545,7 @@ const StrikeChart = ({
          (−83..6 was measured on a mount), and that would have asked for the whole store at once. */
       recentHeldRef.current = false;
       if (held) armTimer = requestAnimationFrame(() => (recentHeldRef.current = true));
-    } else if (bars.length !== altCountRef.current && (altSpec || Math.abs(bars.length - altCountRef.current) > 1)) {
+    } else if (bars.length && !tailOnly(bars, altCountRef.current, firstBarRef.current, prevEdge, held, !!altSpec)) {
       /* A rule clock completes a bar and opens the next in one tick, and a two-session tape can land after a one-
          session paint. Update cannot rewrite older times, so a count jump reloads. */
       candleSeries.setData(bars.map(toMain));
@@ -3558,6 +3559,12 @@ const StrikeChart = ({
       if (altSpec || bars[bars.length - 1].time !== prevEdge) showRecent();
     } else if (bars.length) {
       const last = bars[bars.length - 1];
+      /* a bar that closed and the next that opened in one pass: the closed one's last prints first, then the new one */
+      const prev = bars.length > 1 && last.time > prevEdge ? bars[bars.length - 2] : null;
+      if (prev && prev.time === prevEdge) {
+        candleSeries.update(toMain(prev));
+        volumeSeries.update(toVolume(prev, theme));
+      }
       candleSeries.update(toMain(last));
       volumeSeries.update(toVolume(last, theme));
     } else {
