@@ -37,9 +37,13 @@ const cashGrain = (grain: TapeGrain): boolean => grain === 'day' || grain === 'w
 /** Keep a name's chart tapes fresh: every session's one-minute tape, the timeframe's grain when it is another, the print. */
 export function wantChartTape(ticker: string, grain: TapeGrain, _session: DeskSession): (() => void)[] {
   const offs: (() => void)[] = [wantPrint(ticker)];
-  for (const s of CHART_SESSIONS) offs.push(wantTape(ticker, '1m', s));
+  /* THE DRAWN GRAIN FIRST: a want asks at once, and the page's six terminal slots are taken in the order asked. The
+     one-minute tapes (and their cleaners' day-long print reads, megabytes on NVDA, TSLA, AMD) used to go first, so a
+     5-minute chart's pre-market and after-hours waited behind them and drew the regular session alone for tens of
+     seconds on a busy name (live, 2026-11-01). */
   if (cashGrain(grain)) offs.push(wantTape(ticker, grain, 'rth'));
   else if (grain !== '1m') for (const s of CHART_SESSIONS) offs.push(wantTape(ticker, grain, s));
+  for (const s of CHART_SESSIONS) offs.push(wantTape(ticker, '1m', s));
   return offs;
 }
 

@@ -6,7 +6,6 @@ import {
 } from 'react';
 import { Copy, Eraser, MousePointer2, Settings2, Trash2 } from 'lucide-react';
 import {
-  createChart,
   createSeriesMarkers,
   type ISeriesMarkersPluginApi,
   AreaSeries,
@@ -45,7 +44,8 @@ import { setPaneBars, usePaneScripts } from '../../data/paneScripts';
 import { drawRun, type ScriptHandle } from './scriptLayer';
 import ScriptLegend, { type ScriptRun } from './ScriptLegend';
 import ResetViewControl from './ResetViewControl';
-import { LOCAL_TIME, NY_TIME, localTickMarks, nyTickMarks } from './chartTime';
+import { LOCAL_TIME, NY_TIME, createZonedChart, localTickMarks, nyTickMarks, rezoneAxis } from './chartTime';
+import { tailOnly } from './barPass';
 import {
   aggregateCandles,
   aggregateSnapshots,
@@ -2041,7 +2041,7 @@ const StrikeChart = ({
     if (!container) return;
 
     const s0 = chartSurface(themeRef.current);
-    const chart = createChart(container, {
+    const chart = createZonedChart(container, {
       autoSize: true,
       layout: {
         background: { color: s0.bg },
@@ -2076,7 +2076,7 @@ const StrikeChart = ({
         vertLine: { color: s0.crosshair, labelBackgroundColor: s0.label },
         horzLine: { color: s0.crosshair, labelBackgroundColor: s0.label },
       },
-    });
+    }, () => (tapeRef.current?.clock === 'ny' ? 'ny' : 'reader'));
 
     const candles = makeMain(chart, styleRef.current, themeRef.current);
     styleBuiltRef.current = styleRef.current;
@@ -2670,6 +2670,11 @@ const StrikeChart = ({
      bought at the ask and puts sold at the bid up, puts bought and calls sold down (data/flowBuckets.ts). Built on
      demand and torn down when off or when the name has no prints under the filters. */
   const flowBarsRef = useRef<SignedFlowBarT[]>([]);
+  /* The flow pane's symmetric scale, read by the autoscale provider set once at the series' birth. Not an applyOptions
+     per run: options left pending on a histogram while another series' setData re-indexes the time scale (the full
+     history landing) made the library re-colour stale items in its hit test — "Value is null", the pane gone, whenever
+     the pointer rested on the flow pane during a load (seen live 2026-11-01). */
+  const flowMaxRef = useRef(0);
   /** The bar times the tape draws now — the candles' own, never the whole store: a pane series holding times the price
       series does not would shift every logical index and pull the view off its runway */
   const drawnTimes = (): number[] => (candleSeriesRef.current?.data() ?? []).map(d => Number(d.time));
@@ -2702,7 +2707,17 @@ const StrikeChart = ({
     if (!net) {
       /* Appended, never a fixed index. Compare-in-pane mode may already own a pane. */
       const paneIndex = chart.panes().length;
-      net = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' as const }, lastValueVisible: false, priceLineVisible: false, base: 0 }, paneIndex);
+      net = chart.addSeries(
+        HistogramSeries,
+        {
+          priceFormat: { type: 'volume' as const },
+          lastValueVisible: false,
+          priceLineVisible: false,
+          base: 0,
+          autoscaleInfoProvider: () => (flowMaxRef.current > 0 ? { priceRange: { minValue: -flowMaxRef.current, maxValue: flowMaxRef.current } } : null),
+        },
+        paneIndex,
+      );
       flowCallsRef.current = net;
       try {
         chart.panes()[0]?.setStretchFactor(PRICE_STRETCH);
@@ -2727,7 +2742,7 @@ const StrikeChart = ({
         return { time: b.time as UTCTimestamp, value: b.net, color: b.net >= 0 ? `rgba(48,209,88,${a})` : `rgba(255,69,58,${a})` };
       }),
     );
-    if (max > 0) net.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: { minValue: -max, maxValue: max } }) });
+    flowMaxRef.current = max;
     /* the caption's figure: the newest session's net, from its first bar — on the server's tape, the session it holds
        (an overnight or a weekend after it is a newer stretch of bars with no option prints) */
     let from = bars.length - 1;
@@ -3530,7 +3545,7 @@ const StrikeChart = ({
          (−83..6 was measured on a mount), and that would have asked for the whole store at once. */
       recentHeldRef.current = false;
       if (held) armTimer = requestAnimationFrame(() => (recentHeldRef.current = true));
-    } else if (bars.length !== altCountRef.current && (altSpec || Math.abs(bars.length - altCountRef.current) > 1)) {
+    } else if (bars.length && !tailOnly(bars, altCountRef.current, firstBarRef.current, prevEdge, held, !!altSpec)) {
       /* A rule clock completes a bar and opens the next in one tick, and a two-session tape can land after a one-
          session paint. Update cannot rewrite older times, so a count jump reloads. */
       candleSeries.setData(bars.map(toMain));
@@ -3544,6 +3559,12 @@ const StrikeChart = ({
       if (altSpec || bars[bars.length - 1].time !== prevEdge) showRecent();
     } else if (bars.length) {
       const last = bars[bars.length - 1];
+      /* a bar that closed and the next that opened in one pass: the closed one's last prints first, then the new one */
+      const prev = bars.length > 1 && last.time > prevEdge ? bars[bars.length - 2] : null;
+      if (prev && prev.time === prevEdge) {
+        candleSeries.update(toMain(prev));
+        volumeSeries.update(toVolume(prev, theme));
+      }
       candleSeries.update(toMain(last));
       volumeSeries.update(toVolume(last, theme));
     } else {
@@ -3675,6 +3696,8 @@ const StrikeChart = ({
     if (tapeRef.current?.clock === 'ny') return;
     try {
       chartRef.current?.applyOptions({ localization: LOCAL_TIME, timeScale: { tickMarkFormatter: localTickMarks } });
+      /* the day ticks sit on the zone's midnights (chartTime createZonedChart): weigh the bars again in the new zone */
+      rezoneAxis(candleSeriesRef.current);
     } catch {
       /* chart already gone */
     }

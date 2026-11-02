@@ -59,7 +59,7 @@ export interface HistAnswer {
 }
 
 export interface HistService {
-  /** The day's series for a cut: { status, gzipped JSON } — 404 when there is nothing to serve */
+  /** The day's series for a cut: { status, gzipped JSON } — an empty series (200) when there is nothing to serve */
   answer: (ticker: string, day: string, cut: string) => Promise<{ status: number; gz: Buffer }>;
   /** The inputs for a name and day (read once, then from disk), null when the terminal has none */
   inputs: (ticker: string, day: string) => Promise<HistInputs | null>;
@@ -221,12 +221,15 @@ export function createExposureHist(o: HistOptions): HistService {
       if (recSeries.length) return { status: 200, gz: pack({ format: HIST_FORMAT, ticker: t, day, cut, source: 'recorded', series: recSeries }) };
       /* a finished trading day only: today is live */
       const [y, m, d] = day.split('-').map(Number);
-      if (day >= nyIsoDate(now()) || !isTradingDay(new Date(y, m - 1, d))) return { status: 404, gz: pack({ format: HIST_FORMAT, ticker: t, day, cut, source: 'reconstructed', series: [] }) };
+      /* NOTHING TO SERVE IS AN ANSWER, NOT A MISSING PAGE: 200 with no series (the browser printed every 404 as a console
+         error — VIX and SPX, whose day the terminal cannot rebuild, logged one a day in view; seen live 2026-11-01). The
+         page reads an empty series as "none here" and asks Unusual Whales instead (book/exposureLog.ts pullHist). */
+      if (day >= nyIsoDate(now()) || !isTradingDay(new Date(y, m - 1, d))) return { status: 200, gz: pack({ format: HIST_FORMAT, ticker: t, day, cut, source: 'reconstructed', series: [] }) };
       const key = `${t}|${day}|${cut}`;
       const hit = answers.get(key);
       if (hit) return { status: 200, gz: hit };
       const inp = await inputs(t, day);
-      if (!inp) return { status: 404, gz: pack({ format: HIST_FORMAT, ticker: t, day, cut, source: 'reconstructed', series: [] }) };
+      if (!inp) return { status: 200, gz: pack({ format: HIST_FORMAT, ticker: t, day, cut, source: 'reconstructed', series: [] }) };
       /* the Live book needs the day's prints; a terminal that cannot give them leaves Live on the settled counts */
       const flow = await flowInputs(t, day, inp).catch(e => {
         log(`[exposure-hist] ${t} ${day}: no prints (${e instanceof Error ? e.message : e}); Live reads as Settled`);
