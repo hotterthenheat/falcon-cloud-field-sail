@@ -384,6 +384,11 @@ async function load(path, key, lane) {
     }
     /* a refusal that outlasts the retries comes back as is; the hub keeps the last good answer on screen */
     const type = upstream.headers.get('content-type') || 'application/json';
+    /* a name the vendor does not know (a symbol typed half-way, e.g. AMFC on the way to AMD) is an answer, not a fault:
+       its info reads as empty, so no page logs a 404 for a lookup that simply found nothing */
+    if (upstream.status === 404 && /^\/stock\/[^/]+\/info$/.test(path.split('?')[0])) {
+      return { status: 200, body: Buffer.from('{"data":null}'), type: 'application/json' };
+    }
     return { status: upstream.status, body: buf, type };
   })();
   /* A job is let go after JOB_MS so later asks for the path are not stuck behind it; its late failure is ignored. A job
