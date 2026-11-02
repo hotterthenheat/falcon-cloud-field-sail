@@ -3,7 +3,7 @@
    four-up; the panes draw none. It drives the ACTIVE pane by name (drawTools.tsx `drawChartFor`) and wears what that
    pane's drawing is doing — switch panes and the rail follows. His size, measured on openmarket: a 48px rail, every cell a
    36×36 face at its centre, 20px glyphs, the groups 17px apart with a hairline between, the housekeeping at the foot; on a
-   short window the rows stay 36 and the rail scrolls. Hidden, it is a slim tab at the edge (the `open` every rail keeps).
+   short window the rows stay 36 and the rail scrolls. Hidden, its 14px gutter is the door back (the `open` every rail keeps) — nothing hangs over a tape.
 
    His three clusters, with our tools inside them:
      THE TOOLS        the cursor, a button a family (his seven; our patterns, cycles and icons sit in the closest of them), the search, the star
@@ -12,8 +12,8 @@
                       head switch — it says whose list that is)
      THE HOUSEKEEPING our object tree, undo and redo; his remove every mark (a second press within three seconds
                       confirms), hide the rail, and the active pane's number on a desk of more than one
-   The lists and the sheet fly out into the desk's box (`host`). Not on a phone: one pane there, with its sheet door; the
-   takeover (one pane on the whole screen) keeps the pane's own rail. */
+   The lists and the sheet fly out into the desk's box (`host`). Not on a phone: one pane there, with the pencil in its header
+   (PaneDrawDoor below); the takeover mounts this same rail at its own left edge, so no pane ever draws a rail of its own. */
 
 import { useEffect, useRef, useState } from 'react';
 import { ChevronsLeft, Eye, EyeOff, ListTree, Lock, LockOpen, MousePointer2, Pencil, Redo2, Ruler, Trash2, Undo2 } from 'lucide-react';
@@ -78,20 +78,23 @@ const DeskDrawRail = ({ pane, host, label, title, ground, bg }: Props) => {
   };
 
   if (!rail.open) {
-    /* the way back — a slim column holding one tab, mid-height, so a hidden rail is one click from found */
+    /* the way back: the hidden rail's own gutter IS the door, a full-height 14px column beside the charts with the pencil
+       inside it. Nothing hangs past its edge onto a tape (the owner, 2026-11-02: the tab that floated over the candles
+       and the session-break lines is gone). */
     return (
-      <div className="relative shrink-0 self-stretch" style={{ width: DESK_RAIL_HIDDEN_W }} data-desk-rail="hidden">
-        <button
-          type="button"
-          onClick={() => setRailPrefs({ open: true })}
-          title="Show the drawing tools"
-          aria-label="Show the drawing tools"
-          data-chart-rail
-          className="absolute left-0 top-1/2 -translate-y-1/2 rounded-r-md border border-l-0 border-borderMuted bg-panel/80 px-1 py-2.5 text-textSecondary hover:text-textPrimary shadow-lg shadow-black/40 transition-colors"
-        >
-          <Pencil className="w-3 h-3" />
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => setRailPrefs({ open: true })}
+        title="Show the drawing tools"
+        aria-label="Show the drawing tools"
+        data-chart-rail
+        data-desk-rail="hidden"
+        data-chart-ground={ground}
+        className="shrink-0 self-stretch flex items-center justify-center border-r border-borderMuted bg-panel text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] transition-colors"
+        style={{ width: DESK_RAIL_HIDDEN_W, background: bg }}
+      >
+        <Pencil className="w-2.5 h-2.5" />
+      </button>
     );
   }
 
@@ -242,6 +245,46 @@ const DeskDrawRail = ({ pane, host, label, title, ground, bg }: Props) => {
         />
       )}
     </div>
+  );
+};
+
+/** THE PHONE'S DRAWING DOOR: no desk rail on a phone, so the pane's header carries a pencil beside its other controls;
+    it opens every tool as the bottom sheet and drives the pane by name, as the rail does. Never over the tape. */
+export const PaneDrawDoor = ({ pane, host, className = '' }: { pane: string; host: HTMLElement | null; className?: string }) => {
+  const state = useDrawChartState(pane);
+  const [open, setOpen] = useState(false);
+  const chart = () => drawChartFor(pane);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        title="Drawing tools"
+        aria-label="Drawing tools"
+        aria-expanded={open}
+        aria-pressed={state.drawing}
+        className={`shrink-0 inline-flex items-center justify-center w-7 h-7 rounded ${state.drawing ? 'bg-ink/[0.14] text-textPrimary' : 'text-textMuted hover:text-textPrimary'} ${className}`}
+        data-pane-draw-door
+      >
+        <Pencil className="w-3.5 h-3.5" />
+      </button>
+      {open && host && (
+        <DrawSheet
+          host={host}
+          dock="left"
+          drawTool={state.drawing ? state.tool : 'select'}
+          onPick={kind => {
+            setOpen(false);
+            chart()?.arm(kind);
+          }}
+          onClose={() => setOpen(false)}
+          onTree={() => {
+            setOpen(false);
+            if (!state.treeOpen) chart()?.toggleTree();
+          }}
+        />
+      )}
+    </>
   );
 };
 

@@ -20,7 +20,7 @@ import { useSessionQuote } from '../../data/sessionQuote';
 import { asOfText } from '../../components/ui/states';
 import { barInTape, peekPrint, peekTape, usePrintRev, useTapeRev, useThetaTape, wantPrint } from '../../data/thetaTape';
 import { thetaChartBars } from '../../data/thetaCandles';
-import DeskDrawRail from '../../components/gex/DeskDrawRail';
+import DeskDrawRail, { PaneDrawDoor } from '../../components/gex/DeskDrawRail';
 import { fmtUsd } from '../../data/gex';
 import { CALENDAR_DTES } from '../../data/exposureSurface';
 import { expiryFor } from '../../core/calendar';
@@ -851,6 +851,8 @@ const Pane = ({
   /* This pane's own box — the section its toolbar's menus stay inside; the desk's paneRefs get the same element
      through boxRef. */
   const paneBoxRef = useRef<HTMLDivElement | null>(null);
+  /* …and as state, for the takeover's rail and the phone's draw sheet, which fly out into it */
+  const [paneBoxEl, setPaneBoxEl] = useState<HTMLDivElement | null>(null);
   const [stripH, setStripH] = useState(46);
   /* The same observation answers a second question: how much room the toolbar has. */
   const [stripW, setStripW] = useState(0);
@@ -1172,7 +1174,7 @@ const Pane = ({
           Replay
         </span>
       )}
-      <span className="shrink-0 inline-flex items-center gap-1.5">
+      <span className="shrink-0 inline-flex items-center gap-1.5" data-pane-search="chip">
         {/* The own-name scope chip: every Terrain pane holds its own name, so it wears the bordered chip with the
             mark. */}
         <ScopeChip
@@ -1409,7 +1411,7 @@ const Pane = ({
       }
       {...(expanded
         ? /* the script editor's dock takes the right edge while it is open (data/editorDock.ts) */
-          { role: 'dialog' as const, 'aria-modal': true, tabIndex: -1, 'aria-label': `${ticker} expanded`, style: DOCK_ROOM }
+          { role: 'dialog' as const, 'aria-modal': true, tabIndex: -1, 'aria-label': `${ticker} expanded`, style: DOCK_ROOM, 'data-terrain-takeover': '' }
         : {})}
     >
       {onBar &&
@@ -1433,6 +1435,7 @@ const Pane = ({
         ref={el => {
           paneBoxRef.current = el;
           boxRef?.(el);
+          if (el) setPaneBoxEl(el);
         }}
         onPointerDownCapture={onActivate}
         onFocusCapture={onActivate}
@@ -1464,6 +1467,11 @@ const Pane = ({
         {/* Chart and rail on one line, and that line is the whole pane — `absolute inset-0`, not a flex row under a
             header. */}
         <div className="absolute inset-0 flex">
+          {expanded && !isPhone && (
+            /* THE TAKEOVER DRAWS WITH THE DESK'S RAIL: the one rail, mounted at the takeover's own left edge (the desk's
+               is under the overlay), driving this pane by name. The pane's own floating pencil tab is gone everywhere. */
+            <DeskDrawRail pane={`terrain:${index + 1}`} host={paneBoxEl} title={`Draws on ${ticker}`} ground={ground} bg={surface} />
+          )}
           <div
             className="group relative flex-1 min-w-0"
             /* Expanded, the desk bar floats at the foot: the chart ends above it, its time axis and flow pane whole */
@@ -1503,9 +1511,10 @@ const Pane = ({
               onEnterDraw={chartEnterDraw}
               /* Only the takeover has a top band to spare. */
               railTopOk={expanded}
-              /* docked, the desk draws Noah's one rail (DeskDrawRail) and the panes draw none; the takeover keeps its own,
-                 and the phone its sheet door */
-              hostRail={!isPhone && !expanded}
+              /* The chart never draws a door of its own here: docked, the desk draws Noah's one rail (DeskDrawRail); the
+                 takeover mounts that rail at its left edge; the phone's pencil is in the pane header (PaneDrawDoor). A
+                 pane's floating pencil tab sat over the candles and the session-break lines (the owner, 2026-11-02). */
+              hostRail
               /* IN fullscreen the desk bar floats over the pane's foot (the bar below: `fixed`, 12px above the time
                  axis), where the replay card also lives — the bar lay across the card's controls. */
               footInset={expanded && !(footRoom > 0) ? 44 : 0}
@@ -1547,7 +1556,9 @@ const Pane = ({
                  sit on a bar (the card it replaced stood over the candles and the volume at the bottom-left) */
               <div
                 className="absolute z-20 flex w-max max-w-[calc(100%-120px)] items-center justify-end gap-1.5"
-                style={{ top: expanded ? 52 : isPhone ? stripH + 4 : 34, right: PRICE_GUTTER_PX + 6 }}
+                /* below the legend AND its read line on a narrow tape (a chart under ~720px): at 34 the chips sat on the
+                   heaviest-strike line of a split desk (the matrix pass, 2026-11-02) */
+                style={{ top: expanded ? 52 : isPhone || (stripW > 0 && stripW < 720) ? stripH + 4 : 34, right: PRICE_GUTTER_PX + 6 }}
                 data-terrain-corner-chips
               >
                 {gapLines.length > 0 && (
@@ -1595,7 +1606,10 @@ const Pane = ({
                 data-strip-inner={stripInner}
               >
                 {/* The symbol leads, Pulse-style — then a hairline, then everything else spread to the far edge. */}
-                <span className="shrink-0 flex items-center gap-2 pointer-events-auto">{identityControls}</span>
+                <span className="shrink-0 flex items-center gap-2 pointer-events-auto">
+                  {identityControls}
+                  {isPhone && <PaneDrawDoor pane={`terrain:${index + 1}`} host={paneBoxEl} />}
+                </span>
                 <span className="shrink-0 w-px h-4 bg-borderSubtle" aria-hidden />
                 <div className="flex-1 min-w-0">{paneToolbar(true, 'takeover')}</div>
                 {/* The way back out, at the far right end of the strip — the mirror of the docked corner chip. */}
@@ -1653,7 +1667,22 @@ const Pane = ({
                       Replay
                     </span>
                   )}
-                  <span className="text-t11 font-semibold text-textPrimary">{ticker}</span>
+                  {/* EVERY PANE ITS OWN SEARCH (the owner, 2026-11-02): the symbol and the glass open the name search on
+                      THIS pane — it becomes the active one, and the pick lands here (every pane with Symbol sync on) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onActivate();
+                      onMenu('symbol');
+                    }}
+                    title={`Search a name for chart ${index + 1}`}
+                    aria-label={`${ticker} — search a name for chart ${index + 1}`}
+                    className="pointer-events-auto self-center inline-flex items-center gap-1 rounded px-0.5 -mx-0.5 text-t11 font-semibold text-textPrimary hover:bg-ink/[0.08] transition-colors"
+                    data-pane-search="symbol"
+                  >
+                    {ticker}
+                    <Search className="w-2.5 h-2.5 text-textMuted" aria-hidden data-pane-search-glass />
+                  </button>
                   <span className="text-t10 text-textMuted" aria-hidden>·</span>
                   <span className="text-t10 text-textMuted">{timeframe}</span>
                   <span className="text-t10 text-textMuted" aria-hidden>·</span>
@@ -1690,7 +1719,7 @@ const Pane = ({
                     Replay
                   </span>
                 )}
-                <span className="shrink-0 inline-flex items-center gap-1.5">
+                <span className="shrink-0 inline-flex items-center gap-1.5" data-pane-search="chip">
                   <ScopeChip
                     ticker={ticker}
                     onPick={t => onCfg({ ticker: t, tabs: tabsAfter(cfg.tabs, ticker, t) })}
@@ -1703,6 +1732,22 @@ const Pane = ({
                   {/* The link chip: ∅ → A → B → ∅. Letters, not colours — the palette's inks all mean something
                       already, and a letter reads at 9px where a fourth colour would need a legend. */}
                 </span>
+                {/* the pane's own search glass, beside its symbol — the same sheet, on this pane */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onActivate();
+                    onMenu('symbol');
+                  }}
+                  title={`Search a name for chart ${index + 1}`}
+                  aria-label={`Search a name for chart ${index + 1}`}
+                  className={`shrink-0 inline-flex items-center justify-center ${isPhone ? 'w-7 h-7' : 'w-5 h-5'} rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.05]`}
+                  data-pane-search="glass"
+                >
+                  <Search className="w-3 h-3" />
+                </button>
+                {/* THE PHONE'S DRAWING DOOR, in the header with the pane's other controls — never a tab over the tape */}
+                {isPhone && <PaneDrawDoor pane={`terrain:${index + 1}`} host={paneBoxEl} />}
                 <span className="shrink-0">
                   <HeadPrice ticker={ticker} session={session} />
                 </span>
@@ -1945,13 +1990,14 @@ const subscribeSheet = (fn: () => void) => {
     sheetSubs.delete(fn);
   };
 };
-const DeskNameSheet = ({ tickerOf, onPick, onPages }: { tickerOf: (pane: number) => string | null; onPick: (pane: number, ticker: string) => void; onPages: () => void }) => {
+const DeskNameSheet = ({ tickerOf, targetOf, onPick, onPages }: { tickerOf: (pane: number) => string | null; targetOf: (pane: number) => string | undefined; onPick: (pane: number, ticker: string) => void; onPages: () => void }) => {
   const ask = useSyncExternalStore(subscribeSheet, () => sheetAsk, () => null);
   /* a desk left with the sheet up (a route change) opens shut next time */
   useEffect(() => () => setSheet(null), []);
   const current = ask ? tickerOf(ask.pane) : null;
   if (!ask || !current) return null;
-  return <NameSearchSheet open mode="switch" seed={ask.seed} current={current} onClose={() => setSheet(null)} onPages={onPages} onPick={t => onPick(ask.pane, t)} />;
+  /* keyed by the pane: a search reopened on another pane starts fresh, never holding the last pane's query */
+  return <NameSearchSheet key={ask.pane} open mode="switch" seed={ask.seed} current={current} target={targetOf(ask.pane)} onClose={() => setSheet(null)} onPages={onPages} onPick={t => onPick(ask.pane, t)} />;
 };
 
 const Terrain = () => {
@@ -2313,7 +2359,8 @@ const Terrain = () => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing || e.repeat) return;
       if (editable(e.target) || editable(document.activeElement)) return;
-      const i = activeRef.current;
+      /* In the takeover the keys act on the pane on screen — never on one hidden under the overlay */
+      const i = expandedRef.current ?? activeRef.current;
       /* Read the config, compute the delta, then set — rather than doing any of it inside the updater. An updater
          that also calls setState is not pure, and React is free to run it more than once. */
       const cur = cfgRef.current;
@@ -2335,6 +2382,8 @@ const Terrain = () => {
           return;
         }
         case '[': case ']': {
+          /* the takeover holds one pane: stepping the active one would move the keys onto a pane under the overlay */
+          if (expandedRef.current !== null) return;
           e.preventDefault();
           const n = cur.layout;
           const next = ((Math.min(activeRaw0.current, n - 1) + (e.key === ']' ? 1 : -1)) + n) % n;
@@ -2414,7 +2463,7 @@ const Terrain = () => {
       }
       /* TYPE A NAME ON THE DESK: any other letter opens the name search with that letter in its field (the desk's own
          letters above keep their jobs); not while a menu or the sheet is up */
-      if (/^[a-zA-Z]$/.test(e.key) && !menuOpenRef.current && !sheetAsk && !document.querySelector('[aria-modal="true"]')) {
+      if (/^[a-zA-Z]$/.test(e.key) && !menuOpenRef.current && !sheetAsk && !document.querySelector('[aria-modal="true"]:not([data-terrain-takeover])')) {
         e.preventDefault();
         setSheet({ pane: i, seed: e.key });
       }
@@ -2438,7 +2487,7 @@ const Terrain = () => {
       if (sheetAsk) setSheet(null);
       else {
         if (menuOpenRef.current) setMenu(null);
-        setSheet({ pane: activeRef.current, seed: '' });
+        setSheet({ pane: expandedRef.current ?? activeRef.current, seed: '' });
       }
     };
     window.addEventListener('keydown', onKey, true);
@@ -2743,6 +2792,8 @@ const Terrain = () => {
             onMenu={which => {
               if (which === 'symbol') {
                 if (menuOpenRef.current) setMenu(null);
+                /* a pane's own search door makes that pane the active one (its rail, its keys, the bar follow) */
+                setActiveRaw(i);
                 setSheet(sheetAsk?.pane === i ? null : { pane: i, seed: '' });
                 return;
               }
@@ -2783,6 +2834,8 @@ const Terrain = () => {
       )}
       <DeskNameSheet
         tickerOf={i => cfgRef.current.panes[i]?.ticker ?? null}
+        /* on a split desk the head says whose name this switches — and that Symbol sync carries it to every chart */
+        targetOf={i => (cfgRef.current.layout > 1 ? `Chart ${i + 1}${cfgRef.current.sync.symbol ? ' · synced' : ''}` : undefined)}
         onPages={openPalette}
         onPick={(i, t) => {
           const q = cfgRef.current.panes[i];

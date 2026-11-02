@@ -54,6 +54,8 @@ interface NameSearchSheetProps {
   /** watch: the section a watched name lands in */
   sectionId?: string;
   sectionName?: string;
+  /** switch on a desk of more than one: the chart the pick lands on ("Chart 2"), printed before the name in hand */
+  target?: string;
 }
 
 const FIRST_ROWS = 16;
@@ -128,7 +130,7 @@ const NameRow = memo(({ symbol, name, index, on, here, watched, quote, onHover, 
 });
 NameRow.displayName = 'NameRow';
 
-const NameSearchSheet = ({ open, onClose, mode, current, onPick, seed = '', tabsLine, onPages, sectionId, sectionName }: NameSearchSheetProps) => {
+const NameSearchSheet = ({ open, onClose, mode, current, onPick, seed = '', tabsLine, onPages, sectionId, sectionName, target }: NameSearchSheetProps) => {
   const [query, setQuery] = useState(seed);
   const [highlight, setHighlight] = useState(0);
   const [said, setSaid] = useState<string | null>(null);
@@ -289,6 +291,12 @@ const NameSearchSheet = ({ open, onClose, mode, current, onPick, seed = '', tabs
         {/* THE HEAD: the search, the name in hand as a chip, the way out */}
         <div className="shrink-0 flex items-center gap-2.5 px-3.5 h-12 border-b border-borderSubtle">
           <Search className="w-4 h-4 text-textMuted shrink-0" />
+          {target && (
+            /* whose name this switches: the pane the search was opened on, not always the active one */
+            <span className="shrink-0 inline-flex items-center px-1.5 h-6 rounded border border-borderMuted font-mono text-t10 font-semibold text-textSecondary" data-name-search-target={target.replace(/\D/g, '')}>
+              {target}
+            </span>
+          )}
           {current && (
             <span className="shrink-0 inline-flex items-center gap-1.5 pl-1.5 pr-2 h-6 rounded bg-ink/[0.08] font-mono text-t11 font-bold text-textPrimary" title={mode === 'add' ? `The pane holds ${current}` : `On the chart: ${current}`} data-name-search-current={current}>
               <CompanyLogo ticker={current} size={14} />
