@@ -6,7 +6,6 @@ import {
 } from 'react';
 import { Copy, Eraser, MousePointer2, Settings2, Trash2 } from 'lucide-react';
 import {
-  createChart,
   createSeriesMarkers,
   type ISeriesMarkersPluginApi,
   AreaSeries,
@@ -45,7 +44,7 @@ import { setPaneBars, usePaneScripts } from '../../data/paneScripts';
 import { drawRun, type ScriptHandle } from './scriptLayer';
 import ScriptLegend, { type ScriptRun } from './ScriptLegend';
 import ResetViewControl from './ResetViewControl';
-import { LOCAL_TIME, NY_TIME, localTickMarks, nyTickMarks } from './chartTime';
+import { LOCAL_TIME, NY_TIME, createZonedChart, localTickMarks, nyTickMarks, rezoneAxis } from './chartTime';
 import {
   aggregateCandles,
   aggregateSnapshots,
@@ -2041,7 +2040,7 @@ const StrikeChart = ({
     if (!container) return;
 
     const s0 = chartSurface(themeRef.current);
-    const chart = createChart(container, {
+    const chart = createZonedChart(container, {
       autoSize: true,
       layout: {
         background: { color: s0.bg },
@@ -2076,7 +2075,7 @@ const StrikeChart = ({
         vertLine: { color: s0.crosshair, labelBackgroundColor: s0.label },
         horzLine: { color: s0.crosshair, labelBackgroundColor: s0.label },
       },
-    });
+    }, () => (tapeRef.current?.clock === 'ny' ? 'ny' : 'reader'));
 
     const candles = makeMain(chart, styleRef.current, themeRef.current);
     styleBuiltRef.current = styleRef.current;
@@ -3675,6 +3674,8 @@ const StrikeChart = ({
     if (tapeRef.current?.clock === 'ny') return;
     try {
       chartRef.current?.applyOptions({ localization: LOCAL_TIME, timeScale: { tickMarkFormatter: localTickMarks } });
+      /* the day ticks sit on the zone's midnights (chartTime createZonedChart): weigh the bars again in the new zone */
+      rezoneAxis(candleSeriesRef.current);
     } catch {
       /* chart already gone */
     }

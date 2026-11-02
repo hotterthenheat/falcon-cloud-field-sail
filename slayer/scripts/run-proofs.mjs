@@ -21,6 +21,7 @@ const PROOFS = [
   'lgbm-parity-proof',
   'chart-proof',
   'clock-proof',
+  'chart-zone-proof',
   'contract-quote-proof',
   'compass-return-proof',
   'fixture-proof',
