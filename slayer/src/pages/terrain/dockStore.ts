@@ -29,6 +29,30 @@ import { useSyncExternalStore } from 'react';
 export type DockRoom = 'ladder' | 'heat' | 'surface' | 'flow' | 'regime' | 'building' | 'prints' | 'news' | 'earnings' | 'events';
 export const DOCK_ROOMS: readonly DockRoom[] = ['ladder', 'heat', 'surface', 'flow', 'regime', 'building', 'prints', 'news', 'earnings', 'events'];
 
+/* ONE HOME FOR STRIKE CONTENT (2026-11-02, the owner: "the panel is messing up because it's bringing up strike things
+   but will only do it on the right side"; docs/terrain-panels.md). Six rooms are views of a pane's strike rail. On the
+   desk they open IN THE ACTIVE PANE'S RAIL, on that view, beside the chart they read — never as a second copy at the
+   desk's right edge. The dock column holds the desk-level rooms alone. The phone has no rails, so its sheet keeps
+   every room as a tab. */
+export type RailRoomView = 'net' | 'gex' | 'surface' | 'regime' | 'building' | 'prints';
+export const RAIL_VIEW_OF_ROOM: Partial<Record<DockRoom, RailRoomView>> = {
+  ladder: 'net',
+  heat: 'gex',
+  surface: 'surface',
+  regime: 'regime',
+  building: 'building',
+  prints: 'prints',
+};
+export const isRailRoom = (room: DockRoom | null): boolean => !!room && RAIL_VIEW_OF_ROOM[room] != null;
+/** The rooms the desk's dock column stands: the ones that are not a view of a pane's rail */
+export const DESK_ROOMS: readonly DockRoom[] = DOCK_ROOMS.filter(r => !isRailRoom(r));
+/** The narrowest a grid column stands beside the dock: the dock gives way before a chart is crushed */
+export const DOCK_COLUMN_FLOOR = 320;
+/** How wide the dock may stand in a desk row this wide, with this many grid columns beside it (and the drawing rail's
+    width at the row's lead): never under DOCK_MIN_W, never so wide that a column falls under DOCK_COLUMN_FLOOR */
+export const dockRoomFor = (rowW: number, cols: number, lead = 0): number =>
+  Math.max(DOCK_MIN_W, Math.round(rowW - lead - cols * DOCK_COLUMN_FLOOR - 6 * cols));
+
 /** Measured on openmarket (the partner tree's numbers): the trade rail 316, the Earnings and Events panels ~560. The
     book's matrix and calendar read better a little wider, so they open at 380. */
 export const DOCK_WIDTH_BY_REST: Record<DockRoom, number> = {

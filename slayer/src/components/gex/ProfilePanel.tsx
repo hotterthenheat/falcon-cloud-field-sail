@@ -176,7 +176,9 @@ const VIEW_TABS = [
   /* THE SESSION'S PRINTS (2026-10-31): the option prints by type and side, the stock prints by venue (data/tapeFeed.ts) */
   { value: 'prints', label: 'Prints' },
 ] as const;
-type RailView = (typeof VIEW_TABS)[number]['value'];
+export type RailView = (typeof VIEW_TABS)[number]['value'];
+/** Every view the rail stands on, for a host that keeps the reader's (Terrain's pane config) */
+export const RAIL_VIEWS: readonly RailView[] = VIEW_TABS.map(t => t.value);
 /** The head on TWO ROWS below the full tier (2026-09-16: the view tabs and the host's Expiry
     card on the first, the lane tools on the second — one row cannot hold them all at 340) */
 const HEAD_TOP_2 = 56;
@@ -425,6 +427,11 @@ interface ProfilePanelProps {
   className?: string;
   /** Phone sheet. Ladder only — the calendar is the crash, and it stays unmounted. */
   lockView?: 'ladder';
+  /** The view held by the host (Terrain keeps each pane's, so a rail that remounts — toggled, its book re-read —
+      comes back on the view it was on, and the Panels door can open a pane's rail on a view). Absent, the panel holds
+      its own. */
+  view?: RailView;
+  onView?: (view: RailView) => void;
 }
 
 interface Placed {
@@ -446,6 +453,7 @@ interface Hover {
 const ProfilePanel = ({
   rows, maxAbs, legs, openRatio = null, palette = 'thermal', step, levels, flow, lane, onLane, greek, words = { pos: 'amplifies', neg: 'absorbs' }, focusPrice, onSelect, projection, onGuide, guideOpen = false,
   ticker, width, onWidth, restWidth, chartFloor = CHART_MIN_W, headCard, onClose, closeHint = 'Hide this panel', className = '', lockView,
+  view: viewProp, onView,
 }: ProfilePanelProps) => {
   const mode = modeOf(palette);
   /* ON PAPER (the page's light theme — the panel's own ground, never the chart's) the ramps are the paper ramps
@@ -473,8 +481,12 @@ const ProfilePanel = ({
      the expiries to what the panel's width holds and says so, so a wider panel shows more and a narrow one asks for
      width or fewer. Its snapshot is the name's live book, re-read every ten seconds while the tab is up. */
   /* GEX FIRST (Noah, 2026-10-15, with the panel in front of him: "the gex should also be the first thing that opens") */
-  const [viewState, setView] = useState<RailView>(lockView ?? 'gex');
-  const view = lockView ?? viewState;
+  const [viewState, setViewState] = useState<RailView>(lockView ?? viewProp ?? 'gex');
+  const view = lockView ?? viewProp ?? viewState;
+  const setView = (v: RailView) => {
+    setViewState(v);
+    onView?.(v);
+  };
   /* THE SURFACE TAB'S LENS (2026-11-01, from the data audit): dealer gamma across spot (the field's profile), or the
      vol skew and surface off the live chain (SkewView), or the dealers' charm and vanna hedge into the close (DriftView)
      — one tab, its lens on its head, kept across visits */
@@ -1544,6 +1556,11 @@ const ProfilePanel = ({
     railArmRef.current = arm;
     raf = requestAnimationFrame(draw);
     const host = rootRef.current;
+    /* THE LADDER FOLLOWS ITS BOX (2026-11-02, the owner's three-up: "the strikes don't adjust, nothing does"): the loop
+       rests once the rows settle, and a rail that changed size under it (the window, the layout, the dock, the pane's
+       own rest width) kept the old canvas until the next book tick. Any size change wakes it. */
+    const sizeObs = typeof ResizeObserver === 'undefined' || !host ? null : new ResizeObserver(() => arm());
+    if (sizeObs && host) sizeObs.observe(host);
     const onWheel = (e: WheelEvent) => {
       if (view !== 'ladder') return;
       const g = ladderGeom.current;
@@ -1563,6 +1580,7 @@ const ProfilePanel = ({
     host?.addEventListener('wheel', onWheel, { passive: false });
     return () => {
       cancelAnimationFrame(raf);
+      sizeObs?.disconnect();
       host?.removeEventListener('wheel', onWheel);
       railArmRef.current = () => {};
     };

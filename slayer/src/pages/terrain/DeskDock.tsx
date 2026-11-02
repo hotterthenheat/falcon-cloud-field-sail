@@ -14,7 +14,7 @@ import { snapshotOf } from '../../data/book/feed';
 import { useBookRev } from '../../data/book/store';
 import { useTickerNews } from '../../data/liveRecord';
 import { useNearReports } from '../../data/earningsFeed';
-import { DOCK_ROOMS, setDockWidth, useDockWidth, type DockRoom } from './dockStore';
+import { DOCK_MIN_W, DOCK_ROOMS, setDockWidth, useDockWidth, type DockRoom } from './dockStore';
 import EarningsRoom from './dock/EarningsRoom';
 import EventsRoom from './dock/EventsRoom';
 import FlowRoom from './dock/FlowRoom';
@@ -58,6 +58,8 @@ interface Props {
   onRoom: (room: DockRoom) => void;
   /** the phone's sheet instead of the desk's column */
   sheet?: boolean;
+  /** the most the column may take of the desk's row (dockStore.dockRoomFor): the dock gives way before a chart is crushed */
+  maxW?: number;
 }
 
 /* ── the book's faces: the matrix, the calendar and the gamma profile — the rail's field, the view locked ── */
@@ -171,9 +173,11 @@ const Board = ({ children, room }: { children: ReactNode; room: DockRoom }) => (
   </div>
 );
 
-const DeskDock = ({ room, ticker, names, mode, paper, onClose, onRoom, sheet = false }: Props) => {
+const DeskDock = ({ room, ticker, names, mode, paper, onClose, onRoom, sheet = false, maxW }: Props) => {
   const meta = DOCK_META[room];
-  const width = useDockWidth(room);
+  const kept = useDockWidth(room);
+  /* the room's own width, held under what the desk can give it now — the kept width comes back when the room is there */
+  const width = maxW != null && Number.isFinite(maxW) ? Math.min(kept, Math.max(DOCK_MIN_W, Math.round(maxW))) : kept;
   /* THE GRIP: drag the dock's left edge; the width is the room's own and remembered. Pointer capture keeps the drag
      when the pointer outruns the 6px strip. */
   const grip = (e: ReactPointerEvent<HTMLDivElement>) => {

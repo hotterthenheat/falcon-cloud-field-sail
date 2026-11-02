@@ -75,7 +75,7 @@ import { dealerOf } from '../../core/dealerSign';
 import { useMaxPain } from '../../components/gex/levelExtras';
 import { composeSnapshot, snapshotName } from '../../components/gex/snapshot';
 import { readSessionClock } from '../../data/moc';
-import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, modeOf, type ProfileLane, type ProfilePalette } from '../../components/gex/ProfilePanel';
+import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, RAIL_VIEWS, modeOf, type ProfileLane, type ProfilePalette, type RailView } from '../../components/gex/ProfilePanel';
 import DropdownSelect from '../../components/ui/DropdownSelect';
 import { netSinceOpenRatio } from '../../data/levelview';
 import { useLevelsFor } from '../../data/levelsFor';
@@ -106,8 +106,8 @@ import DesksDoor from './DesksDoor';
 import type { DeskPreset } from './deskPresets';
 import SessionsClock from './SessionsClock';
 import DeskDock from './DeskDock';
-import { closeDock, setDock, toggleDock, useDock, type DockRoom } from './dockStore';
-import { LAYOUT_COUNTS, MAX_PANES, SYNC_BY_REST, countOf, gridStyleOf, isShape, nextShapeOf, readSync, shapeByRest, type LayoutShape, type SyncCfg } from './layoutShapes';
+import { RAIL_VIEW_OF_ROOM, closeDock, dockRoom as dockRoomNow, dockRoomFor, isRailRoom, setDock, toggleDock, useDock, type DockRoom } from './dockStore';
+import { LAYOUT_COUNTS, MAX_PANES, SHAPES, SYNC_BY_REST, countOf, gridStyleOf, isShape, nextShapeOf, readSync, shapeByRest, type LayoutShape, type SyncCfg } from './layoutShapes';
 
 
 /* Terrain — one to six chart panes that own the viewport. Each pane is its own workspace: symbol, interval,
@@ -153,6 +153,10 @@ export interface PaneCfg {
   ladder: boolean;
   /** The strike rail's width in px. Absent = the house default. */
   ladderW?: number;
+  /** Which view the strike rail stands on (Ladder · Matrix · Calendar · Surface · Regime · Building · Prints). A slot
+      field like `ladder`: kept so a rail that remounts comes back on it, and set by the Panels door's book rooms, which
+      open HERE, in the active pane's rail, not as a second copy at the desk's edge. Absent = Calendar. */
+  railView?: RailView;
   /** Which lanes the rail's panel draws — size, what a move forces, or both. Per slot like `ladder`: a way of reading
       a pane. 'size' by default, because the docked panel is 132px and two lanes want room. */
   lane: ProfileLane;
@@ -364,6 +368,7 @@ function readPane(raw: unknown, def: PaneCfg): PaneCfg {
     ladder: typeof c.ladder === 'boolean' ? c.ladder : def.ladder,
     ladderW:
       typeof c.ladderW === 'number' && c.ladderW >= PROFILE_MIN_W && c.ladderW < 4000 ? c.ladderW : def.ladderW,
+    railView: typeof c.railView === 'string' && (RAIL_VIEWS as readonly string[]).includes(c.railView) ? c.railView : def.railView,
     lane: c.lane === 'both' || c.lane === 'size' || c.lane === 'flow' ? c.lane : def.lane,
     theme: typeof c.theme === 'string' && c.theme in CANDLE_THEMES ? (c.theme as CandleThemeKey) : def.theme,
     link: c.link === 'A' || c.link === 'B' ? c.link : null,
@@ -565,7 +570,7 @@ const HeadPrice = ({ ticker, session, className }: { ticker: string; session: De
   }
   if (px == null && quote)
     return (
-      <span className={`font-mono text-t11 font-semibold tnum ${quote.current ? 'text-textPrimary' : 'text-textSecondary'}`} title={quote.current ? 'No prints on this name. Bid and ask.' : `No prints in this session on this feed. The last bid and ask, ${asOfText(quote.at)}.`} data-session-quote={quote.current ? 'live' : 'as-of'}>
+      <span className={`font-mono text-t11 font-semibold tnum whitespace-nowrap ${quote.current ? 'text-textPrimary' : 'text-textSecondary'}`} title={quote.current ? 'No prints on this name. Bid and ask.' : `No prints in this session on this feed. The last bid and ask, ${asOfText(quote.at)}.`} data-session-quote={quote.current ? 'live' : 'as-of'}>
         {quote.bid.toFixed(2)} × {quote.ask.toFixed(2)}
         {!quote.current && quote.at > 0 && <span className="ml-1 font-normal text-t9 text-warn uppercase tracking-widest">{asOfText(quote.at)}</span>}
       </span>
@@ -713,8 +718,29 @@ const SlowTipIf = ({ on, label, children }: { on: boolean; label: string; childr
 /** The strike rail's rest width on this desk: a narrow column beside the tape, not two fifths of the pane (the rail took
     ~40% of a pane's width at the panel's own rest widths). Dragged wider, it keeps the reader's width; the bar's
     STRIKES switch and the panel's × fold it away. */
-/* three or four across: the rail at its floor (PROFILE_MIN_W), the chart keeps the room */
-const railRestWidth = (panes: number, expanded: boolean): number => Math.max(PROFILE_MIN_W, expanded || panes === 1 ? 320 : panes >= 3 ? 180 : 210);
+/* 2026-11-02 (docs/terrain-panels.md): read off the pane's own measured width — three tenths of it, between the rail's
+   floor and 340 — not off the pane count, which gave the wide bottom pane of a 3B the same 180px as the small ones and
+   never moved when the dock or the window changed the pane. One chart or the fullscreen pane: 320. Before the first
+   measure, the old count rule. */
+const railRestWidth = (panes: number, expanded: boolean, paneW = 0): number => {
+  if (expanded || panes === 1) return 320;
+  if (!(paneW > 0)) return panes >= 3 ? PROFILE_MIN_W : 210;
+  return Math.max(PROFILE_MIN_W, Math.min(340, Math.round(paneW * 0.3)));
+};
+/** The narrowest pane that stands its rail: the rail's floor and a chart that still reads beside it. Narrower (six
+    panes at 1280, or a pane the dock squeezed), the rail folds to a strip at the pane's edge that says why, and it comes
+    back by itself when the room does — the reader never toggles it out and in to get it back. */
+const RAIL_ROOM_PX = PROFILE_MIN_W + 220;
+/** A book room opened from the Panels door stands the rail at least this wide (the dock's reading width less the
+    chrome it no longer needs); the pane's ceiling (ProfilePanel panelCeiling) still holds it under half the pane */
+const RAIL_READ_W = 340;
+/** Whether every pane on the desk that has an options book carries its rail (a pane on a name with no listed options
+    has no rail to carry). A desk with no such pane reads as "not every". */
+const everyRail = (c: { layout: number; panes: PaneCfg[] }): boolean => {
+  const able = c.panes.slice(0, c.layout).filter(q => hasListedOptions(q.ticker) !== false);
+  return able.length > 0 && able.every(q => q.ladder);
+};
+const railHasRoom = (paneW: number, expanded: boolean): boolean => expanded || !(paneW > 0) || paneW >= RAIL_ROOM_PX;
 
 /** One pane's fault stays in its cell: the other panes keep drawing, and this one offers to draw again (a new name or
     interval clears it too) — a throw in one chart used to take the whole desk down */
@@ -856,6 +882,24 @@ const Pane = ({
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
+
+  /* THE PANE'S OWN WIDTH (docs/terrain-panels.md): the strike rail's rest width, and whether it has room at all, are
+     read off the pane it belongs to — not off the pane count — so the wide pane of a 3B gets a wide rail, a pane the
+     dock or the window narrowed gets a narrower one, and nothing waits for a toggle to catch up. In 8px steps: a drag
+     of the window is not a render per pixel. */
+  const [paneW, setPaneW] = useState(0);
+  useEffect(() => {
+    const el = paneBoxRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const obs = new ResizeObserver(() => {
+      const w = Math.round(el.getBoundingClientRect().width / 8) * 8;
+      if (w > 0) setPaneW(prev => (prev === w ? prev : w));
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+  const railRest = railRestWidth(paneCount, expanded, paneW);
+  const railRoom = railHasRoom(paneW, expanded);
 
   /* What the strip's rows can actually use — the column, less the gutter it clears on each side. Derived from the
      same expression the padding above applies, so the two cannot disagree about how much room was taken. */
@@ -1231,16 +1275,31 @@ const Pane = ({
   const watchOpen = useWatchlistOpen();
   const alertsInbox = useAlertsDrawer();
   const dock = useDock();
-  const dockRow = (id: DockRoom, section: BarPanel['section'], label: string, icon: ReactNode, needsBook = false): BarPanel => ({
-    id,
-    section,
-    label,
-    icon,
-    on: dock === id,
-    press: () => toggleDock(id),
-    closes: true,
-    blocked: belowLg ? 'needs a wider window' : needsBook && !optionable ? 'no listed options' : undefined,
-  });
+  /* A room that is a view of the strike rail opens IN THIS PANE'S RAIL, on that view (docs/terrain-panels.md): on when
+     the rail stands on it; pressed on, the rail goes; pressed off, the rail comes (on that view, at least a reading
+     width, which the pane's ceiling still holds). A dock left on one of these rooms (stored before this rule) shuts. */
+  const railView = cfg.railView ?? 'gex';
+  const dockRow = (id: DockRoom, section: BarPanel['section'], label: string, icon: ReactNode, needsBook = false): BarPanel => {
+    const view = RAIL_VIEW_OF_ROOM[id];
+    const blocked = belowLg ? 'needs a wider window' : needsBook && !optionable ? 'no listed options' : undefined;
+    if (view) {
+      const on = ladder && railView === view;
+      return {
+        id,
+        section,
+        label,
+        icon,
+        on,
+        press: () => {
+          if (isRailRoom(dockRoomNow())) closeDock();
+          onCfg(on ? { ladder: false } : { ladder: true, railView: view, ladderW: Math.max(cfg.ladderW ?? railRest, RAIL_READ_W) });
+        },
+        closes: true,
+        blocked: blocked ?? (!optionable ? 'no listed options' : undefined),
+      };
+    }
+    return { id, section, label, icon, on: dock === id, press: () => toggleDock(id), closes: true, blocked };
+  };
   const barPanels: BarPanel[] = barDesk
     ? [
         { id: 'replay', section: 'tools', label: 'Replay', icon: <Rewind />, keys: ['P'], on: replay, press: onToggleReplay },
@@ -1767,13 +1826,17 @@ const Pane = ({
             )}
           </div>
 
-          {/* Not on a phone. */}
-          {ladder && rail.rows.length > 0 && (
+          {/* Not on a phone. ONE RULE FOR THE RAIL (docs/terrain-panels.md): on in the pane's config means a column at
+              this pane's right edge, always — the rail, its book's failure card, a card while the book is read, or (no
+              room for it) a folded strip that says why. Never nothing. */}
+          {ladder && railRoom && rail.rows.length > 0 && (
             <ProfilePanel
-              /* The rest width follows the pane count: 520 alone or expanded, 340 on two or four, 240 three across —
-                 the reader's own width once dragged */
-              width={cfg.ladderW ?? railRestWidth(paneCount, expanded)}
-              restWidth={railRestWidth(paneCount, expanded)}
+              /* The rest width follows this pane's own width (railRestWidth) — the reader's own width once dragged */
+              width={cfg.ladderW ?? railRest}
+              restWidth={railRest}
+              /* the pane keeps the view: a rail that remounts comes back on it, and the Panels door opens a view here */
+              view={cfg.railView ?? 'gex'}
+              onView={v => onCfg({ railView: v })}
               onWidth={w => onCfg({ ladderW: w })}
               /* The chart's floor beside the rail: the 2×2's 576px column, except on the three-up desk, where the
                  chart keeps at least half its pane. */
@@ -1813,10 +1876,39 @@ const Pane = ({
             />
           )}
           {/* …and where the rail would stand, the book's failure card */}
-          {ladder && bookDown && rail.rows.length === 0 && (
-            <aside className="hidden xl:flex shrink-0 flex-col p-3 border-l border-borderSubtle overflow-y-auto" style={{ width: Math.min(cfg.ladderW ?? railRestWidth(paneCount, expanded), 340) }} data-terrain-book-down="rail">
+          {ladder && railRoom && bookDown && rail.rows.length === 0 && (
+            <aside className="hidden xl:flex shrink-0 flex-col p-3 border-l border-borderSubtle overflow-y-auto" style={{ width: Math.min(cfg.ladderW ?? railRest, 340) }} data-terrain-book-down="rail">
               <ReadMiss who={ticker} onRetry={retryBook} leave={false} compact />
             </aside>
+          )}
+          {/* …while the book is read: the rail's place is held, so the menu's "on" is on screen and the chart does not
+              jump sideways when the rows land */}
+          {ladder && railRoom && !bookDown && rail.rows.length === 0 && (
+            <aside
+              className="hidden xl:flex shrink-0 flex-col items-center justify-center gap-1 p-3 border-l border-borderSubtle bg-panel text-center"
+              style={{ width: Math.min(cfg.ladderW ?? railRest, 340) }}
+              data-rail-standin="loading"
+            >
+              <span className="font-mono text-t10 uppercase tracking-widest text-textMuted">Strikes</span>
+              <span className="font-mono text-t11 text-textSecondary">
+                {bookStatus(ticker) === 'live' ? `No strikes on ${ticker} in this cut` : `Reading the ${ticker} book…`}
+              </span>
+            </aside>
+          )}
+          {/* …and no room for it: a strip at the pane's edge that says so. The rail comes back by itself when the pane
+              widens; a press opens this chart full screen, its rail beside it. */}
+          {ladder && !railRoom && (
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              className="hidden xl:flex shrink-0 w-7 flex-col items-center justify-center gap-2 border-l border-borderSubtle bg-panel text-textMuted hover:text-textPrimary hover:bg-ink/[0.04] transition-colors"
+              title={`No room for the strike rail beside this chart (the pane is ${paneW}px). It comes back by itself when there is: close the side panel, widen the window or pick fewer charts. Press for this chart full screen with its rail.`}
+              aria-label="Strike rail folded for room. Open this chart full screen with its rail"
+              data-rail-standin="folded"
+            >
+              <Columns2 className="w-3.5 h-3.5" />
+              <span className="[writing-mode:vertical-rl] font-mono text-t10 uppercase tracking-widest">Strikes</span>
+            </button>
           )}
         </div>
         {/* The guide in focus — over the whole pane, the pane blurred behind it */}
@@ -2100,7 +2192,9 @@ const Terrain = () => {
   /* the calendars' "This desk" scope: every name on the panes, once */
   const deskKey = panes.map(p => p.ticker.toUpperCase()).join(',');
   const deskNames = useMemo(() => Array.from(new Set(deskKey.split(','))), [deskKey]);
-  const anyLadder = panes.some(p => p.ladder);
+  /* "Every strike rail" is on when every chart on the desk that has a book carries its rail — not when any one does:
+     with one rail off, the row and ⇧R put the rest up, where Noah's took every rail down and asked for a second press */
+  const allLadder = everyRail(cfg);
   /* The page's theme, as the rails read it: the rails wear the page's theme, not their tapes' */
   const pageLight = chartGround(usePageDefaultCandleKey()) === 'light';
 
@@ -2139,6 +2233,28 @@ const Terrain = () => {
     deskBoxRef.current = el;
     setDeskBox(el);
   }, []);
+  /* The desk row's width, less what stands at its lead (Noah's drawing rail) — what the dock may take of it is read off
+     this (dockStore.dockRoomFor), so the dock gives way before a chart is crushed */
+  const [deskRoom, setDeskRoom] = useState<{ w: number; lead: number }>({ w: 0, lead: 0 });
+  useEffect(() => {
+    if (!deskBox || typeof ResizeObserver === 'undefined') return;
+    const read = () => {
+      const r = deskBox.getBoundingClientRect();
+      const grid = deskBox.querySelector<HTMLElement>('[data-terrain-shape]');
+      const lead = grid ? Math.max(0, Math.round(grid.getBoundingClientRect().left - r.left)) : 0;
+      const w = Math.round(r.width);
+      setDeskRoom(prev => (prev.w === w && prev.lead === lead ? prev : { w, lead }));
+    };
+    read();
+    const obs = new ResizeObserver(read);
+    obs.observe(deskBox);
+    return () => obs.disconnect();
+  }, [deskBox]);
+  /* On the desk a book room lives in a pane's rail, never in the dock column: one left open there (the phone's sheet,
+     or a desk stored before this rule) shuts rather than stand a second copy of a pane's strikes at the edge */
+  useEffect(() => {
+    if (!isPhone && !belowLg && isRailRoom(dockRoom)) closeDock();
+  }, [isPhone, belowLg, dockRoom]);
   /* the phone's Panels door opens the dock's sheet on the book's matrix (its tabs reach every room) */
   const phoneRoom: DockRoom = 'ladder';
   /* Mirrors for the key handler, which is installed once and must never read a stale closure — the same pattern the
@@ -2258,9 +2374,9 @@ const Terrain = () => {
         case 'R': {
           if (belowLgRef.current) return;
           e.preventDefault();
-          const any = cur.panes.slice(0, cur.layout).some(q => q.ladder);
-          setCfg(prev => ({ ...prev, panes: prev.panes.map(q => ({ ...q, ladder: !any })) }));
-          setAnnounce(any ? 'Every strike rail hidden' : 'Strike rail on every chart');
+          const all = everyRail(cur);
+          setCfg(prev => ({ ...prev, panes: prev.panes.map(q => ({ ...q, ladder: !all })) }));
+          setAnnounce(all ? 'Every strike rail hidden' : 'Strike rail on every chart');
           return;
         }
         /* Replay. Acts on the active pane, like every other pane key. The chart owns the transport once it is up;
@@ -2393,7 +2509,7 @@ const Terrain = () => {
   /* THE BAR'S LEAD after the chart style (openmarket's order): the layout door, and the desk door — the colours, the
      session and the units the foot strip used to carry */
   const deskRows = [
-    ...(!belowLg && anyLadder && !pageLight
+    ...(!belowLg && panes.some(p => p.ladder) && !pageLight
       ? [{ key: 'colours', label: 'Colours', control: <DropdownSelect label="Colours" value={cfg.palette} options={PALETTE_OPTIONS} onChange={p => setCfg(prev => ({ ...prev, palette: p }))} title="What the rails' colours mean" testId="terrain-colours" /> }]
       : []),
     { key: 'session', label: 'Session', control: <SessionBook /> },
@@ -2426,8 +2542,8 @@ const Terrain = () => {
       label: 'Every strike rail',
       icon: <Columns2 />,
       keys: ['⇧', 'R'],
-      on: anyLadder,
-      press: () => setCfg(prev => ({ ...prev, panes: prev.panes.map(p => ({ ...p, ladder: !anyLadder })) })),
+      on: allLadder,
+      press: () => setCfg(prev => ({ ...prev, panes: prev.panes.map(p => ({ ...p, ladder: !allLadder })) })),
       blocked: belowLg ? 'needs a wider window' : undefined,
     },
   ];
@@ -2646,8 +2762,17 @@ const Terrain = () => {
         )}
       </div>
       {/* THE DOCK beside the grid — not on a phone (its sheet is below), not below xl, never over a fullscreen pane */}
-      {!isPhone && !belowLg && expanded === null && dockRoom && (
-        <DeskDock room={dockRoom} ticker={stripPane.ticker} names={deskNames} mode={modeOf(cfg.palette)} paper={pageLight} onClose={closeDock} onRoom={setDock} />
+      {!isPhone && !belowLg && expanded === null && dockRoom && !isRailRoom(dockRoom) && (
+        <DeskDock
+          room={dockRoom}
+          ticker={stripPane.ticker}
+          names={deskNames}
+          mode={modeOf(cfg.palette)}
+          paper={pageLight}
+          onClose={closeDock}
+          onRoom={setDock}
+          maxW={deskRoom.w > 0 ? dockRoomFor(deskRoom.w, SHAPES[cfg.shape].cols, deskRoom.lead) : undefined}
+        />
       )}
       </div>
       {isPhone && dockRoom && (
