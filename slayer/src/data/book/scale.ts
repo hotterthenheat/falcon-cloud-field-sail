@@ -7,8 +7,9 @@ import { keptLeg, keptVendorLeg, DEALER_SIDE, type Right } from '../../core/deal
 import { type StrikeNode } from '../../types/market';
 import { blackScholesGreeks } from '../../core/greeks';
 import { tradingYears } from '../../core/tradingYear';
-import { carryFor } from '../../core/carry';
-import { dealerInventory, flowFirm, flowImbalance, flowWindow, ivOnTradingClock, markGap, quotedVolPoint, quoteMaxAge, smoothSmile, unsignedShare } from '../../core/volClock';
+import { carryFor, DEFAULT_R } from '../../core/carry';
+import { dealerInventory, flowFirm, flowImbalance, flowWindow, calendarYears, ivOnTradingClock, markGap, quotedVolPoint, quoteMaxAge, smoothSmile, unsignedShare } from '../../core/volClock';
+import { impliedBookSpot, type ParityPair } from '../../core/parity';
 import { contractHigher } from '../liveHigher';
 import { noteClose, noteNodes, peakStrikes, type CloseRow } from '../nodeScore';
 import { type UwContract, type UwFlowStrike, type UwGreekStrike } from '../whales';
@@ -425,7 +426,7 @@ function add3(right: Right, dealerSigned: boolean, scale: (v: number) => number,
 }
 
 /** The flow book beside the open-interest book. A failed gate, or a gap too small to mark, draws the open-interest figure. N still moves with the tape. */
-function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: string, spot: number, ticker: string, near: boolean, years: number, volPt: number, r?: number, q?: number): void {
+function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: string, spot: number, ticker: string, near: boolean, years: number, volPt: number, r?: number, q?: number, priceSpot = spot): void {
   if (!(spot > 0)) return;
   const share = expiry ? quotedVolPoint(expiry, Date.now()) ** 2 : 1;
   const ident = (v: number) => v;
@@ -446,21 +447,21 @@ function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: stri
     const dex = v?.asks && !heldGate ? { call: add3('C', false, dexOf, v.d[0], v.d[1], v.d[2]), put: add3('P', false, dexOf, v.d[3], v.d[4], v.d[5]) } : { call: n.callDex, put: n.putDex };
     const vanna = v?.asks && !heldGate ? { call: add3('C', true, vanOf, v.v[0], v.v[1], v.v[2]), put: add3('P', true, vanOf, v.v[3], v.v[4], v.v[5]) } : { call: n.callVanna, put: n.putVanna };
     const charm = v?.asks && !heldGate ? { call: add3('C', true, chmOf, v.c[0], v.c[1], v.c[2]), put: add3('P', true, chmOf, v.c[3], v.c[4], v.c[5]) } : { call: n.callCharm, put: n.putCharm };
-    const callBs = n.callIv && n.callIv > 0 && years > 0 ? blackScholesGreeks(spot, n.strike, years, n.callIv, r, q) : null;
-    const putBs = n.putIv && n.putIv > 0 && years > 0 ? blackScholesGreeks(spot, n.strike, years, n.putIv, r, q) : null;
+    const callBs = n.callIv && n.callIv > 0 && years > 0 ? blackScholesGreeks(priceSpot, n.strike, years, n.callIv, r, q) : null;
+    const putBs = n.putIv && n.putIv > 0 && years > 0 ? blackScholesGreeks(priceSpot, n.strike, years, n.putIv, r, q) : null;
     if (ticker && v?.asks && callBs && callCount !== 0) {
       const key = `${ticker}|${nyIsoDate()}`;
       if (!loggedFlow.has(key)) {
         loggedFlow.add(key);
-        const local = DEALER_SIDE.C * callBs.gamma * callCount * 100 * spot * spot * 0.01;
+        const local = DEALER_SIDE.C * callBs.gamma * callCount * 100 * priceSpot * priceSpot * 0.01;
         const summed = v.g[0] + v.g[1] + v.g[2];
         const gap = summed !== 0 ? ((local - summed) / Math.abs(summed)) * 100 : 0;
         const sign = Math.sign(local) === Math.sign(summed) || local === 0 || summed === 0 ? 'same' : 'opposite';
         console.info(`[flow] ${ticker} ${n.strike}C ${sign} ${gap.toFixed(1)}%`);
       }
     }
-    const hc = callBs ? contractHigher(spot, n.strike, years, n.callIv ?? 0, callCount, 'C', volPt) : null;
-    const hp = putBs ? contractHigher(spot, n.strike, years, n.putIv ?? 0, putCount, 'P', volPt) : null;
+    const hc = callBs ? contractHigher(priceSpot, n.strike, years, n.callIv ?? 0, callCount, 'C', volPt) : null;
+    const hp = putBs ? contractHigher(priceSpot, n.strike, years, n.putIv ?? 0, putCount, 'P', volPt) : null;
     const higher = { color: { call: hc?.color ?? 0, put: hp?.color ?? 0 }, vomma: { call: hc?.vomma ?? 0, put: hp?.vomma ?? 0 }, speed: { call: hc?.speed ?? 0, put: hp?.speed ?? 0 }, veta: { call: hc?.veta ?? 0, put: hp?.veta ?? 0 }, zomma: { call: hc?.zomma ?? 0, put: hp?.zomma ?? 0 } };
     drafts.push({ n, held: heldGate, outside, gex, dex, vanna, charm, vex: { call: callBs ? keptLeg('C', callBs.vega * 100 * volPt, callCount) : n.callVex, put: putBs ? keptLeg('P', putBs.vega * 100 * volPt, putCount) : n.putVex }, pack: higher });
   }
@@ -484,8 +485,8 @@ function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: stri
       vex = { call: d.n.callVex, put: d.n.putVex };
       const cN = d.n.callBook ?? d.n.callOI;
       const pN = d.n.putBook ?? d.n.putOI;
-      const hc = years > 0 && (d.n.callIv ?? 0) > 0 ? contractHigher(spot, d.n.strike, years, d.n.callIv ?? 0, cN, 'C', volPt) : null;
-      const hp = years > 0 && (d.n.putIv ?? 0) > 0 ? contractHigher(spot, d.n.strike, years, d.n.putIv ?? 0, pN, 'P', volPt) : null;
+      const hc = years > 0 && (d.n.callIv ?? 0) > 0 ? contractHigher(priceSpot, d.n.strike, years, d.n.callIv ?? 0, cN, 'C', volPt) : null;
+      const hp = years > 0 && (d.n.putIv ?? 0) > 0 ? contractHigher(priceSpot, d.n.strike, years, d.n.putIv ?? 0, pN, 'P', volPt) : null;
       higher = { color: { call: hc?.color ?? 0, put: hp?.color ?? 0 }, vomma: { call: hc?.vomma ?? 0, put: hp?.vomma ?? 0 }, speed: { call: hc?.speed ?? 0, put: hp?.speed ?? 0 }, veta: { call: hc?.veta ?? 0, put: hp?.veta ?? 0 }, zomma: { call: hc?.zomma ?? 0, put: hp?.zomma ?? 0 } };
     }
     d.n.flow = { gex, dex, vex, vanna, charm, ...higher, disagree: show && flowNet !== 0 && d.n.netGex !== 0 && Math.sign(flowNet) !== Math.sign(d.n.netGex), held: !show, outside: d.outside };
@@ -501,6 +502,14 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
   const volPt = expiry ? quotedVolPoint(expiry, priced.at) : 1;
   const near = !!expiry && flowWindow(expiry);
   const carry = ticker ? carryFor(ticker) : null;
+  const pairs: ParityPair[] = [];
+  for (const [strike, leg] of book) {
+    if (leg.callBidPx > 0 && leg.callAskPx >= leg.callBidPx && leg.putBidPx > 0 && leg.putAskPx >= leg.putBidPx) {
+      pairs.push({ strike, callBid: leg.callBidPx, callAsk: leg.callAskPx, putBid: leg.putBidPx, putAsk: leg.putAskPx });
+    }
+  }
+  const rate = carry?.r ?? DEFAULT_R;
+  const spotPx = expiry && spot > 0 ? impliedBookSpot(ticker, spot, pairs, rate, calendarYears(expiry, priced.at)) : spot;
   const painted = nodes.map(n0 => {
     const leg = book.get(n0.strike);
     if (!leg) return n0;
@@ -523,12 +532,19 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
     for (const n of painted) {
       const leg = book.get(n.strike);
       if (!leg) continue;
-      if (leg.callIv > 0 || (leg.callBidPx > 0 && leg.callAskPx > 0)) n.callIv = ivOnTradingClock(leg.callBidPx, leg.callAskPx, leg.callIv, priced.px || spot, n.strike, expiry, 'C', priced.at, carry?.r, carry?.q);
-      if (leg.putIv > 0 || (leg.putBidPx > 0 && leg.putAskPx > 0)) n.putIv = ivOnTradingClock(leg.putBidPx, leg.putAskPx, leg.putIv, priced.px || spot, n.strike, expiry, 'P', priced.at, carry?.r, carry?.q);
+      if (leg.callIv > 0 || (leg.callBidPx > 0 && leg.callAskPx > 0)) n.callIv = ivOnTradingClock(leg.callBidPx, leg.callAskPx, leg.callIv, spotPx, n.strike, expiry, 'C', priced.at, carry?.r, carry?.q);
+      if (leg.putIv > 0 || (leg.putBidPx > 0 && leg.putAskPx > 0)) n.putIv = ivOnTradingClock(leg.putBidPx, leg.putAskPx, leg.putIv, spotPx, n.strike, expiry, 'P', priced.at, carry?.r, carry?.q);
     }
   }
   smoothSide(painted, 'callIv');
   smoothSide(painted, 'putIv');
+  if (spotPx !== spot) {
+    for (let i = 0; i < painted.length; i++) {
+      const n = painted[i];
+      if (n === nodes[i]) painted[i] = { ...n, bookPx: spotPx };
+      else n.bookPx = spotPx;
+    }
+  }
   if (!(spot > 0) || !(t > 0)) return painted;
   let volSum = 0;
   let bareSum = 0;
@@ -546,8 +562,8 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
     const bare = leg.callMid + leg.callNone + leg.putMid + leg.putNone;
     const firm = !near || flowFirm(Math.abs(callNet) + Math.abs(putNet), gross, unsignedShare(bare, 0, gross));
     n.flowFirm = firm;
-    const call = n.callIv && n.callIv > 0 ? blackScholesGreeks(spot, n.strike, t, n.callIv, carry?.r, carry?.q) : null;
-    const put = n.putIv && n.putIv > 0 ? blackScholesGreeks(spot, n.strike, t, n.putIv, carry?.r, carry?.q) : null;
+    const call = n.callIv && n.callIv > 0 ? blackScholesGreeks(spotPx, n.strike, t, n.callIv, carry?.r, carry?.q) : null;
+    const put = n.putIv && n.putIv > 0 ? blackScholesGreeks(spotPx, n.strike, t, n.putIv, carry?.r, carry?.q) : null;
     if (near) {
       const callInv = dealerInventory(leg.callOI, leg.callAsk, leg.callBid, leg.callMulti, leg.callVol);
       const putInv = dealerInventory(leg.putOI, leg.putAsk, leg.putBid, leg.putMulti, leg.putVol);
@@ -585,7 +601,7 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
     n.netVanna = n.callVanna + n.putVanna;
     n.netCharm = n.callCharm + n.putCharm;
   }
-  stampFlow(painted, book, expiry, spot, ticker, near, t, volPt, carry?.r, carry?.q);
+  stampFlow(painted, book, expiry, spot, ticker, near, t, volPt, carry?.r, carry?.q, spotPx);
   if (ticker && spot > 0 && near) {
     const flow = peakStrikes(painted.map(n => ({ strike: n.strike, value: (n.flow?.gex.call ?? 0) + (n.flow?.gex.put ?? 0) })));
     const oi = peakStrikes(painted.map(n => ({ strike: n.strike, value: n.netGex })));

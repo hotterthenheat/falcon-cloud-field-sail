@@ -242,6 +242,7 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow, mode: BookMod
       return null;
     }
     closed.push(false);
+    const pricedSpot = col.chain.find(n => (n.bookPx ?? 0) > 0)?.bookPx ?? snapshot.spot;
     const m = new Map<number, Record<HigherKey, { call: number; put: number }>>();
     const at = new Map(strikes.map((s, si) => [s, si]));
     for (const node of col.chain) {
@@ -263,7 +264,7 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow, mode: BookMod
       if (si != null && dropped) blankMiss[si] = true;
       const h = mode === 'flow' && node.flow
         ? { color: node.flow.color, vomma: node.flow.vomma, speed: node.flow.speed, veta: node.flow.veta, zomma: node.flow.zomma }
-        : strikeHigher(snapshot.spot, node.strike, t, node.callIv, node.putIv, callN, putN, volPt);
+        : strikeHigher(pricedSpot, node.strike, t, node.callIv, node.putIv, callN, putN, volPt);
       if (h) m.set(node.strike, h);
     }
     return m;

@@ -62,3 +62,22 @@ export function parityForward(pairs: readonly ParityPair[], spot: number, r: num
   const b = Math.log(F / spot) / t;
   return { F, n: fs.length, strikes: usable.map(x => x.k).sort((a, c) => a - c), lo: fs[0], hi: fs[fs.length - 1], b, q: r - b, r, t, spot };
 }
+
+/* European index roots. A weekly root is the same book as the cash index. Equity options are American, so this
+   spot is not used on them. */
+const INDEX_BOOK = new Set(['SPX', 'SPXW', 'NDX', 'NDXP', 'RUT', 'RUTW', 'VIX', 'VIXW', 'XSP']);
+/** Under seven calendar days the basis belongs in the spot, not in ln(F/S)/T. */
+const SHORT_BOOK = 7 / 365;
+
+/** The spot a short-dated index book is priced at. Cash, unless the expiry is under seven calendar days and the
+    chain's own parity forward is a small basis away from the print. Then S* = F·e^{−rT}, so a stale index does not
+    move the heatmap. Equities, and anything further out, stay on the cash print. */
+export function impliedBookSpot(ticker: string, cash: number, pairs: readonly ParityPair[], r: number, t: number): number {
+  const name = ticker.trim().toUpperCase();
+  if (!INDEX_BOOK.has(name) || !(cash > 0) || !(t > 0) || t >= SHORT_BOOK) return cash;
+  const fwd = parityForward(pairs, cash, r, t);
+  if (!fwd) return cash;
+  const s = fwd.F * Math.exp(-r * t);
+  if (!(s > 0) || Math.abs(s / cash - 1) > 0.02) return cash;
+  return s;
+}

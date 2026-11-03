@@ -313,6 +313,7 @@ const RAMPS: Record<
    leaves most cells black. Gamma 0.4 maps median 0.05 → 0.30, p90 0.24 → 0.56; order, sign and zero survive. */
 const HEAT_GAMMA = 0.4;
 function heatT(value: number, maxAbs: number, gamma: number = HEAT_GAMMA): number {
+  if (!Number.isFinite(value)) return 0;
   const linear = Math.min(1, Math.abs(value) / (maxAbs || 1));
   return Math.pow(linear, gamma);
 }
