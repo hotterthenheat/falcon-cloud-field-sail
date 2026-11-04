@@ -259,7 +259,8 @@ function railForCut(ticker: string, cut: RailCut, mode: BookMode = 'oi'): RailDa
   const legs = new Map<number, { put: number; call: number }>();
   const rows = nodes
     .map(n => {
-      legs.set(n.strike, { put: n.putOI, call: n.callOI });
+      /* The ladder is today's contracts: put volume left, call volume right. Not gamma, not open interest. */
+      legs.set(n.strike, { put: n.putVol ?? 0, call: n.callVol ?? 0 });
       return { strike: n.strike, value: n.netGex, callOI: n.callOI };
     })
     .sort((a, b) => b.strike - a.strike);
@@ -1051,7 +1052,7 @@ const Pane = ({
     return buildFlowFromRows(rail.rows, levels.spot, repriced);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flowStrikes, levels.spot, fieldNodes, ticker, bookRev, bookMode]);
-  /* The ladder's two legs: open interest, puts and calls, not gamma. The size lane draws them.
+  /* The ladder's two legs: today's put volume and call volume, not gamma. The size lane draws them.
      The spine's old ghost was net gamma since the open; the ladder does not read it. */
   const legs = railData.legs;
   const openRatio = useMemo(
@@ -1983,7 +1984,7 @@ const Pane = ({
         {/* The guide in focus — over the whole pane, the pane blurred behind it */}
         {ladder && (
           <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read this panel" testId="profile-guide">
-            <ProfileGuide rows={rail.rows} levels={levels} flow={flow} />
+            <ProfileGuide />
           </GuideFocus>
         )}
       </div>

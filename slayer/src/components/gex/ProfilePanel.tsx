@@ -93,7 +93,7 @@ const fmtCount = (n: number): string => {
 export type ProfileLane = 'both' | 'size' | 'flow';
 export const LANE_OPTIONS: DropdownOption<ProfileLane>[] = [
   { value: 'both', label: 'Both', hint: 'What sits at each strike, and what a move there costs, side by side' },
-  { value: 'size', label: 'Size', hint: 'Puts and calls at each strike, by open interest' },
+  { value: 'size', label: 'Size', hint: 'Put volume and call volume at each strike' },
   { value: 'flow', label: 'Flow', hint: 'Only what a move to each strike costs' },
 ];
 /** The Map hands ExposureLevels (with the pin); a Terrain pane hands KeyLevels (without) */
@@ -381,7 +381,7 @@ interface ProfilePanelProps {
   rows: GexLevel[];
   /** The largest |value| in the window — the size lane's scale */
   maxAbs: number;
-  /** Per strike, open interest: puts and calls. The ladder's two legs. Omitted, the net alone is drawn as one leg. */
+  /** Per strike, today's volume: puts and calls. The ladder's two legs. A strike with none draws nothing. */
   legs?: ReadonlyMap<number, { put: number; call: number }>;
   /** Per strike, the net at the open as a ratio of now — the spine's dashed ghost */
   openRatio?: ReadonlyMap<number, number> | null;
@@ -692,8 +692,9 @@ const ProfilePanel = ({
     dataRev.current++;
   }, [rows, maxAbs, legs, openRatio, mode, step, levels, flow, lane, focusPrice, vp, view, paper, pageTheme]);
 
-  const showSize = lane !== 'flow';
-  const showFlow = lane !== 'size';
+  /* The ladder is call volume against put volume. The flow lane is what a move forces, from gamma, so it does not draw on this view. */
+  const showSize = view === 'ladder' || lane !== 'flow';
+  const showFlow = view !== 'ladder' && lane !== 'size';
   const bothLanes = showSize && showFlow;
   /* the lanes' split — the reader's, live while the sash is in hand */
   const split = useSplitPref();
@@ -741,8 +742,6 @@ const ProfilePanel = ({
         footRef.current = { top: H, h: Htot - H, w: W };
         setFoot(footRef.current);
       }
-      /* The pin is the Map's; a Terrain pane's levels carry none. NaN is never near anything. */
-      const pin = levels.pin ?? Number.NaN;
       const tapeLast = typeof p.last === 'function' ? p.last() : null;
       const spotPx = tapeLast != null && Number.isFinite(tapeLast) && tapeLast > 0 ? tapeLast : levels.spot;
       const tierNow = profileTier(W);
@@ -890,10 +889,9 @@ const ProfilePanel = ({
       }
       placedRef.current = placed;
       const stride = Math.max(1, Math.ceil(LABEL_PITCH / pitch));
-      const isLevel = (k: number) => near(k, levels.callWall) || near(k, levels.putWall) || near(k, levels.supreme) || near(k, pin);
       const isFocus = (k: number) => focusPrice != null && near(k, focusPrice);
       const isHover = (k: number) => hv != null && near(k, hv.strike);
-      const labelled = (i: number, k: number) => i % stride === 0 || isLevel(k) || isFocus(k) || isHover(k);
+      const labelled = (i: number, k: number) => i % stride === 0 || isFocus(k) || isHover(k);
 
       /* Hover wash first, under everything */
       if (hv) {
@@ -903,14 +901,7 @@ const ProfilePanel = ({
           ctx.fillRect(0, row.y - pitch / 2, W, pitch);
         }
       }
-      /* THE SUPREME'S ROW washed in its magenta across the panel (the partner's row) */
-      {
-        const row = placed.find(r => near(r.strike, levels.supreme));
-        if (row) {
-          ctx.fillStyle = ink.supremeWash;
-          ctx.fillRect(0, row.y - pitch / 2, W, pitch);
-        }
-      }
+      /* THE SUPREME'S ROW is a gamma mark. The ladder does not paint it. */
 
       /* THE KEY under the head (the full and mid tiers, the ladder view): the ramp's two poles
          with their words, the spine, the ghost at the open, the supreme's magenta */
@@ -964,7 +955,7 @@ const ProfilePanel = ({
         ctx.textBaseline = 'middle';
         if (showSize) {
           ctx.textAlign = 'center';
-          ctx.fillText('◂ PUTS · CALLS ▸', sizeL + (sizeR - sizeL) / 2, hy);
+          ctx.fillText('◂ PUT VOL · CALL VOL ▸', sizeL + (sizeR - sizeL) / 2, hy);
         }
         /* The strike head sits on the same center as the numbers under it. Wide: STRIKE and Δ SPOT as one
            pair in the middle of the column when they fit; thin: the word alone, centered. */
@@ -1094,30 +1085,7 @@ const ProfilePanel = ({
       });
       ctx.stroke();
 
-      /* THE FLIP — a dashed rule across both lanes */
-      const flipY = yFor(levels.flip);
-      if (flipY != null && flipY > HEAD_BAND && flipY < H - FOOT_BAND) {
-        const yy = Math.round(flipY) + 0.5;
-        ctx.save();
-        ctx.setLineDash([3, 3]);
-        ctx.strokeStyle = ink.flipRule;
-        ctx.beginPath();
-        ctx.moveTo(4, yy);
-        ctx.lineTo(W - 4, yy);
-        ctx.stroke();
-        ctx.restore();
-        ctx.font = `9px ${FIG}`;
-        ctx.fillStyle = ink.flipText;
-        ctx.textBaseline = 'bottom';
-        if (showFlow) {
-          ctx.textAlign = 'right';
-          ctx.fillText(`flip ${fmtStrike(levels.flip)}`, W - 6, yy - 2);
-        } else {
-          /* the caption at the lane's right end — the figures live at its left */
-          ctx.textAlign = 'right';
-          ctx.fillText(`flip ${fmtStrike(levels.flip)}`, W - 6, yy - 2);
-        }
-      }
+      /* The flip is a gamma level. The ladder does not draw it. */
 
       /* THE SPOT RULE — under the bars; its chip comes last */
       const spotOn = spotY > HEAD_BAND && spotY < H - FOOT_BAND;
@@ -1170,11 +1138,8 @@ const ProfilePanel = ({
          to the inner end, so neither covers the other (Noah, 2026-09-06: "the
          call wall/put wall sometimes overlays the number of the strike when
          it's too long. find another way"). */
+      /* Walls, the supreme and max open interest are gamma and open-interest marks. The ladder does not name them. */
       const levelOf = new Map<number, { words: string; c: string }>();
-      levelOf.set(levels.callWall, { words: 'Call wall', c: ink.callWall });
-      levelOf.set(levels.putWall, { words: 'Put wall', c: ink.putWall });
-      if (!near(levels.supreme, levels.callWall) && !near(levels.supreme, levels.putWall)) levelOf.set(levels.supreme, { words: 'Supreme', c: ink.supreme });
-      if (Number.isFinite(pin) && !near(pin, levels.callWall) && !near(pin, levels.putWall) && !near(pin, levels.supreme)) levelOf.set(pin, { words: 'Max OI', c: ink.ink2 });
       const levelAt = (k: number) => {
         for (const [lk, v] of levelOf) if (near(lk, k)) return v;
         return undefined;
@@ -1206,16 +1171,14 @@ const ProfilePanel = ({
         figuresRef.current = figures;
         const reach = Math.max(8, laneW / 2 - (figures ? LEG_FIG_W : 6) - 4);
         const legH = Math.max(3, Math.min(9, Math.round(barH * 0.55)));
-        /* the legs' scale is the largest open-interest leg on screen */
+        /* the legs' scale is the largest volume leg on screen */
         let legMax = 0;
-        const legOf = (k: number, v: number) => {
+        const legOf = (k: number) => {
           const l = legs?.get(k);
-          if (l) return { put: Math.abs(l.put), call: Math.abs(l.call) };
-          /* no legs known: the net alone on its side — positive is put-dominant */
-          return v >= 0 ? { put: Math.abs(v), call: 0 } : { put: 0, call: Math.abs(v) };
+          return l ? { put: Math.abs(l.put), call: Math.abs(l.call) } : { put: 0, call: 0 };
         };
         for (const r of placed) {
-          const l = legOf(r.strike, r.value);
+          const l = legOf(r.strike);
           legMax = Math.max(legMax, l.put, l.call);
         }
         if (!legMax) legMax = 1;
@@ -1255,7 +1218,7 @@ const ProfilePanel = ({
           }
         };
         for (const r of placed) {
-          const l = legOf(r.strike, r.value);
+          const l = legOf(r.strike);
           const ring = ringFor(r.strike);
           /* the lengths ease, the way the capsules did; the colour follows the eased strength */
           const pt = ease(`p:${r.strike}`, l.put > 0 ? Math.max(2, (l.put / legMax) * reach) : 0, '', 0, legH);
@@ -1408,7 +1371,7 @@ const ProfilePanel = ({
         lastLabelY = r.y;
         const k = r.strike;
         const focus = isFocus(k);
-        const strikeInk = focus ? ink.silver : near(k, levels.callWall) ? ink.callWall : near(k, levels.putWall) ? ink.putWall : near(k, levels.supreme) ? ink.supreme : near(k, pin) || isHover(k) ? ink.ink : wide ? ink.ink : ink.ink2;
+        const strikeInk = focus ? ink.silver : isHover(k) ? ink.ink : wide ? ink.ink : ink.ink2;
         const label = fmtStrike(k);
         ctx.font = `${focus || wide ? '700 ' : ''}10px ${FIG}`;
         if (!wide) {
@@ -1442,42 +1405,6 @@ const ProfilePanel = ({
           ctx.fillText(dText, colR - 6, r.y);
         }
       });
-
-      /* THE LEVEL NAMES — the cards' chips at the flow lane's right edge when
-         that lane is drawn. The size lane is the ladder, so it marks a level the
-         ladder's way: a stripe on the row's left edge in the level's colour, the
-         strike label in that colour, and the name in the read line — never a
-         chip over a leg's figure. */
-      const chip = (k: number, words: string, c: string) => {
-        const row = placed.find(r => near(r.strike, k));
-        if (!row) return;
-        if (showSize) {
-          ctx.fillStyle = c;
-          const sh = Math.max(4, Math.round(barH) + 2);
-          /* the stripe on the panel's own left edge (the partner's), which is the column's when it comes first */
-          ctx.fillRect(colFirst ? 0 : sizeL, Math.round(row.y - sh / 2), 2, sh);
-        }
-        if (!showFlow || insideNamed.has(row.strike)) return;
-        ctx.font = `500 10px ${SANS}`;
-        const w = Math.ceil(ctx.measureText(words).width) + 12;
-        const x = W - 6 - w;
-        const y = Math.round(row.y - 8) + 0.5;
-        ctx.fillStyle = ink.chipGround;
-        ctx.beginPath();
-        ctx.roundRect(x, y, w, 16, 8);
-        ctx.fill();
-        ctx.fillStyle = ink.alpha(c, 0.14);
-        ctx.fill();
-        ctx.strokeStyle = ink.alpha(c, 0.5);
-        ctx.stroke();
-        ctx.fillStyle = c;
-        ctx.textAlign = 'center';
-        ctx.fillText(words, x + w / 2, row.y + 0.5);
-      };
-      chip(levels.callWall, 'Call wall', ink.callWall);
-      chip(levels.putWall, 'Put wall', ink.putWall);
-      if (!near(levels.supreme, levels.callWall) && !near(levels.supreme, levels.putWall)) chip(levels.supreme, 'Supreme', ink.supreme);
-      if (Number.isFinite(pin) && !near(pin, levels.callWall) && !near(pin, levels.putWall) && !near(pin, levels.supreme)) chip(pin, 'Max OI', ink.ink2);
 
       /* THE SPOT CHIP — solid, in the column */
       if (spotOn) {
@@ -1640,19 +1567,6 @@ const ProfilePanel = ({
      hint. The swatches read the same on-screen scale the capsules use. */
   const readStrike = hover?.strike ?? focusPrice ?? null;
   const readRow = readStrike != null ? placedRef.current.find(r => near(r.strike, readStrike)) ?? null : null;
-  /* The part the strike plays, named here — the size lane marks it with a stripe and its colour, never a chip. In the
-     level's TOKEN (paletteInk.ts): the dark island's are these very inks, and a light ground cuts them deep. */
-  const readRole = readRow
-    ? near(readRow.strike, levels.callWall)
-      ? { words: 'Call wall', c: TOKEN.CALL_WALL }
-      : near(readRow.strike, levels.putWall)
-        ? { words: 'Put wall', c: TOKEN.PUT_WALL }
-        : near(readRow.strike, levels.supreme)
-          ? { words: 'Supreme', c: TOKEN.SUPREME }
-          : levels.pin != null && near(readRow.strike, levels.pin)
-            ? { words: 'Max OI', c: 'rgb(var(--text-secondary))' }
-            : null
-    : null;
   const tapeLast = projection.current?.last() ?? null;
   const liveSpot = tapeLast != null && tapeLast > 0 ? tapeLast : levels.spot;
   /* The ladder uses the same pointer card as the calendar and the matrix. The strip along the
@@ -1673,9 +1587,8 @@ const ProfilePanel = ({
       aside={fromSpot == null ? undefined : `${fromSpot > 0 ? '+' : ''}${fromSpot.toFixed(2)}%`}
       foot={cardKept ? 'Kept · click to let go' : 'Click to keep'}
     >
-      {cardLegs && <CardRow k="Puts" v={Math.abs(cardLegs.put) > 0 ? Math.round(Math.abs(cardLegs.put)).toLocaleString('en-US') : '—'} />}
-      {cardLegs && <CardRow k="Calls" v={Math.abs(cardLegs.call) > 0 ? Math.round(Math.abs(cardLegs.call)).toLocaleString('en-US') : '—'} />}
-      {readRole && <CardRow k="Level" v={readRole.words} ink={readRole.c} />}
+      {cardLegs && <CardRow k="Put volume" v={Math.round(Math.abs(cardLegs.put)).toLocaleString('en-US')} />}
+      {cardLegs && <CardRow k="Call volume" v={Math.round(Math.abs(cardLegs.call)).toLocaleString('en-US')} />}
     </PointerFollowCard>
   );
 
@@ -1701,7 +1614,7 @@ const ProfilePanel = ({
       onClick={onGuide}
       aria-label="How to read"
       className="pointer-events-auto shrink-0 inline-flex items-center gap-1 h-6 px-1.5 rounded-md text-t10 text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] aria-pressed:text-textPrimary transition-colors"
-      title="What the two lanes mean"
+      title="How to read the ladder"
     >
       <Info className="w-3 h-3" />
       {!narrow && 'How to read'}
@@ -1716,7 +1629,7 @@ const ProfilePanel = ({
   cardOwnRowRef.current = cardOwnRow;
   const laneTools = (
     <>
-      {onLane && (roomForLanes || twoRowHead) && <DropdownSelect label="Lanes" value={lane} options={LANE_OPTIONS} onChange={onLane} title="What the panel draws" testId="lanes" align={twoRowHead ? 'start' : 'end'} size="sm" />}
+      {onLane && view !== 'ladder' && (roomForLanes || twoRowHead) && <DropdownSelect label="Lanes" value={lane} options={LANE_OPTIONS} onChange={onLane} title="What the panel draws" testId="lanes" align={twoRowHead ? 'start' : 'end'} size="sm" />}
       {ticker && showSize && (
         <button
           type="button"
@@ -1768,7 +1681,7 @@ const ProfilePanel = ({
      inside it with a fade at the edge that has more (ui/scrollMore.ts), and never runs under the close door */
   const narrowTabs = (shownW ?? rootRef.current?.clientWidth ?? 999) < 420;
   const viewTabs = showSize && (
-    <span ref={tabsRef} className="pointer-events-auto min-w-0 max-w-full inline-flex items-center overflow-x-auto scroll-row" data-profile-views data-profile-view-now={view} title="Ladder: open interest, puts left and calls right · Matrix: put, call and net gamma · Calendar: the book by expiry">
+    <span ref={tabsRef} className="pointer-events-auto min-w-0 max-w-full inline-flex items-center overflow-x-auto scroll-row" data-profile-views data-profile-view-now={view} title="Ladder: today’s call and put volume, puts left and calls right · Matrix: put, call and net gamma · Calendar: the book by expiry">
       <FilterTabs options={VIEW_TABS} value={view} onChange={setView} ariaLabel="Ladder, Net or GEX" paper={paper} size={narrowTabs ? 'sm' : 'md'} />
     </span>
   );
@@ -1794,7 +1707,7 @@ const ProfilePanel = ({
       data-theme={paper ? 'light' : 'dark'}
       data-profile-panel
       data-lane={lane}
-      aria-label={ticker ? `${ticker} exposure by strike` : undefined}
+      aria-label={ticker ? `${ticker} call and put volume by strike` : undefined}
     >
       {/* THE GRIP IS SEEN (Noah, 2026-10-17: "i have to find the horizontal drag line because i cant see it … there
           should be a slight hinted vertical line that shows the divide between the two and thats where i should be
@@ -1857,15 +1770,8 @@ const ProfilePanel = ({
           )}
           {!twoRowHead && showSize && !quiet && (
             <span className="min-w-0 flex-1 flex items-center justify-center gap-2 text-t10 text-textMuted" data-lane-head="size">
-              <Term k="Calls vs puts" className="pointer-events-auto truncate">
-                Calls vs puts
-              </Term>
-            </span>
-          )}
-          {!twoRowHead && showFlow && !quiet && (
-            <span className="min-w-0 flex-1 flex items-center justify-center gap-2 text-t10 text-textMuted" data-lane-head="flow">
-              <Term k="What a move forces" className="pointer-events-auto truncate">
-                What a move forces <span className="text-textMuted">· from gamma</span>
+              <Term k="Call volume · put volume" className="pointer-events-auto truncate">
+                Call volume · put volume
               </Term>
             </span>
           )}
