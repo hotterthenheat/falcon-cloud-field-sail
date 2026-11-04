@@ -1,8 +1,9 @@
 /* What can go on a pane and what is on it: the built-in scripts, the classic technicals, the chart's tools, your
    scripts and favourites, with one search, a tick to draw one and a gear for its inputs. */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, Settings2, Star } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { CornerDownLeft, Search, Settings2, Star, X } from 'lucide-react';
 import * as Switch from '@radix-ui/react-switch';
 import { armScript, removeAlert, useAlerts } from '../gex/alertStore';
 import { builtinScripts } from '../../data/builtinScripts';
@@ -10,7 +11,8 @@ import { openEditor, recentScripts, remember } from '../../data/editorDock';
 import { bumpLibrary, getPaneBars, liftFromPane, placeOnPane, updateOnPane, useLibraryVersion, usePaneScripts, type PaneScript } from '../../data/paneScripts';
 import { scriptStore } from '../../data/scriptStore';
 import type { ChartScript, PaneId, Script, ScriptInput, ScriptInputValue } from '../../types/scripts';
-import Modal from '../ui/Modal';
+import useFocusTrap from '../ui/useFocusTrap';
+import { useIsPhone } from '../ui/useMediaQuery';
 import { INDICATOR_ITEMS, indicatorBlurb, physicsOf } from '../gex/indicatorItems';
 import { TV_SPECIAL_KEYS } from '../gex/tvSpecialItems';
 import IndicatorSettings, { PhysicsTag } from '../gex/IndicatorSettings';
@@ -216,6 +218,11 @@ const ScriptLibrary = ({
   onSessionOr,
   barClock,
 }: ScriptLibraryProps) => {
+  const isPhone = useIsPhone();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(open, panelRef);
   const [shelf, setShelf] = useState<Shelf>('slayer');
   const { nodeLook } = useDeskPrefs();
   const [query, setQuery] = useState('');
@@ -343,7 +350,8 @@ const ScriptLibrary = ({
     bumpLibrary();
   };
 
-  /* ↑↓ move · ↵ toggle — while the library is the front window */
+  /* ↑↓ walk · Enter toggles — while the library is the front window. Escape is on capture, below, so a settings
+     dialog opened from a gear can take the key first. */
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -365,6 +373,30 @@ const ScriptLibrary = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, rows, highlight, toggle]);
 
+  /* Escape closes on capture, so the pane behind never sees it. While a gear's settings dialog is up, that dialog
+     owns Escape (it listens on document). A printable key pressed after the field lost focus goes back into the field. */
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (settingsFor) return;
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      const el = inputRef.current;
+      if (el && document.activeElement !== el && e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) el.focus();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [open, onClose, settingsFor]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    inputRef.current?.focus();
+  }, [open]);
+
   const shipped = allRows.slayer.length + allRows.physics.length + allRows.technicals.length + allRows.candles.length + allRows.levels.length + allRows.chart.length;
   const overlayOn = overlays ? OVERLAY_ROWS.filter(r => !!overlays[r.key]).length : 0;
   const onThisPane = placed.filter(p => p.chart.visible).length + (indicators ? INDICATOR_ITEMS.filter(i => indicators[i.key]).length : 0) + overlayOn;
@@ -384,55 +416,72 @@ const ScriptLibrary = ({
     return order.map(g => ({ title: g, rows: by.get(g)! }));
   }, [rows]);
 
-  return (
+  useEffect(() => {
+    if (!open) return;
+    const key = rows[highlight]?.key;
+    if (!key) return;
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-library-row="${CSS.escape(key)}"]`);
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [open, rows, highlight]);
+
+  if (!open) return null;
+  const hi = rows[highlight];
+  const trailsOn = !!(overlays && (overlays.trails ?? DEFAULT_OVERLAYS.trails));
+  const coneOn = !!(overlays && (overlays.cone ?? DEFAULT_OVERLAYS.cone));
+  const sessionOn = !!(overlays && (overlays.session ?? DEFAULT_OVERLAYS.session));
+
+  return createPortal(
     <>
-      <Modal
-        open={open}
-        onClose={onClose}
-        ariaLabel="Indicators and scripts"
-        widthClass="max-w-[1080px]"
-        header={
-          <div className="flex items-center gap-3 min-w-0">
-            <span className="relative foil-glide holo-bg w-6 h-6 rounded-[6px] shrink-0 flex items-center justify-center font-mono text-t10 font-bold text-onfoil" aria-hidden>
-              &gt;_
-            </span>
-            <span className="text-t15 font-semibold leading-tight text-textPrimary">Indicators and scripts</span>
-            <span className="font-mono text-t10 text-textPrimary whitespace-nowrap" data-library-count>
-              {onThisPane} on this pane
-            </span>
-          </div>
-        }
-        headerActions={
+    <div className={`fixed inset-0 z-[130] flex justify-center ${isPhone ? 'items-end' : 'items-start pt-[10vh] px-4'}`} data-library-sheet>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} aria-hidden data-library-scrim />
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Indicators and scripts"
+        className={`relative w-full flex flex-col border border-borderMuted bg-panel/85 backdrop-blur-xl backdrop-saturate-150 shadow-2xl shadow-black overflow-hidden animate-slide-in outline-none ${
+          isPhone ? 'h-[85dvh] rounded-t-lg' : 'max-w-[900px] h-[min(640px,84vh)] rounded-lg'
+        }`}
+        data-library-panel
+      >
+        <div className="shrink-0 flex items-center gap-2.5 px-3.5 h-12 border-b border-borderSubtle">
+          <Search className="w-4 h-4 text-textMuted shrink-0" />
+          <span className="shrink-0 inline-flex items-center px-1.5 h-6 rounded border border-borderMuted font-mono text-t10 font-semibold text-textSecondary">Indicators and scripts</span>
+          <span className="shrink-0 inline-flex items-center px-1.5 h-6 rounded bg-ink/[0.08] font-mono text-t11 font-bold text-textPrimary whitespace-nowrap" data-library-count>
+            {onThisPane} on
+          </span>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search every shelf — a name, a word, a group"
+            aria-label="Search indicators and scripts"
+            spellCheck={false}
+            autoComplete="off"
+            autoCorrect="off"
+            className="flex-1 min-w-0 bg-transparent font-mono text-t13 text-textPrimary placeholder:text-textMuted focus:outline-none"
+            data-library-search
+          />
           <button
             onClick={() => edit(null)}
             disabled={!fullscreen}
             title={fullscreen ? 'A new script on the template, in the editor beside the chart' : EDITOR_SHUT}
-            className="inline-flex items-center h-7 px-2.5 rounded-md border border-silver/40 bg-silver/[0.06] font-mono text-t10 uppercase tracking-wider text-textPrimary hover:bg-silver/[0.1] transition-colors disabled:opacity-40 disabled:cursor-default disabled:hover:bg-silver/[0.06]"
+            className="shrink-0 hidden sm:inline-flex items-center h-6 px-2 rounded border border-borderSubtle font-mono text-t9 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors disabled:opacity-40 disabled:cursor-default"
             data-library-write
           >
-            Write your own
+            Write
           </button>
-        }
-      >
-        {/* THE SEARCH — one field over every shelf */}
-        <label className="flex items-center gap-2 h-9 px-3 rounded-md border border-borderSubtle bg-chip focus-within:border-borderMuted">
-          <Search className="w-3.5 h-3.5 text-textMuted shrink-0" />
-          <input
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Search every shelf — a name, a word, a group"
-            spellCheck={false}
-            data-library-search
-            className="flex-1 min-w-0 bg-transparent font-mono text-t12 text-textPrimary placeholder:text-textSecondary outline-none"
-          />
-        </label>
-
+          <button type="button" onClick={onClose} aria-label="Close" title="Close (Esc)" className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
         {/* One size on every shelf: the shelves and the rows share a fixed height and the rows scroll inside it,
             so five Slayer scripts and eighteen technicals open the same card. */}
         {/* A phone stacks them: the shelves as one scrolling row over the rows */}
-        <div className="grid gap-3 sm:gap-4 h-[60vh] sm:h-[56vh] min-h-0 overflow-hidden grid-cols-1 grid-rows-[auto_minmax(0,1fr)] sm:grid-rows-1 sm:grid-cols-[176px_minmax(0,1fr)]" data-library>
-          {/* THE SHELVES */}
-          <nav className="flex sm:flex-col gap-1 sm:pr-4 sm:border-r border-borderSubtle overflow-x-auto sm:overflow-x-hidden sm:overflow-y-auto" aria-label="Shelves">
+        <div className="flex-1 min-h-0 flex flex-col sm:flex-row overflow-hidden" data-library>
+          {/* THE SHELVES — a scrolling row on a phone, a column on the desk */}
+          <nav className="flex sm:flex-col gap-1 sm:w-[176px] sm:shrink-0 sm:pr-3 sm:border-r border-borderSubtle overflow-x-auto sm:overflow-x-hidden sm:overflow-y-auto px-2 sm:px-2 sm:py-2" aria-label="Shelves">
             {(['Personal', 'Built in'] as const).map(section => (
               <div key={section} className="flex sm:block shrink-0 gap-1 sm:mb-2">
                 <div className="hidden sm:block px-2 pb-1 font-mono text-t8 uppercase tracking-widest text-textSecondary">{section}</div>
@@ -470,7 +519,7 @@ const ScriptLibrary = ({
               <span />
               <span className="text-right">On</span>
             </div>
-            <div key={`${q ? 'search' : shelf}|${q}`} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden animate-soft-in" data-library-rows>
+            <div ref={listRef} key={`${q ? 'search' : shelf}|${q}`} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain animate-soft-in" data-library-rows>
             {overlays && onOverlays && (shelf === 'chart' || !!q) && (
               <div>
                 <div className="px-2 pt-3 pb-1 font-mono text-t8 uppercase tracking-widest text-textSecondary">On the chart</div>
@@ -511,7 +560,7 @@ const ScriptLibrary = ({
                           </button>
                         </span>
                       </div>
-                      {on && r.key === 'trails' && (
+                      {isPhone && on && r.key === 'trails' && (
                         /* HOW THE NODES DRAW — the overlays menu's Draw row, here for the panes that show the library instead */
                         <div className="flex items-center gap-2 pl-16 pr-2 pb-1" role="group" aria-label="How the exposure nodes draw" data-library-node-look>
                           <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Draw</span>
@@ -520,7 +569,7 @@ const ScriptLibrary = ({
                           ))}
                         </div>
                       )}
-                      {on && r.key === 'trails' && onTrailGreek && (
+                      {isPhone && on && r.key === 'trails' && onTrailGreek && (
                         <div className="flex items-center gap-2 pl-16 pr-2 pb-1">
                           <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Greek</span>
                           {(['gex', 'dex', 'vex'] as const).map(g => (
@@ -528,7 +577,7 @@ const ScriptLibrary = ({
                           ))}
                         </div>
                       )}
-                      {on && r.key === 'cone' && onConeHorizon && (
+                      {isPhone && on && r.key === 'cone' && onConeHorizon && (
                         <div className="flex items-center gap-2 pl-16 pr-2 pb-1">
                           <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Horizon</span>
                           {(['session', 'week', 'next'] as const).map(h => (
@@ -536,7 +585,7 @@ const ScriptLibrary = ({
                           ))}
                         </div>
                       )}
-                      {on && r.key === 'session' && onSessionOr && (
+                      {isPhone && on && r.key === 'session' && onSessionOr && (
                         <div className="flex items-center gap-2 pl-16 pr-2 pb-1">
                           <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Opening range</span>
                           {OPENING_RANGES.map(m => (
@@ -565,7 +614,7 @@ const ScriptLibrary = ({
                 )}
                 {g.rows.map(r => {
                   const idx = rows.indexOf(r);
-                  const hi = idx === highlight;
+                  const hot = idx === highlight;
                   const held = capped(r) || ((barClock ?? 'time') !== 'time' && !!r.chartKey && CLOCK_HELD_CHART.has(r.chartKey));
                   const fav = favourites.has(r.key);
                   return (
@@ -574,7 +623,7 @@ const ScriptLibrary = ({
                         role="row"
                         onMouseEnter={() => setHighlight(idx)}
                        
-                        className={`${ROW_GRID} min-h-[46px] overflow-hidden rounded-md transition-colors ${hi ? 'bg-silver/[0.06]' : ''} ${r.on ? 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : ''}`}
+                        className={`${ROW_GRID} min-h-[46px] sm:min-h-0 sm:h-9 overflow-hidden rounded-md transition-colors ${hot ? 'bg-ink/[0.05]' : ''} ${r.on ? 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : ''}`}
                         data-library-row={r.key}
                         data-on={r.on || undefined}
                       >
@@ -600,7 +649,7 @@ const ScriptLibrary = ({
                               )}
                             </button>
                           )}
-                          <span className="text-t10 text-textSecondary truncate" title={held ? 'Needs time bars — the pane is on a rule clock' : r.description}>{held && r.chartKey ? 'Needs time bars' : r.kind === 'chart' ? indicatorBlurb(r.description) : r.description}</span>
+                          <span className="sm:hidden text-t10 text-textSecondary truncate" title={held ? 'Needs time bars — the pane is on a rule clock' : r.description}>{held && r.chartKey ? 'Needs time bars' : r.kind === 'chart' ? indicatorBlurb(r.description) : r.description}</span>
                           {r.script?.status === 'error' && <span className="font-mono text-t8 uppercase tracking-widest text-bear">does not read</span>}
                         </span>
                         <span className="hidden sm:block font-mono text-t10 text-textPrimary whitespace-nowrap truncate" title={r.pane === 'own' ? 'Takes its own pane under the tape — two at most' : 'Draws on the tape itself'}>
@@ -647,19 +696,91 @@ const ScriptLibrary = ({
             ))}
             </div>
           </div>
+          {!isPhone && (
+            <aside className="w-[300px] shrink-0 border-l border-borderSubtle/60 px-4 py-3 flex flex-col gap-4 overflow-y-auto overscroll-contain" aria-label="The highlighted script" data-library-read>
+              {hi ? (
+                <div className="min-w-0">
+                  <div className="font-mono text-t9 uppercase tracking-wider text-textMuted">{KIND_WORD[hi.kind]} · {hi.group}</div>
+                  <div className="mt-1 text-t15 font-semibold leading-tight text-textPrimary">{hi.title}</div>
+                  <p className="mt-2 text-t12 text-textSecondary leading-snug">{hi.kind === 'chart' ? indicatorBlurb(hi.description) : hi.description}</p>
+                  <p className="mt-2 font-mono text-t10 text-textMuted">{hi.pane === 'own' ? 'Takes its own pane under the tape' : 'Draws on the tape'}</p>
+                  {hi.on && hi.chartKey && (
+                    <button type="button" onClick={() => setSettingsFor(hi.chartKey!)} title="Its settings — inputs, style, visibility" className="mt-3 inline-flex items-center gap-1.5 h-7 px-2 rounded border border-borderSubtle font-mono text-t10 text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors" data-library-gear>
+                      <Settings2 className="w-3.5 h-3.5" />
+                      Settings
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="font-mono text-t10 text-textMuted">Walk the list — the highlighted script reads here.</p>
+              )}
+              {trailsOn && (
+                <div>
+                  <div className="font-mono text-t9 uppercase tracking-wider text-textMuted mb-1.5">Exposure trails</div>
+                  <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="How the exposure nodes draw" data-library-node-look>
+                    <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Draw</span>
+                    {NODE_LOOKS.map(l => (
+                      <button key={l.value} type="button" onClick={() => setDeskPrefs({ nodeLook: l.value })} aria-pressed={nodeLook === l.value} title={l.hint} className={`px-1.5 py-0.5 rounded font-mono text-t10 ${nodeLook === l.value ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>{l.label}</button>
+                    ))}
+                  </div>
+                  {onTrailGreek && (
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Greek</span>
+                      {(['gex', 'dex', 'vex'] as const).map(g => (
+                        <button key={g} type="button" onClick={() => onTrailGreek(g)} aria-pressed={trailGreek === g} className={`px-1.5 py-0.5 rounded font-mono text-t10 uppercase ${trailGreek === g ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>{g}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {coneOn && onConeHorizon && (
+                <div>
+                  <div className="font-mono text-t9 uppercase tracking-wider text-textMuted mb-1.5">Expected move</div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Horizon</span>
+                    {(['session', 'week', 'next'] as const).map(h => (
+                      <button key={h} type="button" onClick={() => onConeHorizon(h)} aria-pressed={coneHorizon === h} className={`px-1.5 py-0.5 rounded font-mono text-t10 ${coneHorizon === h ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>{h === 'session' ? 'Session' : h === 'week' ? 'Week' : 'Next'}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {sessionOn && onSessionOr && (
+                <div>
+                  <div className="font-mono text-t9 uppercase tracking-wider text-textMuted mb-1.5">Session levels</div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Opening range</span>
+                    {OPENING_RANGES.map(m => (
+                      <button key={m} type="button" onClick={() => onSessionOr(m)} aria-pressed={sessionOr === m} className={`px-1.5 py-0.5 rounded font-mono text-t10 tnum ${sessionOr === m ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>{m}m</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </aside>
+          )}
         </div>
 
-        {/* THE FOOT */}
-        <div className="shrink-0 flex items-center gap-3 pt-3 border-t border-borderSubtle font-mono text-t10 text-textSecondary min-w-0" data-library-foot>
-          <span className="shrink-0">
-            <span className="text-textPrimary">{shipped}</span> shipped · <span className="text-textPrimary">{allRows.mine.length}</span> of your own
+        <div className="shrink-0 flex items-center gap-3 px-3.5 h-9 border-t border-borderSubtle font-mono text-t9 text-textMuted" data-library-foot>
+          <span className="hidden sm:inline-flex items-center gap-1.5">
+            <kbd className="px-1 rounded border border-borderSubtle text-t9">↑↓</kbd> Walk
           </span>
-          <span className="min-w-0 truncate">Slayer and Pine draw on this pane. Chart rows are the tape's built-ins.</span>
-          <span className="ml-auto shrink-0 whitespace-nowrap">↑↓ move · ↵ toggle · esc close</span>
+          <span className="hidden sm:inline-flex items-center gap-1.5">
+            <kbd className="px-1 rounded border border-borderSubtle inline-flex items-center">
+              <CornerDownLeft className="w-2.5 h-2.5" />
+            </kbd>
+            Toggle
+          </span>
+          <span className="hidden sm:inline-flex items-center gap-1.5">
+            <kbd className="px-1 rounded border border-borderSubtle text-t9">Esc</kbd> Close
+          </span>
+          <span className="min-w-0 truncate">
+            <span className="text-textSecondary">{shipped}</span> shipped · <span className="text-textSecondary">{allRows.mine.length}</span> of your own
+          </span>
         </div>
-      </Modal>
-      {settingsFor && <IndicatorSettings indicator={settingsFor} onClose={() => setSettingsFor(null)} />}
-    </>
+      </div>
+    </div>
+    {settingsFor && <IndicatorSettings indicator={settingsFor} onClose={() => setSettingsFor(null)} />}
+    </>,
+    document.body,
   );
 };
 

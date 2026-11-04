@@ -20,9 +20,11 @@ interface ModalProps {
   headerCenter?: ReactNode;
   /** Tailwind max-width class — default is the medium drilldown size. */
   widthClass?: string;
+  /** Stacking class. The library sheet sits at z-130, so a dialog opened from it passes a higher one. */
+  zClass?: string;
 }
 
-const Modal = ({ open, onClose, ariaLabel, header, children, headerActions, headerCenter, widthClass = 'max-w-[760px]' }: ModalProps) => {
+const Modal = ({ open, onClose, ariaLabel, header, children, headerActions, headerCenter, widthClass = 'max-w-[760px]', zClass = 'z-[90]' }: ModalProps) => {
   /* shown outlives open by OUT_MS — the fade; the content of the last open render is held through it */
   const [shown, setShown] = useState(open);
   const [closing, setClosing] = useState(false);
@@ -66,7 +68,7 @@ const Modal = ({ open, onClose, ariaLabel, header, children, headerActions, head
   const h = open ? { header, children, headerActions, headerCenter } : held.current;
 
   return createPortal(
-    <div className={`fixed inset-0 z-[90] flex items-center justify-center p-4 ${closing ? 'pointer-events-none' : ''}`} data-modal-closing={closing || undefined}>
+    <div className={`fixed inset-0 ${zClass} flex items-center justify-center p-4 ${closing ? 'pointer-events-none' : ''}`} data-modal-closing={closing || undefined}>
       {/* Backdrop — dimmed but deliberately still legible underneath */}
       <div className={`absolute inset-0 bg-black/55 backdrop-blur-[2px] ${closing ? 'animate-modal-backdrop-out' : 'animate-modal-backdrop'}`} onClick={onClose} aria-hidden />
 

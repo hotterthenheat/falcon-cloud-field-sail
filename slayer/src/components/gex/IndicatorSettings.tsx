@@ -51,6 +51,7 @@ const IndicatorSettings = ({ indicator, onClose }: { indicator: keyof ChartIndic
       onClose={onClose}
       ariaLabel={`${item.label} settings`}
       widthClass="max-w-[460px]"
+      zClass="z-[140]"
       header={
         <div className="flex items-center gap-2 min-w-0">
           <span className="inline-block w-2.5 h-[3px] rounded-full shrink-0" style={{ background: ink }} aria-hidden />
