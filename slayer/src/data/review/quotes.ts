@@ -34,7 +34,9 @@ export interface Quote {
   gamma: number;
   /** Dollars a share the contract loses over one session, all else equal (negative) */
   theta: number;
+  /** Per 1.00 of volatility. A header that says "per point" would be this divided by 100. */
   vega: number;
+  /** Per 1.00 of the rate. The same unit as vega, not per point. */
   rho: number;
   intrinsic: number;
   /** No two-sided quote stood: orders wait */
@@ -51,6 +53,8 @@ export interface Quote {
   greekT?: number;
   greekR?: number;
   greekQ?: number;
+  /** Why this delta is not the parity read. "cash spot, dividend 0" when the minute had no chain. */
+  greekNote?: string;
 }
 
 /** How many of an order one quote can fill: what is shown on the side it trades into (a buy takes the ask's size, a sell
@@ -133,7 +137,7 @@ function minuteStamp(iso: string, minute: number): number {
 
 /** Greeks of a bought leg from its mid and the name's price that minute — readGreek, the same solve Weigher and Paper use.
     The fill is still the recorded bid and ask. A blank greek (no rate, a wide book) leaves the mark's greek at zero. */
-function greeksOn(c: ContractId, iso: string, bid: number, ask: number, spot: number, minute: number): Pick<Quote, 'iv' | 'delta' | 'gamma' | 'theta' | 'vega' | 'rho' | 'greekT' | 'greekR' | 'greekQ'> {
+function greeksOn(c: ContractId, iso: string, bid: number, ask: number, spot: number, minute: number): Pick<Quote, 'iv' | 'delta' | 'gamma' | 'theta' | 'vega' | 'rho' | 'greekT' | 'greekR' | 'greekQ' | 'greekNote'> {
   const blank = { iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0 };
   const at = minuteStamp(iso, minute);
   const solved = readGreek({
@@ -152,10 +156,12 @@ function greeksOn(c: ContractId, iso: string, bid: number, ask: number, spot: nu
     gamma: solved.gamma,
     theta: solved.thetaSession,
     vega: solved.vega,
-    rho: c.right === 'C' ? g.rhoCall : g.rhoPut,
+    /* blackScholesGreeks quotes rho per point. The chain's vega is per 1.00, so rho is too. */
+    rho: (c.right === 'C' ? g.rhoCall : g.rhoPut) * 100,
     greekT: solved.t,
     greekR: solved.r,
     greekQ: solved.q,
+    ...(solved.note ? { greekNote: solved.note } : {}),
   };
 }
 
@@ -189,6 +195,7 @@ export function quoteAt(c: ContractId, iso: string, minute: number): Quote {
     theta: bought.theta - sold.theta,
     vega: bought.vega - sold.vega,
     rho: bought.rho - sold.rho,
+    ...(bought.greekNote ? { greekNote: bought.greekNote } : {}),
     intrinsic,
     dead: bid <= 0,
     spot: bought.spot,

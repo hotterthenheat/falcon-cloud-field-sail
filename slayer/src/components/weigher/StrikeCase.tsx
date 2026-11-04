@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import CardTabs from '../ui/CardTabs';
 import Fact from '../ui/Fact';
 import ContractLabel from '../ui/ContractLabel';
-import { EUROPEAN_NOTE, readGate, sessionDte, thetaPerSessionHour } from '../../data/weigherGate';
+import { EUROPEAN_NOTE, readGate, sessionDte } from '../../data/weigherGate';
 import { seatsNow, type LiveScore } from '../../data/compassModel';
 import { MODEL_1_NAME, STOP_KEEP, TP1_STOP, TP2_STOP, TP3_STOP, TP4_TRAIL, DRIVE } from '../../data/compassParams';
 
@@ -126,8 +126,10 @@ const StrikeCase = ({ ticker, c, right, chain, tick, score, listed, onPickAlt }:
   const side = ret == null || !Number.isFinite(ret) ? 'The opening price is not in yet.' : Math.abs(ret) >= DRIVE ? (ret > 0 ? 'The stock is up from the open, so the call is the side.' : 'The stock is down from the open, so the put is the side.') : 'The stock is flat from the open.';
   /* whole trading sessions after today's, on the clock the gate and theta read (data/weigherGate sessionDte) */
   const dte = chain.expiryIso ? sessionDte(chain.expiryIso) : NaN;
-  /* the next trading hour's decay, the contract's own (what is left of the session when less); the session's rate where it has none */
-  const hourDecay = c.thetaHour != null && Number.isFinite(c.thetaHour) && c.thetaHour !== 0 ? Math.abs(c.thetaHour) : Number.isFinite(c.theta) && c.theta !== 0 ? Math.abs(thetaPerSessionHour(c.theta)) : null;
+  /* a calendar hour of the calendar-day theta (thetaDay / 24). The session theta is a trading hour and is not this.
+     When the row did not store the hour, the same hour is the session figure × 252/365/24. */
+  const calendarHour = (thetaSession: number) => (thetaSession * 252) / 365 / 24;
+  const hourDecay = c.thetaHour != null && Number.isFinite(c.thetaHour) && c.thetaHour !== 0 ? Math.abs(c.thetaHour) : Number.isFinite(c.theta) && c.theta !== 0 ? Math.abs(calendarHour(c.theta)) : null;
   const sleeve = dte === 0 ? '0 DTE' : dte >= 1 && dte <= 7 ? '1–7 DTE' : 'Later';
   const ask = c.ask > 0 ? c.ask : NaN;
   const be = Number.isFinite(ask) ? (right === 'C' ? c.strike + ask : c.strike - ask) : NaN;
@@ -289,7 +291,7 @@ const StrikeCase = ({ ticker, c, right, chain, tick, score, listed, onPickAlt }:
               <Fact big label="Window" value={sleeve} />
               {dte === 0 && (
                 <>
-                  <Fact big label="Decay an hour" value={hourDecay != null ? show(hourDecay) : '—'} />
+                  <Fact big label="Decay a calendar hour" value={hourDecay != null ? show(hourDecay) : '—'} />
                   <Fact big label="Volume" value={c.volume > 0 ? c.volume.toLocaleString('en-US') : '—'} />
                   <Fact big label="Open interest" value={c.oi > 0 ? c.oi.toLocaleString('en-US') : '—'} />
                   <Fact big label="Closes" value={clock(Math.max(0, stopMin - 1))} />

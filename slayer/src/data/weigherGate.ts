@@ -268,9 +268,13 @@ export function explainContract(input: {
       gamma: solved.gamma,
       /* A column headed "per session" is the annual theta divided by 252. */
       theta: solved.thetaSession,
+      /* A calendar hour of the calendar-day theta. The strike card says "calendar hour".
+         The next trading hour is thetaPerSessionHour, and it is not this number. */
       thetaHour: solved.thetaDay / 24,
       /* Per 1.00 of volatility. A column headed "per point" divides by 100. */
       vega: solved.vega,
+      /* modelAt's rho is per point. This read uses vega's unit, per 1.00 of the rate. */
+      rho: model.rho * 100,
       iv: solved.iv * 100,
       ivTrading: solved.iv * 100,
       ivFrom: 'mark',

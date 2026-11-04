@@ -144,7 +144,7 @@ const ChainCard = ({ ticker, title, spot, showName, stamp, right, onRight, expir
                 </span>
                 <span className="text-right text-textPrimary">{q.dead ? '—' : q.bid.toFixed(2)}</span>
                 <span className="text-right text-textPrimary">{q.dead ? '—' : q.ask.toFixed(2)}</span>
-                <span className="text-right text-textSecondary">{q.iv > 0 ? q.delta.toFixed(2) : '—'}</span>
+                <span className="text-right text-textSecondary" title={q.greekNote || undefined}>{q.iv > 0 ? q.delta.toFixed(2) : '—'}</span>
                 <span className="text-right text-textSecondary">{q.iv > 0 ? q.theta.toFixed(2) : '—'}</span>
                 <span className="text-right text-textSecondary">{q.iv > 0 ? `${Math.round(q.iv * 100)}%` : '—'}</span>
               </button>

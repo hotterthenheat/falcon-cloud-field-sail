@@ -63,6 +63,7 @@ export interface DeskContract {
   europeanApprox?: boolean;
   /** Risk-neutral odds the contract finishes in the money — N(d2) family */
   itmOdds: number;
+  /** Per 1.00 of the rate. The same unit as vega, not per point. */
   rho: number;
   /** The quote around the mark — bid under, ask over, by a moneyness-wide spread */
   bid: number;

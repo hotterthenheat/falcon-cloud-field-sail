@@ -8,7 +8,7 @@ import type { Candle } from '../../types/market';
 import type { DeskChain, DeskContract } from '../weigherDesk';
 import { isTradingDay, expiryFor, sessionCloseMinOn } from '../../core/calendar';
 import { sessionAt } from '../../core/session';
-import { blackScholesGreeks, blackScholesPrice } from '../../core/greeks';
+import { blackScholesGreeks, blackScholesPrice, thetaPerSession } from '../../core/greeks';
 import { readGreek, type ChainPair } from '../../core/readGreek';
 import { calendarYears, sigmaToExpiry } from '../../core/volClock';
 import { longLeg, spreadBook, spreadSizes, bookMark, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
@@ -115,11 +115,13 @@ function legQuote(c: ContractId, spot: number, ms: number): Quote {
     gamma: solved?.ok ? solved.gamma : 0,
     theta: solved?.ok ? solved.thetaSession : 0,
     vega: solved?.ok ? solved.vega : 0,
-    rho: g ? (c.right === 'C' ? g.rhoCall : g.rhoPut) : 0,
+    /* blackScholesGreeks quotes rho per point. The chain's vega is per 1.00, so rho is too. */
+    rho: g ? (c.right === 'C' ? g.rhoCall : g.rhoPut) * 100 : 0,
     intrinsic: cents(intrinsic),
     dead: q.bid <= 0 || !isFresh(q.takenAt, q.kept, ms, q.at),
     spot: s,
     ...(solved?.ok ? { greekT: solved.t, greekR: solved.r, greekQ: solved.q } : {}),
+    ...(solved?.ok && solved.note ? { greekNote: solved.note } : {}),
     ...(Number.isFinite(q.bidSize) ? { bidSize: q.bidSize } : {}),
     ...(Number.isFinite(q.askSize) ? { askSize: q.askSize } : {}),
     ...(q.at > 0 ? { quotedAt: q.at } : {}),
@@ -148,6 +150,7 @@ export const optionQuote = (c: ContractId, ms: number, spot = spotOf(c.ticker)):
     theta: bought.theta - sold.theta,
     vega: bought.vega - sold.vega,
     rho: bought.rho - sold.rho,
+    ...(bought.greekNote ? { greekNote: bought.greekNote } : {}),
     intrinsic: cents(Math.max(0, Math.min(width, bought.intrinsic - sold.intrinsic))),
     dead: bid <= 0 || bought.dead || sold.dead,
     spot: bought.spot,
@@ -218,7 +221,8 @@ export const optionQuoteAt = (c: ContractId, ms: number, spot: number): Quote =>
   const px = Number.isFinite(v) ? cents(Math.max(0, v)) : 0;
   const live = legQuote(longLeg(c), spotOf(c.ticker), ms);
   const g = live.iv > 0 && live.greekT != null && live.greekT > 0 ? blackScholesGreeks(spot, c.strike, live.greekT, live.iv, live.greekR ?? 0, live.greekQ ?? 0) : null;
-  return { bid: px, ask: px, mark: px, iv: live.iv, delta: g ? (c.right === 'C' ? g.deltaCall : g.deltaPut) : 0, gamma: g?.gamma ?? 0, theta: 0, vega: g?.vega ?? 0, rho: 0, intrinsic: 0, dead: !(px > 0), spot };
+  const theta = g ? thetaPerSession(spot, c.strike, live.greekT!, live.iv, c.right, live.greekR ?? 0, live.greekQ ?? 0) : 0;
+  return { bid: px, ask: px, mark: px, iv: live.iv, delta: g ? (c.right === 'C' ? g.deltaCall : g.deltaPut) : 0, gamma: g?.gamma ?? 0, theta, vega: g ? g.vega * 100 : 0, rho: g ? (c.right === 'C' ? g.rhoCall : g.rhoPut) * 100 : 0, intrinsic: 0, dead: !(px > 0), spot, ...(live.greekNote ? { greekNote: live.greekNote } : {}) };
 };
 
 /** Where the name would have to stand now for the contract to bid `bid` — the nearest such place on the what-if */

@@ -6,7 +6,7 @@
   Run: npx tsx scripts/live-check-proof.ts
 */
 import { resetCarry, setDayRates } from '../src/core/carry';
-import { blackScholesPrice } from '../src/core/greeks';
+import { blackScholesGreeks, blackScholesPrice } from '../src/core/greeks';
 import { calendarYearsOpen, greekCaption, parityMedian, readGreek, type ChainPair } from '../src/core/readGreek';
 import { nyWallTime } from '../src/core/nyTime';
 import { bookToday, isoDate, nextSession } from '../src/core/calendar';
@@ -17,7 +17,7 @@ import { cache, type Entry } from '../src/data/book/store';
 import { emptyNode } from '../src/data/book/scale';
 import { explainContract, pricerFor, readContract } from '../src/data/weigherGate';
 import { putName, putBook } from '../src/data/paper/thetaFeed';
-import { optionQuote } from '../src/data/paper/feed';
+import { optionQuote, optionQuoteAt } from '../src/data/paper/feed';
 import { barTime, putBars, putQuotes } from '../src/data/review/history';
 import { quoteAt } from '../src/data/review/quotes';
 import { importSignals, recordTail, closeTail, signals } from '../src/data/compassLedger';
@@ -134,6 +134,20 @@ if (call.ok && put.ok) {
   )!(S);
   near('the solved clock prices the call at the mid, not $10.13', priced, callMid, 0.03);
   check(`the $10.13 trading-year paste is not this price (${priced.toFixed(3)})`, Math.abs(priced - 10.13) > 1);
+  const row = readContract({
+    ticker: 'SPY', spot: S, strike: 753, right: 'C', bid: CALL.bid, ask: CALL.ask, expiryIso: EXP,
+    optionAt: AT, stockAt: AT, stockBid: S_BID, stockAsk: S_ASK, ivError: 0,
+    otherBid: PUT.bid, otherAsk: PUT.ask, otherAt: AT, chain, now: AT,
+  });
+  const perPoint = blackScholesGreeks(call.spot, 753, call.t, call.iv, call.r, call.q);
+  check('the chain row is the parity solve, not cash spot', row != null && row.note == null && Math.abs(row.delta - call.delta) < 1e-9);
+  near('rho is per 1.00 of rate, about 3.34, not the per-point 0.033', row?.rho ?? NaN, perPoint.rhoCall * 100, 0.05);
+  check('rho is not left at the per-point figure', (row?.rho ?? 0) > 1);
+  near('decay an hour is a calendar hour, theta per day / 24', row?.thetaHour ?? NaN, call.thetaDay / 24, 1e-6);
+  check('that hour is not the trading hour', row != null && Math.abs(row.thetaHour - call.thetaSession / 6.5) > 0.1);
+  const cash = readGreek({ right: 'C', strike: 753, expiry: EXP, at: AT, option: CALL, stock });
+  check('no chain is named cash spot, dividend 0', cash.ok && cash.carry === 'cash' && cash.note === 'cash spot, dividend 0');
+  if (cash.ok) near('no chain, the call delta is the cash-spot solve', cash.delta, 0.5436, 0.004);
 }
 
 const late = readGreek({
@@ -182,6 +196,11 @@ setDayRates([{ day: '2026-11-03', r: 0.0395 }]);
   check(`Weigher ${w?.delta.toFixed(5)}, Paper ${p.delta.toFixed(5)}, backtest ${bt.delta.toFixed(5)} are one readGreek delta`, same);
   const direct = readGreek({ right: 'C', strike, expiry, at, option: { bid, ask, at }, stock: { price: spot, at } });
   check('that delta is readGreek on the stored minute', direct.ok && w != null && Math.abs(direct.delta - w.delta) < 1e-9);
+  check('a minute with no chain says cash spot on all three', !!w?.note?.includes('cash spot') && p.greekNote === 'cash spot, dividend 0' && bt.greekNote === 'cash spot, dividend 0');
+  const moved = optionQuoteAt({ ticker: 'SPY', strike, right: 'C', expiry }, at, spot + 5);
+  const atSpot = blackScholesGreeks(spot + 5, strike, p.greekT ?? 0, p.iv, p.greekR ?? 0, p.greekQ ?? 0);
+  check(`what-if vega is per 1.00 (${moved.vega.toFixed(3)}), not per point`, p.greekT != null && Math.abs(moved.vega - atSpot.vega * 100) < 1e-6 && moved.vega > 1);
+  check(`what-if theta is the session decay (${moved.theta.toFixed(4)}), not zero`, moved.theta < -0.01);
 }
 
 /* ---- Model Risk peak is the high bid between entry and exit ---- */

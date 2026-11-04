@@ -77,8 +77,8 @@ export const CHAIN_COLUMNS: ChainCol[] = [
   } },
   { key: 'gamma', label: 'Gamma', head: 'Gamma', term: 'Gamma', render: c => ({ text: fixed(c.gamma, 4) }) },
   { key: 'theta', label: 'Theta per session', head: 'Theta/sess', term: 'Theta', render: c => ({ text: fixed(c.theta, 4) }) },
-  { key: 'vega', label: 'Vega', head: 'Vega', term: 'Vega', render: c => ({ text: fixed(c.vega, 4) }) },
-  { key: 'rho', label: 'Rho', head: 'Rho', term: 'Rho', render: c => ({ text: fixed(c.rho, 4) }) },
+  { key: 'vega', label: 'Vega per 1.00', head: 'Vega/1.00', term: 'Vega', render: c => ({ text: fixed(c.vega, 4) }) },
+  { key: 'rho', label: 'Rho per 1.00', head: 'Rho/1.00', term: 'Rho', render: c => ({ text: fixed(c.rho, 4) }) },
   /* what the contract loses over one trading session in DOLLARS a contract — theta × 100, the figure a buyer feels */
   { key: 'decay', label: 'Decay per session', head: 'Decay/sess', term: 'Theta', render: c => ({ text: Number.isFinite(c.theta) ? money(Math.abs(c.theta * 100)) : '—', ink: 'text-bear' }) },
   { key: 'iv', label: 'IV', head: 'IV', term: 'IV', render: c => ({ text: Number.isFinite(c.iv) ? `${grouped(c.iv, 1)}%` : '—' }) },
@@ -610,8 +610,8 @@ const WeighGrids = ({ c, ticker, expiry }: { c: DeskContract; ticker: string; ex
             <StatCell label="Delta" term="Delta" value={fixed(c.delta, 4)} />
             <StatCell label="Gamma" term="Gamma" value={fixed(c.gamma, 4)} />
             <StatCell label="Theta / sess" term="Theta" value={fixed(c.theta, 4)} />
-            <StatCell label="Vega" term="Vega" value={fixed(c.vega, 4)} />
-            <StatCell label="Rho" term="Rho" value={fixed(c.rho, 4)} />
+            <StatCell label="Vega / 1.00" term="Vega" value={fixed(c.vega, 4)} />
+            <StatCell label="Rho / 1.00" term="Rho" value={fixed(c.rho, 4)} />
           </div>
           {c.europeanApprox && (
             <span className="text-t11 leading-snug text-warn" data-european-note>
