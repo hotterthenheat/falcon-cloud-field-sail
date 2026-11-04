@@ -1,7 +1,6 @@
 /* The card behind the profile panel's "How to read": size (one capsule a strike, its length the hedging, its colour the lean)
    and flow (the running total from spot to a strike), then today's walls from the live numbers. */
 
-import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { fmtFlow, type FlowLadder } from '../../data/hedgeFlow';
 import type { GexLevel } from '../../types/market';
 import type { PanelLevels } from './ProfilePanel';
@@ -85,11 +84,10 @@ const SizeFigure = () => {
   const netMax = Math.max(...rows.map(r => Math.abs(r.put - r.call)));
   const spineX = (r: { put: number; call: number }) => MID - ((r.put - r.call) / netMax) * LEAN;
   const spine = splinePath(rows.map(r => ({ x: spineX(r), y: r.y })), MID - LEAN - 4, MID + LEAN + 4);
-  const ghost = splinePath(rows.map(r => ({ x: MID + (spineX(r) - MID) * 0.55, y: r.y })), MID - LEAN - 4, MID + LEAN + 4);
   const H = 6;
   const wallInk = (w: 'call' | 'put' | undefined) => (w === 'call' ? 'rgb(var(--bull))' : w === 'put' ? 'rgb(var(--bear))' : INK_2);
   return (
-    <svg viewBox="0 0 368 166" width="100%" role="img" aria-label="Five strikes on the ladder: the put leg grows left from a centre line, the call leg grows right, and one line leans through the rows toward the side that wins each strike" data-guide-figure="size">
+    <svg viewBox="0 0 368 166" width="100%" role="img" aria-label="Five strikes on the ladder: puts grow left, calls grow right, and the line leans toward the side with more contracts" data-guide-figure="size">
       <defs>
         {rows.map(r => {
           const ps = r.put / legMax;
@@ -129,24 +127,21 @@ const SizeFigure = () => {
             <rect x={MID - pl} y={r.y - H / 2} width={pl} height={H} rx={2} fill={`url(#g-put-${r.k})`} />
             <rect x={MID} y={r.y - H / 2} width={cl} height={H} rx={2} fill={`url(#g-call-${r.k})`} />
             <text x={MID - pl - 4} y={r.y + 0.5} textAnchor="end" dominantBaseline="middle" fontFamily={MONO} fontSize="9" fill={INK}>
-              ${r.put}M
+              {r.put}k
             </text>
             <text x={MID + cl + 4} y={r.y + 0.5} textAnchor="start" dominantBaseline="middle" fontFamily={MONO} fontSize="9" fill={INK}>
-              ${r.call}M
+              {r.call}k
             </text>
           </g>
         );
       })}
-      {/* the spine and its ghost at the open */}
-      <path d={ghost} fill="none" stroke="rgba(237,237,237,0.35)" strokeWidth={1} strokeDasharray="3 3" />
+      {/* the line leans to the side with more contracts */}
       <path d={spine} fill="none" stroke="rgba(237,237,237,0.85)" strokeWidth={1.5} />
       {/* What the drawing says, in three lines */}
       <circle cx={50} cy={128} r={4} fill={SILVER} />
-      <Label x={59} y={128}>puts grow left, calls grow right · longer is more hedging</Label>
-      <circle cx={50} cy={143} r={4} fill={WARM_2} />
-      <Label x={59} y={143}>puts push moves along · calls push back · hotter is heavier</Label>
-      <line x1={45} x2={55} y1={158.5} y2={158.5} stroke="rgba(237,237,237,0.85)" strokeWidth={1.5} />
-      <Label x={59} y={158}>the line leans to the side that wins · dashed is at the open</Label>
+      <Label x={59} y={128}>puts grow left, calls grow right · longer is more contracts</Label>
+      <line x1={45} x2={55} y1={143.5} y2={143.5} stroke="rgba(237,237,237,0.85)" strokeWidth={1.5} />
+      <Label x={59} y={143}>the line leans to the side with more contracts</Label>
     </svg>
   );
 };
@@ -201,19 +196,15 @@ interface ProfileGuideProps {
   flow: FlowLadder | null;
 }
 
-const ProfileGuide = ({ rows, levels, flow }: ProfileGuideProps) => {
-  const sizeAt = (k: number) => rows.find(r => near(r.strike, k))?.value ?? 0;
+const ProfileGuide = ({ levels, flow }: ProfileGuideProps) => {
   const rungAt = (k: number) => flow?.rungs.find(r => near(r.strike, k));
   const example = (label: string, k: number) => {
-    const v = sizeAt(k);
     const g = rungAt(k);
     const up = k > levels.spot;
-    if (!v || !g || g.flow === 0) return null;
+    if (!g || g.flow === 0) return null;
     return (
       <li key={label} className="text-t115 leading-relaxed text-textSecondary">
-        The {label} at <span className="font-mono tnum text-textPrimary">{fmtStrike(k)}</span> has{' '}
-        <span className="font-mono tnum text-textPrimary">{fmtUsd(Math.abs(v))}</span> of hedging sitting on it, and it {v > 0 ? 'pushes moves along' : 'pushes back against moves'}. For price to{' '}
-        {up ? 'climb' : 'fall'} to it, dealers would have to{' '}
+        For price to {up ? 'climb' : 'fall'} to the {label} at <span className="font-mono tnum text-textPrimary">{fmtStrike(k)}</span>, dealers would have to{' '}
         <span className="font-mono tnum text-textPrimary">
           {g.flow >= 0 ? 'buy' : 'sell'} {fmtFlow(g.flow)}
         </span>{' '}
@@ -228,7 +219,7 @@ const ProfileGuide = ({ rows, levels, flow }: ProfileGuideProps) => {
       <div>
         <p className="text-t12 font-semibold text-textPrimary">Size · what sits at each strike</p>
         <p className="mt-0.5 text-t115 leading-relaxed text-textSecondary">
-          Each row is one strike. The put hedging grows left from the centre line and the call hedging grows right: the more sits there, the longer the leg and the hotter its colour. That is why the walls are the longest. The put side pushes moves along at that strike; the call side pushes back. The line through the rows leans to whichever side wins each strike, and the dashed line is where it leaned at the open.
+          Each row is one strike. Open interest: puts grow left from the centre line and calls grow right. A longer leg is more contracts. The line through the rows leans to the side with more. Gamma stays on the calendar and on the lane that prices a move.
         </p>
         <div className="mt-2 rounded-md border border-borderSubtle/60 bg-panel px-2 py-2">
           <SizeFigure />

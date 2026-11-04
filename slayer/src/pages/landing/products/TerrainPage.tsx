@@ -60,7 +60,7 @@ const TerrainPage = () => (
 
     {/* ── the strike rail ── */}
     <Room eyebrow="The strike rail" first="The book beside the chart." second="Shown as a ladder or as the net." pictures={<Pair items={[
-      { src: `${SHOTS}/rail-ladder`, ratio: '528 / 798', name: 'The ladder', says: 'A row a strike, the puts to the left and the calls to the right on the ramp, the figures past the tips, and the spine leaning the way the net leans with its ghost at the open. The walls, the flip and the heaviest strike are marked on the column.' },
+      { src: `${SHOTS}/rail-ladder`, ratio: '528 / 798', name: 'The ladder', says: 'A row a strike. Puts to the left, calls to the right, the figures past the tips in contracts. The line leans to the side with more. The walls, the flip and the heaviest strike are marked on the column.' },
       { src: `${SHOTS}/rail-net`, ratio: '528 / 798', name: 'The net', says: 'Each strike’s net gamma as a figure in the leading side’s ink, and under it one row of dashes split between puts and calls, the row’s length the strike’s weight against the heaviest on screen.' },
     ]} />}>
       <p>

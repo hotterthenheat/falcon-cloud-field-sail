@@ -50,7 +50,7 @@ export const TERMS = {
   Pin: 'The strike with the most open interest, where the chain is heaviest. Not a level price is drawn to: tested on SPY and QQQ, the close did not settle toward it.',
   Supreme: 'The single largest gamma strike on the whole book — the level that matters most today.',
   // ---- the Map's profile panel ----
-  'Size at a strike': 'How much dealer hedging sits at this one strike. The longer the capsule, the more. Blue pushes back against a move here; orange pushes it along.',
+  'Calls vs puts': 'Open interest at this strike. Puts grow left, calls grow right. A longer leg is more contracts. The line leans to the side with more.',
   'Net at a strike': 'The puts less the calls at this one strike, as a figure and a row of dashes — one dash per tenth of the largest net on screen. Orange, puts lead and hedging amplifies a move here; blue, calls lead and it absorbs one.',
   'The wall now':
     'How much dealer hedging sits at this strike right now, in dollars — the stock dealers must trade for a 1% move because of the options open there (the strike’s net gamma exposure). The bar is that against the biggest wall shown; the figure beside it is the amount, and “was” is what the same contracts were worth at the open.',

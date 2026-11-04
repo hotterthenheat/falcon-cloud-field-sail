@@ -259,7 +259,7 @@ function railForCut(ticker: string, cut: RailCut, mode: BookMode = 'oi'): RailDa
   const legs = new Map<number, { put: number; call: number }>();
   const rows = nodes
     .map(n => {
-      legs.set(n.strike, { put: n.putGex, call: n.callGex });
+      legs.set(n.strike, { put: n.putOI, call: n.callOI });
       return { strike: n.strike, value: n.netGex, callOI: n.callOI };
     })
     .sort((a, b) => b.strike - a.strike);
@@ -1051,8 +1051,8 @@ const Pane = ({
     return buildFlowFromRows(rail.rows, levels.spot, repriced);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flowStrikes, levels.spot, fieldNodes, ticker, bookRev, bookMode]);
-  /* The ladder's two legs: the put and call hedging behind every strike's net, off the live chain, and the net at
-     the open as a ratio of now for the spine's ghost — the size lane draws the strike ladder's rows */
+  /* The ladder's two legs: open interest, puts and calls, not gamma. The size lane draws them.
+     The spine's old ghost was net gamma since the open; the ladder does not read it. */
   const legs = railData.legs;
   const openRatio = useMemo(
     () => netSinceOpenRatio(ticker),

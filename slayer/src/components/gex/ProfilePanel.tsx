@@ -62,8 +62,6 @@ import { thetaChartBars } from '../../data/thetaCandles';
 import { useSymbolTapeSig } from '../../data/thetaTape';
 import Term from '../ui/Term';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
-import { fmtGexUsd as fmtUsd } from '../../data/gex';
-import { sinceOpenRead } from '../../data/levelview';
 import { fmtFlow, type FlowLadder, type FlowRung } from '../../data/hedgeFlow';
 import { sessionVolumeProfile, type VolumeProfile } from '../../data/volumeProfile';
 import { CALL_WALL, FLIP, PUT_WALL, SUPREME } from './palette';
@@ -83,10 +81,19 @@ import type { KeyLevels } from '../../types/gex';
 import { FONT_SANS } from '../../theme/fonts';
 import { readToken, useResolvedTheme } from '../../theme/theme';
 
+/** A contract count, short enough for a leg tip. Not dollars. */
+const fmtCount = (n: number): string => {
+  const a = Math.abs(n);
+  if (a >= 1e6) return `${(a / 1e6).toFixed(1)}M`;
+  if (a >= 1e4) return `${Math.round(a / 1e3)}K`;
+  if (a >= 1e3) return `${(a / 1e3).toFixed(1)}K`;
+  return Math.round(a).toLocaleString('en-US');
+};
+
 export type ProfileLane = 'both' | 'size' | 'flow';
 export const LANE_OPTIONS: DropdownOption<ProfileLane>[] = [
   { value: 'both', label: 'Both', hint: 'What sits at each strike, and what a move there costs, side by side' },
-  { value: 'size', label: 'Size', hint: 'Only what sits at each strike' },
+  { value: 'size', label: 'Size', hint: 'Puts and calls at each strike, by open interest' },
   { value: 'flow', label: 'Flow', hint: 'Only what a move to each strike costs' },
 ];
 /** The Map hands ExposureLevels (with the pin); a Terrain pane hands KeyLevels (without) */
@@ -374,8 +381,7 @@ interface ProfilePanelProps {
   rows: GexLevel[];
   /** The largest |value| in the window — the size lane's scale */
   maxAbs: number;
-  /** Per strike, the put and call hedging behind the net — the ladder's two legs. Omitted, the
-      net alone is drawn as one leg on its side. */
+  /** Per strike, open interest: puts and calls. The ladder's two legs. Omitted, the net alone is drawn as one leg. */
   legs?: ReadonlyMap<number, { put: number; call: number }>;
   /** Per strike, the net at the open as a ratio of now — the spine's dashed ghost */
   openRatio?: ReadonlyMap<number, number> | null;
@@ -451,7 +457,7 @@ interface Hover {
 }
 
 const ProfilePanel = ({
-  rows, maxAbs, legs, openRatio = null, palette = 'thermal', step, levels, flow, lane, onLane, greek, words = { pos: 'amplifies', neg: 'absorbs' }, focusPrice, onSelect, projection, onGuide, guideOpen = false,
+  rows, maxAbs, legs, openRatio = null, palette = 'thermal', step, levels, flow, lane, onLane, focusPrice, onSelect, projection, onGuide, guideOpen = false,
   ticker, width, onWidth, restWidth, chartFloor = CHART_MIN_W, headCard, onClose, closeHint = 'Hide this panel', className = '', lockView,
   view: viewProp, onView,
 }: ProfilePanelProps) => {
@@ -933,9 +939,9 @@ const ProfilePanel = ({
         };
         const full = tierNow === 'full';
         swatch(1, 14);
-        word(full ? 'puts amplify' : 'puts');
+        word('puts');
         swatch(-1, 14);
-        word(full ? 'calls absorb' : 'calls');
+        word('calls');
         ctx.strokeStyle = ink.spine;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
@@ -943,18 +949,7 @@ const ProfilePanel = ({
         ctx.lineTo(kx + 12, ky);
         ctx.stroke();
         kx += 16;
-        word(full ? 'the spine now' : 'now');
-        ctx.save();
-        ctx.setLineDash([3, 3]);
-        ctx.strokeStyle = ink.keyGhost;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(kx, ky);
-        ctx.lineTo(kx + 12, ky);
-        ctx.stroke();
-        ctx.restore();
-        kx += 16;
-        word(full ? 'at the open' : 'open');
+        word(full ? 'heavier side' : 'side');
         ctx.fillStyle = ink.supreme;
         ctx.fillRect(kx, ky - 3, 6, 6);
         kx += 10;
@@ -1211,9 +1206,8 @@ const ProfilePanel = ({
         figuresRef.current = figures;
         const reach = Math.max(8, laneW / 2 - (figures ? LEG_FIG_W : 6) - 4);
         const legH = Math.max(3, Math.min(9, Math.round(barH * 0.55)));
-        /* the legs' scale is the largest leg ON SCREEN, the spine's the largest |net| — both live, like the capsules' were */
+        /* the legs' scale is the largest open-interest leg on screen */
         let legMax = 0;
-        let netMax = 0;
         const legOf = (k: number, v: number) => {
           const l = legs?.get(k);
           if (l) return { put: Math.abs(l.put), call: Math.abs(l.call) };
@@ -1223,10 +1217,8 @@ const ProfilePanel = ({
         for (const r of placed) {
           const l = legOf(r.strike, r.value);
           legMax = Math.max(legMax, l.put, l.call);
-          netMax = Math.max(netMax, Math.abs(r.value));
         }
-        if (!legMax) legMax = maxAbs || 1;
-        if (!netMax) netMax = maxAbs || 1;
+        if (!legMax) legMax = 1;
         /* the centre line */
         ctx.strokeStyle = ink.divider;
         ctx.lineWidth = 1;
@@ -1276,36 +1268,26 @@ const ProfilePanel = ({
             ctx.textBaseline = 'middle';
             if (l.put > 0) {
               ctx.textAlign = 'right';
-              ctx.fillText(fmtUsd(l.put), mid - pt.len - 4, r.y + 0.5);
+              ctx.fillText(fmtCount(l.put), mid - pt.len - 4, r.y + 0.5);
             }
             if (l.call > 0) {
               ctx.textAlign = 'left';
-              ctx.fillText(fmtUsd(l.call), mid + ct.len + 4, r.y + 0.5);
+              ctx.fillText(fmtCount(l.call), mid + ct.len + 4, r.y + 0.5);
             }
           }
         }
-        /* THE SPINE — the contour through the rows, leaning toward the side that dominates
-           by the strike's net (positive net is put-dominant: it leans left); its ghost at the open */
+        /* THE SPINE — leans to the side with more contracts (more puts leans left). Not net gamma. */
         if (placed.length > 1) {
           const lean = (laneW / 2) * MAX_LEAN;
-          const pts = placed.map(r => ({ x: mid - (r.value / netMax) * lean, y: r.y })).sort((a, b) => a.y - b.y);
+          const sideOf = (k: number) => {
+            const l = legs?.get(k);
+            return l ? l.put - l.call : 0;
+          };
+          let sideMax = 0;
+          for (const r of placed) sideMax = Math.max(sideMax, Math.abs(sideOf(r.strike)));
+          if (!sideMax) sideMax = 1;
+          const pts = placed.map(r => ({ x: mid - (sideOf(r.strike) / sideMax) * lean, y: r.y })).sort((a, b) => a.y - b.y);
           const clampX = (v: number) => Math.max(sizeL + 2, Math.min(sizeR - 2, v));
-          const hasGhost = !!openRatio && placed.some(r => openRatio.has(r.strike));
-          if (hasGhost) {
-            const gpts = placed
-              .map(r => {
-                const ratio = openRatio!.get(r.strike);
-                const x = ratio == null ? mid - (r.value / netMax) * lean : mid - Math.max(-1.6, Math.min(1.6, ratio)) * ((r.value / netMax) * lean);
-                return { x: clampX(x), y: r.y };
-              })
-              .sort((a, b) => a.y - b.y);
-            ctx.save();
-            ctx.setLineDash([3, 3]);
-            ctx.strokeStyle = ink.ghost;
-            ctx.lineWidth = 1;
-            ctx.stroke(new Path2D(splinePath(gpts, sizeL + 2, sizeR - 2)));
-            ctx.restore();
-          }
           ctx.strokeStyle = ink.spine;
           ctx.lineWidth = 1.5;
           ctx.stroke(new Path2D(splinePath(pts.map(q => ({ x: clampX(q.x), y: q.y })), sizeL + 2, sizeR - 2)));
@@ -1316,7 +1298,7 @@ const ProfilePanel = ({
             ctx.strokeStyle = ink.silver;
             ctx.lineWidth = 1.5;
             ctx.beginPath();
-            ctx.arc(clampX(mid - (mark.value / netMax) * lean), mark.y, 3, 0, Math.PI * 2);
+            ctx.arc(clampX(mid - (sideOf(mark.strike) / sideMax) * lean), mark.y, 3, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
           }
@@ -1678,8 +1660,6 @@ const ProfilePanel = ({
   const cardOn = view === 'ladder' && !!hover && !!readRow;
   const cardRow = cardOn && readRow ? readRow : null;
   const cardLegs = cardRow ? legs?.get(cardRow.strike) ?? null : null;
-  const cardLevel = cardRow ? rows.find(r => near(r.strike, cardRow.strike)) ?? null : null;
-  const sinceOpen = cardRow && openRatio ? sinceOpenRead(openRatio.get(cardRow.strike)) : null;
   const cardKept = !!cardRow && focusPrice != null && near(focusPrice, cardRow.strike);
   const fromSpot = cardRow && liveSpot > 0 ? ((cardRow.strike - liveSpot) / liveSpot) * 100 : null;
   const card = cardRow && hover && (
@@ -1693,11 +1673,8 @@ const ProfilePanel = ({
       aside={fromSpot == null ? undefined : `${fromSpot > 0 ? '+' : ''}${fromSpot.toFixed(2)}%`}
       foot={cardKept ? 'Kept · click to let go' : 'Click to keep'}
     >
-      {cardLegs && <CardRow k="Puts" v={Math.abs(cardLegs.put) > 0 ? fmtUsd(Math.abs(cardLegs.put)) : '—'} />}
-      {cardLegs && <CardRow k="Calls" v={Math.abs(cardLegs.call) > 0 ? fmtUsd(Math.abs(cardLegs.call)) : '—'} />}
-      <CardRow k="Net" v={cardRow.value === 0 ? '—' : fmtUsd(Math.abs(cardRow.value))} sub={cardRow.value === 0 ? undefined : cardRow.value > 0 ? words.pos : words.neg} />
-      <CardRow k="Open int" v={cardLevel && (cardLevel.callOI != null || cardLevel.putOI != null) ? ((cardLevel.callOI ?? 0) + (cardLevel.putOI ?? 0)).toLocaleString('en-US') : '—'} />
-      <CardRow k="Since open" v={sinceOpen == null ? '—' : sinceOpen.figure ?? sinceOpen.short} ink={sinceOpen == null ? undefined : sinceOpen.dir < 0 ? 'rgb(var(--bear))' : sinceOpen.dir > 0 ? 'rgb(var(--bull))' : undefined} />
+      {cardLegs && <CardRow k="Puts" v={Math.abs(cardLegs.put) > 0 ? Math.round(Math.abs(cardLegs.put)).toLocaleString('en-US') : '—'} />}
+      {cardLegs && <CardRow k="Calls" v={Math.abs(cardLegs.call) > 0 ? Math.round(Math.abs(cardLegs.call)).toLocaleString('en-US') : '—'} />}
       {readRole && <CardRow k="Level" v={readRole.words} ink={readRole.c} />}
     </PointerFollowCard>
   );
@@ -1791,7 +1768,7 @@ const ProfilePanel = ({
      inside it with a fade at the edge that has more (ui/scrollMore.ts), and never runs under the close door */
   const narrowTabs = (shownW ?? rootRef.current?.clientWidth ?? 999) < 420;
   const viewTabs = showSize && (
-    <span ref={tabsRef} className="pointer-events-auto min-w-0 max-w-full inline-flex items-center overflow-x-auto scroll-row" data-profile-views data-profile-view-now={view} title="Ladder: the put and call legs at each strike · Net: the matrix — put, call and net at every strike · GEX: the calendar — the book by expiry, every greek">
+    <span ref={tabsRef} className="pointer-events-auto min-w-0 max-w-full inline-flex items-center overflow-x-auto scroll-row" data-profile-views data-profile-view-now={view} title="Ladder: open interest, puts left and calls right · Matrix: put, call and net gamma · Calendar: the book by expiry">
       <FilterTabs options={VIEW_TABS} value={view} onChange={setView} ariaLabel="Ladder, Net or GEX" paper={paper} size={narrowTabs ? 'sm' : 'md'} />
     </span>
   );
@@ -1880,9 +1857,8 @@ const ProfilePanel = ({
           )}
           {!twoRowHead && showSize && !quiet && (
             <span className="min-w-0 flex-1 flex items-center justify-center gap-2 text-t10 text-textMuted" data-lane-head="size">
-              <Term k="Size at a strike" className="pointer-events-auto truncate">
-                Size · {greek}
-                <span className="text-textMuted"> · puts ◂ ▸ calls</span>
+              <Term k="Calls vs puts" className="pointer-events-auto truncate">
+                Calls vs puts
               </Term>
             </span>
           )}
