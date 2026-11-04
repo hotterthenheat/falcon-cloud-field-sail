@@ -10,7 +10,7 @@ import { PRACTICE_SUBPAGES } from '../../pages/practice/subnav';
 
 const SITE = 'Slayer Terminal';
 const LANDING = {
-  title: `${SITE} — Trade what you can see`,
+  title: `${SITE} — Where the market shows its hand`,
   description: 'Most of what moves a price is public, just scattered. Slayer gathers it into one terminal: the prints, the positions, the levels, the filings. Every page explains itself in plain English.',
 };
 
@@ -40,8 +40,8 @@ const TOP: Record<string, Meta> = {
   '/compass': page('Compass', 'Contracts that fit the levels right now. Each one carries a live state: active while the structure holds, watch while it forms, fading when it breaks.'),
   '/compass/tracker': page('Tracker', 'The setups you kept, followed to the close.', 'Compass'),
   '/compass/blotter': page('Blotter', 'Every trade recorded, from the fill in to the fill out.', 'Compass'),
-  '/compass/review': page('Session review', 'Every trade it took, reviewed after the close: what went right, what went wrong, and why.', 'Compass'),
-  '/compass/study': page('Session study', 'What moved 50% in the scan’s band, what the model read, and what stopped it.', 'Compass'),
+  '/compass/review': page('Review', 'Live scan of every contract up 100% or more, on every open book.', 'Compass'),
+  '/compass/study': page('Study', 'Every call the models took, and the closest they did not.', 'Compass'),
   '/weigher': page('Weigher', 'Weigh any contract before you take it: the chart, the chain and your watchlist on one desk, and what a position would return at every price.'),
   '/community': page('Community', 'The traders’ room. It opens after launch.'),
   '/start': page('Start', 'Every page of the terminal, one picture and one line each: pick where to begin.'),

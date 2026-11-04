@@ -27,6 +27,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
+import { takeWire, writeWire } from '../../shared/jsonWire.mjs';
 import { nyIsoDate, nyParts } from '../core/nyTime';
 import { isTradingDay } from '../core/calendar';
 import { phaseAt, sessionAt } from '../core/session';
@@ -202,11 +203,14 @@ export class DaySeries {
   readings = 0;
   /** the newest answer per cut and page, to skip one read twice */
   newest = new Map<string, number>();
+  /** the series last handed out, so a crowd asking the same `since` does not copy it again */
+  held: { since: number; series: KeptSeries[] } | null = null;
   add(line: Line): boolean {
     if (!line || !Number.isFinite(line.at) || !Array.isArray(line.r)) return false;
     const key = `${line.c}|${line.p}`;
     if ((this.newest.get(key) ?? 0) >= line.at) return false;
     this.newest.set(key, line.at);
+    this.held = null;
     this.readings += 1;
     if (this.firstAt == null || line.n < this.firstAt) this.firstAt = line.n;
     if (this.lastAt == null || line.n > this.lastAt) this.lastAt = line.n;
@@ -222,6 +226,7 @@ export class DaySeries {
   }
   /** the series, or with `since` only the segments that end after it */
   out(since = 0): KeptSeries[] {
+    if (this.held && this.held.since === since) return this.held.series;
     const out: KeptSeries[] = [];
     for (const [k, segs] of this.series) {
       const bar = k.lastIndexOf('|');
@@ -231,6 +236,7 @@ export class DaySeries {
       if (since > 0) while (i < segs.length && segs[i + 1] <= since) i += 4;
       if (i < segs.length) out.push([cut, strike, i ? segs.slice(i) : segs.slice()]);
     }
+    this.held = { since, series: out };
     return out;
   }
 }
@@ -828,7 +834,9 @@ export function exposureRoute(rec: Recorder, req: Req, res: Res, now: () => numb
     }
     const since = Number(url.searchParams.get('since')) || 0;
     if (day === nyIsoDate(now())) rec.noteViewer(t);
-    send(req, res, 200, rec.day(t, day, since));
+    const body = rec.day(t, day, since);
+    const stamp = `${body?.readings}|${body?.lastAt}|${since}|${body?.recording}`;
+    writeWire(req, res, 200, takeWire(`exposure|${t}|${day}|${since}`, stamp, () => body));
     return;
   }
   if (route === '/status') {

@@ -78,7 +78,7 @@ const OPENS_ON_NAMES: DropdownOption<string>[] = [
   ...['SPY', 'QQQ', 'AAPL', 'NVDA'].map(t => ({ value: t, label: t, hint: `Every visit opens on ${t}` })),
 ];
 const OPENS_ON_TIMEFRAMES: DropdownOption<string>[] = [
-  { value: '', label: "Each desk's own", hint: 'Pulse and the Weigher at 1m, the Map at 15m' },
+  { value: '', label: "Each desk's own", hint: 'Charts open at 5m. The Map stays at 15m.' },
   ...TIMEFRAMES.filter(t => t.value !== '15s' && frameServed(t.value)).map(t => ({ value: t.value, label: t.label, hint: `Every chart opens at ${t.label}` })),
 ];
 /* The page the terminal opens on: the start page or any rail page (where landing/pieces.tsx doorTo lands). */

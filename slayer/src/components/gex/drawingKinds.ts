@@ -2,6 +2,7 @@
    disagree; the primitive calls these first. A mark wears the reader's ink, except where it is direction (risk/reward, price range, arrows). */
 
 import { fmtElapsed, measureSpan } from '../../data/measure';
+import { fmtPx } from '../../core/format';
 import type { Drawing, DrawingPoint } from './drawingsPrimitive';
 import { hitMore, renderMore } from './drawingKindsMore';
 import { hitTv, renderTv } from './drawingKindsTv';
@@ -152,7 +153,7 @@ const vwapSrc = (d: Drawing): VwapSource => {
 /** A words box's size in CSS px, estimated at the mono face's ~0.58em a character — the hit area, and the callout's frame before the canvas measures it */
 const wordsBox = (text: string, px: number): { w: number; h: number } => ({ w: Math.max(18, text.length * px * 0.6) + 12, h: px * 1.7 });
 
-const priceWords = (price: number): string => price.toFixed(2);
+const priceWords = (price: number): string => fmtPx(price);
 
 // ---- DRAWN -----------------------------------------------------------------------------
 

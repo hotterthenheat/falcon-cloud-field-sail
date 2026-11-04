@@ -21,6 +21,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { takeWire, writeWire } from '../shared/jsonWire.mjs';
 import { gate, sendDenied } from './auth.mjs';
 import { feedMoving, nyInstant, regularCloseMin, sessionAt } from '../shared/marketSession.mjs';
 import {
@@ -223,6 +224,7 @@ export function createRegime(o) {
   }
 
   /** The vol regime as it stands; starts whatever reads it lacks (the next ask carries them) */
+  let sent = null;
   async function vol() {
     const s = await prints();
     const t = now();
@@ -236,6 +238,17 @@ export function createRegime(o) {
     for (const sym of PATH_SYMBOLS) topUp(sym, day);
     const vixMs = nyInstant(day, wallOf(q.VIX.at).min);
     const live = feedMoving(t, 'VIX') && t - vixMs < 5 * 60_000;
+    const phase = sessionAt(t, 'indexOption').phase;
+    const pending = {
+      year: REGIME_SYMBOLS.some((sym) => !y[sym]),
+      path: PATH_SYMBOLS.some((sym) => { const p = paths.get(sym); return !p || p.day !== day || (!p.readAt && !p.done); }),
+    };
+    const dataStamp = `${q.VIX.at}|${PATH_SYMBOLS.map((sym) => { const p = paths.get(sym); return p && p.day === day ? p.bars.length + '@' + p.readAt : '0'; }).join(',')}|${REGIME_SYMBOLS.map((sym) => (y[sym] ? y[sym].length : 0)).join(',')}|${pending.year}|${pending.path}|${s.error ?? ''}`;
+    if (sent && sent.stamp === dataStamp) {
+      sent.body.live = live;
+      sent.body.phase = phase;
+      return sent.body;
+    }
     const quotes = REGIME_SYMBOLS.map((sym) => {
       const p = q[sym];
       if (!p) return { sym, price: null, at: null, prev: null, prevDay: null, pct: null, n: 0, lo: null, hi: null };
@@ -254,23 +267,22 @@ export function createRegime(o) {
       return { key, num, den, value: value == null ? null : r4(value), pct: read?.pct ?? null, n: read?.n ?? 0, prev: read?.prev == null ? null : r4(read.prev), lo: read?.lo == null ? null : r4(read.lo), hi: read?.hi == null ? null : r4(read.hi), path };
     });
     const main = ratios[0].value;
-    return {
+    const body = {
       v: REGIME_VERSION,
       at: t,
       day,
       yearEnd: end,
       asOf: q.VIX.at,
       live,
-      phase: sessionAt(t, 'indexOption').phase,
+      phase,
       regime: main == null ? null : regimeOf(main),
       quotes,
       ratios,
-      pending: {
-        year: REGIME_SYMBOLS.some((sym) => !y[sym]),
-        path: PATH_SYMBOLS.some((sym) => { const p = paths.get(sym); return !p || p.day !== day || (!p.readAt && !p.done); }),
-      },
+      pending,
       error: s.error,
     };
+    sent = { stamp: dataStamp, body };
+    return body;
   }
 
   return {
@@ -328,7 +340,9 @@ export async function proxyRegime(req, res, root = process.cwd()) {
   }
   const r = await reader(root);
   try {
-    send(res, 200, await r.vol());
+    const body = await r.vol();
+    const stamp = `${body.asOf ?? ''}|${body.live}|${body.phase}|${body.pending?.year}|${body.pending?.path}|${body.error ?? ''}|${body.ratios?.[0]?.path?.length ?? 0}`;
+    writeWire(req, res, 200, takeWire('regime|vol', stamp, () => body));
   } catch (e) {
     send(res, 500, { error: 'The regime read failed.', code: 'regime_failed' });
     console.warn(`[regime] ${e && e.message ? e.message : e}`);

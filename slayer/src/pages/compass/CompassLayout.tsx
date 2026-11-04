@@ -1,49 +1,35 @@
 /* Compass's shell: one head over the board, the blotter, the tracker and a setup's page. The scan runs on the server
    for everyone (data/compassServer.ts); these pages read its board and record (useThetaBook, data/compassFeed.ts). */
 
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Compass as CompassIcon } from 'lucide-react';
 import { CompassRouteSkeleton } from '../compassSkeleton';
 import TapeRail from '../../components/compass/TapeRail';
 import NameDesks from '../../components/compass/NameDesks';
 import SessionBook from '../../components/ui/SessionBook';
+import { KeepOutlet } from '../../components/layout/DeskKeep';
 import { useTicker } from '../../context/MarketDataContext';
 import { useCompassView } from '../../data/compassView';
 import { parseSetupId, setupIdOf } from '../../data/compass';
 import { COMPASS_SET } from '../../data/compassUniverse';
-import { currentPicks } from '../../data/compassModel';
 import { useThetaBook } from '../../data/thetaBook';
-import { holdCompassFeed } from '../../data/compassFeed';
 import { useCompassPings } from '../../data/compassAlerts';
-import { chime } from '../../core/sound';
 import { nyClock } from '../../core/nyTime';
-import { MODEL_WORD } from '../../data/compassParams';
 
-export const COMPASS_LINE = `${MODEL_WORD[1]} and ${MODEL_WORD[2]}, 0 to 7 days. ${MODEL_WORD[3]} is same-day only.`;
+export const COMPASS_LINE = 'Book A and Book B, 0 to 7 days. Book C is same-day only.';
 /** The Tracker's line under the same head. Last page of Compass. */
 export const TRACKER_LINE = 'The signals in play, each on its own quotes since the call.';
 export const BLOTTER_LINE = 'The official record: every call the scan fired, the quote it fired on, the fill, the exit.';
-export const REVIEW_LINE = 'Every trade reviewed after the close: the entry, what happened after, and the cause.';
-export const STUDY_LINE = 'The session studied: what moved, and what stopped it.';
+export const REVIEW_LINE = 'Live. Every contract up 100% or more, on every open book.';
+export const STUDY_LINE = 'Every call we took, and the closest we did not.';
 
 const CompassLayout = () => {
   const location = useLocation();
-  const outlet = useOutlet();
   const line = location.pathname.startsWith('/compass/blotter') ? BLOTTER_LINE : location.pathname.startsWith('/compass/tracker') ? TRACKER_LINE : location.pathname.startsWith('/compass/review') ? REVIEW_LINE : location.pathname.startsWith('/compass/study') ? STUDY_LINE : COMPASS_LINE;
   const onBoard = location.pathname === '/compass' || location.pathname === '/compass/';
-  const onBlotter = location.pathname.startsWith('/compass/blotter');
-  /* every Compass page reads the server's board and record */
-  useEffect(() => holdCompassFeed(), []);
-  const page = (
-    <div className={`flex flex-col min-w-0 ${onBoard ? 'xl:h-full xl:min-h-0' : 'gap-4 mt-4'}`}>
-      <Suspense fallback={<CompassRouteSkeleton pathname={location.pathname} />}>{outlet}</Suspense>
-    </div>
-  );
   return (
-    /* the desk owns its first screen, Pinpoint's way (top bar + the head ≈ 174): a short page stretches and the footer
-       starts below the fold. The Blotter keeps its own height. */
-    <div className={`flex flex-col xl:flex-1 ${onBlotter ? 'xl:min-h-0' : 'min-h-[calc(100vh-174px)]'}`}>
+    <div className="flex flex-col xl:flex-1 xl:min-h-0">
       <header className="flex items-start gap-6 flex-wrap pb-3 border-b border-borderSubtle shrink-0" data-shell data-compass-shell>
         <div className="min-w-0 flex-1">
           <div className="h-6 flex items-center gap-2.5" data-shell-page>
@@ -57,42 +43,39 @@ const CompassLayout = () => {
         <CallPing />
         <SessionBook />
       </header>
-      {/* The tape is the scan's rail. A contract's page is the contract — the prints stay loaded for the way back. */}
-      {onBoard ? (
-        <div className="mt-4 grid grid-cols-1 xl:grid-cols-12 gap-4 items-start xl:flex-1 xl:min-h-0 xl:items-stretch" data-compass-row>
-          <div className="xl:col-span-8 min-w-0 xl:min-h-0 xl:h-full">{page}</div>
-          <div className="xl:col-span-4 min-w-0 xl:min-h-0 xl:h-full">
-            <div className="flex flex-col gap-3 xl:h-full xl:min-h-0">
-              <div className="h-[46vh] min-h-[280px] xl:h-auto xl:flex-1 xl:min-h-0">
+      <div className={onBoard ? 'mt-4 grid grid-cols-1 xl:grid-cols-12 gap-4 items-start xl:flex-1 xl:min-h-0 xl:items-stretch' : 'contents'} data-compass-row={onBoard ? '' : undefined}>
+        <div className={onBoard ? 'xl:col-span-8 min-w-0 xl:min-h-0 xl:h-full' : 'contents'}>
+          <div className={`flex flex-col min-w-0 ${onBoard ? 'xl:h-full xl:min-h-0' : 'gap-4 mt-4'}`}>
+            <KeepOutlet fallback={<CompassRouteSkeleton pathname={location.pathname} />} />
+          </div>
+        </div>
+        {onBoard && (
+          <div className="xl:col-span-4 min-w-0 xl:sticky xl:top-0 xl:self-start xl:h-[calc(100dvh-6.5rem)] xl:max-h-[calc(100dvh-6.5rem)]">
+            <div className="flex flex-col gap-3 h-[70vh] min-h-[520px] xl:h-full xl:min-h-0">
+              <div className="min-h-0 flex-1 basis-0">
                 <CompassTape pathname={location.pathname} />
               </div>
-              {/* with no name picked, one compact line — the tape takes the column's room */}
-              <div className="min-h-[280px] has-[[data-compass-name=empty]]:min-h-0 xl:h-auto xl:flex-1 xl:has-[[data-compass-name=empty]]:flex-none xl:min-h-0 min-w-0">
+              <div className="min-h-0 flex-1 basis-0 min-w-0 overflow-y-auto">
                 <CompassName />
               </div>
             </div>
           </div>
-        </div>
-      ) : (
-        page
-      )}
+        )}
+      </div>
     </div>
   );
 };
 
-/** A call the reader asked to hear: one chime and a chip for a minute, a click opens it. */
+/** A call the reader asked to hear, for a minute after this page heard it. The chime is the desk toast, not a second one. */
 const CallPing = () => {
   const pings = useCompassPings();
   const navigate = useNavigate();
-  const heard = useRef<Set<string>>(new Set(pings.map(p => p.id)));
   const [, wake] = useState(0);
   const last = pings[0];
-  const fresh = last && Date.now() - last.at < 60_000 ? last : null;
+  const fresh = last && Date.now() - last.heardAt < 60_000 ? last : null;
   useEffect(() => {
-    if (!fresh || heard.current.has(fresh.id)) return;
-    heard.current.add(fresh.id);
-    chime();
-    const id = window.setTimeout(() => wake(n => n + 1), 60_000);
+    if (!fresh) return;
+    const id = window.setTimeout(() => wake(n => n + 1), 60_000 - (Date.now() - fresh.heardAt));
     return () => window.clearTimeout(id);
   }, [fresh]);
   if (!fresh) return null;
@@ -122,7 +105,7 @@ const CompassTape = ({ pathname }: { pathname: string }) => {
       focus={focus}
       canOpen={hit => {
         if (live.status === 'loading') return false;
-        return currentPicks().some(s => s.ticker === hit.ticker && s.right === hit.right && Math.abs(s.strike - hit.strike) < 0.01 && (offered === 'odte' ? s.expiry === '0DTE' : s.expiry !== '0DTE' && s.band !== 'lottery') && (s.band === 'top' || s.band === 'wing' || (s.band === 'lottery' && offered === 'odte')));
+        return live.setups.some(s => s.ticker === hit.ticker && s.right === hit.right && Math.abs(s.strike - hit.strike) < 0.01 && (offered === 'odte' ? s.expiry === '0DTE' : s.expiry !== '0DTE' && s.band !== 'lottery') && (s.band === 'top' || s.band === 'wing' || (s.band === 'lottery' && offered === 'odte')));
       }}
       onOpen={hit => {
         if (!COMPASS_SET.has(hit.ticker)) return;
@@ -139,8 +122,8 @@ const CompassName = () => {
   const picked = selectedId ? parseSetupId(selectedId) : null;
   if (!picked) {
     return (
-      <div className="border border-borderSubtle rounded-md bg-panel px-4 py-3" data-compass-name="empty">
-        <p className="font-mono text-t11 text-textMuted">Select a name. The other desks and what it passed sit here.</p>
+      <div className="h-full border border-borderSubtle rounded-md bg-panel flex items-center justify-center px-6" data-compass-name>
+        <p className="font-mono text-t11 text-textMuted text-center">Select a name. The other desks and what it passed sit here.</p>
       </div>
     );
   }

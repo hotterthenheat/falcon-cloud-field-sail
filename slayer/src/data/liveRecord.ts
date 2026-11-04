@@ -10,6 +10,7 @@ import type { CongressFeed, CongressTrade, InsiderFlow, InsiderTrade, TxCode } f
 import { whalesEcon, whalesPoliticians, uwCall, type UwCongress, type UwEcon, type UwInsider, type UwNews, type UwPolitician } from './whales';
 import { nyIsoDaysBack } from './nyDate';
 import { isTradingDay } from '../core/calendar';
+import { nyParts } from '../core/nyTime';
 import { peekRegularCloses } from './dayChange';
 import { loadCloses } from './stockFile';
 import { congressFromWhales, econFromWhales, foreignSuspects, insidersFromWhales, markForeignIssuers, newsFromWhales, readInsiders, storyLeadTicker } from './whalesMap';
@@ -39,10 +40,10 @@ const patch = (part: Partial<LiveSnapshot>) => {
 };
 const notify = () => store.notify();
 
-/* The whole day's wire: the first read pages back (100 a page) past New York's midnight, at most NEWS_PAGE_CAP pages;
-   after that only the newest page is merged in. The page says from what time the stories are complete. */
+/* The whole day's wire: the first read pages back (100 a page) past the wire day's New York midnight, at most
+   NEWS_PAGE_CAP pages; after that only the newest page is merged in. The page says from what time the stories are complete. */
 const NEWS_LIMIT = 100;
-const NEWS_PAGE_CAP = 16;
+const NEWS_PAGE_CAP = 24;
 let newsRows: UwNews[] = [];
 let newsBackfilled = false;
 let newsPulling = false;
@@ -80,13 +81,17 @@ const sessionBefore = (iso: string): string => {
   }
   return day;
 };
-/** The wire's day (NewsCoverage.day): today on a trading day once a story of today's has been read, else the last
-    session before today. Before the first page answers, a trading day is taken to be today's */
+/** The wire's day. After the open, today once a story of today's has been read. Before 09:30 the overnight
+    trickle is not a new day: the page keeps the last session and counts the newer stories on top of it. */
 function wireDay(rows: UwNews[]): string {
   const today = nyIsoDaysBack(0);
   if (isTradingIso(today)) {
-    const midnight = nyMidnightOf(today);
-    if (rows.length === 0 || rows.some(r => !(Date.parse(r.created_at) < midnight))) return today;
+    const { hour, minute } = nyParts();
+    const sessionOpen = hour * 60 + minute >= 9 * 60 + 30;
+    if (sessionOpen) {
+      const midnight = nyMidnightOf(today);
+      if (rows.length === 0 || rows.some(r => !(Date.parse(r.created_at) < midnight))) return today;
+    }
   }
   return sessionBefore(today);
 }

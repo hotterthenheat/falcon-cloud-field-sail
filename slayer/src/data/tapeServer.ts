@@ -36,6 +36,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { gzipSync, gunzipSync } from 'node:zlib';
+import { takeWire, writeWire } from '../../shared/jsonWire.mjs';
 import { INDEX_SYMBOLS, isSessionDay, nyInstant, nyWall, productOf, sessionAt, windowAt } from '../../shared/marketSession.mjs';
 import {
   OFF_EXCHANGE,
@@ -531,10 +532,16 @@ export function startTapes(o: TapeOptions): Tapes {
     t.through = to;
   };
 
+  const optionSent = new WeakMap<OptionTape, Map<string, OptionTapeWire>>();
+  const stockSent = new WeakMap<StockTape, Map<string, StockTapeWire>>();
   const optionWire = (t: OptionTape, since: number): OptionTapeWire => {
     const through = optionThrough(t);
     const from = Math.max(since, 0);
-    return {
+    const key = `${through}|${from}|${t.fault ?? ''}`;
+    let kept = optionSent.get(t);
+    const hit = kept?.get(key);
+    if (hit) return hit;
+    const body: OptionTapeWire = {
       format: TAPE_FORMAT,
       kind: 'options',
       ticker: t.name,
@@ -550,25 +557,40 @@ export function startTapes(o: TapeOptions): Tapes {
       cells: t.cellList.filter(c => c[0] >= from && c[0] < through),
       mix: PRINT_TYPES.map(k => t.mix.get(k) ?? [k, 0, 0, 0, 0, 0]),
     };
+    if (!kept) optionSent.set(t, (kept = new Map()));
+    kept.set(key, body);
+    if (kept.size > 8) kept.delete(kept.keys().next().value as string);
+    return body;
   };
-  const stockWire = (t: StockTape, since: number): StockTapeWire => ({
-    format: TAPE_FORMAT,
-    kind: 'stock',
-    ticker: t.name,
-    day: t.day,
-    open: t.open,
-    close: t.close,
-    through: t.through,
-    complete: t.through >= t.close,
-    live: stockToday(t) && t.through < t.close,
-    delayed: stockToday(t),
-    index: false,
-    fault: t.fault,
-    venues: [...t.venues.values()].sort((a, b) => b[1] - a[1]),
-    shares: t.shares,
-    offShares: t.offShares,
-    marks: t.marks.filter(m => m[0] >= since && m[0] < t.through),
-  });
+  const stockWire = (t: StockTape, since: number): StockTapeWire => {
+    const from = Math.max(since, 0);
+    const key = `${t.through}|${from}|${t.fault ?? ''}`;
+    let kept = stockSent.get(t);
+    const hit = kept?.get(key);
+    if (hit) return hit;
+    const body: StockTapeWire = {
+      format: TAPE_FORMAT,
+      kind: 'stock',
+      ticker: t.name,
+      day: t.day,
+      open: t.open,
+      close: t.close,
+      through: t.through,
+      complete: t.through >= t.close,
+      live: stockToday(t) && t.through < t.close,
+      delayed: stockToday(t),
+      index: false,
+      fault: t.fault,
+      venues: [...t.venues.values()].sort((a, b) => b[1] - a[1]),
+      shares: t.shares,
+      offShares: t.offShares,
+      marks: t.marks.filter(m => m[0] >= from && m[0] < t.through),
+    };
+    if (!kept) stockSent.set(t, (kept = new Map()));
+    kept.set(key, body);
+    if (kept.size > 8) kept.delete(kept.keys().next().value as string);
+    return body;
+  };
 
   /* a step at a time per tape, back to back while each moves the tape on (a backfill runs through, a live tape stops at
      the newest whole minute); failures backed off; a finished past day is kept on disk */
@@ -715,5 +737,6 @@ export function tapeRoute(tapes: Tapes, req: Req, res: Res): void {
   if (!TICKER.test(t) || (leaf !== 'options' && leaf !== 'stock')) return send(400, { error: 'ask /api/tape/options or /api/tape/stock with a ticker' });
   const wire = leaf === 'options' ? tapes.options(t, Number.isFinite(since) ? since : 0) : tapes.stock(t, Number.isFinite(since) ? since : 0);
   if (!wire) return send(404, { error: 'no session to read', code: 'no_session' });
-  send(200, wire);
+  const stamp = `${wire.through}|${wire.fault ?? ''}|${since}|${'prints' in wire ? wire.prints.length : wire.marks.length}`;
+  writeWire(req, res, 200, takeWire(`tape|${leaf}|${t}|${since}`, stamp, () => wire));
 }

@@ -18,6 +18,8 @@ interface WallRoom {
   glyph?: GlyphName;
   /** the page its film is of */
   path: string;
+  /** one line under the screen */
+  line?: string;
 }
 
 const THEMES: Theme[] = ['dark', 'light'];
@@ -192,6 +194,7 @@ const Wall = ({ rooms, onPick }: { rooms: WallRoom[]; onPick: (id: string) => vo
                 );
               })}
           </span>
+          {r.line && <span className="block px-2.5 py-2.5 text-[12.5px] sm:text-[13px] leading-snug text-textSecondary">{r.line}</span>}
         </button>
       ))}
     </div>

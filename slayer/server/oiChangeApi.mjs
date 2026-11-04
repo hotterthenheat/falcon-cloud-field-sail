@@ -22,6 +22,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { takeWire, writeWire } from '../shared/jsonWire.mjs';
 import { gate, sendDenied } from './auth.mjs';
 import { mergeReports, oiChangeRows, oiReportDay, oiRootsOf, priorSession, readOiReport } from '../shared/oiChange.mjs';
 
@@ -103,6 +104,7 @@ export function createOiChange(o) {
   /** `${root}|${day}` → { report } | { missing: at } | { failed: at, code } */
   const reports = new Map();
   const jobs = new Map();
+  const answers = new Map();
   function reportOf(root, day) {
     const key = `${root}|${day}`;
     let r = reports.get(key);
@@ -181,8 +183,14 @@ export function createOiChange(o) {
       const before = dayOf(roots, prior);
       const head = { v: OI_CHANGE_VERSION, at: now(), ticker: t, roots, day, prior, close: priorSession(day), priorClose: priorSession(prior) };
       if (latest.report && before.report) {
-        const rows = oiChangeRows(latest.report, before.report, day);
-        return { ...head, source: 'terminal', contracts: Object.keys(latest.report).length, rows };
+        const contracts = Object.keys(latest.report).length;
+        const stamp = `${day}|${prior}|${contracts}|${Object.keys(before.report).length}`;
+        const hit = answers.get(t);
+        if (hit && hit.stamp === stamp) return hit.body;
+        const body = { ...head, source: 'terminal', contracts, rows: oiChangeRows(latest.report, before.report, day) };
+        answers.set(t, { stamp, body });
+        if (answers.size > 80) answers.delete(answers.keys().next().value);
+        return body;
       }
       const failed = latest.failed ? latest : before.failed ? before : null;
       if (failed) return { ...head, error: failed.code ?? 'terminal_down' };
@@ -245,7 +253,9 @@ export async function proxyOiChange(req, res, root = process.cwd()) {
   }
   try {
     const r = await reader(root);
-    send(res, 200, await r.change(ticker, { waitMs: ANSWER_WAIT_MS }));
+    const body = await r.change(ticker, { waitMs: ANSWER_WAIT_MS });
+    const stamp = `${body.day}|${body.prior}|${body.contracts ?? 0}|${body.rows?.length ?? 0}|${body.error ?? ''}|${body.pending ?? ''}`;
+    writeWire(req, res, 200, takeWire(`oi|${ticker}`, stamp, () => body));
   } catch (e) {
     send(res, 500, { error: 'The open-interest read failed.', code: 'oi_change_failed' });
     console.warn(`[oi-change] ${e && e.message ? e.message : e}`);

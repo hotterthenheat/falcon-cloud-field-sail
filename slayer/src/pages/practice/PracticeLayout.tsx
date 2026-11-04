@@ -2,22 +2,21 @@
    recorded ones, and the Journal holds every trade of either — two books, never mixed. The head says where each page's
    prices come from, and whether the terminal is answering. */
 
-import { Suspense } from 'react';
-import { useLocation, useOutlet } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useLocation } from 'react-router-dom';
 import { PRACTICE_SUBPAGES } from './subnav';
 import { PracticePageSkeleton } from './practiceSkeletons';
 import BackToTop from '../../components/ui/BackToTop';
 import ScrollHome from '../../components/layout/ScrollHome';
+import { KeepOutlet } from '../../components/layout/DeskKeep';
 import { useGlideHold } from '../../components/ui/useGlideHold';
 import { useSyncExternalStore } from 'react';
 import { feedOffline, feedRev, subscribeFeed } from '../../data/paper/thetaFeed';
 import { historyOffline, historyRev, subscribeHistory } from '../../data/review/history';
 
-const Fact = ({ label, children, testId, title, className = '' }: { label: string; children: React.ReactNode; testId?: string; title?: string; className?: string }) => (
+const Fact = ({ label, children, testId, title, className = '', wrap = false }: { label: string; children: React.ReactNode; testId?: string; title?: string; className?: string; wrap?: boolean }) => (
   <div className={`min-w-0 ${className}`}>
     <dt className="text-t10 text-textMuted whitespace-nowrap">{label}</dt>
-    <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-practice-fact={testId} title={title}>
+    <dd className={`mt-0.5 font-mono text-t12 tnum text-textPrimary ${wrap ? 'whitespace-normal' : 'whitespace-nowrap'}`} data-practice-fact={testId} title={title}>
       {children}
     </dd>
   </div>
@@ -25,13 +24,9 @@ const Fact = ({ label, children, testId, title, className = '' }: { label: strin
 
 const PracticeLayout = () => {
   const location = useLocation();
-  const outlet = useOutlet();
   const page = PRACTICE_SUBPAGES.find(p => location.pathname.startsWith(p.path)) ?? PRACTICE_SUBPAGES[0];
   const PageIcon = page.icon;
   const holdRef = useGlideHold<HTMLDivElement>();
-  /* a session's desk and its report are one page each: the body does not fade when only the clock's address would; a walk
-     from one trade of the journal to the next is one page too (JournalTrade fades its own body) */
-  const fadeKey = /^\/practice\/journal\/[^/]+\/[^/]+/.test(location.pathname) ? '/practice/journal/trade' : location.pathname.split('/').slice(0, 5).join('/');
   const which = page.path.endsWith('/paper') ? 'paper' : page.path.endsWith('/backtest') ? 'backtest' : 'journal';
   useSyncExternalStore(subscribeFeed, feedRev, feedRev);
   useSyncExternalStore(subscribeHistory, historyRev, historyRev);
@@ -68,19 +63,17 @@ const PracticeLayout = () => {
           )}
           {which === 'journal' && (
             <>
-              <Fact label="Prices" testId="source">Paper: live NBBO · Backtest: recorded NBBO</Fact>
+              <Fact label="Prices" testId="source" wrap>Paper: live NBBO · Backtest: recorded NBBO</Fact>
               <Fact label="Clock">ET</Fact>
             </>
           )}
           <Fact label="Money" className="max-sm:hidden">Pretend — nothing reaches a broker</Fact>
         </dl>
       </header>
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div key={fadeKey} ref={holdRef} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }} className="flex flex-col gap-4 flex-grow min-h-[calc(100vh-174px)]">
+      <div ref={holdRef} className="flex flex-col gap-4 flex-grow min-h-[calc(100vh-174px)]">
           <ScrollHome />
-          <Suspense fallback={<PracticePageSkeleton pathname={location.pathname} />}>{outlet}</Suspense>
-        </motion.div>
-      </AnimatePresence>
+          <KeepOutlet fallback={<PracticePageSkeleton pathname={location.pathname} />} />
+      </div>
       <BackToTop testId="practice" />
     </>
   );

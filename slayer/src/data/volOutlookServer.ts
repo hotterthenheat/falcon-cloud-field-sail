@@ -28,6 +28,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
+import { takeWire, writeWire } from '../../shared/jsonWire.mjs';
 import { readSessions, sessionWindow, sessionsFromWire, sessionsToWire, SERVED_VERSION, type ServedSessions, type Sessions } from './volOutlook';
 import { thetaAnswer } from './compassServer';
 
@@ -281,6 +282,10 @@ export function volOutlookRoute(srv: VolServer, req: Req, res: Res): void {
     return;
   }
   const got = srv.ask(t);
-  if ('ready' in got) send(req, res, 200, sessionsToWire(got.ready));
-  else send(req, res, 202, JSON.stringify({ state: 'building', progress: got.building }));
+  if ('ready' in got) {
+    const s = got.ready;
+    const tail = s.days[s.days.length - 1];
+    const stamp = `${s.start}|${s.last}|${s.days.length}|${tail?.day ?? ''}|${tail?.n ?? 0}|${tail?.rows.length ?? 0}`;
+    writeWire(req, res, 200, takeWire(`vol|${t}`, stamp, () => sessionsToWire(s)));
+  } else send(req, res, 202, JSON.stringify({ state: 'building', progress: got.building }));
 }

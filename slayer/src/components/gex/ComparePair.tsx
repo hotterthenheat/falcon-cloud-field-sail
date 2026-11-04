@@ -17,6 +17,7 @@ import { nyTickMarks } from '../../core/nyTime';
 import { useResolvedTheme } from '../../theme/theme';
 import { THERMAL_WARM, alpha, resolveInk } from './paletteInk';
 import { PAIR_H, PAIR_READ_H } from './compareSkeletons';
+import { pxSeriesFormat } from '../../core/format';
 
 const SILVER = 'rgb(var(--silver))';
 const fmtRatio = (v: number) => v.toFixed(v >= 10 ? 2 : 3);
@@ -129,7 +130,7 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
       bottomFillColor1: alpha(inkB, 0.02),
       bottomFillColor2: alpha(inkB, paper ? 0.22 : 0.32),
       lineWidth: 2,
-      priceFormat: { type: 'price', precision: 3, minMove: 0.001 },
+      priceFormat: pxSeriesFormat(3, 0.001),
       priceLineVisible: true,
       priceLineStyle: LineStyle.Dotted,
       lastValueVisible: true,

@@ -1,15 +1,14 @@
 /* Trace's shell: the page's icon, name and one line (the head every area wears — Dossier, Pinpoint) over the subpage,
    which alone cross-fades; the sidebar carries the pages. */
 
-import { Suspense } from 'react';
-import { useLocation, useOutlet } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useLocation } from 'react-router-dom';
 import { TracePageSkeleton } from './traceSkeletons';
 import { useTicker } from '../../context/MarketDataContext';
 import { sessionPhase } from '../../data/traceLive';
 import TickerSearch from '../../components/ui/TickerSearch';
 import BackToTop from '../../components/ui/BackToTop';
 import ScrollHome from '../../components/layout/ScrollHome';
+import { KeepOutlet } from '../../components/layout/DeskKeep';
 import { useGlideHold } from '../../components/ui/useGlideHold';
 import { TraceSessionCard, useTraceSession } from '../../components/trace/traceSession';
 import { TRACE_SUBPAGES } from './subnav';
@@ -31,7 +30,6 @@ const TYPE_FLOOR = '[&_.text-t8]:!text-t11 [&_.text-t85]:!text-t11 [&_.text-t9]:
 const TraceLayout = () => {
   const { activeTicker, changeTicker } = useTicker();
   const location = useLocation();
-  const outlet = useOutlet();
   const active = TRACE_SUBPAGES.find(page => location.pathname.startsWith(page.path)) ?? TRACE_SUBPAGES[0];
   const PageIcon = active.icon;
   /* The viewport-fitted pages (Net Flow, 0DTE): the outlet wrapper absorbs the remaining height for them */
@@ -85,23 +83,13 @@ const TraceLayout = () => {
         </div>
       </header>
       {/* Opacity is the only thing that moves, so tables never jump on open; the short exit keeps the wait a blink. */}
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={location.pathname}
-          ref={holdRef}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0, transition: { duration: 0.08 } }}
-          transition={{ duration: 0.14 }}
-          className={`flex flex-col gap-2.5 ${TYPE_FLOOR} ${bleed ? 'flex-1 min-h-0' : ''}`}
-        >
-          {/* A subpage opens at its head, not where the last one's scroll was */}
+      <div
+        ref={holdRef}
+        className={`flex flex-col gap-2.5 ${TYPE_FLOOR} ${bleed ? 'flex-1 min-h-0' : ''}`}
+      >
           <ScrollHome />
-          {/* A page's code travels on its first visit; it stands in as ITS OWN
-              shape under a head that stays put (traceSkeletons.tsx) */}
-          <Suspense fallback={<TracePageSkeleton pathname={location.pathname} />}>{outlet}</Suspense>
-        </motion.div>
-      </AnimatePresence>
+          <KeepOutlet fallback={<TracePageSkeleton pathname={location.pathname} />} />
+      </div>
       {/* The page's door home once a grid runs past a screen */}
       <BackToTop testId="trace" />
     </>

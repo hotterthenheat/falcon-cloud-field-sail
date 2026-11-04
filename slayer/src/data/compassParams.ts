@@ -39,7 +39,6 @@ export const SPAN_INDEX = ['SPXW', 'SPX', 'NDXP', 'NDX', 'XSP', 'RUTW', 'RUT', '
 export const DRIVE = 0.0035;
 const REVERSAL = 0.004;
 export const QUOTE_MAX_AGE_MS = 90_000;
-export const SEAT_CAP = 5;
 const BOOK_B_ASK = 1;
 const BOOK_B_HALVE = 0.5;
 export const BOOK_B_LOOKBACK = 30;
@@ -121,8 +120,8 @@ export const MODEL_WORD = { 1: 'Model 1', 2: 'Model 2', 3: 'Model 3' } as const;
 export const RIDING_WORD = 'Model 2 riding';
 
 /** The model a call came from, by its book: Core and Wing are Model 1's books, the late sweep is Model 3. */
-export function modelOfBook(book: 'A' | 'B' | 'C' | string): string {
-  return book === 'C' ? MODEL_WORD[3] : book === 'A' || book === 'B' ? MODEL_WORD[1] : '';
+export function modelOfBook(book: 'A' | 'B' | 'C' | 'R' | string): string {
+  return book === 'R' ? 'Model Risk' : book === 'C' ? MODEL_WORD[3] : book === 'A' || book === 'B' ? MODEL_WORD[1] : '';
 }
 
 /** The model a card came from, by its band; empty for a contract that is not a call. */
@@ -186,10 +185,10 @@ export function inModelWindow(t: number): boolean {
   return Number.isFinite(t) && t >= MODEL_T_MIN && t <= MODEL_T_MAX;
 }
 
-/** A Book A or B entry needs this many minutes between the mark and its session's flat, and ENTRY_MIN_SINCE since its
-    session's open. Every session flats five minutes before it ends, so no call is made near any flat. */
-export const ENTRY_MIN_LEFT = 55;
-export const ENTRY_MIN_SINCE = 15;
+/** Kept so older notes still name them. The entry gate does not use them: a call can fire any minute the root's
+    tape is open, from that session's open until its flat. */
+export const ENTRY_MIN_LEFT = 0;
+export const ENTRY_MIN_SINCE = 0;
 
 /** The flat of a session as minutes after 09:30: 385 (15:55) on a full day, five minutes before an early close
     (12:55 is 205 on a 13:00 close). `closeMin` is the close as a minute of the day, or null on a full day. */
@@ -235,15 +234,15 @@ export function tapeSession(minuteOfDay: number, overnightRoot: boolean, closeMi
 /** The minute of the day a t (minutes after 09:30, negative before it) stands for. */
 const minuteOfT = (t: number) => t + 9 * 60 + 30;
 
-/** The time-of-day gate on a Book A or B entry, session by session: at least 15 minutes since the open of the session
-    the mark is in and at least 55 minutes before that session's flat. Regular session: 09:45 to 15:00 (12:00 on a
-    13:00 close). Overnight (the index roots): 20:30 to 08:25. Pre-market (the equity options): 07:45 to 08:25. The curb
-    never has 55 minutes left after its 15th. A mark outside the trees' trained minutes (t 15 to 330) may call; the
-    call is marked "outside trained hours" (inModelWindow). `flatT` is the regular flat as t (flatTOf). */
+/** The time-of-day gate on a Book A or B entry: any minute the root's own tape is open, from that session's open
+    until its flat. Regular session: 09:30 to 15:54 (12:54 on a 13:00 close). Overnight (the index roots): 20:15 to
+    09:19. Pre-market (the equity options): 07:30 to 09:19. The curb: 16:00 to 16:54. The flat itself is not an entry.
+    A mark outside the trees' trained minutes (t 15 to 330) may call; the call is marked "outside trained hours"
+    (inModelWindow). `flatT` is the regular flat as t (flatTOf). Same rule for 0DTE and 1–7 DTE. */
 export function entryTimeOk(t: number, flatT = FLAT_T, overnightRoot = true): boolean {
   if (!Number.isFinite(t)) return false;
   const w = tapeSession(minuteOfT(t), overnightRoot, flatT + 5 + 9 * 60 + 30);
-  return !!w && w.since >= ENTRY_MIN_SINCE && w.left >= ENTRY_MIN_LEFT;
+  return !!w && w.left > 0;
 }
 
 /** Minutes from the mark to its session's flat (NaN outside a session): the theta burn and the call's own flat. */

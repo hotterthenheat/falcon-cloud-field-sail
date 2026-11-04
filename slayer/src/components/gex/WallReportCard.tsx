@@ -17,7 +17,8 @@ import { oiWhen, valueOiChange } from '../../data/building';
 import { aheadWord, longDay, recordDay } from '../../data/bookWindow';
 import { fmtDollars as fmtUsdShort } from '../../data/ahead';
 import { sessionOfMinute } from '../../data/deskSession';
-import { useTapeRev, wantTape } from '../../data/thetaTape';
+import { useSymbolTapeSig, wantTape } from '../../data/thetaTape';
+import { useDeskAwake } from '../../data/deskAwake';
 import { nyClock, nyMinutes } from '../../core/nyTime';
 import { baseRates, levelTicks, sessionRecords, type RecordLevel, type Tick } from '../../data/levelRecord';
 import { CALL_WALL, FLIP, PUT_WALL, SUPREME } from './paletteInk';
@@ -142,16 +143,17 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
   const read = useResolvedSession(snapshot.ticker);
   const session = barsProp?.length ? sessionOfMinute(nyMinutes(barsProp[0].time * 1000)) : read.session;
   const handed = barsProp != null;
+  const awake = useDeskAwake();
   useEffect(() => {
-    if (handed) return;
+    if (handed || !awake) return;
     return wantTape(snapshot.ticker, '1m', session);
-  }, [snapshot.ticker, session, handed]);
-  const tapeRev = useTapeRev();
+  }, [snapshot.ticker, session, handed, awake]);
+  const tapeSig = useSymbolTapeSig(handed || !awake ? '' : snapshot.ticker);
   const bars = useMemo(() => {
     if (barsProp) return barsProp;
     if (session !== 'rth') return deskBars(snapshot.ticker, session) ?? [];
     return sessionBars(snapshot.ticker) ?? [];
-  }, [snapshot, barsProp, session, tapeRev]);
+  }, [snapshot, barsProp, session, tapeSig]);
   const tightGrid = 'grid gap-x-3 px-3 grid-cols-[minmax(0,1fr)_32px_32px_36px_44px]';
   const desk = tight ? 'hidden' : 'max-lg:hidden';
   const phone = tight ? '' : 'lg:hidden';

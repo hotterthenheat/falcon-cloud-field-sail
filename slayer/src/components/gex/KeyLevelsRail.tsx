@@ -1,6 +1,7 @@
 /* The compact structural table: level, distance, parked pressure. A view of the pressure ladder, so it stays a summary. */
 
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
+import { fmtStrikePx } from '../../core/format';
 import Term from '../ui/Term';
 import type { TermKey } from '../../data/terms';
 import type { KeyLevelKind, KeyLevelRow } from '../../types/gex';
@@ -69,7 +70,7 @@ const KeyLevelsRail = ({ rows, maxPressure, onSelect, priceFormat }: KeyLevelsRa
               {KIND_TERM[row.kind] ? <Term k={KIND_TERM[row.kind] as TermKey}>{row.label}</Term> : row.label}
             </span>
             <span className="block font-mono text-t11 font-bold tnum text-textPrimary">
-              {priceFormat ? priceFormat(row.price) : row.price % 1 === 0 ? row.price.toFixed(0) : row.price.toFixed(2)}
+              {priceFormat ? priceFormat(row.price) : fmtStrikePx(row.price)}
             </span>
           </span>
           <span

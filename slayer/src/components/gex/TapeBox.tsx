@@ -13,10 +13,12 @@ import { peekDaySigma, peekIv, peekMoveToClose, peekScopeMove } from '../../data
 import { useBookRev } from '../../data/book/store';
 import { useResolvedSession } from '../../data/book/feed';
 import { thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
-import { usePrintRev, useTapeRev } from '../../data/thetaTape';
+import { useNamePrintSig, useSymbolTapeSig } from '../../data/thetaTape';
+import { useDeskAwake } from '../../data/deskAwake';
 import { currentSessionBars, minuteInSession, sessionMeta, sessionOfMinute } from '../../data/deskSession';
 import { scopeDateOf } from '../../data/wall';
 import { readSessionClock } from '../../data/moc';
+import { pxSeriesFormat } from '../../core/format';
 import { CLOSE_MIN, OPEN_MIN, aheadClock, buildCorridor, hhmm, type AheadClock } from '../../data/ahead';
 import { buildExposureProfile } from '../../data/exposure';
 import { ThermalFieldPrimitive, type FieldPoint, type Rgb } from './thermalFieldPrimitive';
@@ -121,12 +123,14 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   /* the price drawn is ThetaData's one-minute tape (data/thetaTape.ts), never the book's bars; a replay cuts it to the
      replayed window, in that window's session */
   const tapeSession = barsProp?.length ? sessionOfMinute(nyMinutes(barsProp[0].time * 1000)) : read.session;
+  const awake = useDeskAwake();
   useEffect(() => {
+    if (!awake) return;
     const offs = wantChartTape(snapshot.ticker, '1m', tapeSession);
     return () => offs.forEach(off => off());
-  }, [snapshot.ticker, tapeSession]);
-  const tapeRev = useTapeRev();
-  const printRev = usePrintRev(barsProp == null);
+  }, [snapshot.ticker, tapeSession, awake]);
+  const tapeSig = useSymbolTapeSig(awake ? snapshot.ticker : '');
+  const printSig = useNamePrintSig(awake && barsProp == null ? snapshot.ticker : '');
   /* kept or offline: the bars stay, stamped as of when they were read */
   const tapeNote = thetaChartNote(snapshot.ticker, 1, tapeSession);
   /* thetaChartBars joins every session. The drawn series is the pin's window (deskSession minuteInSession), the latest
@@ -136,7 +140,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
     const windowed = !barsProp ? all : !barsProp.length ? [] : all.filter(b => b.time >= barsProp[0].time && b.time <= barsProp[barsProp.length - 1].time);
     const inWin = windowed.filter(b => minuteInSession(nyMinutes(b.time * 1000), tapeSession));
     return { bars: barsProp ? inWin : currentSessionBars(inWin, tapeSession), joined: windowed.length };
-  }, [snapshot.ticker, barsProp, tapeSession, tapeRev, printRev]);
+  }, [snapshot.ticker, barsProp, tapeSession, tapeSig, printSig]);
   const bars = drawn.bars;
   const joined = drawn.joined;
   /* the book handed in is already the Map's window, read as it stands (a dated book is read '0DTE') */
@@ -353,7 +357,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
       /* one price: the scale's tag is the price the box prints, drawn below as its own line */
       lastValueVisible: false,
       crosshairMarkerRadius: 3,
-      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+      priceFormat: pxSeriesFormat(),
       autoscaleInfoProvider: (original: () => { priceRange: { minValue: number; maxValue: number } | null } | null) => {
         const r = original();
         /* a view holding no bars has no range */

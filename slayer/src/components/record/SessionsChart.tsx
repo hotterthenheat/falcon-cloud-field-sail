@@ -8,6 +8,7 @@ import { readToken, useResolvedTheme } from '../../theme/theme';
 import { alpha, resolveInk } from '../gex/paletteInk';
 import { fmtClockLocal, fmtDayLocal, fmtStampLocal, localTickMarks, nyTickMarks, type ChartClock } from '../gex/chartTime';
 import { PlotNotesPrimitive } from './plotNotesPrimitive';
+import { pxSeriesFormat } from '../../core/format';
 
 export interface ChartPoint {
   /** Unix seconds */
@@ -229,13 +230,12 @@ const SessionsChart = ({ points, kind = 'area', ink, inkBelow, baseline = 0, bar
       scale === 'volume'
         ? { type: 'volume' as const }
         : scale === 'plain'
-          ? { type: 'price' as const, precision: 0, minMove: 1 }
+          ? pxSeriesFormat(0, 1)
           : scale === 'pnl'
             ? { type: 'custom' as const, minMove: 1, formatter: fmtSignedDollars }
             : scale === 'ratio'
-              ? /* one price over another (the pair): three places, or two names a cent apart read as the same figure */
-                { type: 'price' as const, precision: 3, minMove: 0.001 }
-              : { type: 'price' as const, precision: 2, minMove: 0.01 };
+              ? pxSeriesFormat(3, 0.001)
+              : pxSeriesFormat();
     const color = resolveInk(ink, host);
     const below = resolveInk(inkBelow ?? ink, host);
     const series =

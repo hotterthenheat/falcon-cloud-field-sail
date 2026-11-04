@@ -52,6 +52,27 @@ const dataProxies = (): Plugin => {
     configureServer(server) {
       /* a promise or exception nobody caught is logged, not lost */
       installProcessLogger();
+      /* the app shell is the same document for every room. Vite rebuilds it on each hit; keep one copy. */
+      let shell: { at: number; body: Buffer } | null = null;
+      const shellFresh = () => shell && Date.now() - shell.at < 30_000;
+      const takeShell = (buf: Buffer) => {
+        if (buf.includes('<html') || buf.includes('<HTML')) shell = { at: Date.now(), body: buf };
+      };
+      server.middlewares.use((req, res, next) => {
+        const path = (req.url || '/').split('?')[0];
+        const spa = req.method === 'GET' && !req.headers['x-shell-raw'] && !path.startsWith('/api') && !path.startsWith('/@') && !path.startsWith('/src') && !path.startsWith('/node_modules') && !path.includes('.');
+        if (!spa || !shellFresh() || !shell) return next();
+        res.statusCode = 200;
+        res.setHeader('content-type', 'text/html');
+        res.setHeader('cache-control', 'no-cache');
+        res.end(shell.body);
+      });
+      const warmShell = () => {
+        void fetch('http://127.0.0.1:8080/', { headers: { 'x-shell-raw': '1' } }).then(async r => {
+          if (!r.ok) return;
+          takeShell(Buffer.from(await r.arrayBuffer()));
+        }).catch(() => {});
+      };
       /* the official Compass engine (src/data/compassServer.ts) runs in this process from the moment it listens */
       const compass = compassMount(() => server.ssrLoadModule('/src/data/compassServer.ts'));
       /* the exposure recorder (src/data/exposureRecorder.ts): Terrain's per-strike field, read every minute, viewers or not */
@@ -64,6 +85,13 @@ const dataProxies = (): Plugin => {
       server.httpServer?.once('listening', () => void compass.start());
       server.httpServer?.once('listening', () => void exposure.start());
       server.httpServer?.once('listening', () => void vol.start());
+      server.httpServer?.once('listening', () => void tape.start());
+      server.httpServer?.once('listening', () => {
+        warmShell();
+        const again = setInterval(warmShell, 30_000);
+        again.unref?.();
+        server.httpServer?.once('close', () => clearInterval(again));
+      });
       server.httpServer?.once('close', () => compass.stop());
       server.httpServer?.once('close', () => exposure.stop());
       server.httpServer?.once('close', () => vol.stop());
@@ -89,6 +117,7 @@ const dataProxies = (): Plugin => {
       server.httpServer?.once('listening', () => void compass.start());
       server.httpServer?.once('listening', () => void exposure.start());
       server.httpServer?.once('listening', () => void vol.start());
+      server.httpServer?.once('listening', () => void tape.start());
       server.httpServer?.once('close', () => compass.stop());
       server.httpServer?.once('close', () => exposure.stop());
       server.httpServer?.once('close', () => vol.stop());

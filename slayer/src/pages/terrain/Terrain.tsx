@@ -18,10 +18,12 @@ import { levelNetPath } from '../../data/flipLevel';
 import { rootTradesSession } from '../../data/compassSession';
 import { useSessionQuote } from '../../data/sessionQuote';
 import { asOfText } from '../../components/ui/states';
-import { barInTape, peekPrint, peekTape, usePrintRev, useTapeRev, useThetaTape, wantPrint } from '../../data/thetaTape';
+import { barInTape, peekPrint, peekTape, useSymbolTapeSig, useThetaTape, wantPrint } from '../../data/thetaTape';
+import { useDeskAwake } from '../../data/deskAwake';
 import { thetaChartBars } from '../../data/thetaCandles';
 import DeskDrawRail, { PaneDrawDoor } from '../../components/gex/DeskDrawRail';
 import { fmtUsd } from '../../data/gex';
+import { fmtPx, fmtStrikePx } from '../../core/format';
 import { CALENDAR_DTES } from '../../data/exposureSurface';
 import { expiryFor } from '../../core/calendar';
 import { nyClock, nyIsoDate } from '../../core/nyTime';
@@ -276,15 +278,13 @@ const SCALES = new Set<string>(PRICE_SCALES.map(o => o.value));
 /* Same rule: derived from the engine's own list rather than typed twice. */
 const OR_VALUES = new Set<number>(OPENING_RANGES);
 
-/** A Terrain pane opens with the field, the forward cone and the key levels. trails is on here only — a saved desk that turned it off stays off. */
-const TERRAIN_OVERLAYS = { ...DEFAULT_OVERLAYS, trails: true, cone: true, levels: true, flow: true };
-const LOOK = 3;
-/** A desk stored before LOOK, moved once: every pane's and every setup's cone and key levels on (look 2), and the flow
-    pane under the tape (look 3) — a desk already at 2 keeps its cone and levels as the reader left them */
+/** A Terrain pane opens on the tape. The walls, the flip and the supreme stay off until the Overlays menu asks for them. */
+const TERRAIN_OVERLAYS = { ...DEFAULT_OVERLAYS, trails: true, cone: true, levels: false, flow: true };
+const LOOK = 4;
+/** A desk stored before LOOK 4 loses the dealer lines once. A reader can turn them back on. Cone and flow stay as they were. */
 const lookUp = (cfg: TerrainCfg, stored: unknown): TerrainCfg => {
   if (stored === LOOK) return cfg;
-  const lift = stored === 2 ? { flow: true } : { cone: true, levels: true, flow: true };
-  const on = <T extends { overlays?: ChartOverlays }>(x: T): T => (x.overlays ? { ...x, overlays: { ...x.overlays, ...lift } } : x);
+  const on = <T extends { overlays?: ChartOverlays }>(x: T): T => (x.overlays ? { ...x, overlays: { ...x.overlays, levels: false } } : x);
   return { ...cfg, look: LOOK, panes: cfg.panes.map(on), setups: Object.fromEntries(Object.entries(cfg.setups).map(([k, v]) => [k, on(v)])) as SetupMap };
 };
 
@@ -294,7 +294,7 @@ const defaultPanes = (): PaneCfg[] =>
   OPEN_NAMES.map(ticker => ({
     ticker,
     tabs: [ticker],
-    timeframe: '15m' as Timeframe,
+    timeframe: '5m' as Timeframe,
     overlays: { ...TERRAIN_OVERLAYS },
     indicators: { ...DEFAULT_INDICATORS },
     chartStyle: 'candles' as ChartStyle,
@@ -554,11 +554,10 @@ function headRead(ticker: string, session: DeskSession, cashClose: number | null
   const base = session === 'post' || session === 'overnight' ? extBase : mv && mv.base != null && session === 'rth' ? mv.base : print && print.prev > 0 ? print.prev : null;
   return { px, at: last.time, move: px != null && base != null && base > 0 ? ((px - base) / base) * 100 : null, note: null, closed: false };
 }
-/* Leaves, so a print (every second in the session) re-renders the number and not the pane */
-const HeadPrice = ({ ticker, session, className }: { ticker: string; session: DeskSession; className?: string }) => {
-  usePrintRev();
-  useTapeRev();
-  const mv = thetaMove(useThetaPrice(ticker).held?.value);
+/* Leaves, so a print re-renders the number and not the pane. A hidden desk does not keep the print warm. */
+const HeadPrice = ({ ticker, session, className, live = true }: { ticker: string; session: DeskSession; className?: string; live?: boolean }) => {
+  useSymbolTapeSig(live ? ticker : '');
+  const mv = thetaMove(useThetaPrice(live ? ticker : null).held?.value);
   const { px, at, note, closed } = headRead(ticker, session, null, mv);
   const quote = useSessionQuote(ticker, session, session !== 'rth' && px == null && !note);
   if (px == null && note) {
@@ -571,27 +570,25 @@ const HeadPrice = ({ ticker, session, className }: { ticker: string; session: De
   if (px == null && quote)
     return (
       <span className={`font-mono text-t11 font-semibold tnum whitespace-nowrap ${quote.current ? 'text-textPrimary' : 'text-textSecondary'}`} title={quote.current ? 'No prints on this name. Bid and ask.' : `No prints in this session on this feed. The last bid and ask, ${asOfText(quote.at)}.`} data-session-quote={quote.current ? 'live' : 'as-of'}>
-        {quote.bid.toFixed(2)} × {quote.ask.toFixed(2)}
+        {fmtPx(quote.bid)} × {fmtPx(quote.ask)}
         {!quote.current && quote.at > 0 && <span className="ml-1 font-normal text-t9 text-warn uppercase tracking-widest">{asOfText(quote.at)}</span>}
       </span>
     );
   if (px == null) return <span className="font-mono text-t11 text-textMuted">—</span>;
-  const stale = at > 0 && Date.now() / 1000 - at > 120;
   return (
     <span className="inline-flex items-baseline gap-1" data-head-price={closed ? 'close' : session}>
       <SpotPrice value={px} className={className} />
       {closed ? (
         <span className="font-mono text-t10 text-textMuted" title={`The official regular close of ${sessionWhen(mv?.regDate) ?? 'today'}. The rail's price is the last trade, any session.`}>{sessionWhen(mv?.regDate) ? `${sessionWhen(mv?.regDate)!.slice(0, 3)} close` : 'close'}</span>
       ) : (
-        stale && <span className="font-mono text-t10 text-textMuted" title="The last print on the tape. Nothing newer has printed.">{nyClock(at * 1000)}</span>
+        at > 0 && <span className="font-mono text-t10 text-textMuted" title="The candle this price is.">{nyClock(at * 1000)}</span>
       )}
     </span>
   );
 };
-const HeadMove = ({ ticker, session, cashClose, className = '' }: { ticker: string; session: DeskSession; cashClose: number | null; className?: string }) => {
-  usePrintRev();
-  useTapeRev();
-  const mv = thetaMove(useThetaPrice(ticker).held?.value);
+const HeadMove = ({ ticker, session, cashClose, className = '', live = true }: { ticker: string; session: DeskSession; cashClose: number | null; className?: string; live?: boolean }) => {
+  useSymbolTapeSig(live ? ticker : '');
+  const mv = thetaMove(useThetaPrice(live ? ticker : null).held?.value);
   const { move, closed } = headRead(ticker, session, cashClose, mv);
   if (move == null) return null;
   return (
@@ -617,15 +614,16 @@ const ChromeReadLine = ({ cell, stripInner, heavy }: { cell: Cell<CrosshairBar |
     return (
       <div className="chrome-hover relative z-10 pointer-events-none hidden sm:flex items-center h-[23px] w-fit max-w-full rounded-md bg-canvas/25 backdrop-blur-[3px] px-2 leading-none [contain:layout_paint] will-change-transform" data-readout-line>
         <span className="flex items-center gap-2.5 whitespace-nowrap">
+          <ReadoutCell k="T" v={nyClock(readout.time * 1000)} />
           {showOhl && (
             <>
-              <ReadoutCell k="O" v={readout.open!.toFixed(2)} />
-              <ReadoutCell k="H" v={readout.high!.toFixed(2)} />
-              <ReadoutCell k="L" v={readout.low!.toFixed(2)} />
+              <ReadoutCell k="O" v={fmtPx(readout.open!)} />
+              <ReadoutCell k="H" v={fmtPx(readout.high!)} />
+              <ReadoutCell k="L" v={fmtPx(readout.low!)} />
             </>
           )}
           {/* The one part that never goes. */}
-          <ReadoutCell k="C" v={readout.close.toFixed(2)} />
+          <ReadoutCell k="C" v={fmtPx(readout.close)} />
           {showVol && <ReadoutCell k="V" v={fmtVol(readout.volume!)} />}
           {showInds && readout.indicators.map(ind => <ReadoutCell key={ind.key} k={ind.key} v={ind.value.toFixed(2)} ink={ind.ink} />)}
         </span>
@@ -639,7 +637,7 @@ const ChromeReadLine = ({ cell, stripInner, heavy }: { cell: Cell<CrosshairBar |
           <span className="shrink-0 font-mono text-t9 uppercase tracking-widest text-textMuted">Heaviest</span>
           {heavy.map(row => (
             <span key={row.strike} className="shrink-0 font-mono text-t10 tnum whitespace-nowrap">
-              <span className="text-textSecondary">{row.strike % 1 === 0 ? row.strike.toFixed(0) : row.strike.toFixed(2)}</span>
+              <span className="text-textSecondary">{fmtStrikePx(row.strike)}</span>
               <span className={`ml-1.5 font-semibold ${row.value >= 0 ? 'text-goldline' : 'text-steelline'}`}>{fmtUsd(row.value)}</span>
             </span>
           ))}
@@ -975,8 +973,9 @@ const Pane = ({
      too, so the line and the column can never name different strikes. */
   const rail = railData;
   /* The five timeframes' trend state. */
+  const deskAwake = useDeskAwake();
   /* the regular session's one-minute tape: the trends read it, and after the bell its last bar is the close */
-  const cashTape = useThetaTape(ticker, '1m', 'rth');
+  const cashTape = useThetaTape(ticker, '1m', 'rth', deskAwake);
   const confluence = useMemo(() => buildConfluence(cashTape.bars), [cashTape.bars]);
   /* …as the glyphs on the timeframe pills: one state a timeframe the confluence reads */
   const trendByTf = useMemo(() => {
@@ -1078,7 +1077,7 @@ const Pane = ({
 
   const session = useDeskSession();
   /* The head's price is ThetaData's, drawn by leaves that alone re-render on a print (HeadPrice, HeadMove) */
-  useEffect(() => wantPrint(ticker), [ticker]);
+  useEffect(() => (deskAwake ? wantPrint(ticker) : undefined), [ticker, deskAwake]);
   const cashClose = session === 'post' || session === 'overnight' ? cashTape.bars[cashTape.bars.length - 1]?.close ?? null : null;
 
 
@@ -1188,6 +1187,10 @@ const Pane = ({
           title="Switch ticker — S · ⌘K · ↑ ↓ step your symbols"
           tall={barDesk}
         />
+      </span>
+      <span className="shrink-0 inline-flex items-baseline gap-1.5 min-w-0" data-bar-price>
+        <HeadPrice ticker={ticker} session={session} live={deskAwake} className="font-mono text-t13 font-semibold tnum text-textPrimary" />
+        <HeadMove ticker={ticker} session={session} cashClose={cashClose} live={deskAwake} className="font-mono text-t11 font-semibold tnum" />
       </span>
     </>
   );
@@ -1555,7 +1558,7 @@ const Pane = ({
               /* Chips in the top-right corner, under the expand door and in the price scale's top margin — they never
                  sit on a bar (the card it replaced stood over the candles and the volume at the bottom-left) */
               <div
-                className="absolute z-20 flex w-max max-w-[calc(100%-120px)] items-center justify-end gap-1.5"
+                className="absolute z-20 flex w-max max-w-[calc(100%-120px)] items-center justify-end gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100"
                 /* below the legend AND its read line on a narrow tape (a chart under ~720px): at 34 the chips sat on the
                    heaviest-strike line of a split desk (the matrix pass, 2026-11-02) */
                 style={{ top: expanded ? 52 : isPhone || (stripW > 0 && stripW < 720) ? stripH + 4 : 34, right: PRICE_GUTTER_PX + 6 }}
@@ -1645,24 +1648,45 @@ const Pane = ({
               {/* One row, always — it does not wrap, it clips. */}
               {/* IT hugs its content. */}
               {expanded || barDesk ? (
-                /* Fullscreen's second line — the Pulse takeover's own legend: facts on the tape, no chip, no
-                   controls; the controls all moved up into the strip. */
-                /* AND EVERY DOCKED PANE'S LEGEND SINCE THE TICKER BAR (the partner tree's, openmarket's desk): the controls
-                   stand on the bar while a pane is active, so each pane prints the in-chart legend — its number on a split
-                   desk, Replay when it replays, the symbol, the timeframe, the price and its change — and nothing to
-                   press; a press on the tape makes the pane the bar's */
-                <div className="pointer-events-none select-none flex items-baseline gap-1.5 font-mono" data-pane-legend={onBar ? 'active' : barDesk ? 'idle' : 'takeover'}>
-                  {barDesk && paneCount > 1 && (
+                /* The price lives on the strip, next to the name, the way the landing page draws it. The active
+                   pane and the takeover do not paint it again over the candles. An idle pane still does: the strip
+                   belongs to the other chart. */
+                onBar || expanded ? (
+                  (paneCount > 1 || replay || shownBook?.movedFrom || rollNote) ? (
+                    <div className="pointer-events-none select-none flex items-baseline gap-1.5 font-mono" data-pane-legend={onBar ? 'active' : 'takeover'}>
+                      {paneCount > 1 && (
+                        <span
+                          aria-hidden
+                          className={`self-center shrink-0 w-4 h-4 rounded-[3px] text-t9 font-bold tnum inline-flex items-center justify-center ${
+                            isActive ? 'relative holo-bg foil-glide text-onfoil' : 'bg-ink/[0.08] text-textPrimary'
+                          }`}
+                        >
+                          {index + 1}
+                        </span>
+                      )}
+                      {replay && (
+                        <span title="This pane is replaying history — it is not live" className="self-center shrink-0 inline-flex items-center px-1.5 h-4 rounded-[3px] bg-silverFill text-onfoil text-t9 font-bold uppercase tracking-wider">
+                          Replay
+                        </span>
+                      )}
+                      {(shownBook?.movedFrom || rollNote) && (
+                        <span className="text-t10 text-textSecondary" data-book-roll>
+                          {shownBook?.movedFrom ? `${shownBook.movedFrom} settled, now on ${shownBook.label}` : rollNote}
+                        </span>
+                      )}
+                    </div>
+                  ) : null
+                ) : (
+                <div className="pointer-events-none select-none flex items-baseline gap-1.5 font-mono" data-pane-legend="idle">
+                  {paneCount > 1 && (
                     <span
                       aria-hidden
-                      className={`self-center shrink-0 w-4 h-4 rounded-[3px] text-t9 font-bold tnum inline-flex items-center justify-center ${
-                        isActive ? 'relative holo-bg foil-glide text-onfoil' : 'bg-ink/[0.08] text-textPrimary'
-                      }`}
+                      className="self-center shrink-0 w-4 h-4 rounded-[3px] text-t9 font-bold tnum inline-flex items-center justify-center bg-ink/[0.08] text-textPrimary"
                     >
                       {index + 1}
                     </span>
                   )}
-                  {barDesk && replay && (
+                  {replay && (
                     <span title="This pane is replaying history — it is not live" className="self-center shrink-0 inline-flex items-center px-1.5 h-4 rounded-[3px] bg-silverFill text-onfoil text-t9 font-bold uppercase tracking-wider">
                       Replay
                     </span>
@@ -1686,15 +1710,15 @@ const Pane = ({
                   <span className="text-t10 text-textMuted" aria-hidden>·</span>
                   <span className="text-t10 text-textMuted">{timeframe}</span>
                   <span className="text-t10 text-textMuted" aria-hidden>·</span>
-                  <HeadPrice ticker={ticker} session={session} className="font-mono text-t11 font-semibold tnum text-textPrimary" />
-                  <HeadMove ticker={ticker} session={session} cashClose={cashClose} className="text-t10 font-semibold tnum" />
-                  {/* ours beside the partner's legend: the expiry that settled under the nodes, said once on the roll */}
-                  {barDesk && (shownBook?.movedFrom || rollNote) && (
+                  <HeadPrice ticker={ticker} session={session} live={deskAwake} className="font-mono text-t11 font-semibold tnum text-textPrimary" />
+                  <HeadMove ticker={ticker} session={session} cashClose={cashClose} live={deskAwake} className="text-t10 font-semibold tnum" />
+                  {(shownBook?.movedFrom || rollNote) && (
                     <span className="text-t10 text-textSecondary" data-book-roll>
                       · {shownBook?.movedFrom ? `${shownBook.movedFrom} settled, now on ${shownBook.label}` : rollNote}
                     </span>
                   )}
                 </div>
+                )
               ) : (
               <div className={`chrome-hover relative z-30 pointer-events-auto max-w-full min-w-0 overflow-hidden select-none flex items-center gap-2 rounded-md bg-canvas/25 backdrop-blur-[3px] px-2 py-1 opacity-55 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 ${toolbarInline ? 'w-full' : 'w-fit'}`}>
                 {/* This strip is the one row visible at rest, so the number is legible without a pointer ever
@@ -1749,7 +1773,7 @@ const Pane = ({
                 {/* THE PHONE'S DRAWING DOOR, in the header with the pane's other controls — never a tab over the tape */}
                 {isPhone && <PaneDrawDoor pane={`terrain:${index + 1}`} host={paneBoxEl} />}
                 <span className="shrink-0">
-                  <HeadPrice ticker={ticker} session={session} />
+                  <HeadPrice ticker={ticker} session={session} live={deskAwake} />
                 </span>
                 {shownBook?.movedFrom ? (
                   <span className="shrink-0 font-mono text-t10 text-textSecondary" data-book-roll title="The expiry you had open has settled">
@@ -1767,7 +1791,7 @@ const Pane = ({
                 ) : null}
                 {/* First thing the row gives up when the column is narrow (ID_ROW_FULL_PX) — the price it is a delta
                     of is directly to its left, and the chart draws the same move. */}
-                {showChangePct && <HeadMove ticker={ticker} session={session} cashClose={cashClose} className="shrink-0 font-mono text-t11 font-semibold tnum" />}
+                {showChangePct && <HeadMove ticker={ticker} session={session} cashClose={cashClose} live={deskAwake} className="shrink-0 font-mono text-t11 font-semibold tnum" />}
                 {/* The toolbar in the row: timeframes after the identity, the replay-to-theme cluster at the far
                     right, and the fullscreen door last. */}
                 {toolbarInline && (
@@ -1856,7 +1880,7 @@ const Pane = ({
                     <span className="font-mono text-t10 font-semibold" style={{ color: c.ink }}>
                       {c.ticker}
                     </span>
-                    <HeadPrice ticker={c.ticker} session={session} className="font-mono text-t10 tnum text-textSecondary" />
+                    <HeadPrice ticker={c.ticker} session={session} live={deskAwake} className="font-mono text-t10 tnum text-textSecondary" />
                     <button
                       onClick={() => removeCompare(c.ticker, c.mode)}
                       aria-label={`Remove the ${c.ticker} comparison`}
@@ -2001,8 +2025,8 @@ const DeskNameSheet = ({ tickerOf, targetOf, onPick, onPages }: { tickerOf: (pan
 };
 
 const Terrain = () => {
-  /* the exposure book and ThetaData's bars both move the panes */
-  const revision = useBookRev() + useTapeRev();
+  /* the exposure book moves the panes; a tape tick does not — each chart listens for its own name */
+  const revision = useBookRev();
   /* The arrival, read once: the first pane takes its name and interval (and keeps them — it is the reader's pane
      now) */
   const location = useLocation();

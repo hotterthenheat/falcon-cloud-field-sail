@@ -25,7 +25,6 @@ import {
   bookAPass,
   bookBPass,
   runnerFlag,
-  SEAT_CAP,
   BOOK_B_LOOKBACK,
   LOTTERY_CAP,
   SESSION_MIN,
@@ -41,7 +40,6 @@ import {
   MODEL_2_NAME,
   BOOK_NAME,
   entryTimeOk,
-  ENTRY_MIN_LEFT,
   flatTOf,
   inModelWindow,
   minutesToFlat,
@@ -161,9 +159,8 @@ const seenRootC = new Set<string>();
 const wouldSeen = new Set<string>();
 const wouldRoot = { A: new Set<string>(), B: new Set<string>(), C: new Set<string>() };
 /* The mark each "would have called" Book A/B root was noted at: a late mark counts them as seats taken at or before
-   it, beside the official ones, so the would list is what the live book would have called (five seats, one book a
-   root). It used to count official seats only, so a session the scan missed could list more than five would-calls
-   and one root under Book A and Book B at the same mark. */
+   it, beside the official ones, so the would list is what the live book would have called (one book a
+   root, no daily cap). It used to count official seats only and stop at five. */
 const wouldRootAt = new Map<string, number>();
 const wouldPicks = new Map<string, Setup>();
 
@@ -184,12 +181,13 @@ export function heldSeatsAt(mark: number, late: boolean): Set<string> {
 
 /** Notes what a late mark would have called (exported for the golden): one per contract, one book a root, a session. */
 export function noteWould(setup: Setup, book: 'A' | 'B' | 'C'): boolean {
-  if (wouldSeen.has(setup.id) || wouldRoot[book].has(setup.ticker)) return false;
-  /* Books A and B share a root's seat */
-  if (book !== 'C' && (wouldRoot.A.has(setup.ticker) || wouldRoot.B.has(setup.ticker))) return false;
+  const key = book === 'C' ? setup.ticker : `${setup.sleeve}|${setup.ticker}`;
+  if (wouldSeen.has(setup.id) || wouldRoot[book].has(key) || wouldRoot[book].has(setup.ticker)) return false;
+  /* Books A and B share a root's seat on a sleeve. The other sleeve can still call its own best. */
+  if (book !== 'C' && (wouldRoot.A.has(key) || wouldRoot.B.has(key))) return false;
   wouldSeen.add(setup.id);
-  wouldRoot[book].add(setup.ticker);
-  if (book !== 'C' && !wouldRootAt.has(setup.ticker)) wouldRootAt.set(setup.ticker, setup.mark ?? 0);
+  wouldRoot[book].add(key);
+  if (book !== 'C' && !wouldRootAt.has(key)) wouldRootAt.set(key, setup.mark ?? 0);
   wouldPicks.set(setup.id, setup);
   return true;
 }
@@ -673,6 +671,8 @@ export interface PassLine {
   p1: number;
   why: string;
   sleeve: string;
+  /** The contract's expiration, YYYY-MM-DD. A line without one is from an older file and is not this session. */
+  expiry?: string;
 }
 
 /** A closest or a pass that was on the board. Not an official call. */
@@ -733,7 +733,7 @@ function noteWatched(s: Setup, kind: 'closest' | 'passed', why: string, at: numb
 
 function rememberPass(s: Setup, p1: number, why: string): void {
   const key = `${s.sleeve}|${s.contract}`;
-  passBook.set(key, { ticker: s.ticker, contract: s.contract, p1, why, sleeve: s.sleeve });
+  passBook.set(key, { ticker: s.ticker, contract: s.contract, p1, why, sleeve: s.sleeve, expiry: s.expiryDate });
   noteWatched({ ...s, p1 }, 'passed', why, s.quotedAt || s.seenAt || Date.now());
   const mine = [...passBook.entries()].filter(([, row]) => row.ticker === s.ticker && row.sleeve === s.sleeve);
   if (mine.length <= 50) return;
@@ -752,7 +752,7 @@ function stampPassed(): void {
     const had = passBook.get(key);
     const foreign = !had || had.why.startsWith(MODEL_1_NAME) || had.why.startsWith('Short of the line') || had.why.startsWith('The line cleared') || /^[A-Z]{1,6}\s+\d/.test(had.why);
     const why = foreign
-      ? (row.p1 + 1e-12 < P1_MIN ? `Short of the line. A call needs ${(P1_MIN * 100).toFixed(2)}%.` : 'The line cleared. No seat left.')
+      ? (row.p1 + 1e-12 < P1_MIN ? `Short of the line. A call needs ${(P1_MIN * 100).toFixed(2)}%.` : 'The line cleared. This root was already called, or this was not its best contract.')
       : had.why;
     passBook.set(key, { ticker: row.setup.ticker, contract: row.setup.contract, p1: row.p1, why, sleeve: row.setup.sleeve });
   }
@@ -866,17 +866,26 @@ function clearState(): void {
 }
 
 /** Replace the state with a kept or served one. A pack from another session is shown as the earlier scan only. */
+/** A contract that expired before this session is not a score, a miss, or a card. */
+function deadExpiry(expiryDate: string | undefined, day = stateDay): boolean {
+  const exp = (expiryDate || '').replace(/-/g, '');
+  const d = (day || '').replace(/-/g, '');
+  return exp.length === 8 && d.length === 8 && exp < d;
+}
+
 export function importModelState(pack: ModelPack | null, earlierScanned: { day: string; at: number; setups: Setup[] } | null = earlier): void {
   clearState();
   earlier = earlierScanned;
   if (!pack) return;
   if (pack.day) stateDay = pack.day;
-  for (const [k, v] of pack.picks ?? []) if (v && v.id) picks.set(k, v);
-  for (const [k, v] of pack.wings ?? []) if (v && v.id) wingPicks.set(k, v);
-  for (const [k, v] of pack.lottery ?? []) if (v && v.id) lotteryPicks.set(k, v);
-  for (const [k, v] of pack.kept ?? []) if (v && v.id) kept.set(k, v);
-  for (const [k, v] of pack.near ?? []) if (v && v.id) nearPicks.set(k, v);
-  for (const row of pack.pass ?? []) if (row && row.ticker && row.contract) passBook.set(`${row.sleeve}|${row.contract}`, row);
+  const day = pack.day || stateDay;
+  const live = (s: { expiryDate?: string } | null | undefined) => !!s && !deadExpiry(s.expiryDate, day);
+  for (const [k, v] of pack.picks ?? []) if (v && v.id && live(v)) picks.set(k, v);
+  for (const [k, v] of pack.wings ?? []) if (v && v.id && live(v)) wingPicks.set(k, v);
+  for (const [k, v] of pack.lottery ?? []) if (v && v.id && live(v)) lotteryPicks.set(k, v);
+  for (const [k, v] of pack.kept ?? []) if (v && v.id && live(v)) kept.set(k, v);
+  for (const [k, v] of pack.near ?? []) if (v && v.id && live(v)) nearPicks.set(k, v);
+  for (const row of pack.pass ?? []) if (row && row.ticker && row.contract && row.expiry && !deadExpiry(row.expiry, day)) passBook.set(`${row.sleeve}|${row.contract}`, row);
   if (pack.watched) {
     for (const row of pack.watched) if (row && row.ticker && row.contract && row.sleeve) watched.set(`${row.sleeve}|${row.contract}`, row);
   } else {
@@ -902,12 +911,19 @@ export function importModelState(pack: ModelPack | null, earlierScanned: { day: 
     }
   }
   for (const id of pack.seen ?? []) seen.add(id);
-  for (const t of pack.rootA ?? []) seenRootA.add(t);
-  for (const t of pack.rootB ?? []) seenRootB.add(t);
+  const seatIn = (into: Set<string>, t: string) => {
+    if (t.includes('|')) { into.add(t); return; }
+    const sleeves = new Set((pack.seen ?? []).filter(id => id.startsWith(`${t}-`)).map(id => (id.endsWith('-weekly') ? 'weekly' : id.endsWith('-odte') ? 'odte' : '')));
+    sleeves.delete('');
+    if (sleeves.size) for (const s of sleeves) into.add(`${s}|${t}`);
+    else into.add(t);
+  };
+  for (const t of pack.rootA ?? []) seatIn(seenRootA, t);
+  for (const t of pack.rootB ?? []) seatIn(seenRootB, t);
   for (const [t, at] of pack.rootAt ?? []) if (typeof t === 'string' && Number.isFinite(at)) rootAt.set(t, at);
   for (const [id, at] of pack.seenMark ?? []) if (typeof id === 'string' && Number.isFinite(at)) seenMark.set(id, at);
   for (const t of pack.rootC ?? []) seenRootC.add(t);
-  for (const [k, v] of pack.misses ?? []) if (v && v.setup) misses.set(k, v);
+  for (const [k, v] of pack.misses ?? []) if (v && v.setup && live(v.setup)) misses.set(k, v);
   for (const row of pack.left ?? []) if (row && row.id) left.set(row.id, row);
   for (const [k, v] of pack.passed ?? []) if (Array.isArray(v)) passed.set(k, v);
   if (pack.reports?.odte) reports.odte = pack.reports.odte;
@@ -999,14 +1015,14 @@ export function stampPickQuote(ticker: string, expiry: string, strike: number, r
 export function bestByName(sleeve: 'odte' | 'weekly'): Map<string, { p1: number; contract: string; id: string }> {
   const out = new Map<string, { p1: number; contract: string; id: string }>();
   const take = (s: Setup, p1: number) => {
-    if (s.sleeve !== sleeve || !(p1 >= 0)) return;
+    if (s.sleeve !== sleeve || !(p1 >= 0) || deadExpiry(s.expiryDate)) return;
     const had = out.get(s.ticker);
     if (!had || p1 > had.p1) out.set(s.ticker, { p1, contract: s.contract, id: s.id });
   };
   for (const row of misses.values()) take(row.setup, row.p1);
   for (const s of [...picks.values(), ...wingPicks.values()]) take(s, s.p1 ?? -1);
   for (const row of passBook.values()) {
-    if (row.sleeve !== sleeve || !(row.p1 > 0)) continue;
+    if (row.sleeve !== sleeve || !(row.p1 > 0) || !row.expiry || deadExpiry(row.expiry)) continue;
     const had = out.get(row.ticker);
     if (!had || row.p1 > had.p1) out.set(row.ticker, { p1: row.p1, contract: row.contract, id: had?.contract === row.contract ? had.id : '' });
   }
@@ -1015,7 +1031,7 @@ export function bestByName(sleeve: 'odte' | 'weekly'): Map<string, { p1: number;
 
 /** Best scored miss per name. A later slice does not erase a higher one. */
 function noteMiss(s: Setup, p1: number, prun: number | null): void {
-  if (!(p1 >= 0)) return;
+  if (!(p1 >= 0) || deadExpiry(s.expiryDate)) return;
   const key = `${s.sleeve}|${s.ticker}`;
   const had = misses.get(key);
   if (had && had.p1 >= p1) return;
@@ -1026,6 +1042,8 @@ const CLOSEST_CAP = 8;
 
 /** The eight highest misses on this sleeve that are not already a call. They stay until an exit. */
 export function commitClosest(sleeve: 'odte' | 'weekly', at = Date.now()): void {
+  for (const [k, p] of [...nearPicks]) if (p.sleeve === sleeve && deadExpiry(p.expiryDate)) nearPicks.delete(k);
+  for (const [k, row] of [...misses]) if (row.setup.sleeve === sleeve && deadExpiry(row.setup.expiryDate)) misses.delete(k);
   const taken = new Set<string>();
   for (const p of [...picks.values(), ...wingPicks.values(), ...lotteryPicks.values(), ...nearPicks.values()]) {
     if (p.sleeve === sleeve) taken.add(p.ticker);
@@ -1053,7 +1071,7 @@ export function commitClosest(sleeve: 'odte' | 'weekly', at = Date.now()): void 
       priceTargets: [],
       invalidationPrice: 0,
       invalidationReason: '',
-      whyText: row.p1 + 1e-12 < P1_MIN ? `Short of the line. A call needs ${(P1_MIN * 100).toFixed(2)}%.` : 'The line cleared. No seat left.',
+      whyText: row.p1 + 1e-12 < P1_MIN ? `Short of the line. A call needs ${(P1_MIN * 100).toFixed(2)}%.` : 'The line cleared. This root was already called, or this was not its best contract.',
     };
     nearPicks.set(s.id, card);
     noteWatched(card, 'closest', card.whyText, at);
@@ -1269,7 +1287,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
     const scoredP = new Map<string, number>();
     const lineWhy = (p: number) => (p + 1e-12 < P1_MIN
       ? `Short of the line. A call needs ${(P1_MIN * 100).toFixed(2)}%.`
-      : 'The line cleared. No seat left.');
+      : 'The line cleared. This root was already called, or this was not its best contract.');
     for (const s of list) {
       const word = s.contract;
       const qMin = s.quotedAt ? minuteOf(s.quotedAt) : NaN;
@@ -1315,7 +1333,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       }
       noteMiss(s, p1, prun);
       if (!entryTimeOk(tape.tt, flatT, overnightRoot)) {
-        notes.push(`${word} is outside the entry minutes (15 minutes after its session opens to ${ENTRY_MIN_LEFT} minutes before its flat)`);
+        notes.push(`${word} is outside this root's session`);
         continue;
       }
       /* the decay to this session's flat (was the regular flat for every mark) */
@@ -1388,10 +1406,9 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
     }
     return out;
   };
-  /* the seats taken: live, every one so far; a late mark, only those taken at or before its mark (a seat a later call
-     took was free then). A seat with no recorded mark counts as taken from the start. */
+  /* one call per root for the session: the best contract that clears, whenever it clears, on 0DTE or 1–7 DTE.
+     A later name is not blocked because five earlier roots already fired. */
   const heldRoots = heldSeatsAt(mark, late);
-  let seats = heldRoots.size;
   const cands = [...choose(aPool, 'A'), ...choose(bPool, 'B')].sort((a, b) => {
     const ad = Number.isFinite(a.retOpen) && Math.abs(a.retOpen) >= DRIVE ? 1 : 0;
     const bd = Number.isFinite(b.retOpen) && Math.abs(b.retOpen) >= DRIVE ? 1 : 0;
@@ -1401,7 +1418,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
   for (const row of cands) {
     const drive = Number.isFinite(row.retOpen) && Math.abs(row.retOpen) >= DRIVE;
     if (anyDrive && !drive) continue;
-    if (seats >= SEAT_CAP || heldRoots.has(row.setup.ticker) || calledBy(row.setup.id)) continue;
+    if (heldRoots.has(`${row.setup.sleeve}|${row.setup.ticker}`) || heldRoots.has(row.setup.ticker) || calledBy(row.setup.id)) continue;
     if (late) {
       /* it clears every gate the official book stood at, but a late mark calls nothing and takes no official seat:
          its would-seat is counted here and at the later late marks (wouldRootAt) */
@@ -1418,21 +1435,19 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
         verdict: 'WATCH',
         whyText: `Would have called (${BOOK_NAME[row.book]}), scored late from recorded quotes. Not a call.${row.setup.outsideTrained ? ` ${OUTSIDE_TRAINED_WORD}.` : ''}`,
       }, row.book);
-      if (noted) {
-        heldRoots.add(row.setup.ticker);
-        seats += 1;
-      }
+      if (noted) heldRoots.add(`${row.setup.sleeve}|${row.setup.ticker}`);
       continue;
     }
-    heldRoots.add(row.setup.ticker);
-    seats += 1;
+    const seatKey = `${row.setup.sleeve}|${row.setup.ticker}`;
+    heldRoots.add(seatKey);
     seenMark.set(row.setup.id, mark);
+    if (!rootAt.has(seatKey)) rootAt.set(seatKey, mark);
     if (!rootAt.has(row.setup.ticker)) rootAt.set(row.setup.ticker, mark);
     if (row.book === 'A') {
       /* no Model 2 (an input it never saw missing is missing): no runner */
       const run = row.prun != null && runnerFlag(row.prun);
       seen.add(row.setup.id);
-      seenRootA.add(row.setup.ticker);
+      seenRootA.add(seatKey);
       next.set(slotOf(row.setup), {
         ...row.setup,
         p1: row.p1,
@@ -1455,7 +1470,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       });
     } else {
       seen.add(row.setup.id);
-      seenRootB.add(row.setup.ticker);
+      seenRootB.add(seatKey);
       wingNext.set(row.setup.id, {
         ...row.setup,
         p1: row.p1,
@@ -1655,12 +1670,14 @@ export interface LiveScore {
   sentRoots: string[];
 }
 
-/** Seats already taken today. Book A and Book B share the five. */
+/** Roots already called today. One call per root on each sleeve (0DTE and 1–7 DTE), with no daily cap. */
 export function seatsNow(): { seats: number; sentRoots: string[] } {
   /* in a browser the seats are the server engine's: read them when nothing on the page holds the feed */
   if (!compassHost().server && typeof window !== 'undefined') void import('./compassFeed').then(m => m.refreshCompassSoon());
   const sentRoots = [...new Set([...seenRootA, ...seenRootB, ...seenRootC])];
-  return { seats: new Set([...seenRootA, ...seenRootB]).size, sentRoots };
+  const names = new Set<string>();
+  for (const k of [...seenRootA, ...seenRootB]) names.add(k.includes('|') ? k.slice(k.indexOf('|') + 1) : k);
+  return { seats: names.size, sentRoots };
 }
 
 function weigherStub(ticker: string, strike: number, right: OptionRight, bid: number, ask: number, expiryIso: string): Setup {

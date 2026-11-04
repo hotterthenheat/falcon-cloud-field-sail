@@ -18,6 +18,7 @@ import { postureGrade } from '../../data/traceLean';
 import { crossKey, useWatch, watchedCross } from '../../context/WatchContext';
 import { readToken, useResolvedTheme } from '../../theme/theme';
 import { dayChartOptions, type DaySurface } from '../gex/dayChart';
+import { pxSeriesFormat } from '../../core/format';
 import type { DarkPoolIntent, DarkPoolPrint, DarkPoolView, LevelRole } from '../../types/darkpool';
 
 const INTENT_INK: Record<DarkPoolIntent, string> = { ACCUMULATION: 'text-bull', DISTRIBUTION: 'text-bear', 'HEDGE FLOW': 'text-warn', ROTATION: 'text-textMuted' };
@@ -122,7 +123,7 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
       priceLineVisible: false,
       lastValueVisible: true,
       crosshairMarkerRadius: 3,
-      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+      priceFormat: pxSeriesFormat(),
     });
     const flow = darkChart.addSeries(LineSeries, {
       color: silver,

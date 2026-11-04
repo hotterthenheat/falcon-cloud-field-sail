@@ -93,7 +93,7 @@ export function trackRecord(rows: readonly Signal[]): TrackRecord {
   const books = { A: [] as Signal[], B: [] as Signal[], C: [] as Signal[] };
   const sessions: Record<TapeSession, Signal[]> = { overnight: [], pre: [], regular: [], curb: [] };
   for (const r of rows) {
-    books[r.book].push(r);
+    if (r.book === 'A' || r.book === 'B' || r.book === 'C') books[r.book].push(r);
     sessions[sessionOfSignal(r)].push(r);
   }
   return {

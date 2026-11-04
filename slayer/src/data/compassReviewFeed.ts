@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { feedHeaders } from './feedGate';
-import type { SessionReview } from './compassReview';
+import type { LiveReview } from './reviewLive';
 import type { PooledStudy, StudyResult } from './compassStudy';
 import type { Signal } from './compassLedger';
 import { noFees } from './compassOutcome';
@@ -11,7 +11,7 @@ import { viewerWords } from './compassParams';
 
 /** 'pooled' is every labelled session's study together (/api/compass/study?day=all; pass day 'all') */
 type Kind = 'review' | 'study' | 'pooled';
-type Doc<K extends Kind> = K extends 'review' ? SessionReview : K extends 'pooled' ? PooledStudy : StudyResult;
+type Doc<K extends Kind> = K extends 'review' ? LiveReview : K extends 'pooled' ? PooledStudy : StudyResult;
 export interface DocState<T> {
   doc: T | null;
   status: 'loading' | 'ready' | 'missing' | 'error';
@@ -42,8 +42,9 @@ function keep(key: string, doc: unknown): void {
   }
 }
 
-/** The review or the study of one session (YYYY-MM-DD), or every session's study pooled ('pooled', day 'all'). */
-export function useCompassDoc<K extends Kind>(kind: K, day: string | null): DocState<Doc<K>> {
+/** The review or the study of one session (YYYY-MM-DD), or every session's study pooled ('pooled', day 'all').
+    `refreshMs` keeps a live page on the scanner (the review). */
+export function useCompassDoc<K extends Kind>(kind: K, day: string | null, refreshMs = 0): DocState<Doc<K>> {
   const key = `${kind}|${day}`;
   const [state, setState] = useState<DocState<Doc<K>>>(() => {
     const hit = memo.get(key);
@@ -54,12 +55,12 @@ export function useCompassDoc<K extends Kind>(kind: K, day: string | null): DocS
   useEffect(() => {
     if (!day) return;
     const hit = memo.get(key);
-    if (hit && Date.now() - hit.at < 5 * 60_000 && hit.status !== 'error') {
+    if (!refreshMs && hit && Date.now() - hit.at < 5 * 60_000 && hit.status !== 'error') {
       setState({ doc: hit.doc as Doc<K>, status: hit.status, error: hit.error });
       return;
     }
     let dead = false;
-    void (async () => {
+    const pull = async () => {
       const auth = await feedHeaders();
       if (!auth.ok) {
         if (!dead) setState(s => ({ ...s, status: 'error', error: 'Sign in to read Compass.' }));
@@ -81,11 +82,15 @@ export function useCompassDoc<K extends Kind>(kind: K, day: string | null): DocS
       } catch {
         if (!dead) setState(s => ({ ...s, status: 'error', error: 'The Compass server did not answer.' }));
       }
-    })();
+    };
+    void pull();
+    if (!refreshMs) return () => { dead = true; };
+    const timer = setInterval(() => void pull(), refreshMs);
     return () => {
       dead = true;
+      clearInterval(timer);
     };
-  }, [key, kind, day]);
+  }, [key, kind, day, refreshMs]);
   return state;
 }
 
@@ -135,7 +140,7 @@ export function useCompassDays(): string[] {
   const [days, setDays] = useState<string[]>([]);
   useEffect(() => {
     let dead = false;
-    void (async () => {
+    const pull = async () => {
       const auth = await feedHeaders();
       if (!auth.ok) return;
       try {
@@ -145,9 +150,12 @@ export function useCompassDays(): string[] {
       } catch {
         /* the page says it has no record */
       }
-    })();
+    };
+    void pull();
+    const timer = setInterval(() => void pull(), 60_000);
     return () => {
       dead = true;
+      clearInterval(timer);
     };
   }, []);
   return days;

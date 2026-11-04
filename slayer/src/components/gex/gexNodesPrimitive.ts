@@ -2,6 +2,7 @@ import { MismatchDirection, type Logical, type ISeriesPrimitive, type SeriesAtta
 import type { GexSnapshot } from '../../types/market';
 import { nySession } from '../../core/nyTime';
 import { dealerOf } from '../../core/dealerSign';
+import { fmtStrikePx } from '../../core/format';
 import type { NodeLook } from '../../data/deskPrefs';
 import { NODE_CAP, NODE_SHARE, selectNodeStrikes, type KeptLevel } from './nodeStrikes';
 import type { NodeConcept } from './nodeConcept';
@@ -674,7 +675,7 @@ function shortDollars(v: number): string {
   const [n, u] = a >= 1e9 ? [a / 1e9, 'B'] : a >= 1e6 ? [a / 1e6, 'M'] : a >= 1e3 ? [a / 1e3, 'K'] : [a, ''];
   return `${sign}${n >= 100 ? n.toFixed(0) : n.toFixed(1)}${u}`;
 }
-const priceText = (p: number): string => (Math.abs(p - Math.round(p)) < 1e-9 ? p.toFixed(0) : p.toFixed(2));
+const priceText = (p: number): string => fmtStrikePx(p);
 
 /** The row's newest reading inside the window, NaN for none */
 function lastIn(vals: Float64Array, R: number, r: number, first: number, last: number): number {

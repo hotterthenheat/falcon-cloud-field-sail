@@ -62,7 +62,7 @@ const Side = ({
         <span>Avg</span>
         <span>Ask / Bid</span>
       </div>
-      {strikes.map(strike => {
+      {strikes.filter(k => Math.abs(k - focus) < 0.001 || prints.some(p => Math.abs(p.strike - k) < 0.001)).map(strike => {
         const mine = prints.filter(p => Math.abs(p.strike - strike) < 0.001);
         const r = roll(mine);
         const here = Math.abs(strike - focus) < 0.001;
@@ -172,8 +172,10 @@ const ContractFlow = ({
       <div data-flow-prints-list>
         <div className="px-3 h-7 flex items-center justify-between gap-2 border-y border-borderSubtle/60 paper-band">
           <span className="font-mono text-t10 font-semibold uppercase tracking-widest text-textPrimary">This contract</span>
-          <span className="font-mono text-t10 tnum text-textMuted">{view.mine.length > 0 ? `${view.mine.length} prints · ${view.mine[view.mine.length - 1].time.slice(0, 8)}–${view.mine[0].time.slice(0, 8)} ET` : 'No print'}</span>
+          <span className="font-mono text-t10 tnum text-textMuted">{view.mine.length > 0 ? `${view.mine.length} prints · ${view.mine[view.mine.length - 1].time.slice(0, 8)}–${view.mine[0].time.slice(0, 8)} ET` : 'No print on this strike'}</span>
         </div>
+        {view.mine.length === 0 ? null : (
+          <>
         <div className={`grid grid-cols-[72px_108px_1fr_72px_72px] gap-x-2 px-3 pb-1 ${HEAD}`}>
           <span>Time</span>
           <span>Side</span>
@@ -181,9 +183,6 @@ const ContractFlow = ({
           <span>Price</span>
           <span>Premium</span>
         </div>
-        {view.mine.length === 0 ? (
-          <div className="px-3 pb-3 font-mono text-t11 text-textMuted">—</div>
-        ) : (
           <div ref={listRef} className="max-h-[224px] overflow-y-auto overscroll-contain" data-flow-scroll>
             {view.mine.map(p => (
               <div key={p.id} className="grid grid-cols-[72px_108px_1fr_72px_72px] gap-x-2 items-center px-3 border-b border-borderSubtle/40 hover:bg-silver/[0.04]" style={{ height: 28 }} data-flow-print={p.id}>
@@ -198,6 +197,7 @@ const ContractFlow = ({
               </div>
             ))}
           </div>
+          </>
         )}
       </div>
     </div>

@@ -24,12 +24,12 @@ import { TIMEFRAMES, frameServed, type Timeframe } from '../../../data/timeframe
 import type { TileProps, TileState } from '../tile';
 import { LiveSpot, fmtStrike } from './parts';
 
-/** The tile's interval: its own pick, else the desk's (Settings › The desk), else one minute */
+/** The tile's interval: its own pick, else the desk's (Settings › The desk), else five minutes. One minute stays in the menu. */
 export const chartTf = (state: TileState): Timeframe => {
   const own = TIMEFRAMES.find(t => t.value === state.tf);
   if (own && frameServed(own.value)) return own.value;
   const desk = readDeskPrefs().opensOn.timeframe;
-  return desk && frameServed(desk) ? desk : '1m';
+  return desk && frameServed(desk) ? desk : '5m';
 };
 
 /* Compare-line inks, blue leading like TradingView's; four slots. None of these collide with the field (gold/steel), the

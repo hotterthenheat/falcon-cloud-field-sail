@@ -59,7 +59,7 @@ import { snapshotOf } from '../../data/book/feed';
 import { useBookRev } from '../../data/book/store';
 import { useDeskSession } from '../../data/deskSession';
 import { thetaChartBars } from '../../data/thetaCandles';
-import { useTapeRev } from '../../data/thetaTape';
+import { useSymbolTapeSig } from '../../data/thetaTape';
 import Term from '../ui/Term';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
@@ -632,7 +632,7 @@ const ProfilePanel = ({
   */
   const [showVol, setShowVol] = useState(false);
   const deskSession = useDeskSession();
-  const tapeRev = useTapeRev();
+  const tapeSig = useSymbolTapeSig(ticker ?? '');
   const vp = useMemo<VolumeProfile | null>(
     () => {
       if (!showVol || !ticker) return null;
@@ -640,7 +640,7 @@ const ProfilePanel = ({
       return tape.length ? sessionVolumeProfile(tape, true) : null;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showVol, ticker, rows, bookRev, deskSession, tapeRev]
+    [showVol, ticker, rows, bookRev, deskSession, tapeSig]
   );
   const vpRef = useRef<VolumeProfile | null>(null);
   vpRef.current = vp;

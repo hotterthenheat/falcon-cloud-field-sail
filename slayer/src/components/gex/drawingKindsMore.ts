@@ -8,6 +8,7 @@
    drawingGeometry.ts, which scripts/drawing-geometry-proof.ts holds to the textbook. */
 
 import { fmtElapsed, measureSpan } from '../../data/measure';
+import { fmtPx } from '../../core/format';
 import type { Drawing, DrawingKind, DrawingPoint } from './drawingsPrimitive';
 import type { KindBar, KindHit, KindRender } from './drawingKinds';
 import {
@@ -97,7 +98,7 @@ export const rayTo = (a: Pt, b: Pt, w: number): Pt => {
   return [xe, a[1] + ((b[1] - a[1]) / (b[0] - a[0])) * (xe - a[0])];
 };
 
-const priceWords = (p: number): string => p.toFixed(2);
+const priceWords = (p: number): string => fmtPx(p);
 const pctWords = (d: number, base: number): string => `${d >= 0 ? '+' : '−'}${Math.abs((d / base) * 100).toFixed(2)}%`;
 const signed = (d: number): string => `${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(2)}`;
 

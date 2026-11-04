@@ -185,7 +185,17 @@ const STEPS: TourStep[] = [
 ];
 
 /** The rooms on the first screen's wall — the tour's tools, in the tour's order (the turn is not a room) */
-const WALL_ROOMS = STEPS.filter(s => s.code).map(s => ({ id: s.id, code: s.code, name: s.name, glyph: s.glyph, path: s.path }));
+const WALL_LINES: Record<string, string> = {
+  pulse: 'The desk you build. Chart, book, and levels, on tiles you move.',
+  compass: 'The contract that fits the level, named in one word.',
+  terrain: 'The levels, already drawn on the chart.',
+  pinpoint: 'Where dealers are hedging, strike by strike.',
+  trace: 'The tape, as the prints land.',
+  weigher: 'What a contract makes or loses at every price.',
+  dossier: 'News, earnings, insiders, and Congress, on one name.',
+  practice: 'Paper trade today, or replay a day that already happened.',
+};
+const WALL_ROOMS = STEPS.filter(s => s.code).map(s => ({ id: s.id, code: s.code, name: s.name, glyph: s.glyph, path: s.path, line: WALL_LINES[s.id] }));
 
 /** The tour's last words count its tools — "Seven rooms. One terminal." — off the list itself, so they cannot disagree with it */
 const ROOMS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'][STEPS.filter(s => s.code).length] ?? String(STEPS.filter(s => s.code).length);
@@ -271,30 +281,38 @@ const Hero = ({ onLaunch, onPick }: { onLaunch: () => void; onPick: (id: string)
   return (
     <Wrap className="pt-[92px] sm:pt-[104px] pb-6 sm:pb-10">
       <div className="flex flex-col">
-        <div className="order-1">
-          <Eyebrow>For traders</Eyebrow>
-          <h1 className="mt-5 font-light tracking-[-0.045em] leading-[0.98] text-displaySm [text-wrap:balance]" data-landing-headline>
-            Trade what you can{' '}
-            <span className="relative inline-block whitespace-nowrap">
-              <span className={`inline-block px-[0.07em] -mx-[0.07em] ${ground === 'dark' ? 'holo-text' : 'galaxy-text'}`}>see.</span>
-              <span aria-hidden="true" className={`absolute left-0 right-0 bottom-[0.05em] h-[0.13em] rounded-full ${ground === 'dark' ? 'bg-silver/25' : 'galaxy-bar foil-glide [--foil-ink:var(--galaxy-gradient)]'}`} />
+        <div>
+          <Eyebrow>Launching soon</Eyebrow>
+          <h1 className="mt-5 font-semibold tracking-[-0.04em] leading-[1] text-[clamp(2.15rem,4.7vw,4.4rem)] [text-wrap:balance]" data-landing-headline>
+            Where the market shows its{' '}
+            <span className="hand-word">
+              <span className={ground === 'dark' ? 'holo-text' : 'galaxy-text'}>hand.</span>
+              <svg className="hand-scribble" viewBox="0 0 240 28" aria-hidden="true">
+                <defs>
+                  <linearGradient id="hand-ink" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="rgb(var(--foil-2))" />
+                    <stop offset="48%" stopColor="rgb(var(--foil-4))" />
+                    <stop offset="100%" stopColor="rgb(var(--foil-1))" />
+                  </linearGradient>
+                </defs>
+                <path d="M2 16 C 28 13, 48 19, 78 15 C 112 11, 132 18, 168 14 C 198 11, 220 16, 232 13 C 236 12, 238 8, 234 6" />
+                <path d="M46 20 C 62 11, 78 21, 96 13 C 108 8, 118 18, 132 14" />
+                <path d="M150 18 C 166 10, 184 19, 204 12" />
+              </svg>
             </span>
           </h1>
         </div>
-        {/* the paragraph at the left, the door at the right, on one line from `lg` */}
-        <div className="order-3 lg:order-2 mt-8 lg:mt-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-x-12 gap-y-6">
-          <p className="max-w-[35rem] lg:max-w-[52rem] text-t16 sm:text-t17 leading-[1.55] text-textSecondary">
-            Most of what moves a price is public, just scattered. Slayer gathers it into one terminal: the prints, the positions, the levels, the filings. Every page explains itself in plain English.
+        <div className="mt-8 lg:mt-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-x-12 gap-y-6">
+          <p className="max-w-[35rem] lg:max-w-[40rem] text-[17px] sm:text-[20px] leading-[1.45] text-textSecondary">
+            You already have the information. It is just split across the chart, the flow, the filings, and a paper account. Slayer puts them on one desk, and every page tells you what you are looking at.
           </p>
           <div className="shrink-0">
             <Pill href={doorTo()} onClick={onLaunch} testId="hero">
-              Launch the terminal
+              Join the waitlist
             </Pill>
           </div>
         </div>
-        {/* THE WALL. From `lg` it is only as wide as lets both its rows stand on the first screen: 2.88 = the four screens'
-            1.44 shape over two rows; 440px is the bar, the words and the margins above it and a breath under it (measured). */}
-        <div className="order-2 lg:order-3 mt-7 lg:mt-8 lg:max-w-[max(760px,calc((100svh_-_440px)*2.88_+_36px))]">
+        <div className="mt-16 sm:mt-20" id="desk">
           <Wall rooms={WALL_ROOMS} onPick={onPick} />
         </div>
       </div>
@@ -744,7 +762,7 @@ const Page = () => {
             />
             <div className="mt-10 flex justify-center">
               <Pill href={doorTo()} onClick={door} testId="close">
-                Launch the terminal
+                Join the waitlist
               </Pill>
             </div>
           </div>

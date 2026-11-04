@@ -7,7 +7,7 @@ import { ChevronDown, Link2, Unlink2 } from 'lucide-react';
 import { extendedLine, useLiveQuote } from '../../data/liveQuote';
 import { thetaMove, useThetaPrice } from '../../data/thetaQuote';
 import { closeMoveTitle, sessionWhen, signedPct } from '../../data/dayChange';
-import { extTag } from '../../core/session';
+import { extTag, printIsCurrent } from '../../core/session';
 import { thetaUseHere } from '../../data/theta';
 import CompanyLogo from './CompanyLogo';
 import TickerLookup from './TickerLookup';
@@ -152,10 +152,12 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
         {theta && thetaRead && (() => {
           const p = thetaRead.value;
           const mv = thetaMove(p);
-          const asOf = thetaRead.live ? '' : ` · last print kept from ${new Date(p.read).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} ET`;
+          /* the same rule as the nav: a poll that just landed is not a live print when the trade itself is from an earlier session */
+          const current = thetaRead.live && printIsCurrent(p.at);
+          const asOf = current ? '' : ` · as of ${new Date(p.at).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} ET`;
           return (
             <>
-              <span className={`text-t11 tnum leading-none ${thetaRead.live ? 'text-textPrimary' : 'text-textSecondary'}`} title={`Live last print${asOf}`} data-scope-price>
+              <span className={`text-t11 tnum leading-none ${current ? 'text-textPrimary' : 'text-textSecondary'}`} title={`${current ? 'Live last print' : 'Last print'}${asOf}`} data-scope-price data-scope-current={current ? '1' : '0'}>
                 ${p.price.toFixed(2)}
               </span>
               {mv && mv.pct != null && (
@@ -173,7 +175,7 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
         })()}
         {!theta && price != null && live != null && (
           <>
-            <span className="text-t11 tnum text-textPrimary leading-none" data-scope-price>
+            <span className={`text-t11 tnum leading-none ${printIsCurrent(live.tapeAt) ? 'text-textPrimary' : 'text-textSecondary'}`} title={printIsCurrent(live.tapeAt) ? 'Live last print' : `Last print · as of ${new Date(live.tapeAt).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} ET`} data-scope-price data-scope-current={printIsCurrent(live.tapeAt) ? '1' : '0'}>
               ${price.toFixed(2)}
             </span>
             {/* the regular session's change, the extended move beside it (zero is neutral); outside the session it is named by

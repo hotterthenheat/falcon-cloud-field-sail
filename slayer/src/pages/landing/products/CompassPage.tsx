@@ -36,7 +36,7 @@ const CompassPage = () => (
     {/* ── THE BOARD ── */}
     <Aside eyebrow="The board" first="Every card is a call." second="With the rules it fired and closes on." picture={<Picture src={`${SHOTS}/board`} alt="The board: the sweep's facts and its one-line read across the top, the cards two across under them, and the Heaviest contracts rail beside them" ratio="1440 / 953" />}>
       <p>
-        The board is one box. Across its head, what the scan found today: how many calls fired, how many names cleared the line, how many came closest, and how many of the five seats are taken. Then
+        The board is one box. Across its head, what the scan found today: how many calls fired, how many names cleared the line, how many came closest, and how many roots have been called. Then
         the cards, two across, newest first.
       </p>
       <p>

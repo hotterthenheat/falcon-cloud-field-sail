@@ -4,7 +4,7 @@
   (compassModel scoreBook, late) with its gates and seats, written by the ledger (recordPicks), Book C swept from its
   15:20 quotes (scoreLottery), and every call settled by the ledger's own settlement (settleOpen: the one-minute NBBO,
   the 1-second quotes of each stop/target minute; P&L is (exit - fill) x 100, no fees). A late mark never makes an official call: what each mark
-  would have called is the "would" list, and that list is the replay's book (five seats, one book a root, as live).
+  would have called is the "would" list, and that list is the replay's book (one call a root on each sleeve, no daily cap, as live).
 
   Each session runs in its own process (the scorer's memos are per process) and writes
   .cache/compass/replay/YYYY-MM-DD.json: every mark and what happened to each name, the gate funnel (contracts on the
@@ -22,8 +22,7 @@
   interest snapshot is answered, from that session's own open-interest history.
 
   The checks: a fill outside the 3-minute window or before its mark's next minute, an exit before its fill, a Book A/B
-  call outside t 15–330 or within 55 minutes of the flat, a Book C call outside its window, two calls on one root, more
-  than five seats, a NaN in any number.
+  call outside its session, a Book C call outside its window, two calls on one root and sleeve, a NaN in any number.
 */
 
 import fs from 'node:fs';
@@ -299,7 +298,6 @@ async function checks(day: string, calls: Sig[]): Promise<string[]> {
     if (typeof v === 'number' && !Number.isFinite(v)) bad.push(`${day} ${label}: ${v}`);
   };
   const roots = new Map<string, string>();
-  let seats = 0;
   let cSeats = 0;
   for (const c of calls) {
     const w = `${c.contract} ${c.expiry} (${c.book})`;
@@ -314,7 +312,7 @@ async function checks(day: string, calls: Sig[]): Promise<string[]> {
     const t = nyMin(mark) - (9 * 60 + 30);
     const flatT = params.flatTOf(c.closeMin ?? null);
     const overnightRoot = params.OVERNIGHT_ROOTS.includes(c.ticker);
-    if (c.book !== 'C' && !params.entryTimeOk(t, flatT, overnightRoot)) bad.push(`${day} ${w}: called at ${ny(mark)} (under 15 minutes into its session or under 55 before its flat)`);
+    if (c.book !== 'C' && !params.entryTimeOk(t, flatT, overnightRoot)) bad.push(`${day} ${w}: called outside its session`);
     if (c.book !== 'C' && !!c.outsideTrained === params.inModelWindow(t)) bad.push(`${day} ${w}: "outside trained hours" label wrong at t=${t}`);
     if (c.book === 'C') {
       const m = nyMin(c.firedAt);
@@ -322,10 +320,9 @@ async function checks(day: string, calls: Sig[]): Promise<string[]> {
       if (m < start || m >= start + 30) bad.push(`${day} ${w}: Book C at ${ny(c.firedAt)}`);
       cSeats += 1;
     } else {
-      const had = roots.get(c.ticker);
-      if (had) bad.push(`${day} ${w}: ${c.ticker} already holds a ${had} seat`);
-      roots.set(c.ticker, c.book);
-      seats += 1;
+      const had = roots.get(`${c.sleeve}|${c.ticker}`);
+      if (had) bad.push(`${day} ${w}: ${c.ticker} already holds a ${had} seat on ${c.sleeve}`);
+      roots.set(`${c.sleeve}|${c.ticker}`, c.book);
     }
     if (o.fill) {
       if (o.fill.at < mark + 60_000) bad.push(`${day} ${w}: fill ${ny(o.fill.at)} before the minute after the mark ${ny(mark)}`);
@@ -337,7 +334,6 @@ async function checks(day: string, calls: Sig[]): Promise<string[]> {
     if (o.exit && c.flatAt && o.exit.at > c.flatAt + 60_000 && !/^Last quote/.test(o.exit.why)) bad.push(`${day} ${w}: exit ${ny(o.exit.at)} after its flat ${ny(c.flatAt)}`);
     if (o.exit) nan(`${w} exit.px`, o.exit.px);
   }
-  if (seats > 5) bad.push(`${day}: ${seats} Book A/B seats (five at most)`);
   if (cSeats > 5) bad.push(`${day}: ${cSeats} Book C calls (five at most)`);
   return bad;
 }

@@ -39,6 +39,7 @@ import { asOfText } from '../ui/states';
 import { getDeskSession, minuteInSession, sessionMeta, sessionOccurrence, sessionOfMinute, useDeskSession, type DeskSession } from '../../data/deskSession';
 import { snapsAsOf } from '../../data/exposureScope';
 import { onGlide, promisedWidth } from '../../core/glide';
+import { fmtPx, pxSeriesFormat } from '../../core/format';
 import { compile, explain, run as runScript, type Compiled } from '../../core/pine';
 import { setPaneBars, usePaneScripts } from '../../data/paneScripts';
 import { drawRun, type ScriptHandle } from './scriptLayer';
@@ -74,13 +75,14 @@ import { KeyLevelsPrimitive, KEY_LEVEL_KEYS, KEY_LEVEL_WORDS, type KeyLevelKey, 
 import { LADDER_HIT_W, nearRule } from './ladderPaint';
 import PointerCard, { CardRow, PointerFollowCard, letGoWords } from '../ui/PointerCard';
 import { CellView, makeCell } from './hoverCell';
-import { nyClock, nyIsoDate, nyMinutes, nyParts, nyWallTime } from '../../core/nyTime';
+import { nyClock, nyDay, nyIsoDate, nyMinutes, nyParts, nyWallTime } from '../../core/nyTime';
 import { beepAlert } from '../../data/alertSound';
 import { oiDoubled } from '../../data/oiWatch';
 import { chartGrain, extendChartTape, thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
 import { useThetaDown, useThetaLogin } from '../../data/thetaFeed';
 import { LIVE_LOGIN_FAILED } from '../../copy/feeds';
-import { barInTape, peekPrint, tapeReach, usePrintRev, useTapeRev, useThetaTape } from '../../data/thetaTape';
+import { barInTape, peekPrint, subscribePrints, tapeReach, useSymbolsTapeSig, useThetaTape } from '../../data/thetaTape';
+import { useDeskAwake } from '../../data/deskAwake';
 import { DECISIONS, hourReadNow, useVolOutlook } from '../../data/volOutlook';
 import { alignShock, amihudSeries, efficiencyRatioSeries, flipDistancePct, gammaRegimeSeries, harBandSeries, hourOfAnnual, MARKET_NAMES, regimeWords, restOfDaySigma, volShockSeries } from '../../data/physicsReads';
 import { sessionCloseMinOn, sessionLengthOn } from '../../core/calendar';
@@ -938,6 +940,16 @@ function coneLeft(m: number): string {
   return `${(sessions / 252).toFixed(1)}y`;
 }
 
+/** A counter that moves only when `sig` changes. The chart's heavy effects key on a number. */
+function useBump(sig: string): number {
+  const held = useRef({ sig, n: 0 });
+  if (held.current.sig !== sig) {
+    held.current.sig = sig;
+    held.current.n += 1;
+  }
+  return held.current.n;
+}
+
 /** TradingView-grade candlestick chart with dealer-structure overlays and the net-GEX node heatmap. */
 const StrikeChart = ({
   ticker,
@@ -1120,10 +1132,17 @@ const StrikeChart = ({
     : '';
   /* No tick rebuild under the hand: while a pointer is down on the chart the revision is held (every tick-driven
      effect keys on it) and the newest one is applied on release. */
-  /* ThetaData's live print moves the forming bar between the host's ticks (every desk but Pinpoint and the Dossier) */
-  const printRev = usePrintRev(!tape && thetaBars());
-  const tapeRev = useTapeRev();
-  const liveRev = revisionProp + printRev;
+  /* A print used to be added into the shared revision, so every name's tick rebuilt indicators, the field,
+     the cone and the wind — on this pane and on every other pane, including desks left open behind this one.
+     The forming bar is updated on its own (below). `revision` stays the host's book tick. */
+  const deskAwake = useDeskAwake();
+  const compareNames = compares.map(c => c.ticker).join(',');
+  const ownLive = !tape && thetaBars() && deskAwake;
+  const tapeNames = ownLive ? [ticker, ...compareNames.split(',').filter(Boolean)].join(',') : '';
+  const tapeSig = useSymbolsTapeSig(tapeNames);
+  const tapeRev = useBump(tapeSig);
+  /* Bars (not the last trade) still rebuild overlays. A print does not. */
+  const liveRev = revisionProp + tapeRev;
   const [revision, setRevision] = useState(liveRev);
   const keepViewRef = useRef(keepView);
   keepViewRef.current = keepView;
@@ -1343,6 +1362,8 @@ const StrikeChart = ({
     }
   }, []);
   const barCountRef = useRef(0);
+  /** The series was cleared while this name was still loading, so a later empty poll does not reset the scale. */
+  const blankedRef = useRef(false);
   /** Every bar the store holds is on the chart (no recent window held back) — only then does the left edge ask for older */
   const drawnAllRef = useRef(false);
   /* History on demand: a world (name · interval · clock) opens on its recent bars and scrolling to their left edge
@@ -1469,6 +1490,8 @@ const StrikeChart = ({
   const [sessionNote, setSessionNote] = useState<string | null>(null);
   const [sessionGap, setSessionGap] = useState<string | null>(null);
   const focusKeyRef = useRef('');
+  /** The world whose first paint belongs to the recent window, not to every bar of the session. */
+  const openedWorldRef = useRef('');
   const quote = useSessionQuote(ticker, session, quiet && session !== 'rth' && !tape?.premium);
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -1648,9 +1671,12 @@ const StrikeChart = ({
        bars, so the bar count is not always the newest bar's index */
     const lastSlot = lastBarTimeRef.current ? chart.timeScale().timeToIndex(lastBarTimeRef.current as UTCTimestamp, true) : null;
     const len = lastSlot != null ? Math.max(barCountRef.current, Number(lastSlot) + 1) : barCountRef.current;
-    const width = widthRef.current || (containerRef.current?.clientWidth ?? 1200);
+    const width = widthRef.current || containerRef.current?.clientWidth || 0;
+    /* A zero width is the pane before layout. Fitting against a guessed 1200px
+       packed a narrow Terrain pane with a wide pane's bars, and the candles jittered. */
+    if (width < 80) return;
     const pitch = pitchPx(timeframeRef.current);
-    const total = Math.max(90, Math.min(700, Math.round(width / pitch)));
+    const total = Math.min(700, Math.max(32, Math.round(width / pitch)));
     /* A short tape (a live-only one minutes old, a few hour bars) fills the same share of the width at a wider pitch
        rather than standing as a sliver at the left edge of an empty runway: the runway is always the bars' own
        fraction of the span, so the session dominates and the forward cone keeps at most a fifth of the plot. */
@@ -1670,15 +1696,15 @@ const StrikeChart = ({
     /* The Weigher opts out: a wider pane keeps its bar spacing and simply shows more history. Terrain and Pulse keep
        the re-fit. */
     if (keepView) return;
-    let lastWidth = el.clientWidth;
+    let lastWidth = 0;
+    let fitted = false;
     let raf = 0;
     const obs = new ResizeObserver(entries => {
       const w = Math.round(entries[0]?.contentRect.width ?? 0);
-      if (!w) return; // a pane being torn down reports 0 — re-fitting to it is meaningless
+      if (!w) return;
       widthRef.current = w;
-      // 2%: a layout change is a third of the width or more; this is well clear of sub-pixel reflow noise without
-      // needing to guess at a pixel count.
-      if (Math.abs(w - lastWidth) < lastWidth * 0.02) return;
+      if (fitted && lastWidth > 0 && Math.abs(w - lastWidth) < lastWidth * 0.02) return;
+      fitted = true;
       lastWidth = w;
       // Coalesce: a drag fires this every frame, and setVisibleLogicalRange mid-drag would fight the browser's own
       // layout.
@@ -1976,6 +2002,7 @@ const StrikeChart = ({
   const makeMain = useCallback(
     (chart: IChartApi, style: ChartStyle, t: CandleTheme): ISeriesApi<'Candlestick'> => {
       const base = {
+        priceFormat: pxSeriesFormat(),
         priceLineVisible: true,
         priceLineColor: 'rgba(237,237,237,0.4)',
         priceLineStyle: LineStyle.Dotted,
@@ -2943,7 +2970,7 @@ const StrikeChart = ({
                     priceLineVisible: false,
                     lastValueVisible: part.kind === 'hist' && !part.scale && scaleLabel,
                     visible: shown,
-                    priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+                    priceFormat: pxSeriesFormat(),
                     ...(part.scale ? { priceScaleId: part.scale.id } : {}),
                   },
                   paneIndex
@@ -2960,7 +2987,7 @@ const StrikeChart = ({
                     lastValueVisible: part.part !== 'signal' && scaleLabel,
                     crosshairMarkerVisible: false,
                     visible: shown,
-                    ...(key === 'amihud' ? { priceFormat: { type: 'price', precision: 4, minMove: 0.0001 } } : {}),
+                    ...(key === 'amihud' ? { priceFormat: pxSeriesFormat(4, 0.0001) } : {}),
                     /* the efficiency ratio lives on 0 … 1, so its pane always shows the whole range */
                     ...(key === 'effRatio' ? { autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 1 } }) } : {}),
                   },
@@ -3367,14 +3394,14 @@ const StrikeChart = ({
   const tapeTick = tape?.precision?.tick;
   useEffect(() => {
     if (tapeDecimals == null || tapeTick == null) return;
-    candleSeriesRef.current?.applyOptions({ priceFormat: { type: 'price', precision: tapeDecimals, minMove: tapeTick } });
+    candleSeriesRef.current?.applyOptions({ priceFormat: pxSeriesFormat(tapeDecimals, tapeTick) });
   }, [tapeDecimals, tapeTick, mainNonce]);
   /* …and a premium has no price under zero: the axis room below the floor (the volume's band) carries no figures */
   const tapePremium = !!tape?.premium;
   useEffect(() => {
     if (!tapePremium) return;
     candleSeriesRef.current?.applyOptions({
-      priceFormat: { type: 'custom', minMove: 0.01, formatter: (p: number) => (p < -0.004 ? '' : Math.max(0, p).toFixed(2)) },
+      priceFormat: { type: 'custom', minMove: 0.01, formatter: (p: number) => (p < -0.004 ? '' : fmtPx(Math.max(0, p), 2)) },
     });
   }, [tapePremium, mainNonce]);
 
@@ -3416,10 +3443,16 @@ const StrikeChart = ({
           return;
         }
       } else if (thetaChartNote(ticker, tfMinutes(timeframe), session) == null) {
-        /* Still reading this session. The last session's candles are not this one. */
+        /* Still reading. A tape that already drew this name stays up — clearing it on every empty poll is what
+           made the pane flash between a real scale and an empty −0.5…0.5 axis. */
+        const held = loadedRef.current.ticker === ticker && loadedRef.current.timeframe === timeframe && barCountRef.current > 0;
+        if (held) return;
+        if (blankedRef.current) return;
         candleSeries.setData([]);
         volumeSeries.setData([]);
         trails.setData([], 0, false, 60, trailsGreek);
+        blankedRef.current = true;
+        barCountRef.current = 0;
         return;
       }
       candleSeries.setData([]);
@@ -3442,6 +3475,7 @@ const StrikeChart = ({
     barCountRef.current = bars.length;
     drawnAllRef.current = !held;
     if (bars.length > 0) setQuiet(false);
+    blankedRef.current = false;
     setBarsIn(bars.length > 0);
     /* A rule clock reads the seconds tape, so it wears the chip too. A host that brought real 15-second history is
        not "live since connect" — that chip would call two days of prints a gap. */
@@ -3594,6 +3628,44 @@ const StrikeChart = ({
     return () => cancelAnimationFrame(armTimer);
   }, [ticker, revision, timeframe, themeKey, overlays.trails, showRecent, reloadNonce, mainNonce, toMain, compact, altSpec, barClock, fullNonce, focusNonce, trailsGreek, levels.spot, levels.callWall, levels.putWall, levels.flip, levels.supreme, bookRev, session, tapeRev, bookDate, tapeStamp, fieldMode, fieldRev]);
 
+  /* The last trade moves the bar that is still forming, outside React. A print must not re-render the pane. */
+  useEffect(() => {
+    if (!ownLive || altSpec) return;
+    let seen = '';
+    const apply = () => {
+      const p = peekPrint(ticker);
+      const key = p ? `${p.price}|${p.at}` : '';
+      if (key === seen) return;
+      seen = key;
+      if (!p || replayRef.current || tapeRef.current) return;
+      const series = candleSeriesRef.current;
+      const vol = volumeSeriesRef.current;
+      if (!series || !vol) return;
+      if (loadedRef.current.ticker !== ticker) return;
+      const bars = barsFor(tfMinutes(timeframe));
+      const last = bars.length ? bars[bars.length - 1] : null;
+      if (!last || !(last.close > 0)) return;
+      const prevEdge = lastBarTimeRef.current;
+      lastCloseRef.current = last.close;
+      lastBarTimeRef.current = last.time;
+      bucketSecRef.current = tfMinutes(timeframe) * 60;
+      try {
+        if (last.time > prevEdge && prevEdge > 0 && bars.length > 1) {
+          const prev = bars[bars.length - 2];
+          if (prev.time === prevEdge) {
+            series.update(toMain(prev));
+            vol.update(toVolume(prev, themeRef.current));
+          }
+        }
+        series.update(toMain(last));
+        vol.update(toVolume(last, themeRef.current));
+      } catch {
+        /* a print older than the drawn bar, or a chart that has not taken data yet */
+      }
+    };
+    return subscribePrints(apply);
+  }, [ownLive, ticker, timeframe, toMain, altSpec]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* A session click moves the view to that session's bars. It does not drop the other sessions. A session with no
      prints says so, and the tape that does have prices stays up. The range is the series on the chart, not the
      full store. A later showRecent does not undo the focus. */
@@ -3608,6 +3680,16 @@ const StrikeChart = ({
     const hostView = tapeRef.current?.view ?? null;
     const key = `${world}|${session}${hostView ? `|${hostView.from}-${hostView.to}` : ''}`;
     if (focusKeyRef.current === key) return;
+    /* Opening a pane used to fit every bar of the session into the plot. On a 1-minute tape that is a few hours of
+       candles crushed to a couple of pixels, and every later tape tick looked like the chart was shaking. A session
+       the reader actually picks still moves the view. The first look stays on the recent bars. */
+    if (openedWorldRef.current !== world && !hostView) {
+      openedWorldRef.current = world;
+      focusKeyRef.current = key;
+      focusHoldRef.current = null;
+      return;
+    }
+    openedWorldRef.current = world;
     const mine = hostView ? all.filter(b => b.time >= hostView.from && b.time <= hostView.to) : all.filter(b => barOnDesk(b.time, session, ticker, mins));
     if (!mine.length) {
       focusHoldRef.current = null;
@@ -3911,7 +3993,7 @@ const StrikeChart = ({
     ladderRef.current?.setExtras('cone', coneEdgeRef.current);
     trailsRef.current?.requestUpdate?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, timeframe, revision, overlays.cone, overlays.levels, replay, mainNonce, altSpec, session, tapeRev, volsRev, printRev, fullNonce, nightRev]);
+  }, [ticker, timeframe, revision, overlays.cone, overlays.levels, replay, mainNonce, altSpec, session, tapeRev, volsRev, fullNonce, nightRev]);
 
   /* THE WIND FIELD — a model forecast of the rest of today's session (core/windField.ts, data/windInputs.ts). Its σ is
      the cone's own (the at-the-money implied vol to today's close on the trading clock), its book the chain the nodes
@@ -3998,7 +4080,7 @@ const StrikeChart = ({
       label: 'Wind · model forecast',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, timeframe, revision, overlays.wind, replay, mainNonce, altSpec, session, tapeRev, volsRev, printRev, fullNonce, nightRev, windField, bookRev, bookDate, themeKey]);
+  }, [ticker, timeframe, revision, overlays.wind, replay, mainNonce, altSpec, session, tapeRev, volsRev, fullNonce, nightRev, windField, bookRev, bookDate, themeKey]);
 
   /* The event markers. The calendar half (this name's report, the macro dates) is cached per ticker and day; the
      prints half is live. */
@@ -4052,8 +4134,10 @@ const StrikeChart = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker, timeframe, revision, overlays.events, replay, replayIdx, mainNonce, flowRows, altSpec, nightRev]);
 
-  /* The live price, as a card on the right scale. The library draws a flat one-line tag for the last value. */
+  /* The live price, as a card on the right scale. The library draws a flat one-line tag for the last value.
+     A desk left mounted behind the one on screen does not keep a frame loop running. */
   useEffect(() => {
+    if (!deskAwake) return;
     const series = candleSeriesRef.current;
     if (!series) return;
     const on = priceTag && !replay;
@@ -4073,7 +4157,7 @@ const StrikeChart = ({
     let shownW = -1;
 
     const frame = () => {
-      priceTagRafRef.current = requestAnimationFrame(frame);
+      priceTagRafRef.current = window.setTimeout(frame, 100);
       /* AS wide as the gutter, measured — not 68px of guess. */
       const gw = Math.round(chart.priceScale('right').width());
       if (gw > 0 && gw !== shownW) {
@@ -4090,7 +4174,7 @@ const StrikeChart = ({
         return;
       }
 
-      const p = price.toFixed(2);
+      const p = fmtPx(price, 2);
       const minute = nyMinutes((lastBarTimeRef.current || 0) * 1000);
       const sess = sessionOfMinute(minute);
       const suffix = sess === 'pre' ? ' pre' : sess === 'post' ? ' AH' : sess === 'overnight' ? ' ON' : '';
@@ -4107,22 +4191,14 @@ const StrikeChart = ({
         shownPrice = label;
       }
 
-      /* Time left in this timeframe's bar. The close is the last bar's own grid: a 15-minute bar that opened at
-         :45 closes on the next :00, including while no new print has arrived. A rule bar has no clock. */
-      const step = Math.round(tfMinutes(timeframe) * 60);
+      /* The candle this close belongs to, under the price. The bar's own open, New York: a day bar says the date,
+         an intraday bar the clock. A rule bar has no candle. */
       const anchor = lastBarTimeRef.current;
-      const pad = (v: number) => String(v).padStart(2, '0');
-      let t = '';
-      if (step >= 60 && anchor > 0 && !altSpec) {
-        const into = ((Date.now() / 1000 - anchor) % step + step) % step;
-        const left = Math.max(0, Math.round(step - into));
-        const hh = Math.floor(left / 3600);
-        t = hh > 0
-          ? `${hh}:${pad(Math.floor((left % 3600) / 60))}:${pad(left % 60)}`
-          : `${pad(Math.floor(left / 60))}:${pad(left % 60)}`;
-      }
+      const step = Math.round(tfMinutes(timeframe) * 60);
+      const t = anchor > 0 && !altSpec ? (step >= 86_400 ? nyDay(anchor * 1000) : nyClock(anchor * 1000)) : '';
       if (t !== shownLeft) {
         timeEl.textContent = t;
+        timeEl.classList.toggle('hidden', t === '');
         shownLeft = t;
       }
 
@@ -4135,12 +4211,12 @@ const StrikeChart = ({
       }
     };
 
-    priceTagRafRef.current = requestAnimationFrame(frame);
+    priceTagRafRef.current = window.setTimeout(frame, 100);
     return () => {
-      cancelAnimationFrame(priceTagRafRef.current);
+      window.clearTimeout(priceTagRafRef.current);
       candleSeriesRef.current?.applyOptions({ lastValueVisible: true });
     };
-  }, [priceTag, timeframe, replay, mainNonce, altSpec]);
+  }, [priceTag, timeframe, replay, mainNonce, altSpec, deskAwake]);
 
   // Dark-pool whisper lines — same grammar as the flow board minis
   useEffect(() => {
@@ -4407,16 +4483,15 @@ const StrikeChart = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [ticker]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ThetaData's bars for this pane and its compares, kept fresh while it is mounted: the one-minute tape (the
+  /* ThetaData's bars for this pane and its compares, kept fresh while it is on screen: the one-minute tape (the
      session levels, the ATR and the cone read it) and the timeframe's own grain */
-  const compareNames = compares.map(c => c.ticker).join(',');
   useEffect(() => {
-    if (tape || !thetaBars()) return;
+    if (!deskAwake || tape || !thetaBars()) return;
     const names = [ticker, ...compareNames.split(',').filter(Boolean)];
     const grain = chartGrain(tfMinutes(timeframe));
     const offs = names.flatMap(n => wantChartTape(n, grain, session));
     return () => offs.forEach(off => off());
-  }, [ticker, compareNames, timeframe, session, !!tape]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ticker, compareNames, timeframe, session, !!tape, deskAwake]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
 
@@ -5856,7 +5931,7 @@ const StrikeChart = ({
             ref={priceTagRef}
             aria-hidden
             /* The card wears the chart's ground, like its words. */
-            /* The card is the library's label size: the price, then the time left in this timeframe's bar. */
+            /* The card is the library's label size: the price, then the candle's time. */
             /* THE FOIL PRICE TAG (the partner tree's 260a099, ported 2026-11-01): the brand's foil pans under the figure
                (.sig-foil on the mark's keyframes), the figure in the panel's ink so it reads on the silver */
             className="price-foil pointer-events-none absolute top-0 right-0 z-10 will-change-transform overflow-hidden rounded-[3px] pl-[8px] pr-0.5 py-px text-left whitespace-nowrap opacity-0 shadow-sm shadow-black/40"
@@ -5864,8 +5939,8 @@ const StrikeChart = ({
           >
             <span className="sig-foil" aria-hidden />
             <div className="relative font-mono text-t12 font-bold leading-[14px] tnum" data-price-figure />
-            {/* the countdown line is kept for the writer but hidden, as the partner's is: a second line made the tag tall */}
-            <div className="relative hidden font-mono text-t9 leading-[11px] tnum" data-price-left />
+            {/* the candle's clock, under the figure */}
+            <div className="relative font-mono text-t9 leading-[11px] tnum" data-price-left />
           </div>
         )}
 

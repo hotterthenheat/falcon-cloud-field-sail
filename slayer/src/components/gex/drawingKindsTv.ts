@@ -11,6 +11,7 @@
    volume tool prints is the chart's own bars' volume — nothing is invented; with no bars in range it says so. */
 
 import { fmtElapsed, measureSpan } from '../../data/measure';
+import { fmtPx } from '../../core/format';
 import type { Drawing, DrawingKind, DrawingPoint } from './drawingsPrimitive';
 import type { KindBar, KindHit, KindRender } from './drawingKinds';
 import { drawPieces, hitPieces, hitSpace, rayTo, renderSpace, type Piece, type Space } from './drawingKindsMore';
@@ -60,7 +61,7 @@ const TV_KINDS = new Set<DrawingKind>([
 ]);
 export const isTvKind = (k: DrawingKind): boolean => TV_KINDS.has(k);
 
-const priceWords = (p: number): string => p.toFixed(2);
+const priceWords = (p: number): string => fmtPx(p);
 const signed = (d: number): string => `${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(2)}`;
 const pctWords = (d: number, base: number): string => (base ? `${d >= 0 ? '+' : '−'}${Math.abs((d / base) * 100).toFixed(2)}%` : '—');
 

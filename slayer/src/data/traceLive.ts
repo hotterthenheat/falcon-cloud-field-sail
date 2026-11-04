@@ -1302,6 +1302,25 @@ export function useLiveBook(ticker?: string | null, enabled = true, endless = fa
   const waiting = market.waiting || (!!name && named.waiting);
   return useMemo(() => ({ rows, at: market.at, fault: market.fault, waiting, kept: market.kept, older: endless && !name ? older : undefined }), [rows, market.at, market.fault, market.kept, waiting, endless, name, older]);
 }
+
+/** The books of the names under watch. A mark is not limited to whatever name the rest of the desk last opened. */
+export function useWatchedBooks(names: readonly string[], enabled = true): LivePack<BookContract[]> {
+  const key = [...new Set(names.map(n => n.trim().toUpperCase()).filter(Boolean))].sort().slice(0, 12).join(',');
+  return useLive(
+    key ? `books:${key}` : 'books:off',
+    async () => {
+      const parts = await Promise.all(key.split(',').map(n => readBook(`ticker_symbol=${encodeURIComponent(n)}&limit=40&order=premium&order_direction=desc`)));
+      const seen = new Set<string>();
+      return parts.flat().filter(r => {
+        if (!r.key || seen.has(r.key)) return false;
+        seen.add(r.key);
+        return true;
+      });
+    },
+    [] as BookContract[],
+    enabled && !!key,
+  );
+}
 /** A searched name's own book by the day's premium, paged on scroll; without a name, the market's */
 export function useSearchBook(name: string | null | undefined): EndlessBook & { name: string | null } {
   const t = (name || '').trim().toUpperCase() || null;

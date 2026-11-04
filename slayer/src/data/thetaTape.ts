@@ -16,6 +16,7 @@ import { EXT_WINDOWS, RTH_WINDOW, cleanExtendedBars, saneStockBars } from './the
 import { saneBars } from './barSanity';
 import { InUseLru } from './boundedMap';
 import { ensureThetaPrice, peekThetaPrice, subscribeThetaPrices, thetaPriceRev, type ThetaPrice } from './thetaQuote';
+import { useDeskAwake } from './deskAwake';
 
 export const THETA_INDEX = new Set(['SPX', 'VIX', 'RUT', 'NDX', 'XSP']);
 
@@ -466,9 +467,38 @@ export const TAPE_PANES = 12;
 const wanted = new Map<string, number>();
 const slots = new InUseLru<string, Slot>(TAPE_PANES, key => wanted.has(key));
 const listeners = new Set<() => void>();
+const symbolListeners = new Map<string, Set<() => void>>();
+/** Last signature handed to a symbol's subscribers. Same string until that name's bars actually change. */
+const tapeSigs = new Map<string, string>();
 let rev = 0;
-const emit = () => {
+
+function tapeSigOf(symbol: string): string {
+  const parts: string[] = [];
+  for (const key of slots.keys()) {
+    const s = slots.peek(key);
+    if (!s || s.symbol !== symbol) continue;
+    const last = s.bars.length ? s.bars[s.bars.length - 1] : undefined;
+    parts.push(`${s.grain}|${s.session}|${s.state}|${s.takenAt}|${s.bars.length}|${last ? last.time : 0}|${last ? last.close : 0}|${s.done ? 1 : 0}|${s.from}`);
+  }
+  return parts.join(';');
+}
+
+function readTapeSig(symbol: string): string {
+  const hit = tapeSigs.get(symbol);
+  if (hit != null) return hit;
+  const next = tapeSigOf(symbol);
+  tapeSigs.set(symbol, next);
+  return next;
+}
+
+const emit = (symbol: string) => {
   rev += 1;
+  const next = tapeSigOf(symbol);
+  const prev = tapeSigs.get(symbol);
+  if (prev !== next) {
+    tapeSigs.set(symbol, next);
+    symbolListeners.get(symbol)?.forEach(fn => fn());
+  }
   listeners.forEach(fn => fn());
 };
 
@@ -555,7 +585,7 @@ async function read(s: Slot): Promise<void> {
           s.bars = kept.data;
           s.takenAt = kept.at;
           s.state = thetaDown() ? 'offline' : 'kept';
-          emit();
+          emit(s.symbol);
         }
       }
     }
@@ -580,7 +610,7 @@ async function read(s: Slot): Promise<void> {
       if (first && !s.bars.length && raw.bars.length) {
         s.bars = raw.bars;
         s.state = 'live';
-        emit();
+        emit(s.symbol);
       }
       const cleaned = await raw.clean();
       if (run.released) {
@@ -588,7 +618,7 @@ async function read(s: Slot): Promise<void> {
         if (first && s.bars === raw.bars) {
           s.bars = [];
           s.state = 'loading';
-          emit();
+          emit(s.symbol);
         }
         deferred = true;
         return;
@@ -604,7 +634,7 @@ async function read(s: Slot): Promise<void> {
     if (got.offline && !got.bars.length) {
       if (s.state !== 'offline') {
         s.state = 'offline';
-        emit();
+        emit(s.symbol);
       }
       return;
     }
@@ -617,7 +647,7 @@ async function read(s: Slot): Promise<void> {
       s.keptAt = s.takenAt;
       keepTheta(`tape:${key}`, s.bars.length > KEEP_BARS ? s.bars.slice(-KEEP_BARS) : s.bars);
     }
-    emit();
+    emit(s.symbol);
   } finally {
     s.busy = false;
     s.dueAt = deferred ? 0 : Date.now() + (s.state === 'offline' ? 15_000 : holdMs(s));
@@ -646,7 +676,7 @@ async function readOlder(s: Slot): Promise<void> {
     if (got.bars.length) {
       s.emptyRuns = 0;
       s.bars = sealBars(s.bars, got.bars);
-      emit();
+      emit(s.symbol);
     } else {
       s.emptyRuns += 1;
       if (got.none || s.emptyRuns >= 2) {
@@ -788,26 +818,113 @@ export function subscribeTape(fn: () => void): () => void {
   return () => listeners.delete(fn);
 }
 export const tapeRev = (): number => rev;
-/** Re-renders when any tape's bars change (not on every print). */
+/** Re-renders when any tape's bars change. A chart should use useSymbolTapeSig — this wakes every subscriber. */
 export function useTapeRev(): number {
   return useSyncExternalStore(subscribeTape, tapeRev, tapeRev);
+}
+
+const noSub = () => () => undefined;
+const symbolSub = new Map<string, (fn: () => void) => () => void>();
+function subscribeSymbol(symbol: string): (fn: () => void) => () => void {
+  let hit = symbolSub.get(symbol);
+  if (!hit) {
+    hit = (fn: () => void) => {
+      let set = symbolListeners.get(symbol);
+      if (!set) {
+        set = new Set();
+        symbolListeners.set(symbol, set);
+      }
+      set.add(fn);
+      return () => {
+        set!.delete(fn);
+        if (set!.size === 0) symbolListeners.delete(symbol);
+      };
+    };
+    symbolSub.set(symbol, hit);
+  }
+  return hit;
+}
+const comboSub = new Map<string, (fn: () => void) => () => void>();
+const comboSig = new Map<string, string>();
+function subscribeSymbols(key: string): (fn: () => void) => () => void {
+  if (!key) return noSub;
+  let hit = comboSub.get(key);
+  if (!hit) {
+    const names = key.split(',');
+    hit = (fn: () => void) => {
+      const offs = names.map(n => subscribeSymbol(n)(fn));
+      return () => offs.forEach(off => off());
+    };
+    comboSub.set(key, hit);
+  }
+  return hit;
+}
+function symbolsSnapshot(key: string): string {
+  if (!key) return '';
+  const next = key.split(',').map(readTapeSig).join('\n');
+  const prev = comboSig.get(key);
+  if (prev === next) return prev;
+  comboSig.set(key, next);
+  return next;
+}
+
+/** Re-renders only when this name's bars change, not when some other name's tape lands. */
+export function useSymbolTapeSig(symbol: string): string {
+  const name = symbol.trim().toUpperCase();
+  return useSyncExternalStore(name ? subscribeSymbol(name) : noSub, () => (name ? readTapeSig(name) : ''), () => '');
+}
+/** Comma-separated names. One string, stable until one of those tapes changes. */
+export function useSymbolsTapeSig(symbolsCsv: string): string {
+  const key = symbolsCsv.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).join(',');
+  return useSyncExternalStore(subscribeSymbols(key), () => symbolsSnapshot(key), () => '');
 }
 
 /* The prints are the quote store's readings (data/thetaQuote.ts): its price listeners alone, so a reader of bars is not
    re-rendered by them, nor a print reader by every option mark */
 export const subscribePrints = subscribeThetaPrices;
 export const printRevNow = (): number => thetaPriceRev();
-/** Re-renders when any name's print changes. */
+/** Re-renders when any name's print changes. Prefer useNamePrintSig. */
 export function usePrintRev(on = true): number {
   return useSyncExternalStore(on ? subscribePrints : noSub, printRevNow, printRevNow);
 }
-const noSub = () => () => undefined;
 
-/** A tape, kept fresh while the caller is mounted. */
+const printSigCache = new Map<string, string>();
+function namePrintSig(name: string): string {
+  if (!name) return '';
+  const p = peekPrint(name);
+  const next = p ? `${p.price}|${p.at}|${p.prev}|${p.readAt}|${p.kept ? 1 : 0}` : '';
+  const prev = printSigCache.get(name);
+  if (prev === next) return prev;
+  printSigCache.set(name, next);
+  return next;
+}
+const namesPrintCache = new Map<string, string>();
+function namesPrintSnapshot(key: string): string {
+  if (!key) return '';
+  const next = key.split(',').map(namePrintSig).join(';');
+  const prev = namesPrintCache.get(key);
+  if (prev === next) return prev;
+  namesPrintCache.set(key, next);
+  return next;
+}
+/** Re-renders only when this name's last trade changes. */
+export function useNamePrintSig(symbol: string): string {
+  const name = symbol.trim().toUpperCase();
+  return useSyncExternalStore(name ? subscribePrints : noSub, () => namePrintSig(name), () => '');
+}
+/** Comma-separated names. Stable until one of those prints changes. */
+export function useNamesPrintSig(symbolsCsv: string): string {
+  const key = symbolsCsv.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).join(',');
+  return useSyncExternalStore(key ? subscribePrints : noSub, () => namesPrintSnapshot(key), () => '');
+}
+
+/** A tape, kept fresh while the caller is mounted and its desk is on screen. */
 export function useThetaTape(symbol: string, grain: TapeGrain, session: DeskSession, on = true): TapeRead {
   const name = symbol.trim().toUpperCase();
-  useEffect(() => (on && name ? wantTape(name, grain, session) : undefined), [name, grain, session, on]);
-  useTapeRev();
+  const awake = useDeskAwake();
+  const live = on && awake && !!name;
+  useEffect(() => (live ? wantTape(name, grain, session) : undefined), [name, grain, session, live]);
+  useSymbolTapeSig(live ? name : '');
   return on && name ? peekTape(name, grain, session) : NONE;
 }
 
@@ -898,11 +1015,13 @@ export function peekPrint(symbol: string): Print | null {
   return print;
 }
 
-/** A name's live print, kept fresh while the caller is mounted. */
+/** A name's live print, kept fresh while the caller is mounted and its desk is on screen. */
 export function useThetaPrint(symbol: string, on = true): Print | null {
   const name = symbol.trim().toUpperCase();
-  useEffect(() => (on && name ? wantPrint(name) : undefined), [name, on]);
-  usePrintRev();
+  const awake = useDeskAwake();
+  const live = on && awake && !!name;
+  useEffect(() => (live ? wantPrint(name) : undefined), [name, live]);
+  useNamePrintSig(live ? name : '');
   return on && name ? peekPrint(name) : null;
 }
 

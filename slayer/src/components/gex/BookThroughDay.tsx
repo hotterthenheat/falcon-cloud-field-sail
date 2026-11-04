@@ -17,7 +17,8 @@ import { nySessionPhase } from '../../core/nyTime';
 
 const inSessionNow = (): boolean => nySessionPhase() === 'open';
 import { sessionOfMinute } from '../../data/deskSession';
-import { useTapeRev, wantTape } from '../../data/thetaTape';
+import { useSymbolTapeSig, wantTape } from '../../data/thetaTape';
+import { useDeskAwake } from '../../data/deskAwake';
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { hhmm } from '../../data/ahead';
 import { axisForSession } from '../../data/dayAxis';
@@ -106,16 +107,17 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
   const read = useResolvedSession(ticker);
   const shown = barsProp?.length ? sessionOfMinute(nyMinutes(barsProp[0].time * 1000)) : read.session;
   const handed = !!barsProp?.length;
+  const awake = useDeskAwake();
   useEffect(() => {
-    if (handed) return;
+    if (handed || !awake) return;
     return wantTape(ticker, '1m', shown);
-  }, [ticker, shown, handed]);
-  const tapeRev = useTapeRev();
+  }, [ticker, shown, handed, awake]);
+  const tapeSig = useSymbolTapeSig(handed || !awake ? '' : ticker);
   const bars = useMemo(() => {
     if (barsProp?.length) return barsProp;
     if (shown !== 'rth') return deskBars(ticker, shown) ?? [];
     return sessionBars(ticker) ?? [];
-  }, [ticker, barsProp, shown, tapeRev]);
+  }, [ticker, barsProp, shown, tapeSig]);
   const vendor = useBookMinutes(ticker);
 
   /* The minutes: volume gamma through the session, in the book's unit. The open-interest series are near-straight lines

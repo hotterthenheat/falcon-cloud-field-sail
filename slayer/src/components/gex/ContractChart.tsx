@@ -127,9 +127,11 @@ interface ContractChartProps {
   layer?: (api: ChartLayerApi, chromeH: number) => ReactNode;
   /** The window the chart opens on (unix seconds), in place of the session's: a past call's trade */
   view?: { from: number; to: number } | null;
+  /** A row under the read line, inside the chrome the marks dock under. */
+  under?: ReactNode;
 }
 
-const ContractChart = ({ ticker, contractKey, bars, timeframe, onTimeframe, revision, identity, emptyNote = '', loadingNote = 'Reading the bars.', readoutExtra, live = true, layer, view = null }: ContractChartProps) => {
+const ContractChart = ({ ticker, contractKey, bars, timeframe, onTimeframe, revision, identity, emptyNote = '', loadingNote = 'Reading the bars.', readoutExtra, live = true, layer, view = null, under = null }: ContractChartProps) => {
   const themeKey = useCandleThemeKey();
   const [prefs, setPrefs] = useState<Prefs>(readPrefs);
   const setPref = <K extends keyof Prefs>(k: K, v: Prefs[K]) =>
@@ -273,6 +275,7 @@ const ContractChart = ({ ticker, contractKey, bars, timeframe, onTimeframe, revi
           </div>
         </div>
         <ReadLine cell={readout} last={last} empty={bars == null ? loadingNote : emptyNote || 'No trades on this contract.'} extra={boxW === 0 || boxW >= 600 ? readoutExtra : undefined} />
+        {under}
       </div>
     </div>
   );

@@ -5,7 +5,7 @@
 import { useMemo, useState } from 'react';
 import type { Signal } from '../../data/compassLedger';
 import { trackLine, trackRecord, type TrackLine } from '../../data/compassTrack';
-import { MODEL_WORD, RIDING_WORD, SESSION_WORD } from '../../data/compassParams';
+import { MODEL_WORD, RIDING_WORD, SESSION_WORD, modelOfBook } from '../../data/compassParams';
 import FilterTabs from '../ui/FilterTabs';
 
 type Scope = 'today' | 'week' | 'all';
@@ -56,7 +56,12 @@ const TrackRecord = ({ today, recent, all }: { today: string; recent: readonly S
   const tr = useMemo(() => {
     const t = trackRecord(rows as Signal[]);
     /* the books Model 1 calls are one line; the calls Model 2 rode, a line of their own */
-    return { ...t, model1: trackLine(rows.filter(r => r.book !== 'C')), riding: trackLine(rows.filter(r => r.book === 'A' && r.runner)) };
+    return {
+      ...t,
+      model1: trackLine(rows.filter(r => r.book === 'A' || r.book === 'B')),
+      riding: trackLine(rows.filter(r => r.book === 'A' && r.runner)),
+      risk: trackLine(rows.filter(r => r.book === 'R')),
+    };
   }, [rows]);
   const sessions = (['overnight', 'pre', 'regular'] as const).filter(k => tr.bySession[k].calls > 0 || k === 'regular');
   return (
@@ -90,6 +95,7 @@ const TrackRecord = ({ today, recent, all }: { today: string; recent: readonly S
             <Row label={MODEL_WORD[1]} line={tr.model1} testId="book-A" />
             {tr.riding.calls > 0 && <Row label={`· ${RIDING_WORD}`} line={tr.riding} testId="riding" />}
             <Row label={MODEL_WORD[3]} line={tr.byBook.C} testId="book-C" />
+            <Row label={modelOfBook('R')} line={tr.risk} testId="book-R" />
             {sessions.map(k => <Row key={k} label={SESSION_WORD[k]} line={tr.bySession[k]} testId={`session-${k}`} />)}
           </tbody>
         </table>

@@ -1,13 +1,13 @@
-import { Suspense, useState } from 'react';
-import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
+import { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { PinpointPageSkeleton } from './pinpointSkeletons';
-import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowUpRight, X } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
 import { usePinpointFeed, useResolvedSession } from '../../data/book/feed';
 import { useFocus } from '../../context/FocusContext';
 import { AGENDA_LINES, agendaFaceOf } from './Agenda';
 import ScrollHome from '../../components/layout/ScrollHome';
+import { KeepOutlet } from '../../components/layout/DeskKeep';
 import { bellDay } from '../../data/bookWindow';
 import { GLOSSARY } from '../../components/gex/glossary';
 import { GEX_SUBPAGES } from './subnav';
@@ -30,7 +30,6 @@ const PinpointLayout = () => {
   /* Alerts are watched by the shell on every page (components/alerts/AlertWatcher.tsx). */
   const location = useLocation();
   const navigate = useNavigate();
-  const outlet = useOutlet();
   /* the session note is said until the reader hides it; a different note shows again */
   const [noteSeen, setNoteSeen] = useState<string | null>(() => {
     try {
@@ -139,24 +138,10 @@ const PinpointLayout = () => {
       {/* The Agenda's Building face names itself in the tab. */}
       <SayPage words={page.path === '/pinpoint/agenda' && agendaFaceOf(location.search) === 'building' ? 'Building · Agenda' : null} />
 
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={location.pathname}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -4 }}
-          transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-          /* The desk owns its first screen (top bar 56 + the head ≈ 164); short pages stretch, the footer starts below the fold. */
-          /* A finger's hit area on every control: `.hit` (index.css) adds an invisible 44 px box on a coarse pointer only. */
-          className="flex flex-col gap-4 flex-grow min-h-[calc(100vh-174px)] [&_:where(button)]:hit [&_:where(a)]:hit"
-        >
-          {/* A subpage opens at its head. */}
+      <div className="flex flex-col gap-4 flex-grow min-h-[calc(100vh-174px)] [&_:where(button)]:hit [&_:where(a)]:hit">
           <ScrollHome />
-          {/* A page's code travels on its first visit; it stands in as ITS OWN
-              shape under a shell head that stays put (pinpointSkeletons.tsx) */}
-          <Suspense fallback={<PinpointPageSkeleton pathname={location.pathname} />}>{outlet}</Suspense>
-        </motion.div>
-      </AnimatePresence>
+          <KeepOutlet fallback={<PinpointPageSkeleton pathname={location.pathname} />} />
+      </div>
     </>
   );
 };

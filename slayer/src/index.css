@@ -562,6 +562,22 @@ html[data-type-floor] .pal-label {
   color: transparent;
   animation: holo-pan 4.5s ease-in-out infinite alternate;
 }
+.hand-word { position: relative; display: inline-block; white-space: nowrap; }
+.hand-scribble {
+  position: absolute;
+  left: -1%;
+  width: 108%;
+  height: 0.38em;
+  bottom: -0.08em;
+  overflow: visible;
+  pointer-events: none;
+}
+.hand-scribble path {
+  fill: none;
+  stroke: url(#hand-ink);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
 /* A FILLED SURFACE in the galaxy ink — the landing's solid buttons on paper (Noah, the same day: "should this also be the
    launch terminal and try it first button color? i think so"). The foil's counterpart again: on a dark ground those
    buttons are `holo-bg` with dark words; on paper they are this with light words. Every stop keeps white words 4.5:1. */
@@ -880,6 +896,37 @@ body.room-walled { animation: room-flicker 11s linear infinite; }
    note yields to the facts (the box is its own container) */
 [data-day-box] {
   container-type: inline-size;
+}
+/* The name card sits in Compass's right column, which is a third of the desk. The split follows the card, not the
+   window — a wide screen with a narrow column was laying three desks beside a 272px tape and the words ran through it. */
+[data-name-desks] {
+  container-type: inline-size;
+}
+[data-name-split] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+[data-name-desks-row] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+@container (min-width: 420px) {
+  [data-name-desks-row] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  [data-name-desks-row] > :nth-child(-n + 2) {
+    border-bottom-width: 0;
+    border-right: 1px solid rgb(var(--border-subtle) / 0.6);
+  }
+}
+@container (min-width: 720px) {
+  [data-name-split] {
+    grid-template-columns: 272px minmax(0, 1fr);
+  }
+  [data-name-split] > [data-desk-prints] {
+    border-bottom-width: 0;
+    border-right: 1px solid rgb(var(--border-subtle) / 0.6);
+  }
 }
 @container (max-width: 900px) {
   [data-day-box] [data-day-note] {

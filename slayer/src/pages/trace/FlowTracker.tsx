@@ -4,14 +4,13 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQParam } from '../../components/trace/addressCut';
-import { useTicker } from '../../context/MarketDataContext';
 import { contractKey, crossOfWatch, useWatch, type WatchSource, type WatchedContract, type WatchedCross, type WatchedItem, type WatchedPrint, type WatchedStructure } from '../../context/WatchContext';
 import CrossDrilldown, { IntentTag } from '../../components/trace/CrossDrilldown';
 import type { DarkPoolPrint } from '../../types/darkpool';
 
 /** The options under watch — every kind but a dark cross */
 type WatchedOption = Exclude<WatchedItem, WatchedCross>;
-import { dayLean, ensureSpots, expiredAtBell, fmtCount as num, liveSpotOf, occOf, traceHeld, sessionIsoAt, tapeSessionIso, useContractDays, useLiveBook, useMarkNow, usd as fmtUsd, type ContractDayNow } from '../../data/traceLive';
+import { dayLean, ensureSpots, expiredAtBell, fmtCount as num, liveSpotOf, occOf, traceHeld, sessionIsoAt, tapeSessionIso, useContractDays, useMarkNow, useWatchedBooks, usd as fmtUsd, type ContractDayNow } from '../../data/traceLive';
 import { nyClock, nyParts } from '../../core/nyTime';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
@@ -212,7 +211,6 @@ interface TrackRow {
 
 const FlowTracker = () => {
   const navigate = useNavigate();
-  const { activeTicker } = useTicker();
   const { watched, toggle: toggleWatch } = useWatch();
   /* the options under watch feed the grid; the dark crosses have a box of their own */
   const options = useMemo(() => watched.filter((w): w is WatchedOption => w.kind !== 'cross'), [watched]);
@@ -295,7 +293,8 @@ const FlowTracker = () => {
   const [query, setQuery] = useQParam();
 
   /* an empty tracker asks nothing */
-  const contractPack = useLiveBook(activeTicker, options.length > 0);
+  const watchedNames = useMemo(() => [...new Set(options.map(w => w.ticker))], [options]);
+  const contractPack = useWatchedBooks(watchedNames, options.length > 0);
   /* the marks' names' live prices, the "now" beside each mark's spot then; a landing re-renders the rows */
   const markNames = useMemo(() => [...new Set(options.map(w => w.ticker.toUpperCase()))].sort().join(','), [options]);
   const [spotRev, setSpotRev] = useState(0);

@@ -90,12 +90,18 @@ function subscribeTick(fn: () => void): () => void {
 }
 const noTick = () => () => {};
 
+/** The option root the quote is listed under. A contract "SPXW 751P" is not the cash symbol SPX. */
+function quoteSymbol(sig: { ticker?: string; contract?: string }): string {
+  const head = (sig.contract ?? '').split(/\s+/)[0] ?? '';
+  return /^[A-Z][A-Z0-9.]{0,6}$/.test(head) ? head : (sig.ticker ?? '');
+}
+
 /** A call's return now. An open call subscribes to its contract's one live quote (shared, keyed by contract); a
     waiting, closed or unavailable call reads nothing. */
-export function useCallReturn(sig: Pick<Signal, 'outcome' | 'ticker' | 'expiry' | 'strike' | 'right'> | null | undefined): CallReturn {
+export function useCallReturn(sig: Pick<Signal, 'outcome' | 'ticker' | 'contract' | 'expiry' | 'strike' | 'right'> | null | undefined): CallReturn {
   const o = sig?.outcome ?? null;
   const open = !!sig && o?.status === 'open' && (o.fill?.ask ?? 0) > 0 && !!sig.expiry && sig.expiry.slice(0, 10) >= nyIsoDate();
-  const live = useContractLive(sig?.ticker ?? '', sig?.expiry ?? '', sig?.strike ?? 0, sig?.right ?? 'C', open);
+  const live = useContractLive(sig ? quoteSymbol(sig) : '', sig?.expiry ?? '', sig?.strike ?? 0, sig?.right ?? 'C', open);
   const sub = useCallback((fn: () => void) => (open ? subscribeTick(fn) : noTick()), [open]);
   const now = useSyncExternalStore(sub, () => (open ? tickNow : 0), () => 0);
   return returnOf(sig, live, open ? Math.max(now, Date.now()) : Date.now());

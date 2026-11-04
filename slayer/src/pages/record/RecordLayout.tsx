@@ -1,13 +1,12 @@
 /* The Dossier's shell: the page's name and one line over it, the source on the right (hidden on a phone). */
 
 import { SessionTag } from '../../components/ui/SessionTag';
-import { Suspense } from 'react';
-import { useLocation, useOutlet } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useLocation } from 'react-router-dom';
 import { RECORD_SUBPAGES } from './subnav';
 import { RecordPageSkeleton } from './recordSkeletons';
 import BackToTop from '../../components/ui/BackToTop';
 import ScrollHome from '../../components/layout/ScrollHome';
+import { KeepOutlet } from '../../components/layout/DeskKeep';
 import { useGlideHold } from '../../components/ui/useGlideHold';
 import { statHelp } from '../../components/record/statHelp';
 
@@ -21,7 +20,6 @@ const DOSSIER_TOUCH = `@media (max-width: 640px) {
 
 const RecordLayout = () => {
   const location = useLocation();
-  const outlet = useOutlet();
   const page = RECORD_SUBPAGES.find(p => location.pathname.startsWith(p.path)) ?? RECORD_SUBPAGES[0];
   const PageIcon = page.icon;
   /* the column holds its width through the sidebar's glide: one layout at the end, not one per frame */
@@ -54,23 +52,11 @@ const RecordLayout = () => {
         </div>
       </header>
 
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={location.pathname}
-          ref={holdRef}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -4 }}
-          transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-          className="flex flex-col gap-4 flex-grow min-h-[calc(100vh-174px)] min-w-0 max-w-full"
-          data-dossier-touch
-        >
+      <div ref={holdRef} className="flex flex-col gap-4 flex-grow min-h-[calc(100vh-174px)] min-w-0 max-w-full" data-dossier-touch>
           <style>{DOSSIER_TOUCH}</style>
-          {/* a subpage opens at its head, not where the last one's scroll was */}
           <ScrollHome />
-          <Suspense fallback={<RecordPageSkeleton pathname={location.pathname} />}>{outlet}</Suspense>
-        </motion.div>
-      </AnimatePresence>
+          <KeepOutlet fallback={<RecordPageSkeleton pathname={location.pathname} />} />
+      </div>
       {/* the way back to the top once a grid runs past a screen */}
       <BackToTop testId="record" />
     </>

@@ -16,12 +16,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
+import { takeWire, writeWire } from '../../shared/jsonWire.mjs';
 import { setCompassHost, type EconRow, type ThetaAnswer } from './compassHost';
 import { demoteLate, exportModelState, importModelState, lockReason, modelDay, onLockReason, onModelChange, onScoredRow, rollModelDay, type ModelPack } from './compassModel';
 import { importSignals, importWould, onSignalsChange, setSessionClose, signals, wouldSignals, type Signal } from './compassLedger';
 import { exportMarks, importMarks, lotterySwept, onMarks, onScanMeta, scanMeta, sessionClose, setLotteryDay, setScanMeta, startScan, stopScan, type MarkRow, type ScanMeta } from './compassScan';
+import { importTail } from './modelRiskScan';
+import { emptyTail } from './modelRisk';
 import { sessionIso } from './compassSession';
 import { buildSession, builtCurrent, reviewFile, studyFile } from './compassReview';
+import { startReviewScan, stopReviewScan } from './reviewLive';
 import { poolStudies, type Label, type PooledStudy, type StudyDay, type StudyResult } from './compassStudy';
 import { nyParts } from '../core/nyTime';
 import type { Setup } from '../types/compass';
@@ -46,7 +50,7 @@ export interface DayFile {
   lottery: boolean;
   /** The engine's cards, seats and passes, to resume after a restart */
   state: ModelPack;
-  meta: Pick<ScanMeta, 'spots' | 'sparks' | 'line' | 'theta' | 'downSince'>;
+  meta: Pick<ScanMeta, 'spots' | 'sparks' | 'line' | 'theta' | 'downSince' | 'tail'>;
 }
 
 /** What a browser reads: the board, the record and the engine's own condition. */
@@ -185,6 +189,15 @@ export function readDay(dir: string, day: string): (DayFile & { demoted: Signal[
     return got && got.format === RECORD_FORMAT && got.day === day ? splitLate(got) : null;
   } catch {
     return null;
+  }
+}
+
+/** Session dates the live review has written, oldest first. */
+function reviewDays(dir: string): string[] {
+  try {
+    return fs.readdirSync(path.join(dir, 'review')).filter(f => /^\d{4}-\d{2}-\d{2}\.json$/.test(f)).map(f => f.slice(0, 10)).sort();
+  } catch {
+    return [];
   }
 }
 
@@ -331,13 +344,20 @@ export function startCompassEngine(o: EngineOptions): Engine {
     if (f?.demoted.length) {
       /* their seats go back: only a root a live call holds stays taken */
       const live = { A: new Set<string>(), B: new Set<string>(), C: new Set<string>() };
-      for (const c of f.calls) live[c.book].add(c.ticker);
-      demoteLate(f.demoted, live);
+      for (const c of f.calls) if (c.book === 'A' || c.book === 'B' || c.book === 'C') live[c.book].add(c.ticker);
+      demoteLate(f.demoted.filter((c): c is Signal & { book: 'A' | 'B' | 'C' } => c.book === 'A' || c.book === 'B' || c.book === 'C'), live);
       changed();
     }
     importMarks(f?.marks ?? []);
     setLotteryDay(f?.lottery ? today : '');
-    if (f) setScanMeta({ spots: f.meta?.spots ?? {}, sparks: f.meta?.sparks ?? {}, line: f.meta?.line ?? '', ...(readOnly && f.meta?.theta ? { theta: f.meta.theta, downSince: f.meta.downSince ?? 0 } : {}) });
+    if (f) setScanMeta({ spots: f.meta?.spots ?? {}, sparks: f.meta?.sparks ?? {}, line: f.meta?.line ?? '', tail: f.meta?.tail ?? emptyTail(today), ...(readOnly && f.meta?.theta ? { theta: f.meta.theta, downSince: f.meta.downSince ?? 0 } : {}) });
+    if (f?.meta?.tail) importTail(f.meta.tail);
+    else {
+      const priorDay = recordDays(o.dir).filter(d => d < today).pop();
+      const prior = priorDay ? readDay(o.dir, priorDay)?.meta?.tail : null;
+      const carried = (prior?.open ?? []).filter(t => t && !t.why);
+      importTail(carried.length ? { ...emptyTail(today), day: today, open: carried } : null);
+    }
     setSessionClose(f?.close ?? null);
   };
 
@@ -353,7 +373,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
       marks: exportMarks(),
       lottery: lotterySwept() === day,
       state: exportModelState(),
-      meta: { spots: m.spots, sparks: m.sparks, line: m.line, theta: m.theta, downSince: m.downSince },
+      meta: { spots: m.spots, sparks: m.sparks, line: m.line, theta: m.theta, downSince: m.downSince, tail: m.tail ?? emptyTail(day) },
     };
   };
 
@@ -423,16 +443,19 @@ export function startCompassEngine(o: EngineOptions): Engine {
     }
   };
 
-  /* After a session settles, its review and study are built once: the trades reviewed, the movers counted, every
-     scored row labelled. A day the engine missed after its close is built the next time it runs, and so is a day whose
-     review or study was built under older rules (compassReview REVIEW_VERSION: fees once came off its P&L). */
+  /* After a session settles, the study is built once: every call, the closest the scan did not take, every scored
+     row labelled. The review file is not this. The live scanner owns it, all night. A day whose study was built
+     under older rules (compassReview REVIEW_VERSION) is built again. */
   let building = false;
   const buildDue = () => {
     if (building) return;
     const p = nyParts(Date.now());
     const mins = p.hour * 60 + p.minute;
-    const days = recordDays(o.dir).filter(d => !builtCurrent(studyFile(o.dir, d)) || !builtCurrent(reviewFile(o.dir, d)));
-    const todo = days.filter(d => d < day || (d === day && mins >= 16 * 60 + 20 && mins < 20 * 60 + 15)).pop();
+    const stale = (d: string) => !builtCurrent(studyFile(o.dir, d));
+    const days = recordDays(o.dir).filter(stale);
+    const due = days.filter(d => d < day || (d === day && mins >= 16 * 60 + 20)).sort();
+    /* A past day goes first. Building today while it is the newest used to leave the day before it unbuilt. */
+    const todo = due.find(d => d < day) ?? due.find(d => d === day);
     if (!todo) return;
     const f = todo === day ? snapshotFile() : readDay(o.dir, todo);
     if (!f) return;
@@ -460,6 +483,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
     lockTimer = reloadTimer = rowTimer = reviewTimer = null;
     rowOff?.();
     rowOff = null;
+    stopReviewScan();
   };
 
   const asReader = (reason: string) => {
@@ -530,6 +554,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
         log(`[compass] session ${next}`);
       },
     });
+    startReviewScan(o.dir, log);
     changed();
     log(`[compass] engine running, record in ${o.dir}`);
   };
@@ -563,7 +588,10 @@ export function startCompassEngine(o: EngineOptions): Engine {
     state: () => state(),
     dir: o.dir,
     record: (d: string) => (d === day ? snapshotFile() : readDay(o.dir, d)),
-    days: () => recordDays(o.dir).map(d => ({ day: d, calls: (d === day ? signals().filter(s => sessionOf(s) === day) : readDay(o.dir, d)?.calls ?? []).length })),
+    days: () => {
+      const days = [...new Set([...recordDays(o.dir), ...reviewDays(o.dir)])].sort();
+      return days.map(d => ({ day: d, calls: (d === day ? signals().filter(s => sessionOf(s) === day) : readDay(o.dir, d)?.calls ?? []).length }));
+    },
     stop: () => {
       stopScan();
       for (const off of offs) off();
@@ -648,6 +676,27 @@ type Res = { statusCode: number; setHeader: (k: string, v: string) => void; end:
    so the browser console stays clean; any other caller still gets the 404 */
 const notBuilt = (req: Req): number => (String(req.headers['x-compass-soft'] ?? '') === '1' ? 200 : 404);
 
+let stateWire: { rev: number; json: Buffer; gzip: Buffer } | null = null;
+
+/** The board is the same for every viewer until the engine's rev moves. Build the bytes once. */
+function sendState(req: Req, res: Res, s: CompassState): void {
+  if (!stateWire || stateWire.rev !== s.rev) {
+    const json = Buffer.from(JSON.stringify(s));
+    stateWire = { rev: s.rev, json, gzip: gzipSync(json) };
+  }
+  res.statusCode = 200;
+  res.setHeader('content-type', 'application/json');
+  res.setHeader('cache-control', 'no-store');
+  const accepts = String(req.headers['accept-encoding'] ?? '');
+  if (/\bgzip\b/.test(accepts)) {
+    res.setHeader('content-encoding', 'gzip');
+    res.setHeader('vary', 'accept-encoding');
+    res.end(stateWire.gzip);
+    return;
+  }
+  res.end(stateWire.json);
+}
+
 function send(req: Req, res: Res, status: number, body: unknown): void {
   const text = JSON.stringify(body);
   res.statusCode = status;
@@ -685,7 +734,7 @@ export function compassRoute(engine: Engine, req: Req, res: Res): void {
       send(req, res, 200, { rev: s.rev, same: true, at: Date.now() });
       return;
     }
-    send(req, res, 200, { ...s, at: Date.now() });
+    sendState(req, res, s);
     return;
   }
   if (route === '/record') {
@@ -720,17 +769,17 @@ export function compassRoute(engine: Engine, req: Req, res: Res): void {
       return;
     }
     const file = route === '/review' ? reviewFile(engine.dir, d) : studyFile(engine.dir, d);
-    let body: unknown = null;
     try {
-      body = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const st = fs.statSync(file);
+      const stamp = `${st.mtimeMs}|${st.size}`;
+      writeWire(req, res, 200, takeWire(`compass|${route}|${d}`, stamp, () => {
+        const raw = fs.readFileSync(file);
+        JSON.parse(raw.toString('utf8'));
+        return raw;
+      }));
     } catch {
-      body = null;
-    }
-    if (!body) {
       send(req, res, notBuilt(req), { error: route === '/review' ? 'No review for that session yet.' : 'No study for that session yet.', code: 'not_built' });
-      return;
     }
-    send(req, res, 200, body);
     return;
   }
   if (route === '/days') {

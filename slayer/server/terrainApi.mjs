@@ -31,6 +31,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { takeWire, writeWire } from '../shared/jsonWire.mjs';
 import { gate, sendDenied } from './auth.mjs';
 import { addDays, feedMoving, nyInstant, nyWall, sessionDayAtOrBefore } from '../shared/marketSession.mjs';
 import { chainRoot, okSymbol, readChain, readCloses, readOpenInterest } from '../shared/optionChain.mjs';
@@ -212,8 +213,17 @@ export function createTerrain(o) {
     const s = await chainOf(root);
     const t = now();
     if (!s.data) return { v: TERRAIN_VERSION, at: t, symbol, root, error: s.error ?? 'no_data' };
+    const live = feedMoving(t, root) && t - s.at < 2 * CHAIN_LIVE_MS;
+    if (!s.pages) s.pages = new Map();
+    const held = s.pages.get(symbol);
+    if (held && held.readAt === s.at) {
+      held.live = live;
+      return held;
+    }
     const day = (s.data.spotAt ?? s.data.asOf ?? '').slice(0, 10) || null;
-    return { v: TERRAIN_VERSION, at: t, readAt: s.at, symbol, root, day, live: feedMoving(t, root) && t - s.at < 2 * CHAIN_LIVE_MS, ...s.data, error: s.error };
+    const page = { v: TERRAIN_VERSION, at: s.at, readAt: s.at, symbol, root, day, live, ...s.data, error: s.error };
+    s.pages.set(symbol, page);
+    return page;
   }
 
   /** The session before the chain's own (its closing surface); starts the read it lacks — the next ask carries it */
@@ -256,7 +266,9 @@ export function createTerrain(o) {
       })();
     }
     if (!e.data) return { v: TERRAIN_VERSION, at: t, symbol, root, day, pending: !!e.job, error: e.job ? null : e.error };
-    return { v: TERRAIN_VERSION, at: t, symbol, root, ...e.data, day, pending: false, error: e.data.expiries.length ? null : 'no_data' };
+    if (e.page && e.page.day === day) return e.page;
+    e.page = { v: TERRAIN_VERSION, at: t, symbol, root, ...e.data, day, pending: false, error: e.data.expiries.length ? null : 'no_data' };
+    return e.page;
   }
 
   /* ---- the overnight line: one GTH night at a time ---- */
@@ -379,6 +391,8 @@ export function createTerrain(o) {
     for (const p of n.parts) topUpPart(n, p, t);
     topUpVix(n, t);
     await liveNight(n, t);
+    const stamp = `${n.expiry}|${n.parts.map((p) => p.readAt + ':' + p.stamps.size).join(',')}|${n.live.at}|${n.live.stamps.size}|${n.vix.readAt}|${n.vix.bars.length}`;
+    if (n.sent && n.sent.stamp === stamp) return n.sent.body;
     const merged = new Map();
     for (const p of n.parts) for (const [ms, m] of p.stamps) merged.set(ms, m);
     /* the live pairs after the last history stamp */
@@ -391,7 +405,7 @@ export function createTerrain(o) {
       if (pairs.length >= 3) bars.push([ms, pairs]);
     }
     const started = (p) => t >= nyInstant(p.date, minOf(p.start));
-    return {
+    const body = {
       v: TERRAIN_VERSION,
       at: t,
       root: NIGHT_ROOT,
@@ -403,6 +417,8 @@ export function createTerrain(o) {
       pending: n.parts.some((p) => started(p) && !p.done && !p.readAt) || (!!n.vix.job && !n.vix.readAt),
       error: null,
     };
+    n.sent = { stamp, body };
+    return body;
   }
 
   return {
@@ -469,7 +485,13 @@ export async function proxyTerrain(req, res, root = process.cwd()) {
   }
   const r = await reader(root);
   try {
-    send(res, 200, route === '/overnight' ? await r.overnight() : route === '/chain' ? await r.chain(symbol) : await r.prior(symbol));
+    const body = route === '/overnight' ? await r.overnight() : route === '/chain' ? await r.chain(symbol) : await r.prior(symbol);
+    const stamp = route === '/chain'
+      ? `${body.readAt}|${body.live}|${body.error}|${body.day}`
+      : route === '/prior'
+        ? `${body.day}|${body.pending}|${body.error}|${body.expiries?.length ?? 0}`
+        : `${body.at}|${body.expiry ?? ''}|${body.pending}|${body.bars?.length ?? 0}|${body.vix?.length ?? 0}|${body.error}`;
+    writeWire(req, res, 200, takeWire(`terrain|${route}|${symbol}`, stamp, () => body));
   } catch (e) {
     send(res, 500, { error: 'The chain read failed.', code: 'terrain_failed' });
     console.warn(`[terrain] ${e && e.message ? e.message : e}`);

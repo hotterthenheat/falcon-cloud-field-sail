@@ -14,7 +14,7 @@ import { carryFor, forwardFor, getCarry, DEFAULT_R } from '../core/carry';
 import { nyIsoDate } from '../core/nyTime';
 import { tradingMinutes, tradingYears, TRADING_DAYS } from '../core/tradingYear';
 import { quotedVolPoint, sigmaMoveOfQuotedIv } from '../core/volClock';
-import { SPAN_INDEX, strikeSpan, bookBRange, P1_MIN, BID_MIN, SPREAD_MAX, DRIVE, onScanGrid, inLottery, releaseBlocks, QUOTE_MAX_AGE_MS, SEAT_CAP, LOTTERY_ASK_MAX } from './compassParams';
+import { SPAN_INDEX, strikeSpan, bookBRange, P1_MIN, BID_MIN, SPREAD_MAX, DRIVE, onScanGrid, inLottery, releaseBlocks, QUOTE_MAX_AGE_MS, LOTTERY_ASK_MAX } from './compassParams';
 import { optionScanOpen, scanShutWhy } from './compassSession';
 import { econReleases } from './monthCalendar';
 import { COMPASS_SET } from './compassUniverse';
@@ -428,11 +428,10 @@ export function readGate(input: GateInput): GateRead {
   if (!COMPASS_SET.has(chain.ticker)) return fail(12, 'The math passes. Compass does not send this name.');
   passed.push('The name is on the 458.');
 
-  const seats = input.seats ?? 0;
   const sent = input.sentRoots ?? [];
-  if (sent.includes(chain.ticker)) return fail(13, 'This root was already sent today.');
-  if (seats >= SEAT_CAP) return fail(13, 'Five seats are full.');
-  passed.push('A seat is open.');
+  const sleeve = dte === 0 ? 'odte' : 'weekly';
+  if (sent.includes(`${sleeve}|${chain.ticker}`) || sent.includes(chain.ticker)) return fail(13, 'This root was already sent on this sleeve today.');
+  passed.push('Not sent on this sleeve yet.');
 
   return {
     status: bookC ? 'Book C. No score. Entry is this ask.' : inB ? 'The math passes. The exit rides.' : 'The math passes. Entry is this ask.',

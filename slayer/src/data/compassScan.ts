@@ -13,6 +13,7 @@ import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { setupIdOf } from './compass';
 import { BOOK_NAME, GEX_CORE, WEEKLY_STRIKES, inLottery, sessionScanOpen, weekdayDte } from './compassParams';
 import { deskPhase, odteAsleep, optionScanOpen, sessionDayOpen, sessionIso, sessionYmd } from './compassSession';
+import { MODEL4, model4OnOdte } from './model4Event';
 import { COMPASS_TICKERS } from './compassUniverse';
 import {
   commitClosest,
@@ -34,6 +35,8 @@ import { recordPicks, setSessionClose, settleOpen } from './compassLedger';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import { nyYmd as ymd, sessionCloseMinOn } from '../core/calendar';
 import { REGULAR_OPEN_MIN } from '../core/session';
+import { emptyTail, type TailPublic } from './modelRisk';
+import { tailPass } from './modelRiskScan';
 
 export const INDEX_OF: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', XSP: 'XSP', RUT: 'RUT', RUTW: 'RUT', VIX: 'VIX', NDX: 'NDX', NDXP: 'NDX' };
 export const OPTION_OF: Record<string, string> = { SPX: 'SPXW', RUT: 'RUTW', NDX: 'NDXP' };
@@ -71,6 +74,11 @@ function odteNames(now: number): string[] {
   return odteBook(now).filter(t => optionScanOpen(t, 0, now));
 }
 
+/** Model 4 is the same-day event definition. It is not a score, and the scan does not call it. No other sleeve has it. */
+export function odteEventModel(sleeve: SleeveKey): typeof MODEL4 | null {
+  return model4OnOdte(sleeve);
+}
+
 function weeklyNames(now: number): string[] {
   return WEEKLY_FOCUS.filter(t => optionScanOpen(t, 1, now));
 }
@@ -88,9 +96,11 @@ export interface ScanMeta {
   spots: Record<string, number>;
   sparks: Record<string, number[]>;
   line: string;
+  /** Model Risk, the tail-risk fade. All day. No session window. */
+  tail: TailPublic;
 }
 
-let meta: ScanMeta = { theta: 'unknown', downSince: 0, busy: false, spots: {}, sparks: {}, line: 'Reading the live book.' };
+let meta: ScanMeta = { theta: 'unknown', downSince: 0, busy: false, spots: {}, sparks: {}, line: 'Reading the live book.', tail: emptyTail() };
 const metaFns = new Set<() => void>();
 
 export function scanMeta(): ScanMeta {
@@ -515,6 +525,36 @@ function noteSpots(snaps: { symbol: string; spot: number }[]): void {
   setScanMeta({ spots, line: pickLine() });
 }
 
+/* Names whose options are shut keep the chain's last underlying, which can be an hour behind the stock.
+   Once a minute, those spots become the terminal's last trade — the same print the name chip reads. */
+let tapeSpotsAt = 0;
+async function refreshTapeSpots(now: number): Promise<void> {
+  if (now - tapeSpotsAt < 60_000) return;
+  const want = new Set<string>();
+  for (const symbol of Object.keys(meta.spots)) {
+    if (optionScanOpen(symbol, 0, now) || optionScanOpen(symbol, 1, now)) continue;
+    want.add(INDEX_OF[symbol] ?? symbol);
+  }
+  if (!want.size) return;
+  tapeSpotsAt = now;
+  const snaps: { symbol: string; spot: number }[] = [];
+  await pool([...want], 4, async symbol => {
+    const index = Object.prototype.hasOwnProperty.call(INDEX_OF, symbol);
+    const path = index
+      ? `/index/snapshot/price?symbol=${encodeURIComponent(symbol)}&format=json`
+      : `/stock/snapshot/trade?symbol=${encodeURIComponent(symbol)}&format=json`;
+    const got = await theta(path);
+    if (got.error) return;
+    let px = 0;
+    for (const row of asRows(got.data)) {
+      const n = num(row.price);
+      if (n > 0) px = n;
+    }
+    if (px > 0) snaps.push({ symbol, spot: px });
+  });
+  if (snaps.length) noteSpots(snaps);
+}
+
 /** Run `fn` over `items`, at most `n` at once. */
 async function pool<T>(items: readonly T[], n: number, fn: (item: T) => Promise<void>): Promise<void> {
   let i = 0;
@@ -895,6 +935,8 @@ async function tick(): Promise<void> {
       if (await lotterySweep(now, false)) lotteryDay = day;
     }
     bg('the card quotes', refreshHeld(Date.now()));
+    bg('the last trades', refreshTapeSpots(Date.now()));
+    bg('tail risk', tailPass(Date.now(), tail => setScanMeta({ tail })));
     if (Date.now() - settleAt > 60_000) {
       settleAt = Date.now();
       bg('settlement', settleOpen(Date.now()));

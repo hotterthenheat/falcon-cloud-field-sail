@@ -9,11 +9,11 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { thetaCall } from './theta';
 import { nyWallStamp, nyWallTime } from '../core/nyTime';
-import { indexLevel, indexRoot, liveSpotOf, noteIndex, noteSpot } from './traceLive';
+import { indexLevel, indexRoot, liveSpotOf, noteIndex, pinChainSpot } from './traceLive';
 import { deskPhase } from './compassSession';
 import { currentPicks, earlierScan, lastScanAt, stampPickQuote } from './compassModel';
 import { ALL, ALL_SET, INDEX_OF, OPTION_OF, WEEKLY_FOCUS, asRows, odteBook, onScanMeta, perDay, perPoint, rowOf, scanMeta, type ThetaState } from './compassScan';
-import { compassFeed, holdCompassFeed, useCompassFeed, type FeedStatus } from './compassFeed';
+import { holdCompassFeed, useCompassFeed, type FeedStatus } from './compassFeed';
 import { subscribeTheta, thetaStatus } from './thetaQuote';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import type { Timeframe } from './timeframe';
@@ -40,11 +40,13 @@ onScanMeta(() => {
   const m = scanMeta();
   if (m.spots !== spotsSeen) {
     spotsSeen = m.spots;
-    const at = compassFeed().at || Date.now();
     for (const [ticker, spot] of Object.entries(m.spots)) {
       if (!(spot > 0)) continue;
-      if (indexRoot(ticker)) noteIndex(ticker, spot, at);
-      else noteSpot(ticker, spot, at);
+      /* the chain's underlying at the last mark. Not a stock print, so it must not be stamped as of now
+         or it beats the last trade on every chip and every dropdown. */
+      if (indexRoot(ticker)) {
+        if (!(indexLevel(ticker) > 0)) noteIndex(ticker, spot, 1);
+      } else pinChainSpot(ticker, spot);
     }
   }
   emit();
@@ -275,6 +277,11 @@ interface ContractLive {
   vega: number;
   rho: number;
   iv: number;
+  /** Contracts on the bid and the ask, when the snapshot sent them. NaN if it did not. */
+  bidSize: number;
+  askSize: number;
+  /** Open interest from the snapshot, when it sent one. NaN if it did not. */
+  oi: number;
 }
 
 function field(v: unknown): number {
@@ -349,6 +356,9 @@ async function pullQuote(key: string, want: QuoteWant): Promise<void> {
       rho: perPoint(field(parsed.quote.rho)),
       /* ThetaData prints implied_vol as a fraction, always (0.1834 = 18.34%; a deep wing's 3.2 is 320%): percent for the page */
       iv: Number.isFinite(rawIv) ? vendorVol(rawIv) * 100 : rawIv,
+      bidSize: field(parsed.quote.bid_size),
+      askSize: field(parsed.quote.ask_size),
+      oi: field(parsed.quote.open_interest),
     });
     stampPickQuote(want.ticker, want.expiration, want.strike, want.right, quoteBox.get(key)!);
     emit();

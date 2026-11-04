@@ -15,7 +15,10 @@ interface CompassPing {
   id: string;
   ticker: string;
   contract: string;
+  /** When the call fired. */
   at: number;
+  /** When this browser first heard it. The chip is timed from here, not from the fire. */
+  heardAt: number;
   sleeve: string;
 }
 
@@ -30,7 +33,7 @@ function emit(): void {
 
 function namesOf(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
-  return [...new Set(raw.filter((t): t is string => typeof t === 'string' && /^[A-Z]{1,6}$/.test(t)))];
+  return [...new Set(raw.filter((t): t is string => typeof t === 'string' && /^[A-Z][A-Z.]{0,7}$/.test(t)))];
 }
 
 function bookOf(raw: unknown): CompassAlertPref['odte'] {
@@ -93,7 +96,7 @@ export function noteCompassCall(pick: { id: string; ticker: string; contract: st
   const odte = pick.expiry === '0DTE';
   if (!hears(odte ? pref.odte : pref.swing, pick.ticker)) return;
   if (pings.some(p => p.id === pick.id)) return;
-  pings = [{ id: pick.id, ticker: pick.ticker, contract: pick.contract, at: pick.at ?? Date.now(), sleeve: odte ? '0DTE' : '1–7 DTE' }, ...pings].slice(0, 12);
+  pings = [{ id: pick.id, ticker: pick.ticker, contract: pick.contract, at: pick.at ?? Date.now(), heardAt: Date.now(), sleeve: odte ? '0DTE' : '1–7 DTE' }, ...pings].slice(0, 12);
   emit();
 }
 

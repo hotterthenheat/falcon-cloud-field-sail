@@ -177,7 +177,7 @@ const SiteFooter = ({ home = false }: { home?: boolean }) => {
               {/* the wordmark with its cursor */}
               <Wordmark height={13} cursor label="Slayer Terminal" />
               <p className="footer-word mt-4 text-t16 leading-[22px] font-medium tracking-tight text-textPrimary" data-footer-lit>
-                Trade what you can see.
+                Where the market shows its hand.
               </p>
               <p className="footer-word mt-1.5 max-w-[46ch] text-t125 leading-relaxed text-textSecondary" data-footer-lit>
                 Most of what moves a price is public, just scattered. Slayer gathers it into one terminal.

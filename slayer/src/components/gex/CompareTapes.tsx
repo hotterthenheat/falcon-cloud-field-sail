@@ -7,7 +7,8 @@ import { useResolvedSession } from '../../data/book/feed';
 import type { DeskSession } from '../../data/deskSession';
 import { currentSessionBars, minuteInSession, sessionMeta } from '../../data/deskSession';
 import { thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
-import { usePrintRev, useTapeRev } from '../../data/thetaTape';
+import { useNamesPrintSig, useSymbolsTapeSig } from '../../data/thetaTape';
+import { useDeskAwake } from '../../data/deskAwake';
 import { DayRef } from '../../data/bookWindow';
 import { nyIsoDate, nyMinutes } from '../../core/nyTime';
 import { DARK_FIGURE_SURFACE } from './candleTheme';
@@ -88,14 +89,16 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
   const aRead = useResolvedSession(a);
   const bRead = useResolvedSession(b);
   const session = aRead.session !== 'rth' && aRead.session === bRead.session ? aRead.session : 'rth';
+  const awake = useDeskAwake();
   /* the lines are ThetaData's bars (data/thetaTape.ts); with the terminal down they hold, stamped */
   useEffect(() => {
+    if (!awake) return;
     const offs = [...wantChartTape(a, '1m', session), ...wantChartTape(b, '1m', session)];
     return () => offs.forEach(off => off());
-  }, [a, b, session]);
-  const tapeRev = useTapeRev();
-  const printRev = usePrintRev();
-  const today = useMemo(() => buildToday(a, b, session), [a, b, revision, session, tapeRev, printRev]);
+  }, [a, b, session, awake]);
+  const tapeSig = useSymbolsTapeSig(awake ? `${a},${b}` : '');
+  const printSig = useNamesPrintSig(awake ? `${a},${b}` : '');
+  const today = useMemo(() => buildToday(a, b, session), [a, b, revision, session, tapeSig, printSig]);
   const tapeNote = thetaChartNote(a, 1, session) ?? thetaChartNote(b, 1, session);
   /* The bars' own day ("Today" only when the session is today's). */
   const lastT = today.points[today.points.length - 1]?.time;

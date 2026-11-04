@@ -100,7 +100,18 @@ const chainJob: Job = async (ticker, here) => {
   feed.keepTheta(key, { ...chain, takenAt: Date.now() });
 };
 
-const JOBS: Job[] = [bookJob, priceJob, barsJob, chainJob];
+const compassJob: Job = async (_ticker, here) => {
+  if (/^\/compass/.test(here)) return;
+  const { holdCompassFeed, compassFeed, subscribeCompassFeed } = await import('./compassFeed');
+  const release = holdCompassFeed();
+  try {
+    await until(() => compassFeed().status !== 'loading', subscribeCompassFeed);
+  } finally {
+    release();
+  }
+};
+
+const JOBS: Job[] = [bookJob, priceJob, barsJob, chainJob, compassJob];
 
 /** The data the other main rooms paint first, for `ticker`, after the page at `here` has had its own. A later call (a
     move, another name) drops whatever of the last queue had not started. */

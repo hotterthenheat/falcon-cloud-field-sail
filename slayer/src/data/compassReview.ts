@@ -77,17 +77,18 @@ export async function buildSession(dir: string, day: string, record: { calls: Si
   const runner = await trees('/models/model_runner_all6months.txt');
   const chains = new Map();
   const deps = { day, rows, entry, runner, chains };
+  const calls = record.calls;
+  const would = record.would ?? [];
   const trades: TradeReview[] = [];
-  for (const sig of [...record.calls, ...(record.would ?? [])]) {
+  for (const sig of [...calls, ...would]) {
     trades.push(await reviewTrade(sig, deps));
   }
   const review: SessionReview = { day, builtAt: Date.now(), version: REVIEW_VERSION, trades };
-  writeAtomic(reviewFile(dir, day), JSON.stringify(review));
-  log(`[compass] review ${day}: ${trades.length} trades`);
+  log(`[compass] study reads ${day}: ${trades.length} trades`);
   const labels: Label[] = [];
-  const study = await runStudy({ ...deps, marks: record.marks, calls: record.calls, would: record.would ?? [], reviews: trades, onLabel: l => labels.push(l) });
+  const study = await runStudy({ ...deps, marks: record.marks, calls, would, reviews: trades, onLabel: l => labels.push(l) });
   writeAtomic(path.join(dir, 'labels', `${day}.jsonl`), labels.map(l => JSON.stringify(l)).join('\n') + '\n');
-  writeAtomic(studyFile(dir, day), JSON.stringify({ ...study, version: REVIEW_VERSION }));
-  log(`[compass] study ${day}: ${study.movers.length} movers, ${study.labels} labels`);
-  return { review, study };
+  writeAtomic(studyFile(dir, day), JSON.stringify({ ...study, trades, version: REVIEW_VERSION }));
+  log(`[compass] study ${day}: ${trades.length} trades, ${study.movers.length} movers, ${study.labels} labels`);
+  return { review, study: { ...study, trades } };
 }

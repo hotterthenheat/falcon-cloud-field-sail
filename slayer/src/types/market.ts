@@ -68,6 +68,7 @@ export interface StrikeNode {
   /** The price and instant (epoch ms) the vendor priced this strike's live gamma at; the flip re-prices from them
       (data/flipLevel.ts). */
   gexPx?: number;
+  gexAt?: number;
   /** The spot the calculated greeks on this strike were priced at, when it is not the cash print. */
   bookPx?: number;
   callOI: number;

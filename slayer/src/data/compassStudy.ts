@@ -151,7 +151,7 @@ export interface Driver {
 export interface TradeReview {
   key: string;
   contract: string;
-  book: 'A' | 'B' | 'C';
+  book: 'A' | 'B' | 'C' | 'R';
   how: 'live' | 'late';
   /** a late mark's "would have called": never a call */
   would: boolean;
@@ -293,8 +293,8 @@ export async function reviewTrade(sig: Signal, deps: ReviewDeps): Promise<TradeR
   const flatAt = markMs(sig.day, FLAT_MIN);
   const afterFill = quotes.filter(q => q.t > fill.at && q.t <= flatAt);
   const bestBid = afterFill.reduce((m, q) => Math.max(m, q.bid), 0);
-  const target = sig.book === 'C' ? fill.ask * 2 : fill.ask * 1.5;
-  const targetLater = quotes.some(q => q.t > exit.at && q.t <= flatAt && q.bid >= target);
+  const target = sig.book === 'R' ? 0 : sig.book === 'C' ? fill.ask * 2 : fill.ask * 1.5;
+  const targetLater = target > 0 && quotes.some(q => q.t > exit.at && q.t <= flatAt && q.bid >= target);
   const mids = quotes.filter(q => q.t >= fill.at && q.t <= exit.at && q.t % 60_000 === 0).map(q => Number(((q.bid + q.ask) / 2).toFixed(3)));
   base.after = {
     fill: fill.ask,
@@ -437,6 +437,8 @@ export interface StudyResult {
   suggestions: { change: string; evidence: string; n: number; applied: false }[];
   labels: number;
   notes: string[];
+  /** Every call and every would-call, with the cause. Absent on a study built before this. */
+  trades?: TradeReview[];
 }
 
 const BUCKETS: [number, number][] = [[0, 0.3], [0.3, 0.4], [0.4, 0.5], [0.5, 0.6], [0.6, 0.65], [0.65, P1_MIN], [P1_MIN, 0.75], [0.75, 0.8], [0.8, 1.01]];
@@ -497,7 +499,7 @@ export async function runStudy(deps: StudyDeps): Promise<StudyResult> {
   }
   const callAt = (list: readonly Signal[], ticker: string, minute: number) => list.find(s => s.ticker === ticker && minuteOf(s.mark ?? s.firedAt) === minute);
   /* the roots the official book held before each minute */
-  const heldBefore = (minute: number) => new Set(deps.calls.filter(s => s.book !== 'C' && minuteOf(s.firedAt) < minute).map(s => s.ticker));
+  const heldBefore = (minute: number) => new Set(deps.calls.filter(s => (s.book === 'A' || s.book === 'B') && minuteOf(s.firedAt) < minute).map(s => s.ticker));
   const entryTrees = deps.entry ?? null;
   const sleeves: StudyResult['sleeves'] = { odte: { names: 0, marks: 0, contractMarks: 0, movers: 0, moverMarks: 0, scored: 0, aboveThreshold: 0, called: 0 }, weekly: { names: 0, marks: 0, contractMarks: 0, movers: 0, moverMarks: 0, scored: 0, aboveThreshold: 0, called: 0 } };
   const movers: Mover[] = [];
@@ -699,7 +701,7 @@ function suggest(cal: StudyResult['calibration'], th: StudyResult['thresholds'],
     const rate = (xs2: readonly Label[]) => (xs2.filter(l => l.tp1).length / xs2.length) * 100;
     out.push({ change: 'Hold Book A/B before 10:30 ET until the range-compression input is defined there', evidence: `Before 10:30 the compression input is missing: Model 1 reads it as missing, and Model 2, which never saw it missing, is not scored then. Over the threshold, before 10:30: ${early.length} rows, take-profit ${rate(early).toFixed(1)}%; 10:30 to 15:00: ${later.length} rows, ${rate(later).toFixed(1)}%.`, n: early.length, applied: false });
   }
-  const lost = reviews.filter(r => (r.after.pnl ?? 0) < 0 && r.book !== 'C');
+  const lost = reviews.filter(r => (r.after.pnl ?? 0) < 0 && (r.book === 'A' || r.book === 'B'));
   const byCause = new Map<string, number>();
   for (const r of lost) byCause.set(r.verdict.cause, (byCause.get(r.verdict.cause) ?? 0) + 1);
   if (lost.length) out.push({ change: 'Look at the losing Book A/B calls by cause before changing the exits', evidence: [...byCause].map(([c, n]) => `${c}: ${n}`).join(', '), n: lost.length, applied: false });

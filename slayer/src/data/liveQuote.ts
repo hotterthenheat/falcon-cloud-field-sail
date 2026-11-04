@@ -11,6 +11,7 @@ import { BoundedMap } from './boundedMap';
 import { dayChangeOf, loadRegularCloses, peekRegularCloses, type MarketPhase } from './dayChange';
 import { nyClock, nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
 import { isTradingDay, today as nyTodayDate } from '../core/calendar';
+import { fmtPx } from '../core/format';
 
 export interface LiveQuote {
   /** The last print (post-market after the close) */
@@ -210,9 +211,9 @@ export function priceWords(q: LiveQuote | null | undefined): { lead: number; lin
   const clock = `${nyClock(q.tapeAt, { zone: true })}`;
   const lead = sessionPrice(q);
   if (lead == null) return null;
-  if (q.phase === 'regular' || q.regClose == null || Math.abs(lead - q.regClose) < 0.005) return { lead, line: `${lead.toFixed(2)} · ${clock}` };
+  if (q.phase === 'regular' || q.regClose == null || Math.abs(lead - q.regClose) < 0.005) return { lead, line: `${fmtPx(lead)} · ${clock}` };
   const word = q.phase === 'pre' ? 'pre-market' : 'after hours';
-  return { lead, line: `${lead.toFixed(2)} ${word} · ${q.regClose.toFixed(2)} close` };
+  return { lead, line: `${fmtPx(lead)} ${word} · ${fmtPx(q.regClose)} close` };
 }
 
 /** "after hours +0.4%" / "pre-market −1.1%" — the move outside the session, or null */

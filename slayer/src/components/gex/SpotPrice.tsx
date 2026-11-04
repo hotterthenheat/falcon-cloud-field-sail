@@ -1,4 +1,5 @@
 import AnimatedNumber from '../ui/AnimatedNumber';
+import { fmtPx } from '../../core/format';
 
 /** Live spot with the house change stamp: red on a drop, green on a rise, easing back to white while the number rolls (AnimatedNumber). */
 const SpotPrice = ({
@@ -7,6 +8,6 @@ const SpotPrice = ({
 }: {
   value: number;
   className?: string;
-}) => <AnimatedNumber value={value} format={v => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} flash className={className} />;
+}) => <AnimatedNumber value={value} format={v => `$${fmtPx(v)}`} flash className={className} />;
 
 export default SpotPrice;

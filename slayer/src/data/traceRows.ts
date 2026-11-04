@@ -330,6 +330,14 @@ export function noteSpot(ticker: string, spot: number, at: number): void {
   const had = spotSeen.get(t);
   if (!had || at >= had.at) spotSeen.set(t, { spot, at });
 }
+/** A chain's underlying, not a stock print. It fills a name with no tape. It never outranks a print:
+    stamped at 1, and a chain price already sitting on a fresh stamp is put back behind the tape. */
+export function pinChainSpot(ticker: string, spot: number): void {
+  if (!ticker || !(spot > 0)) return;
+  const t = ticker.toUpperCase();
+  const had = spotSeen.get(t);
+  if (!had || had.spot === spot) spotSeen.set(t, { spot, at: 1 });
+}
 /** The newest live price we hold for a name, with its time; null when none (an index reads its level instead) */
 export function liveSpotAt(ticker: string): SeenSpot | null {
   const t = (ticker || '').toUpperCase();

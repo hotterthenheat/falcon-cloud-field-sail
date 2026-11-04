@@ -50,6 +50,7 @@
 import type { IChartApi, ISeriesApi, ISeriesPrimitive, SeriesAttachedParameter, Time } from 'lightweight-charts';
 import type { KeyLevels } from '../../types/gex';
 import { LADDER_MONO, ladderPen, type DrawTarget } from './ladderPaint';
+import { fmtStrikePx } from '../../core/format';
 
 export type KeyLevelKey = 'callWall' | 'putWall' | 'flip' | 'supreme' | 'pin' | 'maxPain' | 'coneHigh' | 'coneLow' | 'moveHigh' | 'moveLow' | 'sigmaHigh' | 'sigmaLow' | 'nextHigh' | 'nextLow' | 'twoHigh' | 'twoLow';
 /** Book rungs only. Cone edges are not on KeyLevels, so the tween must not index them. */
@@ -209,7 +210,7 @@ class LadderRenderer {
 }
 
 const signedPct = (v: number): string => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(Math.abs(v) < 10 ? 2 : 1)}%`;
-const priceWords = (p: number): string => (Math.abs(p - Math.round(p)) < 1e-9 ? p.toFixed(0) : p.toFixed(2));
+const priceWords = (p: number): string => fmtStrikePx(p);
 
 /** A rung's words at the edge: its name, its price, its share of the largest strike where it has one, its distance from
     the price */

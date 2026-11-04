@@ -11,6 +11,7 @@ import { fineWindows, noFees, settleSignal, type Outcome, type PathQuote, type S
 import { stopAfter } from './compassParams';
 import { compassHost } from './compassHost';
 import { nyIsoDate, nyParts, nyWallStamp } from '../core/nyTime';
+import type { TailTicket } from './modelRisk';
 
 export interface Signal {
   /** `${day}|${id}`: one contract can fire on more than one session */
@@ -77,7 +78,7 @@ function save(): void {
 const validRow = (r: unknown): r is Signal => {
   if (!r || typeof r !== 'object') return false;
   const s = r as Signal;
-  return typeof s.key === 'string' && typeof s.id === 'string' && (s.book === 'A' || s.book === 'B' || s.book === 'C') && s.firedAt > 0 && s.ask > 0;
+  return typeof s.key === 'string' && typeof s.id === 'string' && (s.book === 'A' || s.book === 'B' || s.book === 'C' || s.book === 'R') && s.firedAt > 0 && s.ask > 0;
 };
 
 /** Called after every change to the record (the server writes it). */
@@ -193,6 +194,78 @@ export function recordPicks(now = Date.now()): Signal[] {
   return fresh;
 }
 
+const tailKey = (t: TailTicket) => `${t.day}|tail|${t.ticker}|${t.book}|${t.right === 'C' ? 'C' : 'P'}`;
+
+function tailOutcome(t: TailTicket): Outcome {
+  const fill = { at: t.entryAt, bid: t.entryBid, ask: t.entryAsk };
+  if (t.why && t.exitBid != null && t.exitAt) {
+    const ret = Number(((t.exitBid / t.entryAsk - 1) * 100).toFixed(1));
+    return {
+      status: 'closed',
+      fill,
+      exit: { at: t.exitAt, px: t.exitBid, why: t.why === 'back' ? (t.right === 'C' ? 'Back through the range low' : 'Back through the range high') : t.why === 'held' ? 'The break held' : 'Flat at 15:59' },
+      peak: Math.max(t.entryBid, t.exitBid),
+      stop: 0,
+      last: { t: t.exitAt, bid: t.exitBid, ask: t.exitBid },
+      ret,
+      pnl: (t.exitBid - t.entryAsk) * 100,
+      heldMin: Math.max(0, Math.round((t.exitAt - t.entryAt) / 60_000)),
+    };
+  }
+  return { status: 'open', fill, exit: null, peak: t.entryBid, stop: 0, last: { t: t.entryAt, bid: t.entryBid, ask: t.entryAsk }, ret: null, pnl: null, heldMin: null };
+}
+
+function tailSignal(t: TailTicket): Signal {
+  return {
+    key: tailKey(t),
+    id: `tail|${t.ticker}|${t.book}|${t.right === 'C' ? 'C' : 'P'}`,
+    day: t.day,
+    book: 'R',
+    ticker: t.ticker,
+    contract: t.contract,
+    right: t.right === 'C' ? 'C' : 'P',
+    strike: t.strike,
+    expiry: t.expiry.slice(0, 10),
+    sleeve: t.book === '0' ? 'odte' : 'weekly',
+    firedAt: t.entryAt,
+    quoteAt: t.entryAt,
+    bid: t.entryBid,
+    ask: t.entryAsk,
+    spot: t.spot > 0 ? t.spot : null,
+    p1: null,
+    prun: null,
+    runner: false,
+    outcome: tailOutcome(t),
+    pathAt: t.entryAt,
+    spark: [],
+    how: 'live',
+    mark: t.entryAt,
+    tapeSession: 'regular',
+  };
+}
+
+/** A Model Risk call, on the same record as Books A, B and C. The fill is that minute's ask. Model 1's stop does not run. */
+export function recordTail(t: TailTicket): void {
+  if (!(t.entryAsk > 0) || !(t.entryBid >= 0) || !t.entryAt) return;
+  const sig = tailSignal(t);
+  if (rows.some(r => r.key === sig.key)) return;
+  rows = [sig, ...rows];
+  save();
+  emit();
+}
+
+/** The same call, closed on the tail-risk rule: back through the line it broke. An old ticket may still say it flattened at 15:59. */
+export function closeTail(t: TailTicket): void {
+  const key = tailKey(t);
+  if (!rows.some(r => r.key === key)) {
+    recordTail(t);
+    return;
+  }
+  rows = rows.map(r => (r.key === key ? { ...r, outcome: tailOutcome(t), pathAt: t.exitAt ?? Date.now() } : r));
+  save();
+  emit();
+}
+
 /* ---- the path after the call ---- */
 
 function flat(data: unknown): Record<string, unknown>[] {
@@ -284,6 +357,7 @@ export async function settleOpen(now = Date.now()): Promise<void> {
   reading = true;
   try {
     for (const sig of [...rows, ...wouldRows]) {
+      if (sig.book === 'R') continue;
       if (sig.outcome && (sig.outcome.status === 'closed' || sig.outcome.status === 'unavailable')) continue;
       if (now - sig.pathAt < 50_000) continue;
       const quotes = await contractPath(sig, sig.outcome?.fill?.at ?? null);

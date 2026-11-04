@@ -19,6 +19,7 @@
 */
 
 import { gate, sendDenied } from './auth.mjs';
+import { takeWire, writeWire } from '../shared/jsonWire.mjs';
 
 export const CARD_TABLES = /** @type {const} */ (['earnings', 'news', 'insiders', 'congress']);
 /** A composed card stands this long before its tables are looked at again */
@@ -141,7 +142,7 @@ export async function proxyNameCard(req, res, k) {
   try {
     const card = await (k ?? (await keeper())).ask(sym);
     if (!card) send(res, 404, { error: 'not found' });
-    else send(res, 200, card);
+    else writeWire(req, res, 200, takeWire(`card|${sym}`, String(card.at), () => card));
   } catch {
     send(res, 502, { error: 'the name card did not compose', code: 'card_failed' });
   }

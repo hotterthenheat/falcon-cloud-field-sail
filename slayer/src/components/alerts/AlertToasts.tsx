@@ -35,7 +35,7 @@ const AlertToasts = () => {
   /* the paper account's, in the same column — a verdict stays twice as long as a fill */
   const paperShown = paper.filter(t => now - t.at < (t.kind === 'failed' || t.kind === 'passed' ? TOAST_MS * 2 : TOAST_MS)).slice(0, AT_MOST);
   /* Compass's calls, on the sleeves and names switched on in Compass — a call stays twice as long, it is a decision */
-  const calls = useCompassPings().filter(p => now - p.at < TOAST_MS * 2).slice(0, AT_MOST);
+  const calls = useCompassPings().filter(p => now - p.heardAt < TOAST_MS * 2).slice(0, AT_MOST);
 
   /* A NEW chip CHIMES, once (Settings › The desk, "Alerts out loud"): the
      keys already heard are kept, so a re-render never rings twice */
@@ -58,7 +58,7 @@ const AlertToasts = () => {
   /* wake when the oldest chip on screen is due to leave */
   useEffect(() => {
     if (shown.length === 0 && paperShown.length === 0 && calls.length === 0) return;
-    const soonest = Math.min(...shown.map(x => x.r.at + TOAST_MS), ...paperShown.map(t => t.at + (t.kind === 'failed' || t.kind === 'passed' ? TOAST_MS * 2 : TOAST_MS)), ...calls.map(c => c.at + TOAST_MS * 2)) - Date.now();
+    const soonest = Math.min(...shown.map(x => x.r.at + TOAST_MS), ...paperShown.map(t => t.at + (t.kind === 'failed' || t.kind === 'passed' ? TOAST_MS * 2 : TOAST_MS)), ...calls.map(c => c.heardAt + TOAST_MS * 2)) - Date.now();
     const id = window.setTimeout(() => wake(t => t + 1), Math.max(0, soonest) + 20);
     return () => window.clearTimeout(id);
   });

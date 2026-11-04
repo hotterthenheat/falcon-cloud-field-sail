@@ -13,7 +13,7 @@ import { TIMEFRAMES, frameServed, type Timeframe } from './timeframe';
 */
 
 const KEY = 'slayer-tf-pins';
-export const TF_FAVOURITES_BY_REST: readonly Timeframe[] = ['1m', '5m', '15m', '1h', '1D'];
+export const TF_FAVOURITES_BY_REST: readonly Timeframe[] = ['5m', '15m', '30m', '1h', '1D'];
 
 /** In the timeframes' own order, only ones the feed serves, no repeats */
 const tidy = (list: readonly string[]): Timeframe[] => {

@@ -8,7 +8,6 @@ import type { Column } from '../ui/DataTable';
 import ContractLabel from '../ui/ContractLabel';
 import { TraceGrid, RestFoot, useRestCap, ROWS_AT_REST } from '../trace/TraceBox';
 import SetupScanCard, { ownExpiry } from './SetupScanCard';
-import { MODEL_WORD, RIDING_WORD, modelOfBand } from '../../data/compassParams';
 import { STOP_KEEP } from '../../data/contractQuote';
 
 type ScanLayout = 'cards' | 'table';
@@ -28,12 +27,12 @@ interface SetupScanBoardProps {
   emptyLabel?: string;
 }
 
-const WIDTHS: Record<string, number> = { rank: 56, expiry: 150, book: 190, sigma: 110, premium: 96, breaks: 120, open: 72 };
+const WIDTHS: Record<string, number> = { rank: 56, expiry: 150, book: 90, sigma: 110, premium: 96, breaks: 120, open: 72 };
 const TOOLTIPS: Record<string, string> = {
   sigma: 'One standard deviation of the underlying to expiry, from the quote implied vol. A dash means the quote had no vol.',
   premium: 'The ask on this quote.',
-  breaks: `${MODEL_WORD[1]}: 0.4678 times the ask. ${MODEL_WORD[3]} has no stop.`,
-  book: `${MODEL_WORD[1]} is the entry model. ${MODEL_WORD[2]} rides a call when it clears too. ${MODEL_WORD[3]} is the late sweep, by rule.`,
+  breaks: 'Book A and Book B: 0.4678 times the ask. Book C has no stop.',
+  book: 'Book A is the near book. Book B is the far book. Book C is the close lottery.',
 };
 
 const STEP = 80;
@@ -81,22 +80,16 @@ const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expi
       { key: 'expiry', header: 'Expiry', render: r => <span className="font-mono text-t11 text-textSecondary whitespace-normal">{ownExpiry(r)}</span> },
       {
         key: 'book',
-        header: 'Model',
-        sortValue: r => modelOfBand(r.band) || 'z',
-        render: r => (
-          <span className="font-mono text-t11 font-semibold text-textPrimary whitespace-nowrap">
-            {modelOfBand(r.band) || '—'}
-            {r.band === 'top' && r.runner ? <span className="ml-1.5 font-normal text-textSecondary">· {RIDING_WORD}</span> : null}
-          </span>
-        ),
+        header: 'Book',
+        sortValue: r => r.band ?? '',
+        render: r => <span className="font-mono text-t11 text-textPrimary">{r.band === 'top' ? 'A' : r.band === 'wing' ? 'B' : r.band === 'lottery' ? 'C' : '—'}</span>,
       },
       { key: 'sigma', header: '1σ to expiry', align: 'right', sortValue: r => r.sigmaMovePct, render: r => <span className="font-mono text-t11 tnum text-textPrimary">{r.greeks.iv > 0 && r.sigmaMovePct > 0 ? `±${r.sigmaMovePct}%` : '—'}</span> },
-      { key: 'premium', header: 'Ask', align: 'right', sortValue: r => (r.ask > 0 ? r.ask : -1), render: r => <span className="font-mono text-t11 tnum text-textPrimary">{r.ask > 0 ? `$${r.ask.toFixed(2)}` : '—'}</span> },
-      { key: 'breaks', header: 'Stop', align: 'right', sortValue: r => (r.band === 'lottery' || !(r.ask > 0) ? 0 : r.ask * STOP_KEEP), render: r => {
+      { key: 'premium', header: 'Ask', align: 'right', sortValue: r => (r.ask > 0 ? r.ask : r.mid), render: r => <span className="font-mono text-t11 tnum text-textPrimary">${(r.ask > 0 ? r.ask : r.mid).toFixed(2)}</span> },
+      { key: 'breaks', header: 'Stop', align: 'right', sortValue: r => (r.band === 'lottery' ? 0 : (r.ask > 0 ? r.ask : r.mid) * STOP_KEEP), render: r => {
         if (r.band === 'lottery') return <span className="font-mono text-t11 tnum text-warn">No stop</span>;
         if (r.band !== 'top' && r.band !== 'wing') return <span className="font-mono text-t11 text-textMuted">Not a call</span>;
-        if (!(r.ask > 0)) return <span className="font-mono text-t11 text-textMuted">—</span>;
-        return <span className="font-mono text-t11 tnum text-warn">${(r.ask * STOP_KEEP).toFixed(2)}</span>;
+        return <span className="font-mono text-t11 tnum text-warn">${((r.ask > 0 ? r.ask : r.mid) * STOP_KEEP).toFixed(2)}</span>;
       } },
     ];
     cols.push({

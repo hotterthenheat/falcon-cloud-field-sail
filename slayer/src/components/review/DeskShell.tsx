@@ -92,13 +92,13 @@ interface ChartPrefs {
 /** Every overlay off but the volume: the rest are the reader's to switch on */
 const overlaysAtRest = (): ChartOverlays => ({ ...(Object.fromEntries(Object.keys(DEFAULT_OVERLAYS).map(k => [k, false])) as unknown as ChartOverlays), volume: true });
 function readPrefs(key: string, timeframes: Timeframe[], overlayKeys: (keyof ChartOverlays)[]): ChartPrefs {
-  const rest: ChartPrefs = { timeframe: '1m', chartStyle: 'candles', indicators: DEFAULT_INDICATORS, overlays: overlaysAtRest(), priceScale: 'normal', sessionOr: 15, split: true };
+  const rest: ChartPrefs = { timeframe: '5m', chartStyle: 'candles', indicators: DEFAULT_INDICATORS, overlays: overlaysAtRest(), priceScale: 'normal', sessionOr: 15, split: true };
   try {
     const kept = JSON.parse(localStorage.getItem(key) ?? 'null') as Partial<ChartPrefs> | null;
     if (!kept) return rest;
     const overlays = overlaysAtRest();
     for (const k of overlayKeys) if (typeof kept.overlays?.[k] === 'boolean') overlays[k] = kept.overlays[k];
-    return { ...rest, ...kept, timeframe: kept.timeframe && timeframes.includes(kept.timeframe) ? kept.timeframe : '1m', indicators: { ...DEFAULT_INDICATORS, ...kept.indicators }, overlays };
+    return { ...rest, ...kept, timeframe: kept.timeframe && timeframes.includes(kept.timeframe) ? kept.timeframe : '5m', indicators: { ...DEFAULT_INDICATORS, ...kept.indicators }, overlays };
   } catch {
     return rest;
   }

@@ -7,13 +7,15 @@ import { Search, Check } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
 import { setupIdOf } from '../../data/compass';
 import { COMPASS_TICKERS, COMPASS_SET } from '../../data/compassUniverse';
-import { liveSpark, useThetaBook, alertUniverse } from '../../data/thetaBook';
+import { liveSpark, alertUniverse, setScanFocus, useThetaBook } from '../../data/thetaBook';
 import { useSignals } from '../../data/compassLedger';
-import { bestByName, currentPicks, lastScanAt, scanBusy, scanReport, seatsNow } from '../../data/compassModel';
+import { bestByName, lastScanAt, scanBusy, scanReport, seatsNow } from '../../data/compassModel';
 import { backlogLine, compassFeed } from '../../data/compassFeed';
+import { scanMeta, onScanMeta } from '../../data/compassScan';
+import TailRiskStrip from '../../components/compass/TailRiskCard';
 import { daySummary } from '../../data/compassOutcome';
 import { asOfText } from '../../components/ui/states';
-import { MODELS_VALIDATED, MODEL_WORD, P1_MIN, SEAT_CAP, inModelWindow } from '../../data/compassParams';
+import { MODELS_VALIDATED, P1_MIN, inModelWindow } from '../../data/compassParams';
 import { nyClock, nyDay, nyIsoDate, nyMinutes, nyWallTime } from '../../core/nyTime';
 import { setCompassView, useCompassView, type BoardLayout } from '../../data/compassView';
 import { useScanClock } from '../../data/compassDoor';
@@ -47,10 +49,11 @@ const LAYOUT_OPTIONS: DropdownOption<BoardLayout>[] = [
   { value: 'table', label: 'Table', hint: 'One row per setup, sortable' },
 ];
 
-/** A card is a call, or one of the closest that did not clear. Closest does not need the line. */
+/** A card is a call, or one of the closest that did not clear. Closest does not need 70.67%. */
 function shownCard(s: Setup): boolean {
   const dte = s.expiry === '0DTE' ? 0 : Number(/^(\d+)DTE$/.exec(s.expiry)?.[1]);
   if (!(dte >= 0 && dte <= 7)) return false;
+  if (s.expiryDate && s.expiryDate.slice(0, 10) < nyIsoDate()) return false;
   if (s.band === 'closest') return s.p1 != null;
   if (s.band === 'lottery') return dte === 0;
   if (s.band !== 'top' && s.band !== 'wing') return false;
@@ -100,6 +103,7 @@ const Board = () => {
   const clock = useScanClock();
   const live = useThetaBook(offered);
   const record = useSignals();
+  useEffect(() => setScanFocus(tickerFilter), [tickerFilter]);
 
   // Deep links in: a setup from the Tracker, the Weigher, the tape's drilldown
   // or the Pulse tile lands on ITS PAGE; the wire's door lands here on one name.
@@ -129,19 +133,18 @@ const Board = () => {
   }, []);
 
   // ---- two-tier cadence -----------------------------------------------------
-  // The calendar follows the session clock.
+  // The calendar follows the session clock. It does not follow the simulator.
   const sleeveDates = useMemo(() => {
     return Object.fromEntries(SLEEVES.map(s => [s.key, expiryFor(s.dte)])) as Record<SleeveKey, ReturnType<typeof expiryFor>>;
   }, [clock.session]);
 
   // Published calls only. A raw quote is not a call, and a call and the same-strike put are not both sent.
   const rankedSetups = useMemo(() => {
-    const held = currentPicks();
-    const source = held.length ? held : live.earlier?.setups ?? [];
+    const source = live.setups.length ? live.setups : live.earlier?.setups ?? [];
     const pool = source.filter(s => (offered === 'odte' ? s.expiry === '0DTE' : s.expiry !== '0DTE' && s.band !== 'lottery'));
     const ranked = oneSide(pool)
       .filter(s => !tickerFilter || s.ticker === tickerFilter || (tickerFilter === 'SPX' && (s.ticker === 'SPXW' || s.ticker === 'XSP')) || (tickerFilter === 'NDX' && s.ticker === 'NDXP') || (tickerFilter === 'RUT' && s.ticker === 'RUTW'));
-    return (side === 'BOTH' ? ranked : ranked.filter(s => s.right === side)).map(s => ({ ...s, spark: liveSpark(s.ticker) }));
+    return (side === 'BOTH' ? ranked : ranked.filter(s => s.right === side)).map(s => ({ ...s, spark: live.sparks[s.ticker]?.length ? live.sparks[s.ticker] : liveSpark(s.ticker) }));
   }, [live.setups, live.sparks, live.earlier, record, side, tickerFilter, offered]);
 
   /* Nothing selected → #1 is: a scan, filter or kind change that drops the selected card falls back to the first visible. */
@@ -174,12 +177,12 @@ const Board = () => {
       {
         value: 'odte',
         label: `0DTE · ${dayOf(same.date)}`,
-        hint: same.dte === 0 ? `Stops today. ${MODEL_WORD[3]} runs here.` : `Next session, ${same.weekday}.`,
+        hint: same.dte === 0 ? 'Stops today. Book C runs here.' : `Next session, ${same.weekday}.`,
       },
       {
         value: 'weekly',
         label: `1–7 DTE · ${dayOf(week.date)}`,
-        hint: `${MODEL_WORD[1]} and ${MODEL_WORD[2]} as same-day. ${MODEL_WORD[3]} does not run here.`,
+        hint: 'Same models as same-day. Book C does not run here.',
       },
     ];
   }, [sleeveDates]);
@@ -228,7 +231,7 @@ const Board = () => {
   const scanOff = clock.phase === 'closed';
   const report = scanReport(offered === 'weekly' ? 'weekly' : 'odte');
   const bestLine = report.scored
-    ? `Nothing cleared. Closest is ${report.contract}.`
+    ? `Nothing cleared. Closest is ${report.contract} at ${(report.best * 100).toFixed(1)}%.`
     : report.quiet
       ? 'Quotes are in. The minute tape did not load, so nothing was scored.'
       : '';
@@ -239,17 +242,17 @@ const Board = () => {
   const near = rankedSetups.filter(s => s.band === 'closest').length;
   const called = swings + wings + booksC;
   const caveat = MODELS_VALIDATED ? '' : ' Unvalidated models.';
-  const ridden = rankedSetups.filter(s => s.band === 'top' && s.runner === true).length;
-  const ridingWord = ridden ? ` ${MODEL_WORD[2]} rides ${ridden}.` : '';
   const calledLine = offered === 'odte'
-    ? `${MODEL_WORD[1]} ${swings + wings}.${ridingWord} ${MODEL_WORD[3]} ${booksC}.${near ? ` Closest ${near}.` : ''}${caveat}`
-    : `${MODEL_WORD[1]} ${swings + wings}.${ridingWord} ${MODEL_WORD[3]} is same-day only.${near ? ` Closest ${near}.` : ''}${caveat}`;
+    ? `Book A ${swings}. Book B ${wings}. Book C ${booksC}.${near ? ` Closest ${near}.` : ''}${caveat}`
+    : `Book A ${swings}. Book B ${wings}. Book C is same-day only.${near ? ` Closest ${near}.` : ''}${caveat}`;
   const scannedAt = lastScanAt(offered === 'weekly' ? 'weekly' : 'odte');
   const asOf = scannedAt
     ? `Last scan ${nyClock(scannedAt, { zone: true })}.`
     : live.earlier?.at
       ? `Last scan ${nyDay(live.earlier.at, { weekday: true })}, ${nyClock(live.earlier.at, { zone: true })}.`
-      : 'No scan has run today.';
+      : called
+        ? ''
+        : 'No scan has run today.';
   const offline = live.theta === 'down';
   const todayIso = nyIsoDate();
   const day = daySummary(record.filter(s => s.day === todayIso));
@@ -261,22 +264,14 @@ const Board = () => {
     : live.feed === 'kept' && live.feedAt
       ? `The board ${asOfText(live.feedAt)}. ${live.feedError || 'Reconnecting to the Compass server.'}`
       : '';
-  const tNow = nyMinutes() - (9 * 60 + 30);
-  const inWindow = inModelWindow(tNow);
-  const windowLine = inWindow ? '' : ` Calls run 09:45–15:00 ET. Outside those minutes the scan still reads the book, but ${MODEL_WORD[1]} needs the regular session’s own minutes, so nothing calls.`;
-  /* the runner tree's range input needs an hour of minutes: before 10:30 a call cannot ride */
-  const runnerLine = !scanOff && tNow >= 15 && tNow < 60 ? ` ${MODEL_WORD[2]} is off before 10:30 ET (it needs an hour of minutes), so a call before then takes the 1.50× profit and does not ride.` : '';
-  const sessionDay = !scanOff && clock.phase !== 'halt' && !odteAsleep();
-  const preEntry = sessionDay && tNow >= -60 && tNow < 15 && !day.calls;
-  const nothingLine = preEntry
-    ? 'Compass scans from 09:45 ET; no calls yet today.'
-    : offered === 'odte' ? `Nothing cleared ${MODEL_WORD[1]} or ${MODEL_WORD[3]}.` : `Nothing cleared ${MODEL_WORD[1]}.`;
+  const inWindow = inModelWindow(nyMinutes() - (9 * 60 + 30));
+  const windowLine = inWindow ? '' : ' Outside 09:45–15:00 ET the model’s minute input is outside the minutes it was trained on.';
   const sentence = (
     <RichRead text={
       serverLine
         ? serverLine
         : offline
-        ? `Live data offline — reconnecting. ${asOf}`
+        ? `ThetaData offline — reconnecting. ${asOf}`
         : dayOver
           ? 'Same-day calls are done for the session. A signal stays on the record until its stop, its target, the reversal, or the 15:55 flat.'
           : scanOff || clock.phase === 'halt'
@@ -287,17 +282,17 @@ const Board = () => {
                 ? reading
                 : called || near
                   ? `${calledLine} ${asOf}`
-                  : `${preEntry ? nothingLine : bestLine || nothingLine} ${asOf}`}${windowLine}${runnerLine}${backlog ? ` ${backlog}` : ''}`
+                  : `${bestLine || (offered === 'odte' ? 'Nothing cleared Model 1 or Model 3.' : 'Nothing cleared Model 1.')} ${asOf}`}${windowLine}${backlog ? ` ${backlog}` : ''}`
     } />
   );
   const bests = bestByName(offered === 'weekly' ? 'weekly' : 'odte');
-  const cleared = [...bests.values()].filter(r => r.p1 + 1e-12 >= P1_MIN).length;
+  const topBest = [...bests.values()].reduce((m, r) => Math.max(m, r.p1), -1);
   const seats = seatsNow().seats;
   const emptyLabel = live.feed === 'offline'
     ? serverLine
     : offline
-    ? `Live data offline — reconnecting. ${asOf}`
-    : preEntry ? nothingLine : bestLine || nothingLine;
+    ? `ThetaData offline — reconnecting. ${asOf}`
+    : bestLine || (offered === 'odte' ? 'Nothing cleared Model 1 or Model 3. Model Risk is the strip above.' : 'Nothing cleared Model 1. Model Risk is the strip above.');
 
   return (
     <>
@@ -311,18 +306,18 @@ const Board = () => {
             guide={{ title: 'How to read the scan', door: 'What this page is', body: <CompassGuide />, testId: 'compass-guide', open: guideOpen, onOpen: setGuideOpen }}
             facts={
               <>
-                <Fact label="Calls today" testId="found" title="Every call the scan fired today, on both sleeves. The blotter has each one.">{day.calls.toLocaleString('en-US')}</Fact>
+                <Fact label="Calls today" testId="found" title="Every call the scan fired today, Models 1, 3 and Risk. The blotter has each one.">{day.calls.toLocaleString('en-US')}</Fact>
                 <Fact label="Won · lost · open" testId="day" title="Today's calls: closed with a gain, closed at or under the fill, and still held.">
                   <span className="text-bull">{day.won}</span> · <span className="text-bear">{day.lost}</span> · {day.open}
                 </Fact>
-                <Fact label="Net today" testId="net" title="Per contract: today's closed calls, (exit − fill) × 100.">
+                <Fact label="Net today" testId="net" title="Per contract: today's closed calls, (exit − fill) × 100. No fees.">
                   {day.won + day.lost ? <span className={day.net >= 0 ? 'text-bull' : 'text-bear'}>{`${day.net < 0 ? '−' : '+'}$${Math.abs(day.net).toFixed(2)}`}</span> : '—'}
                 </Fact>
-                <Fact label="Cleared" testId="best" title="Names on this sleeve whose best contract cleared the line. A call still needs a seat.">
-                  {bests.size ? cleared.toLocaleString('en-US') : '—'}
+                <Fact label="Best Model 1" testId="best" title={`The highest Model 1 read on this sleeve today. A call needs ${(P1_MIN * 100).toFixed(2)}%.`}>
+                  {topBest >= 0 ? `${(topBest * 100).toFixed(1)}%` : '—'}
                 </Fact>
-                <Fact label="Seats" testId="fading" title={`Roots ${MODEL_WORD[1]} has called today. Five at most.`}>
-                  <span className={seats >= SEAT_CAP ? 'text-bear' : 'text-textPrimary'}>{seats} of {SEAT_CAP}</span>
+                <Fact label="Roots called" testId="fading" title="Roots called today on this scan. A root is called once per sleeve, whenever its best contract clears, from the open until the flat. 0DTE and 1–7 DTE each keep their own.">
+                  <span className="text-textPrimary">{seats}</span>
                 </Fact>
               </>
             }
@@ -333,11 +328,9 @@ const Board = () => {
                   value={offered}
                   options={expiryOptions}
                   onChange={next => setCompassView({ sleeve: next === 'weekly' ? 'weekly' : 'odte' })}
-                  title={`0DTE includes ${MODEL_WORD[3]}. 1–7 DTE uses ${MODEL_WORD[1]} and ${MODEL_WORD[2]}.`}
+                  title="0DTE includes Book C. 1–7 DTE uses Book A and Book B."
                   ink={CARD_INK.expiry}
                   testId="compass-expiry"
-                  /* a phone's half-width card: the choice whole ("0DTE · Nov 2"), its name in the title */
-                  labelFrom="sm"
                 />
                 <DropdownSelect
                   label="Type"
@@ -351,7 +344,6 @@ const Board = () => {
                   title="Calls, puts, or both."
                   ink={CARD_INK.kind}
                   testId="compass-side"
-                  labelFrom="sm"
                 />
                 <DropdownSelect
                   label="Layout"
@@ -387,8 +379,9 @@ const Board = () => {
             }
             sentence={sentence}
           >
+            <TailStrip book={offered === 'odte' ? '0' : '1-7'} right={side} ticker={tickerFilter} />
             <div className="xl:flex-1 xl:min-h-0 xl:overflow-y-auto">
-            {!currentPicks().length && live.earlier && rankedSetups.length > 0 && (
+            {!live.setups.length && live.earlier && rankedSetups.length > 0 && (
               <p className="px-5 py-2 border-t border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textMuted" data-compass-asof>
                 As of {live.earlier.at ? `${nyDay(live.earlier.at, { weekday: true })}, ${nyClock(live.earlier.at, { zone: true })}` : nyDay(nyWallTime(Number(live.earlier.day.slice(0, 4)), Number(live.earlier.day.slice(4, 6)), Number(live.earlier.day.slice(6, 8)), 12), { weekday: true })} · the last session&apos;s scan, not live
               </p>
@@ -414,6 +407,26 @@ const Board = () => {
   );
 };
 
+const TailStrip = ({ book, right, ticker }: { book: '0' | '1-7'; right: 'C' | 'P' | 'BOTH'; ticker: string | null }) => {
+  const navigate = useNavigate();
+  const { activeTicker, changeTicker } = useTicker();
+  const tail = useSyncExternalStore(onScanMeta, () => scanMeta().tail, () => scanMeta().tail);
+  if (!tail) return null;
+  return (
+    <TailRiskStrip
+      tail={tail}
+      book={book}
+      right={right}
+      ticker={ticker}
+      onOpen={t => {
+        if (t.ticker !== activeTicker) changeTicker(t.ticker);
+        const sleeve = t.book === '0' ? 'odte' : 'weekly';
+        navigate(`/compass/${setupIdOf({ ticker: t.ticker, strike: t.strike, right: t.right, scanner: 'top-setups', sleeve })}`, { state: { from: t.contract } });
+      }}
+    />
+  );
+};
+
 const OdteOver = () => {
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -428,10 +441,9 @@ const OdteOver = () => {
   const clock = `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   void tick;
   return (
-    /* one line, not a 200px box around it */
-    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-borderSubtle px-5 py-3" data-odte-over>
+    <div className="flex flex-col items-center justify-center gap-2 h-[200px] border-t border-borderSubtle px-6" data-odte-over>
       <p className="font-mono text-t10 uppercase tracking-widest text-textMuted">The tape opens again in</p>
-      <p className="holo-text font-mono text-t15 font-semibold tnum tracking-wide" data-odte-countdown>{clock}</p>
+      <p className="holo-text font-mono text-t20 font-semibold tnum tracking-wide" data-odte-countdown>{clock}</p>
     </div>
   );
 };

@@ -1,125 +1,62 @@
-/* The contract's premium chart: Terrain's chart on the contract's own bars (ContractChart), with the setup's marks on
-   it — the entry line (the fill once it filled, the call's ask before), the take-profit rungs and the standing stop,
-   every percent measured from that one base — and the minute it was called and the minute it left. High, low and last
-   are the candles on this chart, not a second book. */
+/* The contract's premium chart. One pane. High, low, and last are the candles on this chart, not a second book. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createSeriesMarkers, type ISeriesApi, type ISeriesMarkersPluginApi, type SeriesMarker, type SeriesType, type Time, type UTCTimestamp } from 'lightweight-charts';
-import ContractChart, { ReadoutCell, type ContractBar } from '../gex/ContractChart';
-import type { ChartLayerApi } from '../gex/StrikeChart';
-import { chartSurface, getCandleTheme, useCandleThemeKey } from '../gex/candleTheme';
+import type { UTCTimestamp } from 'lightweight-charts';
+import { TimeframeStrip } from '../gex/ChartToolbar';
+import { chartGround, chartSurface, getCandleTheme, useCandleThemeKey } from '../gex/candleTheme';
 import { resolveInk } from '../gex/paletteInk';
+import ContractPremiumPane from '../gex/ContractPremiumPane';
 import ContractPick, { type ConPickRow } from './ContractPick';
-import { SetupMarksPrimitive, type SetupMarks } from './setupMarksPrimitive';
 import { quoteContract, type ContractQuote } from '../../data/contractQuote';
-import { underWord } from '../../data/compassSession';
-import { tfMinutes, type Timeframe } from '../../data/timeframe';
+import type { Timeframe } from '../../data/timeframe';
 import type { OptionRight, Setup } from '../../types/compass';
+import type { SetupMarks } from './setupMarksPrimitive';
+
+/** The plan. A half-price stop and a 3× target are named on the price rail with the high, the low and the entry.
+    They are not drawn through the candles — the rail carries the label. */
+const PLAN_STOP = 0.4678;
+const PLAN_TPS = [1.5, 2, 3] as const;
 
 interface ContractTrackProps {
   setup: Setup;
   revision: number;
+  retired?: boolean;
   tracked?: boolean;
   spot?: number;
+  fullscreen?: boolean;
+  onToggleFullscreen?: () => void;
   loadPickRows?: () => ConPickRow[];
   onOpenContract?: (strike: number, right: OptionRight, sleeve?: Setup['sleeve']) => void;
   quotedAt?: number;
   volume?: number;
-  timeframe: Timeframe;
-  onTimeframe: (tf: Timeframe) => void;
+  part?: 'chart' | 'stats';
+  timeframe?: Timeframe;
+  onTimeframe?: (tf: Timeframe) => void;
   quote?: ContractQuote;
-  traded?: ContractBar[] | null;
-  /** Why the session's chart is empty. Blank when the tape itself has not loaded. */
+  traded?: { time: number; open: number; high: number; low: number; close: number; volume?: number }[] | null;
   emptyNote?: string;
-  /** Said while the bars load (or why they cannot) */
   pathNote?: string;
-  /** The exits drawn, as multiples of the entry (the late sweep sells at 2× and 3×) */
-  multiples?: number[];
-  /** What the entry line is: the fill once it filled, the call's ask before. Every percent on the chart is from it. */
-  entryWord?: string;
-  /** The minute the call fired, and the minute it left (with how), when it has */
-  calledAt?: number;
-  exit?: { at: number; result: 'win' | 'loss' | 'flat' } | null;
-  /** A live call: the bars grow and the axis card counts the bar down. A past call is read off its session. */
-  live?: boolean;
 }
-
-/** The index under a weekly root. A stock keeps its own name. */
-const SPOT_NAME: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', XSP: 'SPX', RUT: 'RUT', RUTW: 'RUT', VIX: 'VIX' };
 
 const px2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const count = (n: number) => Math.round(n).toLocaleString('en-US');
 
-/** The bar a moment sits in: the last bar at or before it, inside a few of this interval's bars (a minute with no trade
-    has no bar) */
-function barAt(bars: readonly ContractBar[], ms: number, stepSec: number): number | null {
-  if (!(ms > 0) || !bars.length) return null;
-  const t = Math.floor(ms / 1000);
-  let at: ContractBar | null = null;
-  for (const b of bars) {
-    if (b.time > t) break;
-    at = b;
-  }
-  return at && t - at.time < Math.max(stepSec * 6, 300) ? at.time : null;
-}
+const SPOT_NAME: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', XSP: 'SPX', RUT: 'RUT', RUTW: 'RUT', VIX: 'VIX' };
 
-/* What is hung on the chart's price series: the marks primitive (entry, rungs, stop), the call and exit arrows and the
-   room the scale keeps for them. A chart style swap hands over a new series; everything is hung again on it (TradeTape's
-   grammar). */
-const SetupMarksLayer = ({ api, marks, arrows, room }: { api: ChartLayerApi; marks: SetupMarks; arrows: SeriesMarker<Time>[]; room: number[] }) => {
-  const seriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
-  const primRef = useRef<SetupMarksPrimitive | null>(null);
-  const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
-  const [seriesN, setSeriesN] = useState(0);
-  useEffect(() => {
-    let raf = 0;
-    const watch = () => {
-      const series = api.series();
-      if (series !== seriesRef.current) {
-        seriesRef.current = series;
-        primRef.current = null;
-        markersRef.current = null;
-        if (series) {
-          const prim = new SetupMarksPrimitive();
-          series.attachPrimitive(prim);
-          primRef.current = prim;
-          markersRef.current = createSeriesMarkers(series, []);
-        }
-        setSeriesN(n => n + 1);
-      }
-      raf = requestAnimationFrame(watch);
-    };
-    raf = requestAnimationFrame(watch);
-    return () => {
-      cancelAnimationFrame(raf);
-      /* only while the chart stands: a primitive taken off a removed chart throws a frame later */
-      const series = api.chart() && api.series() === seriesRef.current ? seriesRef.current : null;
-      if (series) {
-        try {
-          if (primRef.current) series.detachPrimitive(primRef.current);
-          markersRef.current?.detach();
-        } catch {
-          /* the series went with its chart */
-        }
-      }
-      seriesRef.current = null;
-      primRef.current = null;
-      markersRef.current = null;
-    };
-  }, [api]);
-  useEffect(() => {
-    primRef.current?.setData(marks);
-  }, [marks, seriesN]);
-  useEffect(() => {
-    markersRef.current?.setMarkers(arrows);
-  }, [arrows, seriesN]);
-  const roomKey = room.map(p => p.toFixed(2)).join('|');
-  useEffect(() => {
-    api.room(room);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, roomKey, seriesN]);
-  return null;
-};
+const ReadoutCell = ({ k, v }: { k: string; v: string }) => (
+  <span className="shrink-0 whitespace-nowrap">
+    <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">{k}</span>
+    <span className="ml-1.5 font-mono text-t11 tnum text-textPrimary">{v}</span>
+  </span>
+);
+
+const LevelCell = ({ k, v, pip }: { k: string; v: string; pip: string }) => (
+  <span className="inline-flex items-center gap-1.5 shrink-0">
+    <span className={`h-1.5 w-1.5 rounded-full ${pip}`} />
+    <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">{k}</span>
+    <span className="font-mono text-t13 tnum text-textPrimary">{v}</span>
+  </span>
+);
 
 const ContractTrack = ({
   setup,
@@ -129,20 +66,36 @@ const ContractTrack = ({
   onOpenContract,
   quotedAt = 0,
   volume = 0,
-  timeframe,
+  timeframe: timeframeProp,
   onTimeframe,
   quote: cardQuote,
-  traded = null,
-  emptyNote = '',
-  pathNote = '',
-  multiples = [1.5, 2, 3],
-  entryWord = 'ASK',
-  calledAt = 0,
-  exit = null,
-  live = true,
+  traded,
 }: ContractTrackProps) => {
+  const [localTf, setLocalTf] = useState<Timeframe>('5m');
+  const timeframe = timeframeProp ?? localTf;
+  const setTimeframe = onTimeframe ?? setLocalTf;
   const themeKey = useCandleThemeKey();
-  const inkRef = useRef<HTMLSpanElement | null>(null);
+  const tapeRef = useRef<HTMLDivElement | null>(null);
+  const chromeRef = useRef<HTMLDivElement | null>(null);
+  const [topMargin, setTopMargin] = useState(0.18);
+  const [bar, setBar] = useState<{ open: number; high: number; low: number; close: number } | null>(null);
+  const [scale, setScale] = useState<'price' | 'levels'>('price');
+
+  useEffect(() => {
+    const measure = () => {
+      const tape = tapeRef.current?.clientHeight ?? 0;
+      const chrome = chromeRef.current?.clientHeight ?? 0;
+      if (tape > 0 && chrome > 0) setTopMargin(Math.min(0.28, Math.max(0.1, (chrome + 8) / tape)));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (tapeRef.current) ro.observe(tapeRef.current);
+    if (chromeRef.current) ro.observe(chromeRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const iv = setup.greeks.iv / 100;
+  const sessions = Math.max(setup.sessionsLeft, 0.5);
   const book = cardQuote ?? quoteContract({
     ticker: setup.ticker,
     contract: setup.contract,
@@ -163,107 +116,141 @@ const ContractTrack = ({
       if (b.high > high) high = b.high;
       if (b.low < low) low = b.low;
     }
-    return { high, low };
+    return { high, low, last: traded[traded.length - 1].close };
   }, [traded]);
+  const shown = bar;
+  const markWord = shown ? 'C' : 'Last';
+  const markPx = shown ? shown.close : (series?.last ?? book.mark);
   const spotName = SPOT_NAME[setup.ticker] ?? setup.ticker;
-  const multKey = multiples.join('|');
-  const tps = useMemo(() => multiples.map((mult, i) => ({ level: i + 1, price: Number((book.entryPremium * mult).toFixed(2)) })), [book.entryPremium, multKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const up = book.entryPremium > 0 && book.bid > 0 ? ((book.bid - book.entryPremium) / book.entryPremium) * 100 : NaN;
+  const upWord = Number.isFinite(up) ? `${up >= 0 ? '+' : '−'}${Math.abs(up).toFixed(1)}%` : '—';
+  const dayOpen = traded && traded.length ? traded[0].open : 0;
+  const today = dayOpen > 0 && book.bid > 0 ? ((book.bid - dayOpen) / dayOpen) * 100 : NaN;
+  const todayWord = Number.isFinite(today) ? `${today >= 0 ? '+' : '−'}${Math.abs(today).toFixed(1)}%` : '—';
+  const rung = (mult: number) => (book.entryPremium > 0 ? Number((book.entryPremium * mult).toFixed(2)) : 0);
+  const sellAt = rung(PLAN_TPS[0]);
+  const tp2 = rung(PLAN_TPS[1]);
+  const tp3 = rung(PLAN_TPS[2]);
+  const stopPx = book.stopPremium > 0 ? book.stopPremium : rung(PLAN_STOP);
+  const base = book.entryPremium > 0 ? book.entryPremium : book.mark;
+  const onTape = (p: number) => p > 0 && base > 0 && p >= base * 0.88 && p <= base * 1.15;
 
-  /* the scale keeps the entry, the stop and the near rungs in view; a rung far off the session docks at the edge instead
-     of squashing the candles into a line */
-  const room = useMemo(
-    () => [book.entryPremium, book.stopPremium, ...tps.map(t => t.price)].filter(p => p > 0 && p <= book.entryPremium * 1.7),
-    [book.entryPremium, book.stopPremium, tps]
+  const framePrices = useMemo(
+    () => (scale === 'levels' ? [book.entryPremium, stopPx, sellAt, tp2, tp3].filter(p => p > 0 && p >= (book.entryPremium || p) * 0.88 && p <= (book.entryPremium || p) * 1.15) : []),
+    [scale, book.entryPremium, stopPx, sellAt, tp2, tp3],
   );
 
   const marks = useMemo<SetupMarks>(() => {
     const surface = chartSurface(getCandleTheme());
-    const host = inkRef.current;
+    const host = tapeRef.current;
     const lastT = (traded && traded.length ? traded[traded.length - 1].time : Math.floor(Date.now() / 1000)) as UTCTimestamp;
     return {
-      /* the entry line and every percent on the chart measure from the same price: the fill, or the call's ask */
-      entry: book.entryPremium > 0 ? { time: lastT, price: book.entryPremium, mid: book.entryPremium } : null,
-      entryWord,
-      /* no stop, no line (the late sweep holds without one) */
-      floor: book.stopPremium > 0 ? { price: book.stopPremium, brokeAt: null } : null,
-      targets: book.entryPremium > 0 ? tps.map(t => ({ level: t.level, price: t.price, won: false })) : [],
+      entry: book.entryPremium > 0 ? { time: lastT, price: book.entryPremium, mid: book.entryPremium } : { time: lastT, price: book.mark, mid: book.mark },
+      entryWord: book.entryPremium > 0 ? 'Entry' : 'Last',
+      floor: onTape(stopPx) ? { price: stopPx, brokeAt: null } : null,
+      targets: [sellAt, tp2, tp3].filter(p => onTape(p)).map((price, i) => ({ level: i + 1, price, won: book.bid > 0 && book.bid + 1e-9 >= price })),
       silver: resolveInk('rgb(var(--silver))', host),
       bg: surface.bg,
       bull: resolveInk('rgb(var(--bull))', host),
       bear: resolveInk('rgb(var(--bear))', host),
       ink: resolveInk('rgb(var(--text-primary))', host),
       hot: null,
+      insetTop: 92,
+      bare: true,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setup.ticker, book.entryPremium, book.stopPremium, themeKey, traded, tps, entryWord]);
-
-  /* the call's minute and the exit's, on the bars they fell in */
-  const step = Math.round(tfMinutes(timeframe) * 60);
-  const arrows = useMemo<SeriesMarker<Time>[]>(() => {
-    if (!traded?.length) return [];
-    const host = inkRef.current;
-    const out: SeriesMarker<Time>[] = [];
-    const callBar = barAt(traded, calledAt, step);
-    if (callBar != null) out.push({ time: callBar as UTCTimestamp, position: 'belowBar', shape: 'arrowUp', color: resolveInk('rgb(var(--silver))', host), text: 'Call' });
-    const outBar = exit ? barAt(traded, exit.at, step) : null;
-    if (outBar != null && exit) out.push({ time: outBar as UTCTimestamp, position: 'aboveBar', shape: 'arrowDown', color: resolveInk(exit.result === 'win' ? 'rgb(var(--bull))' : exit.result === 'loss' ? 'rgb(var(--bear))' : 'rgb(var(--text-primary))', host), text: 'Out' });
-    return out.sort((a, b) => (a.time as number) - (b.time as number));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [traded, calledAt, exit?.at, exit?.result, step, themeKey]);
-
-  /* a past call opens on its trade: the run-up before the call, the call to the exit, and a little after it (the house
-     chart's focus, in place of the session's) */
-  const view = useMemo(() => {
-    if (live || !(calledAt > 0)) return null;
-    const from = Math.floor(calledAt / 1000);
-    const to = exit && exit.at > calledAt ? Math.floor(exit.at / 1000) : from;
-    return { from: from - 60 * step, to: to + 18 * step };
-  }, [live, calledAt, exit?.at, step]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const identity = loadPickRows && onOpenContract ? (
-    <ContractPick label={`${setup.contract} · ${setup.expiry}`} current={{ strike: setup.strike, right: setup.right, sleeve: setup.sleeve }} loadRows={loadPickRows} onPick={onOpenContract} />
-  ) : (
-    <span className="inline-flex items-center h-7 px-3 rounded-full bg-ink/[0.06] font-mono text-t11 font-bold text-textPrimary shrink-0 whitespace-nowrap">
-      {setup.contract} · {setup.expiry}
-    </span>
-  );
+  }, [setup.ticker, book.entryPremium, stopPx, book.bid, book.mark, themeKey, traded, sellAt, tp2, tp3]);
 
   return (
     <div
-      className="relative h-full min-h-[280px]"
+      ref={tapeRef}
+      className="relative h-full min-h-[280px] overflow-hidden border border-borderSubtle rounded-md bg-panel"
       data-premium-track
       data-setup-chart="premium"
+      data-stock-pane="off"
       data-option-entry={book.entryPremium}
-      data-option-stop={book.stopPremium}
+      data-option-stop={stopPx}
       data-stat-bid={book.bid}
       data-stat-ask={book.ask}
       data-stat-mark={book.mark}
-      data-setup-arrows={arrows.map(a => a.text).join(',')}
+      data-theme="dark"
+      data-chart-ground={chartGround(themeKey)}
     >
-      <span ref={inkRef} className="hidden" data-chart-ink aria-hidden="true" />
-      <ContractChart
+      <ContractPremiumPane
         ticker={setup.ticker}
-        contractKey={`${setup.ticker}|${setup.expiryDate}|${setup.strike}|${setup.right}`}
-        bars={traded}
+        strike={setup.strike}
+        right={setup.right}
+        tYears={sessions / 252}
+        iv={iv}
         timeframe={timeframe}
-        onTimeframe={onTimeframe}
         revision={revision}
-        identity={identity}
-        live={live}
-        emptyNote={emptyNote || 'No print on the tape.'}
-        loadingNote={pathNote || 'Reading the bars.'}
-        readoutExtra={
-          <>
-            <ReadoutCell k="High" v={series ? px2(series.high) : '—'} />
-            <ReadoutCell k="Low" v={series ? px2(series.low) : '—'} />
-            {live && <ReadoutCell k="Vol" v={volume > 0 ? count(volume) : '—'} />}
-            <ReadoutCell k={spotName} v={spot > 0 ? px2(spot) : '—'} />
-            {live && <ReadoutCell k="Tape" v={underWord(setup.ticker)} />}
-          </>
-        }
-        layer={(api, chromeH) => <SetupMarksLayer api={api} marks={{ ...marks, insetTop: chromeH }} arrows={arrows} room={room} />}
-        view={view}
+        rules
+        grid
+        levels={[
+          ...(series && series.high > 0 ? [{ price: series.high, label: 'High', color: resolveInk('rgb(var(--silver))', tapeRef.current), style: 'dotted' as const }] : []),
+          ...(series && series.low > 0 ? [{ price: series.low, label: 'Low', color: resolveInk('rgb(var(--silver))', tapeRef.current), style: 'dotted' as const }] : []),
+          ...(book.entryPremium > 0 ? [{ price: book.entryPremium, label: 'Entry', color: '#FF9500', style: 'solid' as const, axisOnly: true }] : []),
+          ...(stopPx > 0 ? [{ price: stopPx, label: 'Stop', color: resolveInk('rgb(var(--bear))', tapeRef.current), style: 'dashed' as const, axisOnly: true }] : []),
+          ...(sellAt > 0 ? [{ price: sellAt, label: 'TP1', color: '#30D158', style: 'dashed' as const, axisOnly: true }] : []),
+          ...(tp2 > 0 ? [{ price: tp2, label: 'TP2', color: '#64D2FF', style: 'dashed' as const, axisOnly: true }] : []),
+          ...(tp3 > 0 ? [{ price: tp3, label: 'TP3', color: '#BF5AF2', style: 'dashed' as const, axisOnly: true }] : []),
+        ]}
+        marks={marks}
+        spot={spot}
+        framePrices={framePrices}
+        topMargin={topMargin}
+        bound
+        traded={traded}
+        onBar={setBar}
       />
+      <div ref={chromeRef} className="absolute top-0 inset-x-0 z-20" data-chart-chrome>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 pl-2 pr-3 py-1.5 select-none">
+          {loadPickRows && onOpenContract ? (
+            <ContractPick
+              label={`${setup.contract} · ${setup.expiry}`}
+              current={{ strike: setup.strike, right: setup.right, sleeve: setup.sleeve }}
+              loadRows={loadPickRows}
+              onPick={onOpenContract}
+            />
+          ) : (
+            <span className="inline-flex items-center h-7 px-3 rounded-full bg-ink/[0.06] font-mono text-t11 font-bold text-textPrimary shrink-0">
+              {setup.contract} · {setup.expiry}
+            </span>
+          )}
+          <TimeframeStrip value={timeframe} onChange={setTimeframe} only={['5m', '15m', '30m', '1h', '1D', '1W', '1m']} />
+          <span className="inline-flex items-center h-7 rounded-full bg-ink/[0.06] p-0.5" data-chart-scale={scale}>
+            <button type="button" onClick={() => setScale('price')} className={`h-6 px-2 rounded-full font-mono text-t10 ${scale === 'price' ? 'bg-ink/10 text-textPrimary' : 'text-textMuted'}`}>Price</button>
+            <button type="button" onClick={() => setScale('levels')} className={`h-6 px-2 rounded-full font-mono text-t10 ${scale === 'levels' ? 'bg-ink/10 text-textPrimary' : 'text-textMuted'}`}>Levels</button>
+          </span>
+        </div>
+        <div className="px-3 py-1 flex flex-wrap items-center gap-x-3 gap-y-0.5" data-readout-line>
+          <ReadoutCell k="O" v={shown ? px2(shown.open) : '—'} />
+          <ReadoutCell k="H" v={shown ? px2(shown.high) : '—'} />
+          <ReadoutCell k="L" v={shown ? px2(shown.low) : '—'} />
+          <ReadoutCell k={markWord} v={px2(markPx)} />
+          <span className="ml-auto flex items-center gap-3">
+            <ReadoutCell k="Day" v={series ? `${px2(series.low)}–${px2(series.high)}` : '—'} />
+            <ReadoutCell k="Vol" v={volume > 0 ? count(volume) : '—'} />
+            <ReadoutCell k={spotName} v={spot > 0 ? px2(spot) : '—'} />
+          </span>
+        </div>
+        <div className="px-3 pb-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span className="inline-flex items-baseline gap-1.5" data-today-pct={Number.isFinite(today) ? today.toFixed(1) : ''}>
+            <span className={`font-mono text-t16 font-semibold tnum leading-none ${!Number.isFinite(today) ? 'text-textMuted' : today >= 0 ? 'text-bull' : 'text-bear'}`}>{todayWord}</span>
+            <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Today</span>
+          </span>
+          <span className="inline-flex items-baseline gap-1.5" data-live-pct={Number.isFinite(up) ? up.toFixed(1) : ''}>
+            <span className={`font-mono text-t16 font-semibold tnum leading-none ${!Number.isFinite(up) ? 'text-textMuted' : up >= 0 ? 'text-bull' : 'text-bear'}`}>{upWord}</span>
+            <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Call</span>
+          </span>
+          <span className="h-3 w-px bg-borderSubtle" />
+          <LevelCell k="Entry" v={book.entryPremium > 0 ? px2(book.entryPremium) : '—'} pip="bg-warn" />
+          <LevelCell k="Stop" v={stopPx > 0 ? px2(stopPx) : '—'} pip="bg-bear" />
+          <LevelCell k="TP1" v={sellAt > 0 ? px2(sellAt) : '—'} pip="bg-[#30D158]" />
+          <LevelCell k="TP2" v={tp2 > 0 ? px2(tp2) : '—'} pip="bg-[#64D2FF]" />
+          <LevelCell k="TP3" v={tp3 > 0 ? px2(tp3) : '—'} pip="bg-[#BF5AF2]" />
+        </div>
+      </div>
     </div>
   );
 };

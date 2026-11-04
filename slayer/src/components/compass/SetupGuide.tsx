@@ -25,7 +25,6 @@ const Figure = ({ children, label, h = 110 }: { children: ReactNode; label: stri
     <svg viewBox={`0 0 420 ${h}`} width="100%" role="img" aria-label={label} data-guide-figure>
       {children}
     </svg>
-  <figcaption className="mt-1 font-mono text-t9 uppercase tracking-widest text-textMuted" data-guide-example>Example — not live data</figcaption>
   </figure>
 );
 
@@ -139,14 +138,8 @@ export const SetupGuide = ({ odte = true }: { odte?: boolean }) => (
         <p>1–7 DTE. The same chart. The ask, the stop, and TP1 through TP3 belong to this contract.</p>
       </Section>
     )}
-    <Section title="The two sides">
-      <p>The contract's premium chart is on one side: the house chart, with its intervals, styles, indicators and drawing tools, the call and its exit marked on the candles. On the other: the trade card, with Track at its foot. Its first tab is why the call is on the board and which model made it — Model 1, Model 2 when it rides the call, or Model 3, the late sweep; never a score. The trade tab is what it costs, what it pays and what kills it. The contract tab is its greeks and the contract in dollars.</p>
-    </Section>
-    <Section title="The stages">
-      <p>Under the head: called, filled, each rung the stop climbed (to the entry at 1.25×, then behind each target on a call Model 2 rides), and out — or holding. Each is stamped with its New York minute, read off the contract's recorded quotes.</p>
-    </Section>
     <Section title="The strikes beside it">
-      <p>This strike, four each side, and the other side of those strikes. The prints are that contract's trades. At the foot, the contracts around it on the same expiration with their live quote and whether it passes the books' checks; a row there opens that contract.</p>
+      <p>This strike, four each side, and the other side of those strikes. The prints are that contract's trades. A row does not open another contract.</p>
       <AroundFigure />
     </Section>
   </div>

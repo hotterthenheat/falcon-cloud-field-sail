@@ -33,7 +33,7 @@ const PANES_OF: Record<GridLayout, number> = { '1': 1, '2h': 2, '2v': 2, '3': 3,
 /** The intervals a growing layout hands out, after the pane on the desk's own */
 const LADDER: Timeframe[] = ['1m', '5m', '15m', '1h', '30m', '1D'];
 
-const deskAtRest = (name = 'SPY'): SavedDesk => ({ id: 'd1', name: 'Main', layout: '1', panes: [{ name, timeframe: '1m' }], active: 0, sync: { name: false, timeframe: false, crosshair: true } });
+const deskAtRest = (name = 'SPY'): SavedDesk => ({ id: 'd1', name: 'Main', layout: '1', panes: [{ name, timeframe: '5m' }], active: 0, sync: { name: false, timeframe: false, crosshair: true } });
 function load(): DesksState {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null') as DesksState | null;

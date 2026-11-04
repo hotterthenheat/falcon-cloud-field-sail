@@ -23,6 +23,8 @@ export interface SetupMarks {
   hot: string | null;
   /** CSS px the page's chrome covers — a level that doesn't fit docks under this, not under the buttons. */
   insetTop?: number;
+  /** No words on the tape. The scale names the level. Entry fades to a bead, the stop is a floor, a sell is a tick. */
+  bare?: boolean;
 }
 
 class MarksRenderer {
@@ -37,12 +39,96 @@ class MarksRenderer {
         const y = series.priceToCoordinate(p);
         return y == null ? null : y * vr;
       };
-      /* the rule: solid from the entry candle to its end; LEFT of the entry a faint dotted trace, so a level still reads
-         across the tape when the entry is the newest candle (the simulator grades at the last bar) — the pen's default */
+      ctx.save();
+      const onScale = (raw: number | null): raw is number => raw != null && raw > 2 * vr && raw < H - 2 * vr;
+      const ENTRY = '#FF9500';
+      if (data.bare) {
+        const bead = (y: number, rgb: string, r: number) => {
+          ctx.beginPath();
+          ctx.arc(right - 8 * hr, y, r * hr, 0, Math.PI * 2);
+          ctx.fillStyle = rgb;
+          ctx.fill();
+        };
+        const fade = (y: number, rgb: string) => {
+          const x0 = right * 0.55;
+          const g = ctx.createLinearGradient(x0, y, right, y);
+          g.addColorStop(0, 'rgba(0,0,0,0)');
+          g.addColorStop(1, rgb);
+          ctx.strokeStyle = g;
+          ctx.lineWidth = Math.max(1, 1.25 * hr);
+          ctx.beginPath();
+          ctx.moveTo(x0, y);
+          ctx.lineTo(right - 14 * hr, y);
+          ctx.stroke();
+          bead(y, rgb, 3.2);
+        };
+        let edgeUp = 0;
+        let edgeDn = 0;
+        const docked = (price: number, rgb: string, tag: string) => {
+          const yRaw = yOf(price);
+          if (yRaw == null || onScale(yRaw)) return false;
+          const up = yRaw < H / 2;
+          const slot = up ? edgeUp : edgeDn;
+          if (up) edgeUp += 1;
+          else edgeDn += 1;
+          const top = ((data.insetTop ?? 36) + 4) * vr;
+          const y = up ? top + slot * 18 * vr : H - (16 + slot * 18) * vr;
+          bead(y, rgb, 3.2);
+          ctx.font = `600 ${12 * vr}px ${MONO}`;
+          ctx.fillStyle = rgb;
+          ctx.globalAlpha = 1;
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(tag, right - 18 * hr, y);
+          return true;
+        };
+        if (data.floor && !docked(data.floor.price, data.bear, 'Stop') && onScale(yOf(data.floor.price))) {
+          const y = yOf(data.floor.price) as number;
+          ctx.fillStyle = data.bear;
+          ctx.globalAlpha = 0.1;
+          ctx.fillRect(right * 0.55, y, right * 0.45, 10 * vr);
+          ctx.globalAlpha = 1;
+          fade(y, data.bear);
+        }
+        if (data.entry && !docked(data.entry.price, ENTRY, 'Entry') && onScale(yOf(data.entry.price))) fade(yOf(data.entry.price) as number, ENTRY);
+        const TP = ['#30D158', '#64D2FF', '#BF5AF2'];
+        const glow = (y: number, rgb: string, hot: boolean) => {
+          const x = right - 8 * hr;
+          const rad = (hot ? 16 : 9) * Math.max(hr, 1);
+          const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+          g.addColorStop(0, rgb);
+          g.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.save();
+          ctx.globalAlpha = hot ? 0.9 : 0.4;
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(x, y, rad, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        };
+        const liveLevel = data.targets.reduce((n, t) => (t.won ? Math.max(n, t.level) : n), 0);
+        for (const t of data.targets) {
+          const rgb = TP[(t.level - 1) % TP.length];
+          const y = yOf(t.price);
+          if (docked(t.price, rgb, `TP${t.level}`)) continue;
+          if (!onScale(y)) continue;
+          const hot = t.won && t.level === liveLevel;
+          glow(y, rgb, hot || t.won);
+          ctx.strokeStyle = rgb;
+          ctx.globalAlpha = hot ? 1 : 0.75;
+          ctx.lineWidth = Math.max(1, (hot ? 2.2 : 1.4) * hr);
+          ctx.beginPath();
+          ctx.moveTo(right - (hot ? 64 : 48) * hr, y);
+          ctx.lineTo(right - 14 * hr, y);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          bead(y, rgb, hot ? 3.6 : 2.6);
+        }
+        ctx.restore();
+        return;
+      }
       const rule = (x0: number | null, y: number, x1: number, rgb: string, alpha: number, trace = true) => pen.rule(x0, y, x1, rgb, alpha, { trace });
       const figure = (text: string, y: number, rgb: string, above = true) => pen.figure(text, y, rgb, above);
-      ctx.save();
-
       const topLimit = ((data.insetTop ?? 36) + 8) * vr;
       const botLimit = H - 10 * vr;
       const slot = 15 * vr;
@@ -58,14 +144,6 @@ class MarksRenderer {
         dockTop += 1;
         return y;
       };
-
-      /* A line at its real premium. Off the canvas it docks — a line at a fake y is a lie.
-         Sitting under the toolbar is still on the tape; the toolbar is clear. */
-      const onScale = (raw: number | null): raw is number => raw != null && raw > 2 * vr && raw < H - 2 * vr;
-      /* a level on the tape but under the chart's chrome (its readout row): its rule is drawn, its label docks below */
-      const underChrome = (raw: number | null): raw is number => onScale(raw) && raw < topLimit;
-
-      const ENTRY = '#FF9500';
       const fromEntry = (price: number) => {
         const base = data.entry?.mid ?? 0;
         if (!(base > 0)) return '';
@@ -94,21 +172,15 @@ class MarksRenderer {
         ctx.textBaseline = 'middle';
         ctx.fillText(text, chipX + chipW / 2, y + 0.5 * vr);
       };
-
-      /* a stop lifted to the entry (break-even) is one line with one label, never two words printed over each other */
-      const stopAtEntry = !!data.floor && !!data.entry && Math.abs(data.floor.price - data.entry.price) < 0.005;
-
-      /* THE STOP — a line across the tape at the real premium. */
-      if (data.floor && !stopAtEntry) {
+      if (data.floor) {
         const raw = yOf(data.floor.price);
         const px = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const word = `STOP  ${px(data.floor.price)}${fromEntry(data.floor.price)}${data.floor.brokeAt ? '  broke' : ''}`;
         const alpha = data.hot === 'floor' ? 1 : 0.9;
-        if (onScale(raw) && !underChrome(raw)) {
+        if (onScale(raw)) {
           rule(0, raw, right, data.bear, alpha, false);
           figure(word, raw, data.bear, raw > topLimit);
         } else {
-          if (underChrome(raw)) rule(0, raw, right, data.bear, alpha * 0.6, false);
           const y = dockY(raw);
           const tickW = 14 * hr;
           ctx.fillStyle = data.bear;
@@ -122,25 +194,18 @@ class MarksRenderer {
           ctx.fillText(word, right - tickW - 4 * hr, y);
         }
       }
-
-      /* THE ENTRY — a full line across the tape at the fill, amber, the price
-         at the right. Same bar as the stop and the targets. Not a chip on a candle. */
       if (data.entry) {
         const raw = yOf(data.entry.price);
         const px = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        const word = `${data.entryWord || 'ASK'}${stopAtEntry ? ' · STOP' : ''}  ${px(data.entry.mid)}`;
-        if (onScale(raw) && !underChrome(raw)) {
+        const word = `${data.entryWord || 'ASK'}  ${px(data.entry.mid)}`;
+        if (onScale(raw)) {
           rule(0, raw, right, ENTRY, 0.95, false);
           figure(word, raw, ENTRY, raw > topLimit);
         } else {
-          if (underChrome(raw)) rule(0, raw, right, ENTRY, 0.6, false);
           const y = dockY(raw);
           chip(word, y, ENTRY, false);
         }
       }
-
-      /* The take profits — a full line with a dark chip, so a green candle cannot swallow the label. A hit is
-         thicker and says so. */
       for (const t of data.targets) {
         const raw = yOf(t.price);
         const px = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -149,10 +214,8 @@ class MarksRenderer {
         if (onScale(raw)) {
           pen.rule(0, raw, right, '#04140A', t.won ? 0.95 : 0.75, { trace: false, width: t.won ? 5 : 3 });
           pen.rule(0, raw, right, ink, 1, { trace: false, width: t.won ? 2.4 : 1.35 });
-          if (!underChrome(raw)) {
-            chip(word, raw, ink, t.won);
-            continue;
-          }
+          chip(word, raw, ink, t.won);
+          continue;
         }
         const y = dockY(raw);
         chip(word, y, ink, t.won);

@@ -33,7 +33,7 @@ interface Props {
 
 const PhoneChart = ({ snapshot, revision, onPick }: Props) => {
   const ticker = snapshot.ticker;
-  const [timeframe, setTimeframe] = useState<Timeframe>(() => readDeskPrefs().opensOn.timeframe ?? '1m');
+  const [timeframe, setTimeframe] = useState<Timeframe>(() => readDeskPrefs().opensOn.timeframe ?? '5m');
   const [overlays, setOverlays] = useState<ChartOverlays>(DEFAULT_OVERLAYS);
   const [compares, setCompares] = useState<CompareEntry[]>([]);
   const [chartStyle, setChartStyle] = useState<ChartStyle>('candles');

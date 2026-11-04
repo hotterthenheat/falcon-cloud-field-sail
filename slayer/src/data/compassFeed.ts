@@ -66,6 +66,11 @@ let rev = 0;
 let served = 0;
 const listeners = new Set<() => void>();
 
+export function subscribeCompassFeed(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
 function emit(): void {
   rev += 1;
   for (const fn of listeners) fn();

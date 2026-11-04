@@ -171,24 +171,22 @@ expectEqual('Book A 5 strikes out', bookAPass(60, 5, 4, 0, 1.2, 1.24, 0.8), fals
 expectEqual('Book B 0.40 × 0.42 from 0.90', bookBPass(60, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), true);
 expectEqual('Book B not half (0.42 vs 0.80)', bookBPass(60, 9, 4, 0, 0.4, 0.42, 0.78, 0.8, 0.8), false);
 expectEqual('Book B too near (7 out)', bookBPass(60, 7, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), false);
-/* the time-of-day gate (was: any mark on the grid, so 15:55, the curb to 16:55 and the overnight could call): t 15 to
-   330, and 55 minutes before the flat (t 385 on a full day; 205 on a 13:00 close, so the last entry is t 150, 12:00) */
-/* the gate is session by session (owner, 2026-10-31): 15 minutes into the mark's own session and 55 before that
-   session's flat. 21:00 is 45 minutes into the overnight index session with 740 to its 09:20 flat: it calls (was not) */
-expectEqual('Book A at 09:45, 15:00 and 21:00 overnight; not 09:40, 15:05, 15:55, 16:55', [15, 330, 10, 335, 385, 445, 690].map(t => bookAPass(t, 2, 4, 0, 1.2, 1.24, 0.8)), [true, true, false, false, false, false, true]);
-/* overnight (index roots): 20:15 opens, 20:30 the first call, 08:25 the last (55 before 09:20); an equity root has no
-   overnight session; its pre-market opens 07:30: 07:45 the first call, 08:25 the last */
+/* the gate is the root's own session (owner, 2026-11-02): from the open until the flat, 0DTE and 1–7 DTE.
+   09:40 is off the 5-minute grid. 15:55 and 16:55 are the flats, not entries. 15:05 and 21:00 are inside a session. */
+expectEqual('Book A from the open until the flat; not off the grid, not on the flat', [15, 330, 10, 335, 385, 445, 690].map(t => bookAPass(t, 2, 4, 0, 1.2, 1.24, 0.8)), [true, true, false, true, false, false, true]);
+/* overnight (index roots) from 20:15 until the 09:20 flat; an equity root has no overnight session; its pre-market
+   opens 07:30 and runs until that same flat */
 const tOf = (h: number, m: number) => h * 60 + m - 570;
-expectEqual('overnight gate: 20:25 no, 20:30 yes, 00:30 yes, 08:25 yes, 08:30 no', [tOf(20, 25), tOf(20, 30), tOf(0, 30), tOf(8, 25), tOf(8, 30)].map(t => entryTimeOk(t, 385, true)), [false, true, true, true, false]);
-expectEqual('equity pre-market gate: 21:00 no, 07:40 no, 07:45 yes, 08:25 yes, 08:30 no', [tOf(21, 0), tOf(7, 40), tOf(7, 45), tOf(8, 25), tOf(8, 30)].map(t => entryTimeOk(t, 385, false)), [false, false, true, true, false]);
+expectEqual('overnight gate: 20:25 yes, 20:30 yes, 00:30 yes, 08:25 yes, 08:30 yes', [tOf(20, 25), tOf(20, 30), tOf(0, 30), tOf(8, 25), tOf(8, 30)].map(t => entryTimeOk(t, 385, true)), [true, true, true, true, true]);
+expectEqual('equity pre-market gate: 21:00 no, 07:40 yes, 07:45 yes, 08:25 yes, 08:30 yes', [tOf(21, 0), tOf(7, 40), tOf(7, 45), tOf(8, 25), tOf(8, 30)].map(t => entryTimeOk(t, 385, false)), [false, true, true, true, true]);
 {
   const { minutesToFlat, sessionKindOf, inModelWindow } = await import('../../src/data/compassParams');
   expectEqual('sessions and minutes to the flat: 21:00 overnight 740, 08:00 pre 80, 10:00 regular 355, 16:30 curb 25', [[sessionKindOf(tOf(21, 0)), minutesToFlat(tOf(21, 0))], [sessionKindOf(tOf(8, 0), 385, false), minutesToFlat(tOf(8, 0), 385, false)], [sessionKindOf(30), minutesToFlat(30)], [sessionKindOf(420), minutesToFlat(420)]], [['overnight', 740], ['pre', 80], ['regular', 355], ['curb', 25]]);
   expectEqual('outside trained hours: 21:00 and 08:00 are, 10:00 is not', [inModelWindow(690), inModelWindow(tOf(8, 0)), inModelWindow(30)], [false, false, true]);
 }
-expectEqual('Book B gated the same: 15:00 yes, 15:05 no', [bookBPass(330, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), bookBPass(335, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8)], [true, false]);
-expectEqual('early close 13:00: flat t 205, last entry t 150', [flatTOf(780), flatTOf(null), bookAPass(150, 2, 4, 0, 1.2, 1.24, 0.8, flatTOf(780)), bookAPass(155, 2, 4, 0, 1.2, 1.24, 0.8, flatTOf(780))], [205, 385, true, false]);
-expectEqual('entry gate in words', [entryTimeOk(15), entryTimeOk(14), entryTimeOk(330, 385), entryTimeOk(331, 385)], [true, false, true, false]);
+expectEqual('Book B gated the same: 15:00 yes, 15:05 yes', [bookBPass(330, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), bookBPass(335, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8)], [true, true]);
+expectEqual('early close 13:00: flat t 205, still an entry at t 155', [flatTOf(780), flatTOf(null), bookAPass(150, 2, 4, 0, 1.2, 1.24, 0.8, flatTOf(780)), bookAPass(155, 2, 4, 0, 1.2, 1.24, 0.8, flatTOf(780))], [205, 385, true, true]);
+expectEqual('entry gate in words', [entryTimeOk(15), entryTimeOk(14), entryTimeOk(330, 385), entryTimeOk(331, 385)], [true, true, true, true]);
 /* Theta burn: |theta/day·365|·dt ≥ 0.5322·ask. -0.50/day over 40 minutes (40/(390·252) y): 182.5·0.000407 = 0.0743 < 0.5322·0.20 = 0.1064 holds; at ask 0.12 it burns (0.0639). */
 expectEqual('theta does not burn at ask 0.20', thetaBurns(-0.5, 0.01, 0.2, 40 / (390 * 252)), false);
 expectEqual('theta burns at ask 0.12', thetaBurns(-0.5, 0.01, 0.12, 40 / (390 * 252)), true);

@@ -51,7 +51,7 @@ const PRESETS = (): Record<string, SavedWorkspace> =>
        are refilled with the tiles that stand — where the walls are heading, the targets and the levels */
     'The session': assemble([cell('chart', 0, 0, 7, 5), cell('book', 7, 0, 5, 5, { view: 'matrix' }), cell('heading', 0, 5, 7, 4), cell('levels', 7, 5, 5, 4)]),
     'The open': assemble([cell('chart', 0, 0, 6, 5), cell('book', 6, 0, 6, 5, { view: 'calendar' }), cell('levels', 0, 5, 4, 4), cell('news', 4, 5, 4, 4), cell('earnings', 8, 5, 4, 4)]),
-    '0DTE': assemble([cell('chart', 0, 0, 6, 5, { tf: '1m' }), cell('book', 6, 0, 6, 5, { view: 'matrix', expiry: '0DTE' }), cell('targets', 0, 5, 6, 4), cell('levels', 6, 5, 6, 4)]),
+    '0DTE': assemble([cell('chart', 0, 0, 6, 5, { tf: '5m' }), cell('book', 6, 0, 6, 5, { view: 'matrix', expiry: '0DTE' }), cell('targets', 0, 5, 6, 4), cell('levels', 6, 5, 6, 4)]),
     'The close': assemble([cell('chart', 0, 0, 7, 5), cell('heading', 7, 0, 5, 5), cell('targets', 0, 5, 6, 4), cell('levels', 6, 5, 6, 4)]),
     'My book': assemble([cell('positions', 0, 0, 7, 4), cell('setups', 7, 0, 5, 4), cell('chain', 0, 4, 7, 5), cell('levels', 7, 4, 5, 5)]),
   });

@@ -8,7 +8,7 @@ import { nyParts } from '../core/nyTime';
 import { lotteryExit, reversalLine, stopAfter, treeExit } from './compassParams';
 import type { OptionRight } from '../types/compass';
 
-export type SignalBook = 'A' | 'B' | 'C';
+export type SignalBook = 'A' | 'B' | 'C' | 'R';
 
 /** One NBBO reading: its own instant (epoch ms), bid and ask. */
 export interface PathQuote {

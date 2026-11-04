@@ -42,7 +42,7 @@ export function stagesOf(sig: Signal, path: readonly PathQuote[], runner: boolea
   }
   const paid = o.fill.ask;
   out.push({ key: 'fill', word: 'Filled', at: o.fill.at, detail: `$${paid.toFixed(2)}`, tone: 'done' });
-  if (sig.book !== 'C') {
+  if (sig.book !== 'C' && sig.book !== 'R') {
     let peak = 0;
     let rung = 'Stop';
     /* a quote after now does not exist yet (and an open call's path ends at its last read) */

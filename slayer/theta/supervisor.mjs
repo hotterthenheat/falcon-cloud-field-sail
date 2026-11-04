@@ -46,6 +46,11 @@ export const WARM = (process.env.THETA_WARM || 'SPY,QQQ,IWM,SPX,NDX,RUT,VIX').sp
 const INDEXES = new Set(['SPX', 'NDX', 'RUT', 'VIX', 'XSP', 'DJX']);
 export const warmPath = (s) => (INDEXES.has(s) ? `/index/snapshot/price?symbol=${s}&format=json` : `/stock/snapshot/quote?symbol=${s}&format=json`);
 const BOOT_GRACE_MS = 60_000;
+/* A ThetaData key holds one market-data session for two hours. Restart a few seconds before it ends, and only after
+   the old terminal is dead — a second terminal on the same key is what knocks the session off. */
+const SESSION_MS = 2 * 60 * 60 * 1000;
+const RECYCLE_EARLY_MS = 8_000;
+const BORN_FILE = path.join(RUN, 'terminal.born');
 const MAX_BACKOFF_MS = 5 * 60_000;
 /* a refused key is not tried again for 10 minutes, then 20, 40, up to an hour (a new key is tried at once) */
 const LOGIN_BACKOFF_MS = 10 * 60_000;
@@ -263,6 +268,8 @@ export function superviseTheta({ log = (m) => console.log(`[theta] ${m}`), warm 
   let backoff = 5_000;
   let nextStart = 0;
   let stopped = false;
+  /* set when this process asked the terminal to exit so a new two-hour session can open */
+  let recycling = false;
   /* where this start's output begins in terminal.out, and the refused login, if any */
   let outFrom = 0;
   let refused = null;
@@ -272,7 +279,9 @@ export function superviseTheta({ log = (m) => console.log(`[theta] ${m}`), warm 
     const orphan = readPid(TERMINAL_PID);
     if (orphan && alive(orphan) && /java/.test(programOf(orphan))) {
       adopted = orphan;
-      startedAt = Date.now();
+      let born = 0;
+      try { born = Number(fs.readFileSync(BORN_FILE, 'utf8')); } catch { born = 0; }
+      startedAt = born > 0 ? born : Date.now();
       /* only what it writes from now on is read for a refused login (the file holds every earlier start too) */
       try {
         outFrom = fs.statSync(TERMINAL_OUT).size;
@@ -339,6 +348,7 @@ export function superviseTheta({ log = (m) => console.log(`[theta] ${m}`), warm 
     });
     fs.closeSync(out);
     startedAt = Date.now();
+    try { fs.writeFileSync(BORN_FILE, String(startedAt)); } catch { /* the next adopt uses now */ }
     misses = 0;
     fs.writeFileSync(TERMINAL_PID, String(child.pid ?? ''));
     note('starting', child.pid);
@@ -355,6 +365,13 @@ export function superviseTheta({ log = (m) => console.log(`[theta] ${m}`), warm 
         if (!stopped && !refused) log(`terminal exited (${signal || code}); next start in ${Math.round(backoff / 1000)}s`);
         nextStart = Date.now() + backoff;
         backoff = Math.min(MAX_BACKOFF_MS, backoff * 2);
+        if (recycling && !stopped && !refused) {
+          recycling = false;
+          backoff = 5_000;
+          nextStart = 0;
+          log('previous session closed; opening a new two-hour session');
+          start();
+        }
       }
     });
   };
@@ -398,6 +415,18 @@ export function superviseTheta({ log = (m) => console.log(`[theta] ${m}`), warm 
         loginBackoff = LOGIN_BACKOFF_MS;
       }
       note('up', running);
+      /* one session, two hours, then a clean restart a few seconds before it would die */
+      if (startedAt && Date.now() - startedAt >= SESSION_MS - RECYCLE_EARLY_MS) {
+        const left = Math.max(0, Math.round((SESSION_MS - (Date.now() - startedAt)) / 1000));
+        log(`two-hour session ends in ${left}s; restarting the terminal for a new session`);
+        recycling = true;
+        backoff = 5_000;
+        if (child) child.kill();
+        else {
+          killAdopted();
+          nextStart = 0;
+        }
+      }
       return;
     }
     if (state === 'session_lost' || state === 'unauthenticated') {

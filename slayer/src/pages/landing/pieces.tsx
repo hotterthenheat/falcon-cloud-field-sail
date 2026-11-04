@@ -424,8 +424,8 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
                   className={`${DOOR_GROUP} h-10 pl-4 pr-3.5 inline-flex items-center gap-1.5 rounded-full text-t135 font-medium whitespace-nowrap relative foil-glide ${ground === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
                   data-landing-door="nav"
                 >
-                  <span className="sm:hidden">Launch</span>
-                  <span className="hidden sm:inline">Launch terminal</span>
+                  <span className="sm:hidden">Waitlist</span>
+                  <span className="hidden sm:inline">Join the waitlist</span>
                   <ArrowRight className={`w-3.5 h-3.5 ${DOOR_ARROW}`} aria-hidden="true" />
                 </a>
               </motion.span>
@@ -492,7 +492,7 @@ export const Nav = ({ ground, door }: { ground: Ground; door: boolean }) => {
               className={`${DOOR_GROUP} mt-4 h-12 flex items-center justify-center gap-2 rounded-full text-t15 font-medium relative foil-glide ${ground === 'dark' ? 'holo-bg text-onfoil' : 'galaxy-bg'}`}
               data-landing-door="menu"
             >
-              Launch the terminal
+              Join the waitlist
               <ArrowRight className={`w-4 h-4 ${DOOR_ARROW}`} aria-hidden="true" />
             </a>
           </motion.nav>

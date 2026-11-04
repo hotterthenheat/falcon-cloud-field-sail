@@ -1,12 +1,11 @@
 /* The session study: every contract in the scan's strike band that made a 50%+ move by the books' own definitions,
-   whether Model 1 cleared at that mark and the gate that stopped it; the miss reasons; Model 1's calibration on the
+   what the model read at that mark and the gate that stopped it; the miss reasons; Model 1's calibration on the
    day's labelled rows; and suggested changes with their evidence. Nothing here is applied.
    "All sessions" pools every labelled day (data/compassStudy.ts poolStudies): the calibration with 95% intervals, the
    threshold sweep, the miss reasons, the inputs over time, and a plain verdict on reading Model 1 as a probability,
-   which never lifts the "Unvalidated" label by itself. No model score is printed: a score bucket is a band, the
-   threshold is "the line", and a cut is named by its place against the line. */
+   which never lifts the "Unvalidated" label by itself. */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { CalendarDays } from 'lucide-react';
 import TraceBox, { Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
@@ -15,12 +14,14 @@ import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
 import DropdownSelect from '../../components/ui/DropdownSelect';
 import ContractLabel from '../../components/ui/ContractLabel';
 import { EmptyBox, ErrorBox, LoadingBox } from '../../components/ui/states';
-import { useCompassDoc } from '../../data/compassReviewFeed';
-import { holdCompassFeed } from '../../data/compassFeed';
-import { MODEL_WORD, P1_MIN, bandWord, modelOfBook } from '../../data/compassParams';
+import { useCompassDoc, useAllCalls } from '../../data/compassReviewFeed';
+import { useCompassFeed } from '../../data/compassFeed';
+import type { Signal } from '../../data/compassLedger';
+import { P1_MIN } from '../../data/compassParams';
 import { POOL_BAR, type Mover, type PooledStudy, type Rate } from '../../data/compassStudy';
 import { isoDate } from '../../core/calendar';
 import { expiryOfDay, useReviewDay } from './SessionReview';
+import { fillableBoard, type FillableRow } from '../../data/fillableBoard';
 
 const blank = <span className="text-textMuted">—</span>;
 const COLUMNS: Column<Mover>[] = [
@@ -31,7 +32,7 @@ const COLUMNS: Column<Mover>[] = [
   { key: 'best', header: 'Best bid', align: 'right', sortValue: r => r.bestBid, render: r => <span className="tnum text-bull">{r.bestBid.toFixed(2)} <span className="text-textMuted">{r.bestAt}</span></span> },
   { key: 'ratio', header: 'Move', align: 'right', sortValue: r => r.ratio, render: r => <span className="tnum text-bull">{r.ratio.toFixed(2)}×</span> },
   { key: 'stop', header: 'Stop first', align: 'right', sortValue: r => (r.stopFirst ? 1 : 0), render: r => (r.stopFirst ? <span className="text-warn">Yes</span> : <span className="text-textMuted">No</span>) },
-  { key: 'p1', header: MODEL_WORD[1], align: 'right', sortValue: r => (r.p1 == null ? -1 : r.p1 + 1e-12 >= P1_MIN ? 1 : 0), render: r => (r.p1 == null ? blank : <span className={r.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'}>{r.p1 + 1e-12 >= P1_MIN ? 'Cleared' : 'Short'}</span>) },
+  { key: 'p1', header: 'Model 1', align: 'right', sortValue: r => r.p1 ?? -1, render: r => (r.p1 == null ? blank : <span className={`tnum ${r.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'}`}>{(r.p1 * 100).toFixed(1)}%</span>) },
   { key: 'gate', header: 'What stopped it', sortValue: r => r.gate, render: r => <span className="text-textSecondary">{r.gate}</span> },
   { key: 'held', header: 'Held down by', sortValue: r => r.heldDown[0]?.name ?? '', render: r => (r.heldDown.length ? <span className="text-textMuted">{r.heldDown.map(d => d.name).join(', ')}</span> : blank) },
 ];
@@ -45,22 +46,139 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
 );
 
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
-/** A threshold cut named by its place against the line, never by its score: "The line · now", "2 under the line". */
-const cutWord = (cut: number, cuts: readonly number[]) => {
-  if (Math.abs(cut - P1_MIN) < 1e-9) return 'The line · now';
-  const sorted = [...new Set([...cuts, P1_MIN])].sort((a, b) => a - b);
-  const steps = sorted.indexOf(cut) - sorted.findIndex(x => Math.abs(x - P1_MIN) < 1e-9);
-  return `${Math.abs(steps)} ${steps > 0 ? 'over' : 'under'} the line`;
-};
 const band = (r: Rate) => (r.n ? `${(r.lo95 * 100).toFixed(1)}–${(r.hi95 * 100).toFixed(1)}%` : '—');
 const signed = (v: number, d = 1) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}`;
+const BOOK: Record<string, string> = { A: 'Core', B: 'Wing', C: 'Late sweep', R: 'Model Risk' };
+const money = (v: number | null | undefined) => (v == null ? '—' : `${v > 0 ? '+' : v < 0 ? '−' : ''}$${Math.abs(v).toFixed(2)}`);
+const takenLine = (s: Signal) => {
+  const o = s.outcome;
+  if (!o?.fill) return o?.status === 'unavailable' ? 'No quote a minute later. Never filled.' : 'Not filled yet.';
+  if (o.status !== 'closed' || !o.exit) return 'Still open.';
+  return o.peak > o.exit.px ? `Left on ${o.exit.why}. The bid later reached ${o.peak.toFixed(2)}.` : `Left on ${o.exit.why}.`;
+};
+
+const whyTaken = (s: Signal): string => {
+  if (s.book === 'R') {
+    return s.right === 'C'
+      ? 'The close broke under the last 30 closes. Tail risk bought the call. Sell the bid when the close comes back through that low, or after 30 minutes if it does not.'
+      : 'The close broke above the last 30 closes. Tail risk bought the put. Sell the bid when the close comes back through that high, or after 30 minutes if it does not.';
+  }
+  if (s.book === 'C') return 'Book C. No model score. 3× inside 120 seconds, or 2× inside 30 seconds. Flat at 15:50.';
+  if (s.book === 'B' || s.runner) return `Book ${s.book}. ${s.prun != null ? `Model 2 ${(s.prun * 100).toFixed(0)}%. ` : ''}The stop ratchets. Flat at 15:55.`;
+  return `Book A. ${s.p1 != null ? `Model 1 ${(s.p1 * 100).toFixed(1)}%. ` : ''}Out at 1.50× the ask, or the stop at 0.4678× the fill.`;
+};
+
+const leftOnTable = (s: Signal): string => {
+  const o = s.outcome;
+  if (!o?.fill || o.status !== 'closed' || !o.exit) return o?.status === 'unavailable' ? 'No quote a minute later. Never filled.' : 'Still open. No hindsight until it closes.';
+  const fill = o.fill.ask;
+  const peak = o.peak;
+  if (!(fill > 0) || !(peak > fill)) return `Left on ${o.exit.why}. The exit was the best bid read.`;
+  const held = ((peak - fill) / fill) * 100;
+  const got = ((o.exit.px - fill) / fill) * 100;
+  return `Left on ${o.exit.why}. Hindsight only: the bid later reached ${peak.toFixed(2)}, ${held >= 0 ? '+' : '−'}${Math.abs(held).toFixed(1)}% instead of ${got >= 0 ? '+' : '−'}${Math.abs(got).toFixed(1)}%. The live rule is not changed.`;
+};
+
+const catchLine = (gate: string): string => {
+  if (gate === 'Model 1 under the threshold') return 'Model 1 was under the bar. Catching it means lowering that bar. Not applied.';
+  if (gate === 'outside the books’ strike band') return 'The strike sat outside the book. Catching it means a wider band. Not applied.';
+  if (gate === 'seats full') return 'The book already held its seats. Catching it means another open ticket. Not applied.';
+  if (gate === 'theta burns the stop before the flat') return 'Decay would have eaten the stop before the flat. The rule stood aside. Not applied.';
+  if (gate === 'side or drive rule') return 'The side or the drive rule said no. Catching it means dropping that rule. Not applied.';
+  if (gate === 'bid at or under $0.15') return 'The bid was at or under $0.15. The book does not buy that. Not applied.';
+  if (gate === 'spread over 8%') return 'The spread was over 8% of the ask. Catching it means paying a wider market. Not applied.';
+  if (gate.startsWith('not scored')) return `${gate}. The scan never had a row to fire from. Not applied.`;
+  if (gate === 'called' || gate === 'would have called (late mark)') return 'This one was a call.';
+  return `The first gate was “${gate}”. That is the rule that said no. Not applied.`;
+};
+
 const TH = 'font-normal pb-1';
 
-/** One band on a 0–100% track: the realised rate's 95% interval and its rate (the bar). */
-const Strip = ({ r }: { r: Rate }) => (
+const Note = ({ title, line }: { title: string; line: string }) => (
+  <li className="border-b border-borderSubtle/40 py-2">
+    <p className="font-mono text-t12 text-textPrimary">{title}</p>
+    <p className="font-mono text-t11 text-textSecondary whitespace-normal">{line}</p>
+  </li>
+);
+
+const TakenNotes = ({ rows }: { rows: Signal[] }) => (
+  <Section title="Taken · the trades the models fired">
+    <p className="mb-2 font-mono text-t10 text-textMuted">Why the rule fired, the fill, the exit, and whether the peak bid would have paid more. Hindsight is not a new rule.</p>
+    {rows.length === 0 ? <p className="font-mono text-t11 text-textMuted">No call on this cut.</p> : (
+      <ul data-study-taken>
+        {rows.map(s => (
+          <Note
+            key={s.key}
+            title={`${s.contract} · ${BOOK[s.book] ?? s.book}${s.outcome?.pnl != null ? ` · ${money(s.outcome.pnl)}` : ''}`}
+            line={`${whyTaken(s)} ${leftOnTable(s)}`}
+          />
+        ))}
+      </ul>
+    )}
+  </Section>
+);
+
+const fillLine = (r: FillableRow): string =>
+  `Fillable. Ask ${r.ask.toFixed(2)}, size ${r.size.toLocaleString('en-US')}, spread ${r.spread}%. The best sized bid in the next 20 minutes was ${r.later.toFixed(2)}, ${r.move}%. No model called it. Catching it means a rule that buys this ask. Not applied. Paper only.`;
+
+const FillMissed = ({ rows }: { rows: FillableRow[] }) => (
+  <Section title="Missed · fillable moves the models did not call">
+    <p className="mb-2 font-mono text-t10 text-textMuted">The ask could have been bought. The bid in the next 20 minutes is the move. Nothing here is an order.</p>
+    {rows.length === 0 ? <p className="font-mono text-t11 text-textMuted">Every fillable row on this cut was a call, or this book has none.</p> : (
+      <ul data-study-missed>
+        {rows.slice(0, 12).map(r => (
+          <Note key={`${r.sleeve}|${r.contract}|${r.when}|${r.ask}`} title={`${r.contract} · ${r.move}% · ${r.when}`} line={fillLine(r)} />
+        ))}
+      </ul>
+    )}
+  </Section>
+);
+
+const MissedNotes = ({ rows }: { rows: Mover[] }) => (
+  <Section title="Missed · how the scan could have caught them">
+    <p className="mb-2 font-mono text-t10 text-textMuted">The first gate that said no, on the movers already in this study. Nothing here is turned on.</p>
+    {rows.length === 0 ? <p className="font-mono text-t11 text-textMuted">No mover sat close on this cut.</p> : (
+      <ul data-study-missed>
+        {rows.slice(0, 12).map(m => (
+          <Note
+            key={`${m.sleeve}|${m.contract}|${m.mark}`}
+            title={`${m.contract} · ${m.ratio.toFixed(2)}× · ask ${m.ask.toFixed(2)} → ${m.bestBid.toFixed(2)}`}
+            line={catchLine(m.gate)}
+          />
+        ))}
+      </ul>
+    )}
+  </Section>
+);
+
+const Calls = ({ rows }: { rows: Signal[] }) => (
+  <Section title="Calls we took · every model">
+    {rows.length === 0 ? (
+      <p className="font-mono text-t11 text-textMuted">No call on this cut.</p>
+    ) : (
+      <table className="w-full font-mono text-t11 tnum" data-study-calls>
+        <tbody>
+          {rows.map(s => (
+            <tr key={s.key} id={s.key} className="border-b border-borderSubtle/40 align-top">
+              <td className="py-1 pr-3 text-textPrimary whitespace-nowrap">{s.contract}</td>
+              <td className="py-1 pr-3 text-textMuted whitespace-nowrap">{BOOK[s.book] ?? s.book}{s.would ? ' · closest, not taken' : ''}</td>
+              <td className={`py-1 pr-3 text-right ${ (s.outcome?.pnl ?? 0) > 0 ? 'text-bull' : s.outcome?.pnl != null ? 'text-bear' : 'text-textMuted'}`}>{money(s.outcome?.pnl)}</td>
+              <td className="py-1 text-textSecondary">{takenLine(s)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )}
+  </Section>
+);
+
+/** One bucket on a 0–100% track: the realised rate's 95% interval (the band), its rate (the bar) and the mean
+    score (the tick). A calibrated bucket has the tick inside the band. */
+const Strip = ({ r, score }: { r: Rate; score: number | null }) => (
   <div className="relative h-3 w-full min-w-[96px] rounded-sm bg-chip" aria-hidden="true">
     {r.n > 0 && <div className="absolute inset-y-0 rounded-sm bg-silver/25" style={{ left: `${r.lo95 * 100}%`, width: `${Math.max(0.5, (r.hi95 - r.lo95) * 100)}%` }} />}
     {r.n > 0 && <div className="absolute inset-y-[3px] w-[2px] bg-textPrimary" style={{ left: `calc(${r.rate * 100}% - 1px)` }} />}
+    {score != null && <div className="absolute -inset-y-[2px] w-[2px] bg-warn" style={{ left: `calc(${score * 100}% - 1px)` }} />}
   </div>
 );
 
@@ -69,7 +187,7 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
   const io = doc.inputsOverTime;
   return (
     <>
-      <Section title={`Can ${MODEL_WORD[1]} be read as a probability?`}>
+      <Section title="Can Model 1 be read as a probability?">
         <p className={`text-t12 leading-relaxed ${doc.verdict.ready ? 'text-textPrimary' : 'text-textSecondary'}`} data-pool-verdict={doc.verdict.ready ? 'ready' : 'not-yet'}>
           <span className="font-semibold text-textPrimary">{doc.verdict.ready ? 'The bars are met. ' : 'Not yet. '}</span>
           {(() => {
@@ -101,19 +219,21 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
           </tbody>
         </table>
         <p className="mt-2 font-mono text-t10 text-textMuted">
-          The bars are fixed: {POOL_BAR.sessions}+ sessions, {POOL_BAR.rowsPerBucket}+ effective rows in every bucket inside the trained minutes (settled rows counted after clustering by session, since one session’s rows move together), each band within ±{POOL_BAR.gapPoints} points of what it scored. Meeting them is evidence for the owner, not a switch: the “Unvalidated” label stays until the owner lifts it after the input check.
+          The bars are fixed: {POOL_BAR.sessions}+ sessions, {POOL_BAR.rowsPerBucket}+ settled rows in every bucket inside the trained minutes, each bucket within ±{POOL_BAR.gapPoints} points of its mean score. Meeting them is evidence for the owner, not a switch: the “Unvalidated” label stays until the owner lifts it after the input check.
         </p>
       </Section>
-      <Section title={`${MODEL_WORD[1]} against what happened · ${doc.days.length} session${doc.days.length === 1 ? '' : 's'} pooled`}>
+      <Section title={`Model 1 against what happened · ${doc.days.length} session${doc.days.length === 1 ? '' : 's'} pooled`}>
         <table className="w-full font-mono text-t11 tnum [&_td+td]:pl-3 [&_th+th]:pl-3" data-pool-calibration>
           <thead>
             <tr className="text-textMuted text-t9 uppercase tracking-widest">
-              <th className={`text-left ${TH}`} title={`${MODEL_WORD[1]}'s bands, lowest first`}>{MODEL_WORD[1]} band</th>
-              <th className={`text-right ${TH}`} title="Settled rows inside the trained minutes, 09:45–15:00 ET, then the effective count after clustering by session (the bar reads the effective count)">Rows · eff.</th>
-              <th className={`text-right ${TH}`} title={`Took the 1.50× profit by ${MODEL_WORD[1]}'s rules from the mark`}>Took</th>
+              <th className={`text-left ${TH}`}>Model 1</th>
+              <th className={`text-right ${TH}`} title="Settled rows inside the trained minutes, 09:45–15:00 ET">Rows</th>
+              <th className={`text-right ${TH}`} title="Mean Model 1 of those rows">Score</th>
+              <th className={`text-right ${TH}`} title="Took the 1.50× profit by Book A's rules from the mark">Took</th>
               <th className={`text-right ${TH} max-sm:hidden`}>95% interval</th>
+              <th className={`text-right ${TH}`} title="Took minus score, points">Gap</th>
               <th className={`text-left ${TH} pl-4 max-md:hidden w-[28%]`}>
-                <span className="text-textMuted">Took, 95% band</span>
+                <span className="text-textMuted">Took, 95% band</span> · <span className="text-warn">score</span>
               </th>
               <th className={`text-right ${TH} max-lg:hidden`} title="All settled rows, every minute">All rows · took</th>
               <th className={`text-right ${TH} max-lg:hidden`}>Sessions</th>
@@ -122,11 +242,13 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
           <tbody>
             {doc.calibration.map(c => (
               <tr key={c.bucket} className={`border-b border-borderSubtle/40 ${c.lo >= P1_MIN ? 'text-textPrimary' : 'text-textSecondary'}`}>
-                <td className="py-1 whitespace-nowrap">{bandWord(c.bucket)}</td>
-                <td className={`py-1 text-right whitespace-nowrap ${(c.win.nEff ?? c.win.n) < POOL_BAR.rowsPerBucket ? 'text-warn' : ''}`}>{c.win.n.toLocaleString('en-US')} · {Math.round(c.win.nEff ?? c.win.n).toLocaleString('en-US')}</td>
+                <td className="py-1 whitespace-nowrap">{c.bucket}</td>
+                <td className={`py-1 text-right ${c.win.n < POOL_BAR.rowsPerBucket ? 'text-warn' : ''}`}>{c.win.n.toLocaleString('en-US')}</td>
+                <td className="py-1 text-right">{c.meanP1 == null ? blank : pct(c.meanP1)}</td>
                 <td className="py-1 text-right">{c.win.n ? pct(c.win.rate) : blank}</td>
                 <td className="py-1 text-right text-textMuted max-sm:hidden">{band(c.win)}</td>
-                <td className="py-1 pl-4 max-md:hidden"><Strip r={c.win} /></td>
+                <td className={`py-1 text-right ${c.gapPoints == null ? '' : Math.abs(c.gapPoints) <= POOL_BAR.gapPoints ? 'text-bull' : 'text-bear'}`}>{c.gapPoints == null ? blank : signed(c.gapPoints)}</td>
+                <td className="py-1 pl-4 max-md:hidden"><Strip r={c.win} score={c.meanP1} /></td>
                 <td className="py-1 text-right max-lg:hidden">{c.all.n.toLocaleString('en-US')} · {c.all.n ? pct(c.all.rate) : '—'}</td>
                 <td className="py-1 text-right max-lg:hidden">{c.sessions}</td>
               </tr>
@@ -138,18 +260,18 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
         <table className="w-full font-mono text-t11 tnum [&_td+td]:pl-3 [&_th+th]:pl-3" data-pool-thresholds>
           <thead>
             <tr className="text-textMuted text-t9 uppercase tracking-widest">
-              <th className={`text-left ${TH}`} title="Each cut named by its place against the line Model 1 calls on">Cut</th>
+              <th className={`text-left ${TH}`}>At or over</th>
               <th className={`text-right ${TH}`}>Rows</th>
               <th className={`text-right ${TH}`}>Took</th>
               <th className={`text-right ${TH} max-sm:hidden`}>95% interval</th>
-              <th className={`text-right ${TH}`} title={`Mean ${MODEL_WORD[1]} return per row, percent`}>Mean return</th>
+              <th className={`text-right ${TH}`} title="Mean Book A return per row, percent">Mean return</th>
               <th className={`text-right ${TH}`} title="Sessions whose mean return at this cut was positive, of those with a row">Sessions up</th>
             </tr>
           </thead>
           <tbody>
             {doc.thresholds.map(t => (
               <tr key={t.p1} className={`border-b border-borderSubtle/40 ${Math.abs(t.p1 - P1_MIN) < 1e-9 ? 'text-textPrimary' : 'text-textSecondary'}`}>
-                <td className="py-1 whitespace-nowrap">{cutWord(t.p1, doc.thresholds.map(x => x.p1))}</td>
+                <td className="py-1 whitespace-nowrap">{(t.p1 * 100).toFixed(Math.abs(t.p1 - P1_MIN) < 1e-9 ? 2 : 0)}%{Math.abs(t.p1 - P1_MIN) < 1e-9 && <span className="text-textMuted"> · now</span>}</td>
                 <td className="py-1 text-right">{t.win.n.toLocaleString('en-US')}</td>
                 <td className="py-1 text-right">{t.win.n ? pct(t.win.rate) : blank}</td>
                 <td className="py-1 text-right text-textMuted max-sm:hidden">{band(t.win)}</td>
@@ -175,7 +297,7 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
             </tbody>
           </table>
           <table className="w-full font-mono text-t11 tnum [&_td+td]:pl-3 [&_th+th]:pl-3" data-pool-held>
-            <thead><tr className="text-textMuted text-t9 uppercase tracking-widest"><th className={`text-left ${TH}`}>Input holding {MODEL_WORD[1]} down</th><th className={`text-right ${TH}`}>Movers</th><th className={`text-right ${TH}`}>Sessions</th></tr></thead>
+            <thead><tr className="text-textMuted text-t9 uppercase tracking-widest"><th className={`text-left ${TH}`}>Input holding Model 1 down</th><th className={`text-right ${TH}`}>Movers</th><th className={`text-right ${TH}`}>Sessions</th></tr></thead>
             <tbody>
               {doc.heldDownMost.map(r => (
                 <tr key={r.col} className="border-b border-borderSubtle/40">
@@ -194,8 +316,9 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
             <tr className="text-textMuted text-t9 uppercase tracking-widest">
               <th className={`text-left ${TH}`}>Session</th>
               <th className={`text-right ${TH} max-sm:hidden`}>Rows</th>
-              <th className={`text-right ${TH}`} title="Settled rows over the line, 09:45–15:00 ET">Over the line</th>
+              <th className={`text-right ${TH}`} title={`Settled rows at or over ${(P1_MIN * 100).toFixed(2)}%, 09:45–15:00 ET`}>Over the bar</th>
               <th className={`text-right ${TH}`}>Took</th>
+              <th className={`text-right ${TH} max-sm:hidden`}>Score</th>
               <th className={`text-right ${TH}`}>Mean return</th>
               <th className={`text-right ${TH} max-sm:hidden`}>Movers</th>
             </tr>
@@ -207,6 +330,7 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
                 <td className="py-1 text-right max-sm:hidden">{d.settled.toLocaleString('en-US')}</td>
                 <td className="py-1 text-right">{d.over.n.toLocaleString('en-US')}</td>
                 <td className="py-1 text-right text-textPrimary">{d.over.n ? pct(d.over.rate) : blank}</td>
+                <td className="py-1 text-right max-sm:hidden">{d.overMeanP1 == null ? blank : pct(d.overMeanP1)}</td>
                 <td className={`py-1 text-right ${d.overMeanRet == null ? '' : d.overMeanRet > 0 ? 'text-bull' : 'text-bear'}`}>{d.overMeanRet == null ? blank : `${signed(d.overMeanRet, 2)}%`}</td>
                 <td className="py-1 text-right max-sm:hidden">{d.movers ?? blank}</td>
               </tr>
@@ -259,39 +383,37 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
 };
 
 const SessionStudy = () => {
-  useEffect(() => holdCompassFeed(), []);
   const location = useLocation();
   const [view, setView] = useState<'one' | 'all'>(() => (new URLSearchParams(location.search).get('day') === 'all' ? 'all' : 'one'));
   const [askedDay, setDay, days] = useReviewDay();
   const day = askedDay === 'all' ? (days[0] ?? null) : askedDay;
-  const [sleeve, setSleeve] = useState<'all' | 'odte' | 'weekly'>('all');
+  const [sleeve, setSleeve] = useState<'all' | '0' | '1-7' | '8-30'>('all');
   const one = useCompassDoc('study', view === 'one' ? day : null);
   const pool = useCompassDoc('pooled', view === 'all' ? 'all' : null);
+  const feed = useCompassFeed();
+  const every = useAllCalls(feed.day || '1970-01-01', feed.at);
   const { doc, status, error } = one;
-  const movers = useMemo(() => (doc?.movers ?? []).filter(m => sleeve === 'all' || m.sleeve === sleeve), [doc, sleeve]);
-  const s = doc?.sleeves;
+  const taken = useMemo(() => (every ?? []).filter(s => (view === 'all' ? true : s.day === day)), [every, view, day]);
+  const closest = useMemo(() => (doc?.movers ?? []).filter(m => m.gate !== 'called' && (sleeve === 'all' || (sleeve === '0' ? m.sleeve === 'odte' : sleeve === '1-7' ? m.sleeve === 'weekly' : false))), [doc, sleeve]);
+  const board = fillableBoard(view === 'one' ? day : null);
+  const called = useMemo(() => new Set(taken.filter(s => !s.would).map(s => s.contract.replace(/\s+/g, ' ').trim())), [taken]);
+  const missedFill = useMemo(() => (board?.rows ?? []).filter(r => (sleeve === 'all' || r.sleeve === sleeve) && !called.has(r.contract)), [board, sleeve, called]);
+  const won = taken.filter(s => (s.outcome?.pnl ?? 0) > 0).length;
+  const lost = taken.filter(s => s.outcome?.pnl != null && s.outcome.pnl <= 0).length;
   return (
     <TraceBox
-      title="Session study"
-      sub={view === 'all' ? `Every labelled session pooled: ${MODEL_WORD[1]} against what happened, and whether it reads as a probability yet` : "What made 50%+ in the scan's band, whether Model 1 cleared, and what stopped it"}
+      title="Study"
+      sub={view === 'all' ? 'Every call every model took, on every session, and what would have improved it' : 'The calls this session, and the closest ones the scan did not take'}
       testId="compass-study"
       facts={
-        view === 'all' ? (
-          <>
-            <Fact label="Sessions pooled" testId="pool-sessions">{pool.doc ? pool.doc.days.length : '—'}</Fact>
-            <Fact label="Rows labelled · settled" testId="pool-labels">{pool.doc ? `${pool.doc.labels.toLocaleString('en-US')} · ${pool.doc.settled.toLocaleString('en-US')}` : '—'}</Fact>
-            <Fact label="Movers" testId="pool-movers" title="Contracts whose bid reached 1.50× an ask at a mark, before the flat, every session">{pool.doc ? pool.doc.movers.toLocaleString('en-US') : '—'}</Fact>
-            <Fact label={`${MODEL_WORD[1]} as a probability`} testId="pool-verdict">{pool.doc ? <span className={pool.doc.verdict.ready ? 'text-bull' : 'text-warn'}>{pool.doc.verdict.ready ? 'Bars met' : 'Not yet'}</span> : '—'}</Fact>
-          </>
-        ) : (
-          <>
-            <Fact label="0DTE movers" testId="odte" title="Contracts whose bid reached 1.50× an ask at a mark, before the flat">{s ? s.odte.movers : '—'}</Fact>
-            <Fact label="1–7 DTE movers" testId="weekly">{s ? s.weekly.movers : '—'}</Fact>
-            <Fact label="Scored · over the line" testId="scored" title={`Read by ${MODEL_WORD[1]} at that mark, and over its line`}>{s ? `${s.odte.scored + s.weekly.scored} · ${s.odte.aboveThreshold + s.weekly.aboveThreshold}` : '—'}</Fact>
-            <Fact label="Called" testId="called">{s ? s.odte.called + s.weekly.called : '—'}</Fact>
-            <Fact label="Rows labelled" testId="labels">{doc ? doc.labels.toLocaleString('en-US') : '—'}</Fact>
-          </>
-        )
+        <>
+          <Fact label="Calls" testId="calls">{every ? taken.length.toLocaleString('en-US') : '—'}</Fact>
+          <Fact label="Won · lost" testId="won" title="A win is a gain on (exit − fill) × 100. No fees.">
+            <span className="text-bull">{every ? won : '—'}</span> · <span className="text-bear">{every ? lost : '—'}</span>
+          </Fact>
+          <Fact label="Closest not taken" testId="closest" title="Fillable asks the models did not call, or scored movers the study already kept">{view === 'one' ? (board ? missedFill.length.toLocaleString('en-US') : doc ? closest.length.toLocaleString('en-US') : '—') : '—'}</Fact>
+          <Fact label="Sessions" testId="pool-sessions">{view === 'all' ? (pool.doc ? pool.doc.days.length : '—') : (day ?? '—')}</Fact>
+        </>
       }
       controls={
         <>
@@ -299,8 +421,8 @@ const SessionStudy = () => {
             label="Study"
             value={view}
             options={[
-              { value: 'one', label: 'One session', hint: "A session's movers, gates and calibration" },
-              { value: 'all', label: 'All sessions', hint: `Every labelled session pooled, with a verdict on ${MODEL_WORD[1]}` },
+              { value: 'one', label: 'One session', hint: 'The calls, and the closest the scan did not take' },
+              { value: 'all', label: 'All sessions', hint: 'Every call on the record, then the model check' },
             ]}
             onChange={setView}
             title="One session, or every labelled session pooled"
@@ -309,16 +431,16 @@ const SessionStudy = () => {
           {view === 'one' && (
             <>
               <ExpiryCalendar value={day ?? ''} expiries={days.map(expiryOfDay)} onChange={e => setDay(isoDate(e.date))} anyLabel="Newest" steppers={!!day} label="Session" icon={CalendarDays} title="The session to study" testId="study-day" />
-              <DropdownSelect label="Sleeve" value={sleeve} options={[{ value: 'all', label: 'Both sleeves' }, { value: 'odte', label: '0DTE' }, { value: 'weekly', label: '1–7 DTE' }]} onChange={setSleeve} title="Which sleeve's movers" testId="study-sleeve" />
+              <DropdownSelect label="Sleeve" value={sleeve} options={[{ value: 'all', label: 'Every book' }, { value: '0', label: '0 DTE' }, { value: '1-7', label: '1–7 DTE' }, { value: '8-30', label: '8–30 DTE' }]} onChange={setSleeve} title="Which book's movers" testId="study-sleeve" />
             </>
           )}
         </>
       }
       sentence={
         view === 'all' ? (
-          <span>Every labelled session&apos;s rows together, with 95% intervals. The verdict states what is still missing; nothing is lifted or applied from here.</span>
+          <span>Every call on the record, every model. Under it, whether Model 1 meant anything. Nothing is applied from here.</span>
         ) : (
-          <span>Suggestions carry their evidence and sample size. Nothing is applied: the owner decides.</span>
+          <span>{board ? `${missedFill.length.toLocaleString('en-US')} fillable asks the models did not call. The move is the best sized bid in the next 20 minutes. Nothing is applied. Paper only.` : 'The closest are the contracts the scan scored, or that ran 50% or more, and did not become a call. Nothing is applied.'}</span>
         )
       }
     >
@@ -327,18 +449,25 @@ const SessionStudy = () => {
           <div className="border-t border-borderSubtle"><LoadingBox shape="table" rows={6} label="Pooling the sessions" /></div>
         ) : pool.status === 'error' && !pool.doc ? (
           <div className="border-t border-borderSubtle"><ErrorBox what="The pooled study did not load" detail={pool.error} /></div>
-        ) : !pool.doc ? (
-          <div className="border-t border-borderSubtle"><EmptyBox title="No session labelled yet" reason="Each session's rows are labelled once it has settled, after 16:20 ET." /></div>
+        ) : !pool.doc && !taken.length ? (
+          <div className="border-t border-borderSubtle"><EmptyBox title="No session labelled yet" reason="Calls show as soon as they are on the record. The closest are counted once the session has settled." /></div>
         ) : (
-          <PooledView doc={pool.doc} />
+          <>
+            <Calls rows={taken} />
+            {pool.doc ? <PooledView doc={pool.doc} /> : null}
+          </>
         )
-      ) : status === 'loading' && !doc ? (
+      ) : status === 'loading' && !doc && !taken.length ? (
         <div className="border-t border-borderSubtle"><LoadingBox shape="table" rows={6} label="Reading the study" /></div>
       ) : status === 'error' && !doc ? (
         <div className="border-t border-borderSubtle"><ErrorBox what="The study did not load" detail={error} /></div>
-      ) : !doc ? (
-        <div className="border-t border-borderSubtle"><EmptyBox title="Not built yet" reason="The study is built once the session has settled, after 16:20 ET." /></div>
+      ) : !doc && !taken.length && !board ? (
+        <div className="border-t border-borderSubtle"><EmptyBox title="Nothing on this session" reason="No call is on the record, and the study has not been built." /></div>
       ) : (
+        <>
+          <TakenNotes rows={taken} />
+          {board ? <FillMissed rows={missedFill} /> : <MissedNotes rows={closest} />}
+          {doc ? (
         <>
           <Section title="Suggested changes · not applied">
             <ul className="space-y-2" data-study-suggestions>
@@ -364,7 +493,7 @@ const SessionStudy = () => {
                 </tbody>
               </table>
               <table className="w-full font-mono text-t11 tnum" data-study-held>
-                <thead><tr className="text-textMuted text-t9 uppercase tracking-widest"><th className="text-left font-normal pb-1">Input holding {MODEL_WORD[1]} down</th><th className="text-right font-normal pb-1">Movers</th></tr></thead>
+                <thead><tr className="text-textMuted text-t9 uppercase tracking-widest"><th className="text-left font-normal pb-1">Input holding Model 1 down</th><th className="text-right font-normal pb-1">Movers</th></tr></thead>
                 <tbody>
                   {doc.heldDownMost.map(r => (
                     <tr key={r.col} className="border-b border-borderSubtle/40">
@@ -376,12 +505,12 @@ const SessionStudy = () => {
               </table>
             </div>
           </Section>
-          <Section title={`${MODEL_WORD[1]} against what happened (its rules from each mark)`}>
+          <Section title="Model 1 against what happened (Book A rules from each mark)">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[420px] font-mono text-t11 tnum" data-study-calibration>
                 <thead>
                   <tr className="text-textMuted text-t9 uppercase tracking-widest">
-                    <th className="text-left font-normal pb-1">{MODEL_WORD[1]} band</th>
+                    <th className="text-left font-normal pb-1">Model 1</th>
                     <th className="text-right font-normal pb-1">Rows</th>
                     <th className="text-right font-normal pb-1">Took 1.50×</th>
                     <th className="text-right font-normal pb-1">Bid hit 1.50×</th>
@@ -391,7 +520,7 @@ const SessionStudy = () => {
                 <tbody>
                   {doc.calibration.map(c => (
                     <tr key={c.bucket} className={`border-b border-borderSubtle/40 ${c.lo >= P1_MIN ? 'text-textPrimary' : 'text-textSecondary'}`}>
-                      <td className="py-1 whitespace-nowrap">{bandWord(c.bucket)}</td>
+                      <td className="py-1">{c.bucket}</td>
                       <td className="py-1 text-right">{c.n.toLocaleString('en-US')}</td>
                       <td className="py-1 text-right">{(c.tp1 * 100).toFixed(1)}%</td>
                       <td className="py-1 text-right">{(c.hit50 * 100).toFixed(1)}%</td>
@@ -408,7 +537,7 @@ const SessionStudy = () => {
                 {doc.falsePositives.map(f => (
                   <li key={`${f.contract}${f.would}`} className="flex gap-3">
                     <span className="text-textPrimary">{f.contract}</span>
-                    <span className="text-textMuted">{modelOfBook(f.book) || f.book}{f.would ? ' · would have called' : ''}</span>
+                    <span className="text-textMuted">Book {f.book}{f.would ? ' · would have called' : ''}</span>
                     <span className="text-bear tnum">{f.pnl == null ? '—' : `−$${Math.abs(f.pnl).toFixed(2)}`}</span>
                     <span className="text-textSecondary">{f.cause}</span>
                   </li>
@@ -418,7 +547,7 @@ const SessionStudy = () => {
           )}
           <div className="border-t border-borderSubtle">
             <TraceGrid
-              rows={movers}
+              rows={closest}
               columns={COLUMNS}
               widths={WIDTHS}
               rowKey={r => `${r.sleeve}|${r.contract}|${r.expiry}`}
@@ -427,14 +556,14 @@ const SessionStudy = () => {
               initialSort={{ key: 'ratio', dir: 'desc' }}
               animate={false}
               testId="study-movers"
-              emptyText="No contract made a 50%+ move on this cut."
+              emptyText="No contract sat close on this cut."
               phoneRow={r => (
                 <PhoneRow
                   title={<ContractLabel contract={r.contract} right={r.contract.endsWith('C') ? 'C' : 'P'} logo={r.contract.split(' ')[0]} size="sm" />}
                   aside={<span className="text-bull">{r.ratio.toFixed(2)}×</span>}
                   figures={[
                     <span key="m">{r.mark} ET · ask {r.ask.toFixed(2)} → {r.bestBid.toFixed(2)} at {r.bestAt}</span>,
-                    <span key="g">{r.p1 == null ? 'Not scored' : `${MODEL_WORD[1]} ${r.p1 + 1e-12 >= P1_MIN ? 'cleared' : 'short'}`} · {r.gate}</span>,
+                    <span key="g">{r.p1 == null ? 'Not scored' : `Model 1 ${(r.p1 * 100).toFixed(1)}%`} · {r.gate}</span>,
                   ]}
                 />
               )}
@@ -443,6 +572,8 @@ const SessionStudy = () => {
           {doc.notes.length > 0 && (
             <p className="border-t border-borderSubtle px-5 py-3 font-mono text-t10 text-textMuted">{doc.notes.join(' ')}</p>
           )}
+          </>
+          ) : null}
         </>
       )}
     </TraceBox>

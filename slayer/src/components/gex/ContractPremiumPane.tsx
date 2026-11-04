@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react';
 import {
   createChart,
   CandlestickSeries,
+  HistogramSeries,
   LineSeries,
   LineStyle,
   TickMarkType,
@@ -22,6 +23,7 @@ import { liveBars } from '../../data/book/feed';
 import { useBookRev } from '../../data/book/store';
 import { aggregateCandles, tfMinutes, type Timeframe } from '../../data/timeframe';
 import { candleSeriesOptions, chartGround, chartSurface, getCandleTheme, useCandleThemeKey } from './candleTheme';
+import { fmtPx, pxSeriesFormat } from '../../core/format';
 import { useResolvedTheme } from '../../theme/theme';
 import { LOCAL_TIME, fmtClockLocal, fmtDayLocal, localTickMarks } from './chartTime';
 import type { OptionRight } from '../../types/compass';
@@ -136,6 +138,8 @@ interface PremiumLevel {
   label: string;
   color: string;
   style?: 'solid' | 'dashed' | 'dotted';
+  /** The price scale keeps the name. The line across the tape is not drawn. */
+  axisOnly?: boolean;
 }
 
 /** A modeled projection drawn past NOW — theta held flat, spot at the stop. */
@@ -194,10 +198,12 @@ interface ContractPremiumPaneProps {
   /** Stock prices that are modeled scenarios, drawn only on the stock pane. */
   scenarios?: { price: number; title: string }[];
   /** The contract's own prints, already priced. When passed (null while loading) the stock path is not repriced;
-      null keeps the last draw, an empty list clears it. */
-  traded?: { time: number; open: number; high: number; low: number; close: number }[] | null;
+      null keeps the last draw, an empty list clears it. `volume` is the contracts in the bar, drawn under the tape. */
+  traded?: { time: number; open: number; high: number; low: number; close: number; volume?: number }[] | null;
   /** The rows are already this timeframe. Folding them again pulls a daily bar onto the wrong day. */
   tradedAsIs?: boolean;
+  /** A faint grid, so a price can be read off the tape and not only off a label. */
+  grid?: boolean;
 }
 
 const LEVEL_STYLE: Record<NonNullable<PremiumLevel['style']>, LineStyle> = {
@@ -206,7 +212,31 @@ const LEVEL_STYLE: Record<NonNullable<PremiumLevel['style']>, LineStyle> = {
   dotted: LineStyle.SparseDotted,
 };
 
-const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe, revision, iv: ivProp, levels, projections, topMargin, rules = true, marks = null, nodes = [], beadInset = 48, bars: barsProp = null, spot = 0, framePrices = [], pageScroll = false, bound = false, onBar, stockPane = false, scenarios = [], traded, tradedAsIs = false }: ContractPremiumPaneProps) => {
+/** Terrain's opening pitch: intraday bars at 8–11px, so a body is readable and the wheel zooms out from there. */
+function tapePitch(tf: Timeframe): number {
+  const m = tfMinutes(tf);
+  if (m <= 5) return 8;
+  if (m <= 15) return 9;
+  if (m <= 45) return 10;
+  if (m <= 60) return 11;
+  if (m <= 240) return 12;
+  if (m < 1440) return 13;
+  if (m <= 1440) return 14;
+  if (m <= 7 * 1440) return 16;
+  return 18;
+}
+
+/** The same window Terrain opens on: most of the width is history, a little air sits ahead of the last bar. */
+function fitWindow(len: number, width: number, tf: Timeframe): { from: number; to: number } {
+  const pitch = tapePitch(tf);
+  const total = Math.max(90, Math.min(700, Math.round((width || 640) / pitch)));
+  const span = Math.max(48, Math.min(total, Math.ceil(Math.max(len, 1) / 0.82)));
+  const history = Math.round(span * 0.82);
+  const ahead = Math.max(3, span - history);
+  return { from: Math.max(0, len - history), to: len + ahead };
+}
+
+const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe, revision, iv: ivProp, levels, projections, topMargin, rules = true, marks = null, nodes = [], beadInset = 48, bars: barsProp = null, spot = 0, framePrices = [], pageScroll = false, bound = false, onBar, stockPane = false, scenarios = [], traded, tradedAsIs = false, grid = false }: ContractPremiumPaneProps) => {
   const bookRev = useBookRev();
   const pageScrollRef = useRef(pageScroll);
   pageScrollRef.current = pageScroll;
@@ -216,6 +246,7 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const stockSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const volSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const stockLinesRef = useRef<IPriceLine[]>([]);
   const stockPtsRef = useRef<{ time: UTCTimestamp; open: number; high: number; low: number; close: number }[]>([]);
   const stockPaneRef = useRef(stockPane);
@@ -229,6 +260,7 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
   const followRef = useRef(true);
   const frameRef = useRef<number[]>([]);
   frameRef.current = framePrices;
+  const frameKeyRef = useRef('');
   const ptsRef = useRef<{ time: UTCTimestamp; open: number; high: number; low: number; close: number }[]>([]);
   const onBarRef = useRef(onBar);
   onBarRef.current = onBar;
@@ -274,8 +306,9 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
         borderColor: s0.line,
         timeVisible: true,
         secondsVisible: false,
-        rightOffset: fullClock ? 6 : 5,
-        barSpacing: 7,
+        rightOffset: fullClock ? 6 : 8,
+        barSpacing: 8,
+        minBarSpacing: 0.5,
         /* A day tick that is only "25" is not a time. On this tape the day carries its month, and a clock tick carries the day. */
         tickMarkMaxCharacterLength: fullClock ? 16 : 8,
         tickMarkFormatter: fullClock
@@ -291,7 +324,7 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
         horzLine: { color: s0.crosshair, labelBackgroundColor: s0.label },
       },
       handleScroll: { mouseWheel: !pageScrollRef.current, pressedMouseMove: true },
-      handleScale: { mouseWheel: !pageScrollRef.current, pinch: true, axisPressedMouseMove: { time: true, price: true } },
+      handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: { time: true, price: true } },
     });
     const series = chart.addSeries(CandlestickSeries, {
       ...candleSeriesOptions(t),
@@ -300,25 +333,29 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
       priceFormat: {
         type: 'custom',
         minMove: 0.01,
-        formatter: (price: number) => price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        formatter: (price: number) => fmtPx(price),
       },
-      autoscaleInfoProvider: (orig: () => AutoscaleInfo | null): AutoscaleInfo | null => {
-        /* Fit the candles on screen. A zero or a dust low — the option was
-           worth nothing for part of the tape — left the live price in the
-           top of the pane and a void down to 0. */
-        const base = orig();
-        if (!base?.priceRange) return base;
-        let { minValue, maxValue } = base.priceRange;
-        if (!(maxValue > minValue)) return base;
+      autoscaleInfoProvider: (): AutoscaleInfo | null => {
+        /* The candles set the scale. A stop or a target far from the tape stays a
+           label on the rail; folding it into the range crushed the session into a line. */
+        const pts = ptsRef.current;
+        let minValue = Infinity;
+        let maxValue = -Infinity;
+        for (const p of pts) {
+          if (p.high > maxValue) maxValue = p.high;
+          if (p.low > 0 && p.low < minValue) minValue = p.low;
+        }
+        if (!(maxValue > minValue) || !Number.isFinite(minValue)) return null;
         if (minValue < maxValue * 0.25) minValue = maxValue * 0.55;
         const span = Math.max(0.02, maxValue - minValue);
-        const near = (p: number) => {
-          if (!(p > 0) || p < maxValue * 0.2) return;
-          if (p < minValue && minValue - p <= span) minValue = p;
-          else if (p > maxValue && p - maxValue <= span) maxValue = p;
+        const pull = (p: number, force: boolean) => {
+          if (!(p > 0) || p < maxValue * 0.15 || p > maxValue * 4) return;
+          if (!force && !(p < minValue && minValue - p <= span) && !(p > maxValue && p - maxValue <= span)) return;
+          if (p < minValue) minValue = p;
+          if (p > maxValue) maxValue = p;
         };
-        for (const p of frameRef.current) near(p);
-        for (const p of levelPricesRef.current) near(p);
+        for (const p of frameRef.current) pull(p, boundRef.current);
+        for (const p of levelPricesRef.current) pull(p, false);
         const pad = Math.max(0.02, (maxValue - minValue) * 0.1);
         return { priceRange: { minValue: Math.max(0.01, minValue - pad), maxValue: maxValue + pad } };
       },
@@ -331,7 +368,7 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
         ...candleSeriesOptions(t),
         priceLineVisible: true,
         priceLineColor: 'rgba(237,237,237,0.35)',
-        priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+        priceFormat: pxSeriesFormat(),
         autoscaleInfoProvider: (orig: () => AutoscaleInfo | null): AutoscaleInfo | null => {
           const base = orig();
           if (!base?.priceRange) return base;
@@ -349,11 +386,10 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
       }, 1);
       stockSeriesRef.current = stock;
     }
-    /* The frame is the reader's once they actually move it (a wheel, or a drag that changes the time window); freezing on pointerdown
-       broke the price-scale drag. Reset is the way home. */
-    const releaseFollow = () => {
-      followRef.current = false;
-      chart.priceScale('right').applyOptions({ autoScale: false });
+    /* The frame is the reader's once they drag the price scale. The wheel does not freeze it — Terrain's rule. */
+    const freezeScale = () => {
+      const ps = chart.priceScale('right');
+      if (ps.options().autoScale) ps.applyOptions({ autoScale: false });
     };
     let clampLock = false;
     /* The window may move through the bars, with a little air at each end.
@@ -398,10 +434,10 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
       if (!chart.priceScale('right').options().autoScale) followRef.current = false;
     };
     const onRange = () => {
-      if (holdRef.current) releaseFollow();
       clampTime();
     };
     host.addEventListener('pointerdown', onPointerDown);
+    host.addEventListener('pointerdown', freezeScale);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerUp);
     chart.timeScale().subscribeVisibleLogicalRangeChange(onRange);
@@ -419,6 +455,108 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
     };
     chart.subscribeCrosshairMove(onCross);
 
+    /* Terrain's wheel: a glide toward a target view, the bar under the pointer stays, and the candles stay fitted.
+       The library's own wheel is off. A sideways wheel still pans. A price-scale drag stays frozen while the
+       candles are still inside it; a zoom that leaves them behind gives the fit back. */
+    let wheelRaf = 0;
+    const keepCandles = () => {
+      wheelRaf = 0;
+      const ps = chart.priceScale('right');
+      if (ps.options().autoScale) return;
+      const range = chart.timeScale().getVisibleLogicalRange();
+      const shown = ps.getVisibleRange();
+      const data = series.data() as readonly { high?: number; low?: number }[];
+      if (!range || !shown || !data.length) return;
+      const from = Math.max(0, Math.floor(range.from as number));
+      const to = Math.min(data.length - 1, Math.ceil(range.to as number));
+      if (to < from) return;
+      const lo = Math.min(shown.from, shown.to);
+      const hi = Math.max(shown.from, shown.to);
+      for (let i = from; i <= to; i++) {
+        const d = data[i];
+        if (d && d.high != null && d.low != null && d.high >= lo && d.low <= hi) return;
+      }
+      ps.applyOptions({ autoScale: true });
+    };
+    const onWheelKeep = () => {
+      if (!wheelRaf) wheelRaf = requestAnimationFrame(keepCandles);
+    };
+    host.addEventListener('wheel', onWheelKeep, { passive: true });
+    let zoomTarget: { from: number; to: number } | null = null;
+    let zoomRaf = 0;
+    let zoomLast = 0;
+    let zoomPrev: { from: number; to: number } | null = null;
+    let zoomStill = 0;
+    const zoomEnd = () => {
+      zoomTarget = null;
+      zoomRaf = 0;
+      zoomLast = 0;
+      zoomPrev = null;
+      zoomStill = 0;
+    };
+    const zoomStep = (now: number) => {
+      const ts = chart.timeScale();
+      const cur = ts.getVisibleLogicalRange();
+      if (!cur || !zoomTarget) {
+        zoomEnd();
+        return;
+      }
+      const still = !!zoomPrev && Math.abs((cur.from as number) - zoomPrev.from) < 0.005 && Math.abs((cur.to as number) - zoomPrev.to) < 0.005;
+      zoomStill = still ? zoomStill + 1 : 0;
+      if (zoomStill >= 2) {
+        zoomEnd();
+        return;
+      }
+      zoomPrev = { from: cur.from as number, to: cur.to as number };
+      const dt = zoomLast ? Math.min(48, now - zoomLast) : 16;
+      zoomLast = now;
+      const a = 1 - Math.exp(-dt / 70);
+      const from = (cur.from as number) + (zoomTarget.from - (cur.from as number)) * a;
+      const to = (cur.to as number) + (zoomTarget.to - (cur.to as number)) * a;
+      const done = Math.abs(zoomTarget.from - from) < 0.02 && Math.abs(zoomTarget.to - to) < 0.02;
+      ts.setVisibleLogicalRange(done ? zoomTarget : { from, to });
+      onWheelKeep();
+      if (done) zoomEnd();
+      else zoomRaf = requestAnimationFrame(zoomStep);
+    };
+    const cancelZoom = () => {
+      zoomTarget = null;
+      zoomPrev = null;
+    };
+    const onWheelZoom = (e: WheelEvent) => {
+      if (pageScrollRef.current) return;
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+      if (dy === 0 || Math.abs(dy) < Math.abs(e.deltaX)) {
+        cancelZoom();
+        return;
+      }
+      if (e.cancelable) e.preventDefault();
+      const ts = chart.timeScale();
+      const cur = ts.getVisibleLogicalRange();
+      if (!cur) return;
+      const base = zoomTarget ?? { from: cur.from as number, to: cur.to as number };
+      const x = e.clientX - host.getBoundingClientRect().left;
+      const underCursor = ts.coordinateToLogical(x);
+      const t = underCursor == null ? 0.5 : ((underCursor as number) - (cur.from as number)) / Math.max(1e-6, (cur.to as number) - (cur.from as number));
+      const anchor = base.from + t * (base.to - base.from);
+      const width = Math.max(1, ts.width());
+      const span0 = base.to - base.from;
+      const span = Math.min(width / 0.5, Math.max(width / 50, span0 * Math.exp(dy * 0.0015)));
+      const ratio = span / span0;
+      let from = anchor - (anchor - base.from) * ratio;
+      let to = anchor + (base.to - anchor) * ratio;
+      const len = barCountRef.current;
+      if (len > 0 && to > len - 1 + span * 0.5) {
+        const over = to - (len - 1 + span * 0.5);
+        from -= over;
+        to -= over;
+      }
+      zoomTarget = { from, to };
+      if (!zoomRaf) zoomRaf = requestAnimationFrame(zoomStep);
+    };
+    host.addEventListener('wheel', onWheelZoom, { passive: false });
+    host.addEventListener('pointerdown', cancelZoom);
+
     chartRef.current = chart;
     seriesRef.current = series;
     const marksPrimitive = new SetupMarksPrimitive();
@@ -429,6 +567,12 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
     nodesRef.current = nodesPrimitive;
     return () => {
       host.removeEventListener('pointerdown', onPointerDown);
+      host.removeEventListener('pointerdown', freezeScale);
+      host.removeEventListener('wheel', onWheelKeep);
+      host.removeEventListener('wheel', onWheelZoom);
+      host.removeEventListener('pointerdown', cancelZoom);
+      if (wheelRaf) cancelAnimationFrame(wheelRaf);
+      if (zoomRaf) cancelAnimationFrame(zoomRaf);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(onRange);
@@ -437,6 +581,7 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
       chartRef.current = null;
       seriesRef.current = null;
       stockSeriesRef.current = null;
+      volSeriesRef.current = null;
       stockPtsRef.current = [];
       marksRef.current = null;
       nodesRef.current = null;
@@ -453,7 +598,7 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
 
   /* the wheel's owner can change without a remount — fullscreen in and out */
   useEffect(() => {
-    chartRef.current?.applyOptions({ handleScroll: { mouseWheel: !pageScroll }, handleScale: { mouseWheel: !pageScroll } });
+    chartRef.current?.applyOptions({ handleScroll: { mouseWheel: !pageScroll }, handleScale: { mouseWheel: false } });
   }, [pageScroll]);
 
   // Recolor in place when the app-wide theme changes — same contract as StrikeChart
@@ -469,8 +614,11 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
         vertLine: { color: s.crosshair, labelBackgroundColor: s.label },
         horzLine: { color: s.crosshair, labelBackgroundColor: s.label },
       },
+      grid: grid
+        ? { vertLines: { visible: true, color: s.grid }, horzLines: { visible: true, color: s.grid } }
+        : { vertLines: { visible: false }, horzLines: { visible: false } },
     });
-  }, [themeKey, appTheme]);
+  }, [themeKey, appTheme, grid]);
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -494,7 +642,7 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
         high: b.high,
         low: b.low,
         close: b.close,
-        volume: 0,
+        volume: b.volume ?? 0,
       }));
       const folded = tradedAsIs ? raw : aggregateCandles(raw, mins);
       const pts = folded.map(b => ({
@@ -505,17 +653,45 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
         close: b.close,
       }));
       const last = pts[pts.length - 1];
-      const sig = `traded|${timeframe}|${pts.length}|${last?.time ?? 0}|${last?.close ?? 0}|${themeKey}`;
-      if (loadedRef.current === sig) return;
+      const lastVol = folded[folded.length - 1]?.volume ?? 0;
+      const sig = `traded|${timeframe}|${pts.length}|${last?.time ?? 0}|${last?.close ?? 0}|${lastVol}|${themeKey}`;
+      const frameKey = (frameRef.current ?? []).map(p => (Number.isFinite(p) ? p.toFixed(4) : '')).join('|');
+      const frameChanged = frameKeyRef.current !== frameKey;
+      frameKeyRef.current = frameKey;
+      if (loadedRef.current === sig) {
+        if (frameChanged) {
+          followRef.current = true;
+          chart.priceScale('right').applyOptions({ autoScale: true });
+        }
+        return;
+      }
       const fresh = !loadedRef.current.startsWith(`traded|${timeframe}|`);
       loadedRef.current = sig;
       ptsRef.current = pts;
       barCountRef.current = pts.length;
       series.setData(pts);
+      if (folded.some(b => (b.volume ?? 0) > 0)) {
+        if (!volSeriesRef.current) {
+          volSeriesRef.current = chart.addSeries(HistogramSeries, {
+            priceScaleId: 'vol',
+            priceFormat: { type: 'volume' },
+            priceLineVisible: false,
+            lastValueVisible: false,
+          });
+          chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.84, bottom: 0 }, borderVisible: false });
+        }
+        const ink = getCandleTheme();
+        volSeriesRef.current.setData(folded.map(b => ({
+          time: b.time as UTCTimestamp,
+          value: b.volume ?? 0,
+          color: b.close >= b.open ? ink.volUp : ink.volDown,
+        })));
+      }
       if (fresh && pts.length) {
         followRef.current = true;
         chart.priceScale('right').applyOptions({ autoScale: true });
-        chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, pts.length - 130), to: pts.length + 5 });
+        chart.timeScale().applyOptions({ barSpacing: tapePitch(timeframe), minBarSpacing: 0.5 });
+        chart.timeScale().setVisibleLogicalRange(fitWindow(pts.length, hostRef.current?.clientWidth ?? 0, timeframe));
         clampTimeRef.current();
       }
       if (!hoverRef.current) onBarRef.current?.(last ?? null);
@@ -614,7 +790,8 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
     if (reframe) {
       followRef.current = true;
       chart.priceScale('right').applyOptions({ autoScale: true });
-      chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, pts.length - 130), to: pts.length + 5 });
+      chart.timeScale().applyOptions({ barSpacing: tapePitch(timeframe), minBarSpacing: 0.5 });
+      chart.timeScale().setVisibleLogicalRange(fitWindow(pts.length, hostRef.current?.clientWidth ?? 0, timeframe));
       clampTimeRef.current();
     }
     if (!hoverRef.current) onBarRef.current?.(pts[pts.length - 1] ?? null);
@@ -635,6 +812,7 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
             color: l.color,
             lineWidth: 1,
             lineStyle: LEVEL_STYLE[l.style ?? 'dashed'],
+            lineVisible: !l.axisOnly,
             axisLabelVisible: true,
             title: l.label,
           })
@@ -715,8 +893,9 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
     const extraBars = (projections ?? [])
       .filter(p => p.points.length >= 2)
       .reduce((m, p) => Math.max(m, p.points.length), 0);
+    chart.timeScale().applyOptions({ barSpacing: tapePitch(timeframe), minBarSpacing: 0.5 });
     chart.timeScale().setVisibleLogicalRange(
-      extraBars > 0 ? { from: Math.max(0, len - 90), to: len + extraBars + 4 } : { from: Math.max(0, len - 130), to: len + 5 }
+      extraBars > 0 ? { from: Math.max(0, len - 90), to: len + extraBars + 4 } : fitWindow(len, hostRef.current?.clientWidth ?? 0, timeframe),
     );
   };
 

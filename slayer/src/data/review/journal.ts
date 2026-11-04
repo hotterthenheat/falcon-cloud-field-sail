@@ -9,6 +9,7 @@ import { futBookOf as paperFutBookOf, optBookOf as paperOptBookOf, type FutTrade
 import { nyMomentWords } from '../paper/clock';
 import { futWords } from '../paper/products';
 import { pickOf } from './journalBooks';
+import { fmtPx } from '../../core/format';
 
 export interface JournalEntry {
   /** One of the reader's setups */
@@ -86,7 +87,7 @@ export const piecesWords = (r: JournalRow): string => r.t.legs.filter(l => l.out
 type EndedCut = 'hand' | 'target' | 'stop' | 'market' | 'pieces';
 const endedCutOf = (r: JournalRow): EndedCut => (r.t.how === 'scaled' ? 'pieces' : r.t.how === 'target' ? 'target' : r.t.how === 'stopped' ? 'stop' : r.t.how === 'expired' || r.t.how === 'rule' || r.t.how === 'page' ? 'market' : 'hand');
 /** A price as its own desk prints it: a future on its tick, a contract to the cent */
-export const priceWordsOf = (r: JournalRow, v: number): string => (r.fut ? futWords(r.t.symbol, v) : v.toFixed(2));
+export const priceWordsOf = (r: JournalRow, v: number): string => (r.fut ? futWords(r.t.symbol, v) : fmtPx(v));
 
 /** A trade's entry — the first journal's one note is the first answer until that answer is written */
 export const entryOf = (r: JournalRow): JournalEntry => {

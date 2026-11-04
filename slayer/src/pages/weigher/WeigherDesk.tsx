@@ -584,7 +584,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   const [sel, setSel] = useState<number | null>(null);
   /* opens on the desk's timeframe when the reader set one (Settings › The desk) */
   /* the chart's settings, as the reader left them on this desk (DESK_KEY) */
-  const [timeframe, setTimeframe] = useState<Timeframe>(() => desk.chart?.timeframe ?? readDeskPrefs().opensOn.timeframe ?? '1m');
+  const [timeframe, setTimeframe] = useState<Timeframe>(() => desk.chart?.timeframe ?? readDeskPrefs().opensOn.timeframe ?? '5m');
   const [overlays, setOverlays] = useState<ChartOverlays>(() => ({ ...DEFAULT_OVERLAYS, ...desk.chart?.overlays }));
   const [chartStyle, setChartStyle] = useState<ChartStyle>(() => desk.chart?.style ?? 'candles');
   const [indicators, setIndicators] = useState<ChartIndicators>(() => ({ ...DEFAULT_INDICATORS, ...desk.chart?.indicators }));
@@ -1835,9 +1835,8 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       </GuideFocus>
 
       {/* The static frame: four cells, drawn once. */}
-      {/* On a phone, a column: the four cards under each other at a readable height each — the chart at three
-          fifths of the screen, the chain a screen, the scanner three fifths — and the page scrolls (the shell
-          drops the viewport frame below md). Four cells in a 390px frame were four unreadable ones. */}
+      {/* On a phone, a column: the chart and the chain share the screen, each at its full width, and the page scrolls
+          for the watchlist. Four cells in a 390px frame were four unreadable ones. */}
       {/* The window and the row under it: the chart and the chain in a window at the reader's height (the sash),
           the watchlist and the position in a row that grows with its cards — the page scrolls, like every other
           page. The phone's column never sees the style; its cards stack at their own heights. */}
@@ -1853,7 +1852,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
         data-weigher-frame
         data-desk-top={belowLg ? undefined : top}
       >
-        <div className="relative min-h-0 min-w-0 max-xl:h-[60vh]">
+        <div className="relative min-h-0 min-w-0 max-xl:h-[min(42dvh,480px)]">
           {/* NOT a DeskCard: the chart card has no header row — the strip inside chartBody is its whole chrome. */}
           <div className="h-full relative overflow-hidden rounded-md border border-ink/[0.07] bg-panel">
             {full === 'chart' ? <div className="h-full" /> : chartBody}
@@ -1864,7 +1863,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
           {arrived && full !== 'chart' && <div key={arrived.n} className="absolute inset-0 z-30 pointer-events-none rounded-md animate-focus-flash" data-weigher-flash />}
         </div>
 
-        <div ref={chainBoxRef} className="min-h-0 min-w-0 max-xl:h-[70dvh]" data-chain-head={chainHead}>
+        <div ref={chainBoxRef} className="min-h-0 min-w-0 max-xl:h-[min(48dvh,560px)]" data-chain-head={chainHead}>
           <DeskCard
             title="Chain"
             actions={
