@@ -134,7 +134,7 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
           </Tip>
         ) : null}
         {ticket && setup.late ? (
-          <Tip label="The live scan missed this mark. It was scored afterwards from the quotes ThetaData recorded at the mark, never later ones.">
+          <Tip label="The live scan missed this mark. It was scored afterwards from the recorded quotes at the mark, never later ones.">
             <span className="font-mono text-t10 uppercase tracking-wider text-warn border border-warn/40 rounded px-1.5 py-0.5" data-card-late>Late</span>
           </Tip>
         ) : null}

@@ -20,8 +20,8 @@ import { productOf, sessionAt } from '../core/session';
 const grainOf = (tf: Timeframe): TapeGrain => chartGrain(tfMinutes(tf));
 
 /** The live print joins the bar it belongs to. It never opens a bar in another session. */
-export function paintLive(bars: Candle[], price: number, atSec: number, tf: Timeframe, session: DeskSession): Candle[] {
-  return paintPrint(bars, price, atSec, grainStep(grainOf(tf)), session);
+export function paintLive(bars: Candle[], price: number, atSec: number, tf: Timeframe, session: DeskSession, symbol = ''): Candle[] {
+  return paintPrint(bars, price, atSec, grainStep(grainOf(tf)), session, symbol);
 }
 
 /** The name's last print and the prior session's close, from ThetaData. Null until the first print lands. */

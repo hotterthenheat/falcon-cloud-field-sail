@@ -75,8 +75,8 @@ const RegimeLine = ({ ticker, stamp = true }: { ticker: string | null | undefine
   );
   const title = [said ? `${said.lead}${said.rest}` : '', lv ? `${lv.scopeLabel}. ${GLOSSARY.flip}` : ''].filter(Boolean).join(' ');
   return (
-    <div className="flex items-center gap-x-3 gap-y-2 flex-wrap min-w-0 py-2 -mt-1 border-b border-borderSubtle" data-regime-line={tone ?? 'pending'} data-name-strip={name || undefined}>
-      <div className="flex-1 basis-0 sm:min-w-96 flex items-center gap-x-2 gap-y-0.5 flex-wrap min-w-0 [&>*]:whitespace-nowrap" title={title || undefined}>
+    <div className="flex items-start sm:items-center gap-x-3 gap-y-2 flex-wrap min-w-0 py-2 -mt-1 border-b border-borderSubtle" data-regime-line={tone ?? 'pending'} data-name-strip={name || undefined}>
+      <div className="flex w-full sm:w-auto sm:flex-1 sm:basis-0 sm:min-w-96 items-center gap-x-2 gap-y-0.5 flex-wrap min-w-0 [&>*]:whitespace-nowrap" title={title || undefined}>
         {name ? <CompanyLogo ticker={name} size={18} /> : null}
         <span className="font-mono text-t13 font-semibold text-textPrimary">{name || '—'}</span>
         {name && (
@@ -113,7 +113,7 @@ const RegimeLine = ({ ticker, stamp = true }: { ticker: string | null | undefine
           </span>
         )}
       </div>
-      <div className="ml-auto flex items-center gap-1.5 flex-wrap">
+      <div className="flex w-full sm:w-auto sm:ml-auto items-center gap-1.5 flex-wrap">
         <DropdownSelect<LevelsScope>
           label="Levels"
           value={scope}

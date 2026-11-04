@@ -356,6 +356,14 @@ export function superviseTheta({ log = (m) => console.log(`[theta] ${m}`), warm 
     const mine = child;
     mine.on('error', (e) => {
       log(`could not start java (${e.code || e.message}); install Java 21 or set THETA_JAVA`);
+      /* spawn can fail without an 'exit' (a missing java). Leaving `child` set blocks every later start. */
+      if (child !== mine || stopped) return;
+      child = null;
+      fs.rmSync(TERMINAL_PID, { force: true });
+      if (!refused) {
+        nextStart = Date.now() + backoff;
+        backoff = Math.min(MAX_BACKOFF_MS, backoff * 2);
+      }
     });
     mine.on('exit', (code, signal) => {
       if (child === mine) {
@@ -390,6 +398,12 @@ export function superviseTheta({ log = (m) => console.log(`[theta] ${m}`), warm 
     if (adopted && !alive(adopted)) {
       adopted = 0;
       fs.rmSync(TERMINAL_PID, { force: true });
+    }
+    /* a start whose pid never became a live process (spawn failed, or the OS reaped it and 'exit' never arrived) */
+    if (child && !alive(child.pid) && Date.now() - startedAt > 2_000) {
+      child = null;
+      fs.rmSync(TERMINAL_PID, { force: true });
+      if (!refused) log('terminal never came up; starting it again');
     }
     scanOut();
     if (refused) {

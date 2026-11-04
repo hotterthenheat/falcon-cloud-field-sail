@@ -18,6 +18,7 @@ import { daySummary } from '../../data/compassOutcome';
 import { backlogLine, useCompassFeed } from '../../data/compassFeed';
 import { Link } from 'react-router-dom';
 import { EmptyBox, ErrorBox, LoadingBox, asOfText } from '../../components/ui/states';
+import { LIVE_RECONNECTING } from '../../copy/feeds';
 import { useThetaStatus } from '../../data/thetaQuote';
 import { Tip } from '../../components/ui/Tooltip';
 
@@ -219,7 +220,7 @@ const Blotter = () => {
     : feed.status === 'kept' && feed.at
       ? `The record ${asOfText(feed.at)}. ${feed.error || 'Reconnecting to the Compass server.'}`
       : theta === 'down' && open.length
-        ? `ThetaData offline — reconnecting. Open signals as of ${readAt ? nyClock(readAt, { zone: true }) : 'their call'}.`
+        ? `${LIVE_RECONNECTING}. Open signals as of ${readAt ? nyClock(readAt, { zone: true }) : 'their call'}.`
         : '';
 
   return (

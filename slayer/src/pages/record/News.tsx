@@ -360,7 +360,7 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
       </button>
       <div
         /* the strip fades at both ends, so a headline running past an arrow dissolves instead of starting mid-word */
-        className="relative flex-1 min-w-0 h-full overflow-hidden select-none cursor-grab active:cursor-grabbing [mask-image:linear-gradient(to_right,transparent,black_28px,black_calc(100%-28px),transparent)]"
+        className="relative flex-1 min-w-0 h-full overflow-hidden select-none cursor-grab active:cursor-grabbing [-webkit-mask-image:linear-gradient(to_right,transparent,black_28px,black_calc(100%-28px),transparent)] [mask-image:linear-gradient(to_right,transparent,black_28px,black_calc(100%-28px),transparent)]"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}

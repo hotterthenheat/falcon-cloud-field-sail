@@ -34,6 +34,7 @@ import CompanyLogo from '../../components/ui/CompanyLogo';
 import { CARD } from '../../components/ui/DropdownSelect';
 import DropdownSearch, { type SearchOption } from '../../components/ui/DropdownSearch';
 import BackToTop from '../../components/ui/BackToTop';
+import { LIVE_RECONNECTING } from '../../copy/feeds';
 import { CompassGuide } from '../../components/compass/CompassGuide';
 import SetupScanBoard from '../../components/compass/SetupScanBoard';
 import FilterTabs from '../../components/ui/FilterTabs';
@@ -271,7 +272,7 @@ const Board = () => {
       serverLine
         ? serverLine
         : offline
-        ? `ThetaData offline — reconnecting. ${asOf}`
+        ? `${LIVE_RECONNECTING}. ${asOf}`
         : dayOver
           ? 'Same-day calls are done for the session. A signal stays on the record until its stop, its target, the reversal, or the 15:55 flat.'
           : scanOff || clock.phase === 'halt'
@@ -291,7 +292,7 @@ const Board = () => {
   const emptyLabel = live.feed === 'offline'
     ? serverLine
     : offline
-    ? `ThetaData offline — reconnecting. ${asOf}`
+    ? `${LIVE_RECONNECTING}. ${asOf}`
     : bestLine || (offered === 'odte' ? 'Nothing cleared Model 1 or Model 3. Model Risk is the strip above.' : 'Nothing cleared Model 1. Model Risk is the strip above.');
 
   return (

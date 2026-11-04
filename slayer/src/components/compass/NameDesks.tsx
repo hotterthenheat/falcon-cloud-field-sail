@@ -162,7 +162,7 @@ const NameDesks = ({ ticker, sleeve }: { ticker: string; sleeve: 'odte' | 'weekl
               <p className="mt-1 text-t12 text-textSecondary">{offline ? 'Offline. Reconnecting.' : 'No print in hand yet.'}</p>
             )}
             <p className={`mt-0.5 font-mono text-t11 tnum truncate ${offline && lastPx > 0 ? 'text-warn' : 'text-textSecondary'}`}>
-              {offline && lastPx > 0 ? 'Kept. ThetaData is offline.' : range ? `${px(range.low)} – ${px(range.high)}` : '—'}
+              {offline && lastPx > 0 ? 'Kept. Live data is offline.' : range ? `${px(range.low)} – ${px(range.high)}` : '—'}
             </p>
           </Desk>
           <div className="px-3.5 py-2.5 min-w-0 overflow-hidden max-h-[168px] flex flex-col" data-desk="passed">

@@ -866,7 +866,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       .map(v => (v > 3 ? v / 100 : v))
       .filter(v => v >= 0.01 && v <= 8)
       .sort((a, b) => a - b);
-    const bars = weighed.ready && weighed.note == null && sessionLive(bookSession) && liveSpot > 0 ? paintLive(weighed.bars, liveSpot, Math.floor(Date.now() / 1000), timeframe, bookSession) : weighed.bars;
+    /* The print's own time, not the clock. A last trade from another session must not open a bar in this one. */
+    const printSec = headHeld?.value.at ? Math.floor(headHeld.value.at / 1000) : 0;
+    const bars = weighed.ready && weighed.note == null && sessionLive(bookSession) && liveSpot > 0 ? paintLive(weighed.bars, liveSpot, printSec, timeframe, bookSession, under) : weighed.bars;
     return {
       bars,
       iv: ivs.length ? ivs[Math.floor(ivs.length / 2)] : 0.2,
@@ -875,7 +877,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
       native: true as const,
       note: weighed.ready ? weighed.note : 'Loading this session.',
     };
-  }, [weighed, chain.rows, under, timeframe, bookSession, liveSpot]);
+  }, [weighed, chain.rows, under, timeframe, bookSession, liveSpot, headHeld?.value.at]);
   const prints = useMemo(() => buildPrints(ticker, liveSpot || levels.spot), [ticker, liveSpot, levels.spot]); // eslint-disable-line react-hooks/exhaustive-deps
   /* The rail's expiries — and the one a deep link asked for when the rail
      does not list it (a contract's own Friday), in date order */
@@ -947,8 +949,11 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
     /* The last candle is the last trade. A mid is not a trade, and a missing trade does not paint one. */
     if (contractTape.note || !selected || !Number.isFinite(selected.last) || !(selected.last > 0)) return contractTape.bars;
     if (!sessionLive(bookSession)) return contractTape.bars;
-    return paintLive(contractTape.bars, selected.last, Math.floor(Date.now() / 1000), timeframe, bookSession);
-  }, [contractTape, selected, bookSession, timeframe]);
+    /* The quote's own time. The clock would open a bar in a session this contract did not print in. */
+    const atSec = selected.quotedAt && selected.quotedAt > 0 ? Math.floor(selected.quotedAt / 1000) : 0;
+    if (!atSec) return contractTape.bars;
+    return paintLive(contractTape.bars, selected.last, atSec, timeframe, bookSession, chain.optRoot || ticker);
+  }, [contractTape, selected, bookSession, timeframe, chain.optRoot, ticker]);
   useEffect(() => {
     if (!selected || chain.source !== 'live') {
       setLiveScore(null);

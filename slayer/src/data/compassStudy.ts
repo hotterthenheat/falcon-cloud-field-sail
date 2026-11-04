@@ -515,7 +515,7 @@ export async function runStudy(deps: StudyDeps): Promise<StudyResult> {
       if (!chains.has(ck)) chains.set(ck, await chainDay(name, expiry, day, sleeve === 'odte' ? 16 : WEEKLY_STRIKES));
       const chain = chains.get(ck);
       if (!chain) {
-        notes.push(`${name} ${sleeve === 'odte' ? '0DTE' : expiry}: ThetaData did not answer the session's quotes; not studied.`);
+        notes.push(`${name} ${sleeve === 'odte' ? '0DTE' : expiry}: the quotes feed did not answer the session; not studied.`);
         continue;
       }
       const seen = new Set<string>();
