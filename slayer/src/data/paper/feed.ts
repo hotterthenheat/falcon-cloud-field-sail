@@ -8,10 +8,10 @@ import type { Candle } from '../../types/market';
 import type { DeskChain, DeskContract } from '../weigherDesk';
 import { isTradingDay, expiryFor, sessionCloseMinOn } from '../../core/calendar';
 import { sessionAt } from '../../core/session';
-import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
-import { carryFor } from '../../core/carry';
+import { blackScholesGreeks, blackScholesPrice } from '../../core/greeks';
+import { readGreek, type ChainPair } from '../../core/readGreek';
 import { calendarYears, sigmaToExpiry } from '../../core/volClock';
-import { longLeg, spreadBook, spreadSizes, thetaPerSession, bookMark, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
+import { longLeg, spreadBook, spreadSizes, bookMark, type ContractId, type ListedExpiry, type Quote } from '../review/quotes';
 import { bookCandles } from '../book/levels';
 import { ensureBook } from '../book/load';
 import { dateAt, lastTradeDayOf, nyAt, sessionFrom, tradingEndsAt, yearsToExpiry, OPEN_MIN } from './clock';
@@ -70,34 +70,56 @@ export function optionsOpen(ms: number): boolean {
 /* ---- an option ---- */
 const deadQuote = (spot: number): Quote => ({ bid: 0, ask: 0, mark: NaN, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic: 0, dead: true, spot });
 
-/** A leg's quote: ThetaData's NBBO, the greeks from its mid. Dead (orders wait) without a two-sided quote read just now. */
+/** The strikes in the loaded book, as pairs, for the parity forward. */
+function chainPairs(ticker: string, expiry: string): ChainPair[] | null {
+  const b = bookOf(ticker, expiry);
+  if (!b) return null;
+  const out: ChainPair[] = [];
+  for (const k of b.strikes) {
+    const call = b.legs.get(`${+k.toFixed(3)}|C`);
+    const put = b.legs.get(`${+k.toFixed(3)}|P`);
+    if (!call && !put) continue;
+    out.push({ strike: k, callBid: call?.bid ?? NaN, callAsk: call?.ask ?? NaN, putBid: put?.bid ?? NaN, putAsk: put?.ask ?? NaN });
+  }
+  return out.length ? out : null;
+}
+
+/** A leg's quote: ThetaData's NBBO. The greek is readGreek, off the option and the stock from one minute. A fill does not wait on it. */
 function legQuote(c: ContractId, spot: number, ms: number): Quote {
   const s = Number.isFinite(spot) ? spot : 0;
   const intrinsic = s > 0 ? Math.max(0, c.right === 'C' ? s - c.strike : c.strike - s) : 0;
   const q = legQuoteOf(c.ticker, c.expiry, c.strike, c.right);
   if (!q || !(q.ask > 0) || !(q.bid >= 0) || q.ask < q.bid) return { ...deadQuote(s), intrinsic: cents(intrinsic) };
   const mid = (q.bid + q.ask) / 2;
-  const t = Math.max(yearsToExpiry(lastTradeDayOf(c), ms), 1 / (252 * 390));
-  /* the rate in use, and the expiry's implied yield where its parity forward is known today (core/carry carryFor) */
-  const { r, q: y } = carryFor(c.ticker, { expiry: c.expiry });
-  const iv = s > 0 ? impliedVolFromPrice(mid, s, c.strike, t, c.right, r, y) : null;
-  const g = iv != null ? blackScholesGreeks(s, c.strike, t, iv, r, y) : null;
-  /* theta a day: what it loses over one trading session on the trading clock (quotes.ts thetaPerSession) */
-  const theta = iv != null ? thetaPerSession(s, c.strike, t, iv, c.right, r, y) : 0;
+  const name = nameQuote(c.ticker);
+  const optionAt = q.at > 0 ? q.at : 0;
+  const stockAt = name?.at && name.at > 0 ? name.at : name?.takenAt ?? 0;
+  const other = legQuoteOf(c.ticker, c.expiry, c.strike, c.right === 'C' ? 'P' : 'C');
+  const solved = optionAt > 0 && stockAt > 0 ? readGreek({
+    right: c.right,
+    strike: c.strike,
+    expiry: c.expiry,
+    at: optionAt,
+    option: { bid: q.bid, ask: q.ask, at: optionAt },
+    other: other && other.at > 0 ? { bid: other.bid, ask: other.ask, at: other.at } : null,
+    stock: name && name.bid > 0 && name.ask >= name.bid ? { bid: name.bid, ask: name.ask, price: name.px, at: stockAt } : { price: s, at: stockAt },
+    chain: chainPairs(c.ticker, c.expiry),
+  }) : null;
+  const g = solved?.ok ? blackScholesGreeks(solved.spot, c.strike, solved.t, solved.iv, solved.r, solved.q) : null;
   return {
     bid: q.bid,
     ask: q.ask,
     mark: cents(mid),
-    iv: iv ?? 0,
-    delta: g ? (c.right === 'C' ? g.deltaCall : g.deltaPut) : 0,
-    gamma: g ? g.gamma : 0,
-    theta,
-    vega: g ? g.vega : 0,
+    iv: solved?.ok ? solved.iv : 0,
+    delta: solved?.ok ? solved.delta : 0,
+    gamma: solved?.ok ? solved.gamma : 0,
+    theta: solved?.ok ? solved.thetaSession : 0,
+    vega: solved?.ok ? solved.vega : 0,
     rho: g ? (c.right === 'C' ? g.rhoCall : g.rhoPut) : 0,
     intrinsic: cents(intrinsic),
     dead: q.bid <= 0 || !isFresh(q.takenAt, q.kept, ms, q.at),
     spot: s,
-    /* the sizes shown: a fill takes at most this many of one quote (its stamp is which quote it is) */
+    ...(solved?.ok ? { greekT: solved.t, greekR: solved.r, greekQ: solved.q } : {}),
     ...(Number.isFinite(q.bidSize) ? { bidSize: q.bidSize } : {}),
     ...(Number.isFinite(q.askSize) ? { askSize: q.askSize } : {}),
     ...(q.at > 0 ? { quotedAt: q.at } : {}),
@@ -186,11 +208,8 @@ export function ivOf(ticker: string, ms = Date.now()): number {
 /* The what-if: one leg's Black-Scholes value with the name at `spot`, at the IV its live mid implies */
 function legWhatIf(c: ContractId, ms: number, spot: number): number {
   const live = legQuote(c, spotOf(c.ticker), ms);
-  const t = Math.max(yearsToExpiry(lastTradeDayOf(c), ms), 1 / (252 * 390));
-  if (!(live.iv > 0)) return NaN;
-  /* the carry the vol was solved on (legQuote) */
-  const { r, q: y } = carryFor(c.ticker, { expiry: c.expiry });
-  return blackScholesPrice(spot, c.strike, t, live.iv, c.right, r, y);
+  if (!(live.iv > 0) || !(live.greekT != null && live.greekT > 0)) return NaN;
+  return blackScholesPrice(spot, c.strike, live.greekT, live.iv, c.right, live.greekR ?? 0, live.greekQ ?? 0);
 }
 /** The contract's model bid with the name at `spot` — for drawing a line, never for a fill */
 export const optionQuoteAt = (c: ContractId, ms: number, spot: number): Quote => {
@@ -198,9 +217,7 @@ export const optionQuoteAt = (c: ContractId, ms: number, spot: number): Quote =>
   const v = c.short == null ? one(c) : one(longLeg(c)) - one({ ...longLeg(c), strike: c.short });
   const px = Number.isFinite(v) ? cents(Math.max(0, v)) : 0;
   const live = legQuote(longLeg(c), spotOf(c.ticker), ms);
-  const t = Math.max(yearsToExpiry(lastTradeDayOf(c), ms), 1 / (252 * 390));
-  const { r, q: y } = carryFor(c.ticker, { expiry: c.expiry });
-  const g = live.iv > 0 ? blackScholesGreeks(spot, c.strike, t, live.iv, r, y) : null;
+  const g = live.iv > 0 && live.greekT != null && live.greekT > 0 ? blackScholesGreeks(spot, c.strike, live.greekT, live.iv, live.greekR ?? 0, live.greekQ ?? 0) : null;
   return { bid: px, ask: px, mark: px, iv: live.iv, delta: g ? (c.right === 'C' ? g.deltaCall : g.deltaPut) : 0, gamma: g?.gamma ?? 0, theta: 0, vega: g?.vega ?? 0, rho: 0, intrinsic: 0, dead: !(px > 0), spot };
 };
 

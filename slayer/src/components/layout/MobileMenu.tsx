@@ -8,7 +8,6 @@ import JingleBell from '../ui/JingleBell';
 import useFocusTrap from '../ui/useFocusTrap';
 import { NAV_GROUPS, NAV_GROUP_META, itemsByGroup, type NavGroup } from './nav';
 import { subpagesFor } from './navTree';
-import { useCompassView } from '../../data/compassView';
 import { useAllAlerts, useUnseenAll } from '../gex/alertStore';
 import { toggleAlertsDrawer } from '../../data/alertsDrawer';
 import SlayerMark from '../../brand/SlayerMark';
@@ -23,7 +22,6 @@ interface Props {
 
 const MobileMenu = ({ open, onClose }: Props) => {
   const { pathname } = useLocation();
-  const { chosenId } = useCompassView();
   const unseen = useUnseenAll();
   const setTotal = useAllAlerts().reduce((n, a) => n + a.alerts.filter(x => !x.firedAt).length, 0);
   const panel = useRef<HTMLDivElement | null>(null);
@@ -64,7 +62,7 @@ const MobileMenu = ({ open, onClose }: Props) => {
           {NAV_GROUP_META[group].caption && <span className="block px-3 pb-1 text-t10 uppercase tracking-[0.1em] text-textMuted">{NAV_GROUP_META[group].caption}</span>}
           {itemsByGroup(group).map(item => {
             const inside = pathname.startsWith(item.path);
-            const subs = subpagesFor(item.path, pathname, chosenId);
+            const subs = subpagesFor(item.path, pathname);
             const isOpen = !!subs && (opened[item.path] ?? inside);
             /* the page you are on is the LONGEST nested path the address starts with (the rail's own rule) */
             const activeIdx = subs ? subs.reduce((best, s, i) => (pathname.startsWith(s.path) && (best < 0 || s.path.length > subs[best].path.length) ? i : best), -1) : -1;

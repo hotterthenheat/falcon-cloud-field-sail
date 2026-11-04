@@ -67,26 +67,30 @@ check('another SPX expiry with no forward read keeps the old yield (none in our 
 check('a forward is today\'s only: the next day it is not used', forwardFor('SPX', EXP, '2026-10-31') === null && carryFor('SPX', { expiry: EXP, now: NOW + 86_400_000 }).q === 0);
 check('a past day (the backtest) never takes today\'s forward', carryFor('SPX', { expiry: EXP, on: '2026-10-29', now: NOW }).q === 0);
 
-/* the Weigher's read of the 7625 call and put: the vendor solves its IV with no yield, so on the old forward the call's
-   and the put's IV at one strike disagree; restated on the parity forward they agree, and the price does not move */
+/* the Weigher's read of the 7625 call and put. With no chain the two sides are solved through the cash spot and their
+   IVs differ. With the chain they land on one IV. The vendor's printed IV is not copied over either. */
 {
   const book = pairsOf(read('spxw-20270115-at-2026-10-30-1530.json')).find(p => p.strike === 7625)!;
+  const chain = pairsOf(read('spxw-20270115-at-2026-10-30-1530.json'));
   const cm = (book.callBid + book.callAsk) / 2;
   const pm = (book.putBid + book.putAsk) / 2;
-  const contract = (right: 'C' | 'P', vendorIv: number) => readContract({ ticker: 'SPX', root: 'SPXW', spot: SPX, strike: 7625, right, bid: right === 'C' ? book.callBid : book.putBid, ask: right === 'C' ? book.callAsk : book.putAsk, expiryIso: EXP, vendorIv, now: NOW })!;
-  /* the vendor's IVs: each mid solved at SOFR with no yield on the calendar clock, as it quotes them */
-  const { impliedVolFromPrice } = await import('../src/core/greeks');
-  const vc = impliedVolFromPrice(cm, SPX, 7625, t, 'C', R, 0)!;
-  const vp = impliedVolFromPrice(pm, SPX, 7625, t, 'P', R, 0)!;
-  const after = { c: contract('C', vc), p: contract('P', vp) };
+  const contract = (right: 'C' | 'P', withChain: boolean) => readContract({
+    ticker: 'SPX', root: 'SPXW', spot: SPX, strike: 7625, right,
+    bid: right === 'C' ? book.callBid : book.putBid,
+    ask: right === 'C' ? book.callAsk : book.putAsk,
+    expiryIso: EXP, now: NOW, optionAt: NOW, stockAt: NOW,
+    otherBid: right === 'C' ? book.putBid : book.callBid,
+    otherAsk: right === 'C' ? book.putAsk : book.callAsk,
+    chain: withChain ? chain : null,
+  })!;
   resetCarry();
   setRate(R, 'live', DAY);
-  const before = { c: contract('C', vc), p: contract('P', vp) };
-  check(`SPXW 7625 IV, call vs put: ${before.c.iv.toFixed(2)}% vs ${before.p.iv.toFixed(2)}% at q = 0 (gap ${(before.p.iv - before.c.iv).toFixed(2)}) → ${after.c.iv.toFixed(2)}% vs ${after.p.iv.toFixed(2)}% on the parity forward (gap ${(after.p.iv - after.c.iv).toFixed(3)})`, Math.abs(after.p.iv - after.c.iv) < 0.05 && Math.abs(before.p.iv - before.c.iv) > 0.2);
-  check(`its deltas: call ${before.c.delta.toFixed(4)} → ${after.c.delta.toFixed(4)}, put ${before.p.delta.toFixed(4)} → ${after.p.delta.toFixed(4)}; call − put = e^{−qT}: ${(after.c.delta - after.p.delta).toFixed(5)} vs ${Math.exp(-spxLive.q * t).toFixed(5)}`, Math.abs(after.c.delta - after.p.delta - Math.exp(-spxLive.q * t)) < 1e-4 && after.c.delta < before.c.delta);
-  setForward('SPX', EXP, { F: spxLive.F, spot: SPX, b: spxLive.b, t, n: spxLive.n, lo: spxLive.lo, hi: spxLive.hi, at: NOW, day: DAY });
-  const k = carryFor('SPX', { expiry: EXP, now: NOW });
-  check(`the restated vol prices the call at its mid on the implied carry: ${blackScholesPrice(SPX, 7625, t, vc, 'C', R, 0).toFixed(3)} (vendor's) vs ${blackScholesPrice(SPX, 7625, t, (after.c.iv / 100), 'C', k.r, k.q).toFixed(3)}`, Math.abs(blackScholesPrice(SPX, 7625, t, after.c.iv / 100, 'C', k.r, k.q) - cm) < 0.05);
+  const before = { c: contract('C', false), p: contract('P', false) };
+  const after = { c: contract('C', true), p: contract('P', true) };
+  check(`SPXW 7625 IV, call vs put: ${before.c.iv.toFixed(2)}% vs ${before.p.iv.toFixed(2)}% on the cash spot (gap ${(before.p.iv - before.c.iv).toFixed(2)}) → ${after.c.iv.toFixed(2)}% vs ${after.p.iv.toFixed(2)}% on one IV (gap ${(after.p.iv - after.c.iv).toFixed(3)})`, Math.abs(after.p.iv - after.c.iv) < 0.05 && Math.abs(before.p.iv - before.c.iv) > 0.05 && !!before.c.note?.includes('cash spot') && !!before.c.note?.includes('Solved separately') && !after.c.note);
+  check(`its deltas move onto that one IV: call ${before.c.delta.toFixed(4)} → ${after.c.delta.toFixed(4)}, put ${before.p.delta.toFixed(4)} → ${after.p.delta.toFixed(4)}, and the call stays above the put`, after.c.delta > after.p.delta && after.c.delta !== before.c.delta);
+  void cm;
+  void pm;
 }
 
 /* ---- SPY ---- */

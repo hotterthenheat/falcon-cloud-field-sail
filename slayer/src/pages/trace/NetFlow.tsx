@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useTicker } from '../../context/MarketDataContext';
 import { fmtCount as num, nyDateOf, tapeSessionIso, tideBetween, useTickerKnown, useTopNet, useTide, usd as fmtUsd } from '../../data/traceLive';
-import { boardSums, VENDOR_TOTAL_NOTE } from '../../data/flowBook';
+import { boardSums } from '../../data/flowBook';
 import { dayAdv, dayPos, isLiveDay, shortDay } from '../../components/trace/dayWords';
 import { useTraceSession } from '../../components/trace/traceSession';
 import { useQParam } from '../../components/trace/addressCut';
@@ -235,7 +235,7 @@ const NetFlow = () => {
             <div className="sticky top-0 z-10 bg-panel flex items-center gap-2 px-3 py-1.5 border-b border-borderSubtle font-mono text-t11 uppercase tracking-wider text-textMuted" data-net-board-head>
               <span className="w-5">#</span>
               <span className="flex-1">Name · share of lean</span>
-              <span title={`Each name's whole day, pre-market in. The pane reads 09:30 on, so its figure can differ. ${VENDOR_TOTAL_NOTE}`}>Day net</span>
+              <span title="Whole day net premium. The vendor's net_premium. The pane is a different figure and is not added to this.">Day net</span>
             </div>
           )}
           {leaders.length === 0 && (

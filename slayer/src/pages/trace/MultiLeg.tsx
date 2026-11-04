@@ -221,11 +221,12 @@ export const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onCl
               theta == null ? (
                 <span className="text-textMuted">—</span>
               ) : (
-                <span className={t.thetaCapped ? 'text-warn' : 'text-textSecondary'} title={t.thetaCapped ? `Near expiry the rate runs past what the legs are worth, so this is capped at the ${t.netPremium > 0 ? 'debit paid' : 'credit collected'} (${fmtUsd(Math.abs(t.netPremium))})` : 'Dollars a day the whole position gains (+) or loses (−) to time'} data-spread-theta={t.thetaCapped ? 'capped' : 'rate'}>
-                  {theta >= 0 ? '+' : '−'}${Math.abs(theta).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{t.thetaCapped ? ' — what is left decays by expiry' : ' a day'}
+                <span className={t.thetaCapped ? 'text-warn' : 'text-textSecondary'} title={t.thetaCapped ? `The day's theta was capped at the premium (${fmtUsd(Math.abs(t.netPremium))}).` : 'Dollars a day the whole position gains (+) or loses (−) to time'} data-spread-theta={t.thetaCapped ? 'capped' : 'rate'}>
+                  {theta >= 0 ? '+' : '−'}${Math.abs(theta).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{t.thetaCapped ? ' — the day’s theta was capped at the premium' : ' a day'}
                 </span>
               )
             )}
+            {fact(t.deltaFrom === 'vendor' ? 'Delta · vendor' : 'Delta', Number.isFinite(t.delta) ? t.delta.toLocaleString('en-US', { maximumFractionDigits: 1 }) : '—')}
             {fact('Legs', String(legs.length || trade.legCount || '—'))}
           </div>
         </div>

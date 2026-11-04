@@ -65,6 +65,8 @@ export interface FlowPrint {
   fillEnd?: string;
   /** Per-share theta, as the vendor sends it */
   theta?: number;
+  /** Per-share delta, as the vendor sends it. Left on the print. Not replaced by readGreek. */
+  delta?: number;
   /** The contract's day so far by side (mid includes no-side) */
   daySide?: { ask: number; bid: number; mid: number };
   /** A compression package (OPRA cbmo / mctp, or the arbitrage tag) — not a bet */

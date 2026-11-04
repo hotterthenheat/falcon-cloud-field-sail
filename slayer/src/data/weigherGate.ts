@@ -11,6 +11,7 @@
 
 import { blackScholesGreeks, blackScholesPrice, decayOver, impliedVolFromPrice, thetaPerSession } from '../core/greeks';
 import { carryFor, forwardFor, getCarry, DEFAULT_R } from '../core/carry';
+import { readGreek, type ChainPair, type GreekWhy } from '../core/readGreek';
 import { nyIsoDate } from '../core/nyTime';
 import { tradingMinutes, tradingYears, TRADING_DAYS } from '../core/tradingYear';
 import { quotedVolPoint, sigmaMoveOfQuotedIv } from '../core/volClock';
@@ -159,19 +160,28 @@ export function bsOnMark(spot: number, strike: number, right: OptionRight, bid: 
 }
 
 export interface ContractRead extends BsRead {
-  /** The vol the trading clock prices, percent. */
+  /** The vol the row was solved at, percent. One IV when the parity forward is in. */
   ivTrading: number;
-  /** Where the vol came from: the vendor's print, or solved off this contract's mid. */
+  /** Where the vol came from. The row's greek is solved off the mid, not the vendor's print. */
   ivFrom: 'vendor' | 'mark';
   /** A European price for an American put in the money (EUROPEAN_NOTE). */
   europeanApprox: boolean;
+  /** Empty on a parity forward. "cash spot, dividend 0" when the forward is missing. */
+  note?: string;
+  /** Set when the greek is blank. */
+  why?: GreekWhy;
+  /** The clock and carry this greek was solved on. The payoff curve uses these so the mid is not repriced on another clock. */
+  greekT?: number;
+  greekR?: number;
+  greekQ?: number;
+  /** The spot the greek was solved at. The chain hairline uses this, not a later tape print. */
+  spot: number;
 }
 
 /**
- * One chain row's model numbers on one clock. The vol is the vendor's quoted (calendar-year) IV moved onto the trading
- * clock, else the vol solved off the mid on that clock; delta, gamma, theta (per session), vega (per quoted vol point),
- * rho, the finish, touch and profit odds are all priced off that one vol, at `now`, with the name's carry. `iv` comes
- * back in the quoted convention, so a solved row reads like a vendor row. Null with no spot, no clock, or no vol.
+ * One chain row's greek. The same solve Weigher, Paper, and the backtest mark use (core/readGreek): the option and the
+ * stock from one minute, that day's SOFR, calendar time to the cash close. A vendor delta is not a fallback. Null when
+ * the quote, the stamps, or the rate cannot support a greek — `why` is on `explainContract`.
  */
 export function readContract(input: {
   ticker: string;
@@ -182,48 +192,95 @@ export function readContract(input: {
   bid: number;
   ask: number;
   expiryIso: string;
-  /** The vendor's IV, a fraction on the calendar year. Absent, 0 or NaN: solve off the mid. */
+  /** Ignored. The IV is solved off the mid. Kept so older callers still type-check. */
   vendorIv?: number | null;
-  /** When the vendor solved that IV (the quote's stamp), epoch ms. Absent: `now`. */
+  /** When the vendor solved an IV it printed. Not the option's quote stamp. */
   ivAt?: number | null;
   now?: number;
+  /** Option quote stamp, epoch ms. Defaults to `now` when the caller has no stamp. */
+  optionAt?: number;
+  /** Stock quote stamp, epoch ms. Defaults to the option stamp. */
+  stockAt?: number;
+  stockBid?: number;
+  stockAsk?: number;
+  /** Theta's iv_error. Present and not 0 rejects the row. */
+  ivError?: number | null;
+  /** The other side of this strike. */
+  otherBid?: number;
+  otherAsk?: number;
+  otherAt?: number;
+  /** Two-sided strikes for the parity forward. */
+  chain?: readonly ChainPair[] | null;
 }): ContractRead | null {
+  const solved = explainContract(input);
+  return solved.ok ? solved.read : null;
+}
+
+/** The greek, or the reason it is blank. */
+export function explainContract(input: {
+  ticker: string;
+  root?: string;
+  spot: number;
+  strike: number;
+  right: OptionRight;
+  bid: number;
+  ask: number;
+  expiryIso: string;
+  vendorIv?: number | null;
+  ivAt?: number | null;
+  now?: number;
+  optionAt?: number;
+  stockAt?: number;
+  stockBid?: number;
+  stockAsk?: number;
+  ivError?: number | null;
+  otherBid?: number;
+  otherAsk?: number;
+  otherAt?: number;
+  chain?: readonly ChainPair[] | null;
+}): { ok: true; read: ContractRead } | { ok: false; why: GreekWhy } {
   const now = input.now ?? Date.now();
   const iso = isoOf(input.expiryIso);
   const { spot, strike, right, bid, ask } = input;
-  if (!(spot > 0) || !(strike > 0)) return null;
-  const t = tradingYears(iso, now);
-  const volPt = quotedVolPoint(iso, volInstant(iso, now, input.ivAt));
-  const carry = clockCarry(input.ticker, iso, now);
-  let vol: number | null = null;
-  let from: 'vendor' | 'mark' = 'vendor';
-  const vendor = input.vendorIv;
-  if (vendor != null && vendor > 0 && vendor < 5) {
-    vol = vendor * volPt;
-    /* the vendor solves its IV with no yield (q = 0, its forward S·e^{rT}). Priced on the expiry's own implied forward,
-       that vol would misprice the contract by the forward's gap (7.9 points of SPX in January), so it is restated: the
-       vendor's own model price, solved again on the implied carry. The price, and the theta off it, do not move. */
-    if (carry.implied && carry.q !== 0) {
-      const own = blackScholesPrice(spot, strike, t, vol, right, carry.r, 0);
-      const again = own > 0 ? solveIv(own, spot, strike, t, right, carry) : null;
-      if (again != null && again > 0) vol = again;
-    }
-  } else {
-    const mark = bid >= 0 && ask >= bid && ask > 0 ? (ask + bid) / 2 : NaN;
-    vol = mark > 0 ? solveIv(mark, spot, strike, t, right, carry) : null;
-    from = 'mark';
-  }
-  if (vol == null || !(vol > 0)) return null;
-  const read = modelAt(spot, strike, right, bid, ask, t, vol, carry, volPt);
-  if (!read) return null;
+  if (!(spot > 0) || !(strike > 0)) return { ok: false, why: 'quote' };
+  const optionAt = input.optionAt ?? now;
+  const stockAt = input.stockAt ?? optionAt;
+  const other = input.otherBid != null && input.otherAsk != null ? { bid: input.otherBid, ask: input.otherAsk, at: input.otherAt ?? optionAt } : null;
+  const solved = readGreek({
+    right,
+    strike,
+    expiry: iso,
+    at: optionAt,
+    option: { bid, ask, at: optionAt, ivError: input.ivError },
+    other,
+    stock: input.stockBid != null && input.stockAsk != null ? { bid: input.stockBid, ask: input.stockAsk, price: spot, at: stockAt } : { price: spot, at: stockAt },
+    chain: input.chain,
+  });
+  if (!solved.ok) return solved;
+  const carry = { r: solved.r, q: solved.q };
+  const model = modelAt(solved.spot, strike, right, bid, ask, solved.t, solved.iv, carry);
+  if (!model) return { ok: false, why: 'quote' };
   return {
-    ...read,
-    /* rho per point of the calendar rate: the trading-clock rate moves k times as fast */
-    rho: read.rho * carry.k,
-    iv: (vol / volPt) * 100,
-    ivTrading: vol * 100,
-    ivFrom: from,
-    europeanApprox: europeanApprox(input.root || input.ticker, right, strike, spot),
+    ok: true,
+    read: {
+      ...model,
+      delta: solved.delta,
+      gamma: solved.gamma,
+      /* A column headed "per session" is the annual theta divided by 252. */
+      theta: solved.thetaSession,
+      thetaHour: solved.thetaDay / 24,
+      /* Per 1.00 of volatility. A column headed "per point" divides by 100. */
+      vega: solved.vega,
+      iv: solved.iv * 100,
+      ivTrading: solved.iv * 100,
+      ivFrom: 'mark',
+      europeanApprox: europeanApprox(input.root || input.ticker, right, strike, solved.spot),
+      ...(solved.note ? { note: solved.note } : {}),
+      greekT: solved.t,
+      greekR: solved.r,
+      greekQ: solved.q,
+      spot: solved.spot,
+    },
   };
 }
 
@@ -240,9 +297,16 @@ export function clockCarry(ticker: string, expiryIso: string, now = Date.now()):
 
 /** A row's price as a function of spot, on the same clock and carry the row was read on (its quoted IV moved onto the
     trading clock). For the payoff curve. Undefined without a usable IV. */
-export function pricerFor(chain: Pick<DeskChain, 'ticker' | 'expiryIso'>, contract: Pick<DeskContract, 'strike' | 'right' | 'iv'>, now = Date.now()): ((s: number) => number) | undefined {
+export function pricerFor(chain: Pick<DeskChain, 'ticker' | 'expiryIso'>, contract: Pick<DeskContract, 'strike' | 'right' | 'iv' | 'greekT' | 'greekR' | 'greekQ'>, now = Date.now()): ((s: number) => number) | undefined {
   const quoted = contract.iv / 100;
   if (!(quoted > 0 && quoted < 5) || !chain.expiryIso) return undefined;
+  /* Solved by readGreek: the same calendar clock and carry. Moving that IV onto the trading clock reprices the mid. */
+  if (contract.greekT != null && contract.greekT > 0) {
+    const t = contract.greekT;
+    const r = contract.greekR ?? 0;
+    const q = contract.greekQ ?? 0;
+    return (s: number) => blackScholesPrice(s, contract.strike, t, quoted, contract.right, r, q);
+  }
   const t = tradingYears(chain.expiryIso, now);
   const vol = quoted * quotedVolPoint(chain.expiryIso, now);
   const carry = clockCarry(chain.ticker, chain.expiryIso, now);

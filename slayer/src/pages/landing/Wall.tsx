@@ -156,7 +156,7 @@ const Wall = ({ rooms, onPick }: { rooms: WallRoom[]; onPick: (id: string) => vo
           <span className="shrink-0 h-6 sm:h-7 px-2 sm:px-2.5 flex items-center gap-1.5 sm:gap-2 border-b border-borderSubtle bg-panel">
             {r.glyph && <PageGlyph name={r.glyph} size={14} className="shrink-0 max-sm:w-3 max-sm:h-3" />}
             <span className="min-w-0 truncate text-t115 sm:text-t125 font-medium">{r.name}</span>
-            {r.code && <span className="ml-auto font-mono text-t95 text-textMuted tnum">{r.code}</span>}
+            {r.code && <span className="ml-auto font-mono text-t11 text-textMuted tnum">{r.code}</span>}
           </span>
           {/* THE SCREEN — the still, and the films over it: the one on the ground once it can play, the other across the turn */}
           <span className="relative block w-full aspect-[1440/1000] overflow-hidden bg-canvas">

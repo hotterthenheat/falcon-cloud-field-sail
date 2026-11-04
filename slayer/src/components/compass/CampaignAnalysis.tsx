@@ -3,7 +3,7 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { type Timeframe } from '../../data/timeframe';
 import RichRead from '../ui/RichRead';
 import CompanyLogo from '../ui/CompanyLogo';
@@ -128,17 +128,24 @@ interface CampaignBreak {
 }
 
 /** The board card's stat — 13px figure, a whispered label. Not the Weigher's cell. */
-const Fact = ({ k, v, ink = 'text-textPrimary' }: { k: string; v: string; ink?: string }) => (
-  <li className="h-6 px-3.5 flex items-center gap-3 border-b border-borderSubtle/40 min-w-0">
-    <span className="w-32 shrink-0 font-mono text-t12 text-textMuted">{k}</span>
+const Fact = ({ k, v, ink = 'text-textPrimary', tight = false }: { k: string; v: string; ink?: string; tight?: boolean }) => (
+  tight ? (
+    <div className="min-w-0 px-2.5 py-0.5 border-b border-r border-borderSubtle/40 overflow-hidden">
+      <div className="font-mono text-t11 uppercase tracking-wider text-textMuted truncate">{k}</div>
+      <div className={`font-mono text-t12 tnum truncate ${ink}`}>{v}</div>
+    </div>
+  ) : (
+  <li className="h-6 px-3.5 flex items-center gap-3 border-b border-borderSubtle/40 min-w-0 overflow-hidden">
+    <span className="w-28 shrink-0 font-mono text-t12 text-textMuted truncate">{k}</span>
     <span className={`min-w-0 truncate font-mono text-t12 tnum ${ink}`}>{v}</span>
   </li>
+  )
 );
 
 interface BookLevel { px: number; sz: number }
 
 /** A live book. Four deep on each side, rebuilt off the quote that is running. */
-const BookLadder = ({ bid, ask, bids, asks }: { bid: number; ask: number; bids: BookLevel[]; asks: BookLevel[] }) => {
+const BookLadder = ({ bid, ask, bids, asks, compact = false }: { bid: number; ask: number; bids: BookLevel[]; asks: BookLevel[]; compact?: boolean }) => {
   const max = Math.max(1, ...bids.map(r => r.sz), ...asks.map(r => r.sz));
   const px = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const spread = ask > bid ? ask - bid : 0;
@@ -153,6 +160,7 @@ const BookLadder = ({ bid, ask, bids, asks }: { bid: number; ask: number; bids: 
   );
   return (
     <div className="border-b border-borderSubtle/60" data-order-book>
+      {!compact && (
       <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-3 px-3 py-2 border-b border-borderSubtle/40">
         <div>
           <div className="font-mono text-t9 uppercase tracking-wider text-textMuted">Bid</div>
@@ -168,6 +176,7 @@ const BookLadder = ({ bid, ask, bids, asks }: { bid: number; ask: number; bids: 
           <div className="mt-0.5 font-mono text-t18 font-semibold leading-none tnum text-textPrimary">{ask > 0 ? px(ask) : '—'}</div>
         </div>
       </div>
+      )}
       <div className="grid grid-cols-2">
         <div>{bids.map((r, i) => row(r, 'bid', i === 0))}</div>
         <div className="border-l border-borderSubtle/60">{asks.map((r, i) => row(r, 'ask', i === 0))}</div>
@@ -176,7 +185,7 @@ const BookLadder = ({ bid, ask, bids, asks }: { bid: number; ask: number; bids: 
   );
 };
 const HeadCell = ({ k, v, ink = 'text-textPrimary', sub, edge = true }: { k: string; v: string; ink?: string; sub?: string; edge?: boolean }) => (
-  <div className={`shrink-0 min-w-0 px-3 py-2 flex flex-col justify-center ${edge ? 'w-[92px] border-l border-borderSubtle/60' : ''}`}>
+  <div className={`shrink min-w-0 px-2.5 py-2 flex flex-col justify-center ${edge ? 'max-w-[5.75rem] border-l border-borderSubtle/60' : ''}`}>
     <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">{k}</span>
     <span className={`font-mono text-t13 font-semibold tnum truncate ${ink}`}>{v}</span>
     {sub ? <span className="font-mono text-t10 tnum text-textMuted">{sub}</span> : null}
@@ -192,7 +201,7 @@ const CampaignAnalysis = ({
   gradedAt,
   onOpenContract,
 }: CampaignAnalysisProps) => {
-  const { isTracked } = useTracker();
+  const { isTracked, trackSetup, untrackSetup } = useTracker();
   const record = useSignals();
   const signal = useMemo(() => signalOf(setup.id), [record, setup.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const outcome = signal?.outcome ?? null;
@@ -294,6 +303,7 @@ const CampaignAnalysis = ({
 
   const [chartTf, setChartTf] = useState<Timeframe>('5m');
   const [more, setMore] = useState(false);
+  const [trackNote, setTrackNote] = useState<string | null>(null);
 
   /* The contract's own quote, bars and prints. Nothing is filled in when a read has not landed. */
   const live = useContractLive(setup.ticker, setup.expiryDate, setup.strike, setup.right, true);
@@ -541,10 +551,23 @@ const CampaignAnalysis = ({
   const bookOi = sessionPrints.find(p => p.oi > 0)?.oi ?? (live && Number.isFinite(live.oi) && live.oi > 0 ? live.oi : 0);
   const bookVol = Math.max(barVol, sessionPrints.reduce((m, p) => Math.max(m, p.volume || 0), 0));
   const volOi = bookVol > 0 && bookOi > 0 ? bookVol / bookOi : NaN;
+  const onTrack = () => {
+    if (tracked) {
+      untrackSetup(setup.id);
+      setTrackNote(null);
+      return;
+    }
+    const ans = trackSetup(setup, scanner, { mark: midPx, stop: shownStop, ask: q.ask });
+    if (ans.ok) {
+      setTrackNote(null);
+      return;
+    }
+    setTrackNote(ans.why === 'full' ? `The Tracker holds ${ans.open} this session.` : ans.why === 'name' ? `${ans.contract} already has ${setup.ticker}.` : 'The tape is shut.');
+  };
 
   const left = leftOf(setup.id);
   return (
-    <div className="flex flex-col gap-4 flex-1 h-full min-h-0">
+    <div className="flex flex-col gap-3 flex-1 min-h-0 md:h-full md:overflow-hidden">
       {left && (
         <div className="border border-bear/30 bg-bear/[0.04] rounded-md px-4 py-3" data-setup-left={left.why}>
           <span className="block font-mono text-t12 font-bold uppercase tracking-wider text-bear">{left.why}</span>
@@ -618,168 +641,132 @@ const CampaignAnalysis = ({
             pathNote=""
           />
         </div>
-        <div className="min-w-0 min-h-0 h-full overflow-y-auto rounded-md border border-borderSubtle bg-panel flex flex-col" data-setup-card>
+        <div className="min-w-0 min-h-0 md:h-full overflow-x-hidden md:overflow-y-auto rounded-md border border-borderSubtle bg-panel flex flex-col" data-setup-card>
+          <div className="shrink-0 px-3 py-2 flex items-center gap-2 border-b border-borderSubtle/60 min-w-0">
+            <button type="button" onClick={onTrack} className="h-8 px-3 inline-flex items-center justify-center rounded-md border border-borderSubtle text-textPrimary font-mono text-t11 font-semibold uppercase tracking-wider shrink-0" data-setup-track={tracked ? 'on' : 'off'}>{tracked ? 'Tracking' : 'Track'}</button>
+            <Link to="/compass/tracker" className="h-8 px-3 inline-flex items-center justify-center rounded-md bg-ink/[0.06] text-textPrimary font-mono text-t11 font-semibold uppercase tracking-wider shrink-0" data-setup-tracker>Tracker</Link>
+            {closed ? <button type="button" onClick={() => navigate('/compass/blotter')} className="h-8 px-3 inline-flex items-center rounded-md border border-borderSubtle text-textSecondary font-mono text-t11 shrink-0" data-setup-blotter>Blotter</button> : null}
+            <span className="min-w-0 truncate font-mono text-t11 text-textMuted">{trackNote || (!ticket && setup.whyText) || (checkFail && !tracked ? checkFail : '')}</span>
+          </div>
           <div className="grid grid-cols-2 divide-x divide-borderSubtle/60 border-b border-borderSubtle/60 shrink-0">
-            <div className="px-3.5 py-1.5">
-              <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Today</span>
-              <span className={`mt-0.5 block font-mono text-t20 font-semibold leading-none tnum ${inkOf(todayPct)}`}>{signedPct(todayPct)}</span>
-              <span className={`mt-1 block font-mono text-t11 tnum ${inkOf(todayDol)}`}>{signedDol(todayDol)}</span>
-              <span className="font-mono text-t10 text-textMuted">from the open</span>
+            <div className="px-3 py-1.5 min-w-0">
+              <span className="font-mono text-t11 uppercase tracking-wider text-textMuted">Today</span>
+              <span className={`mt-0.5 block font-mono text-t16 font-semibold leading-none tnum truncate ${inkOf(todayPct)}`}>{signedPct(todayPct)}</span>
+              <span className={`mt-1 block font-mono text-t11 tnum truncate ${inkOf(todayDol)}`}>{signedDol(todayDol)} <span className="text-textMuted">from the open</span></span>
             </div>
-            <div className="px-3.5 py-1.5">
-              <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">From the call</span>
-              <span className={`mt-0.5 block font-mono text-t20 font-semibold leading-none tnum ${inkOf(captured)}`}>{signedPct(captured)}</span>
-              <span className={`mt-1 block font-mono text-t11 tnum ${inkOf(dollars)}`}>{signedDol(dollars)}</span>
-              <span className="font-mono text-t10 text-textMuted">on the bid</span>
+            <div className="px-3 py-1.5 min-w-0">
+              <span className="font-mono text-t11 uppercase tracking-wider text-textMuted">From the call</span>
+              <span className={`mt-0.5 block font-mono text-t16 font-semibold leading-none tnum truncate ${inkOf(captured)}`}>{signedPct(captured)}</span>
+              <span className={`mt-1 block font-mono text-t11 tnum truncate ${inkOf(dollars)}`}>{signedDol(dollars)} <span className="text-textMuted">on the bid</span></span>
             </div>
           </div>
           <div className="grid grid-cols-3 divide-x divide-borderSubtle/60 border-b border-borderSubtle/60 shrink-0">
             <div className="px-3 py-1.5 min-w-0">
-              <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Spread cost</span>
-              <span className="mt-0.5 block font-mono text-t13 font-semibold leading-none tnum text-bear">{spreadDol > 0 ? `−$${Math.round(spreadDol)}` : '—'}</span>
-              <span className="mt-1 block font-mono text-t10 text-textMuted">{Number.isFinite(spreadOfAsk) ? `${spreadOfAsk.toFixed(1)}% of the ask` : '—'}</span>
+              <span className="font-mono text-t11 uppercase tracking-wider text-textMuted">Spread cost</span>
+              <span className="mt-0.5 block font-mono text-t13 font-semibold leading-none tnum text-bear truncate">{spreadDol > 0 ? `−$${Math.round(spreadDol)}` : '—'}</span>
+              <span className="mt-0.5 block font-mono text-t11 text-textMuted truncate">{Number.isFinite(spreadOfMid) ? `${spreadOfMid.toFixed(1)}% of the mid` : '—'}</span>
             </div>
             <div className="px-3 py-1.5 min-w-0">
-              <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Est. decay</span>
-              <span className={`mt-0.5 block font-mono text-t13 font-semibold leading-none tnum ${inkOf(decayDol)}`}>{Number.isFinite(decayDol) ? signedDol(decayDol) : '—'}</span>
-              <span className="mt-1 block font-mono text-t10 text-textMuted">One contract, this day</span>
+              <span className="font-mono text-t11 uppercase tracking-wider text-textMuted">Est. decay</span>
+              <span className={`mt-0.5 block font-mono text-t13 font-semibold leading-none tnum truncate ${inkOf(decayDol)}`}>{Number.isFinite(decayDol) ? signedDol(decayDol) : '—'}</span>
+              <span className="mt-0.5 block font-mono text-t11 text-textMuted truncate">One contract, this day</span>
             </div>
             <div className="px-3 py-1.5 min-w-0">
-              <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">TP1 profit</span>
-              <span className={`mt-0.5 block font-mono text-t13 font-semibold leading-none tnum ${inkOf(tp1Dol)}`}>{Number.isFinite(tp1Dol) ? signedDol(tp1Dol) : '—'}</span>
-              <span className={`mt-1 block font-mono text-t10 tnum ${inkOf(tp1Net)}`}>{Number.isFinite(tp1Net) ? `${signedDol(tp1Net)} after decay` : '—'}</span>
+              <span className="font-mono text-t11 uppercase tracking-wider text-textMuted">TP1 profit</span>
+              <span className={`mt-0.5 block font-mono text-t13 font-semibold leading-none tnum truncate ${inkOf(tp1Dol)}`}>{Number.isFinite(tp1Dol) ? signedDol(tp1Dol) : '—'}</span>
+              <span className={`mt-0.5 block font-mono text-t11 tnum truncate ${inkOf(tp1Net)}`}>{Number.isFinite(tp1Net) ? `${signedDol(tp1Net)} after decay` : '—'}</span>
             </div>
           </div>
-          <p className="px-3.5 py-1.5 border-b border-borderSubtle/60 shrink-0 text-t11 leading-snug text-textSecondary">
+          <p className="px-3 py-1 border-b border-borderSubtle/60 shrink-0 text-t11 leading-snug text-textSecondary truncate">
             You pay the ask. You leave on the bid. The spread is not returned.
             {Number.isFinite(stopUnder) ? ` Stop is ${stopUnder.toFixed(0)}% under the bid.` : ''}
             {Number.isFinite(tp1Over) ? ` TP1 is ${tp1Over.toFixed(0)}% above it.` : ''}
             {` Flat at ${flatAt}.`}
           </p>
-          <div className="px-3.5 h-6 flex items-center border-b border-borderSubtle/60 paper-band shrink-0">
-            <span className="font-mono text-t9 uppercase tracking-widest text-textPrimary">The book</span>
+          <div className="grid grid-cols-3 shrink-0 border-b border-borderSubtle/60">
+            <Fact tight k="Bid" v={q.bid > 0 ? money(q.bid) : '—'} />
+            <Fact tight k="Ask" v={q.ask > 0 ? money(q.ask) : '—'} />
+            <Fact tight k="Entry" v={line > 0 ? money(line) : '—'} />
+            <Fact tight k="Stop" v={shownStop > 0 ? money(shownStop) : '—'} ink="text-bear" />
+            <Fact tight k="P&L" v={Number.isFinite(dollars) ? `${signedDol(dollars)}` : '—'} ink={inkOf(dollars)} />
+            <Fact tight k="Risk" v={Number.isFinite(riskDol) ? signedDol(riskDol) : '—'} ink="text-bear" />
+          </div>
+          <div className="grid grid-cols-3 shrink-0 border-b border-borderSubtle/60">
+            <Fact tight k="Delta" v={gWord(gDeltaN)} />
+            <Fact tight k="Theta" v={gWord(gTheta)} />
+            <Fact tight k="IV" v={greekOk ? `${ivPct.toFixed(1)}%` : '—'} />
+            <Fact tight k="Vega" v={gWord(gVega)} />
+            <Fact tight k="Gamma" v={gWord(second && Number.isFinite(second.gamma) ? second.gamma : greeks.gamma, 3)} />
+            <Fact tight k="Spread" v={Number.isFinite(spreadOfMid) ? `${spreadOfMid.toFixed(1)}%` : '—'} />
           </div>
           {q.bid > 0 && q.ask >= q.bid ? (
-            <BookLadder bid={q.bid} ask={q.ask} bids={bids} asks={asks} />
+            <BookLadder bid={q.bid} ask={q.ask} bids={bids} asks={asks} compact />
           ) : (
-            <p className="h-8 px-3.5 flex items-center border-b border-borderSubtle/40 font-mono text-t11 text-textMuted">No bid.</p>
+            <p className="h-8 px-3 flex items-center border-b border-borderSubtle/40 font-mono text-t11 text-textMuted shrink-0">No bid.</p>
           )}
-          <div className="px-3.5 py-1.5 border-b border-borderSubtle/60 shrink-0">
-            <div className="flex items-baseline justify-between gap-3 font-mono text-t11 tnum">
-              <span className="text-bull">Bought {lift.n > 0 ? lift.n.toLocaleString('en-US') : '—'}{lift.n > 0 ? ` ${money(lift.px)} avg · ${money(lift.dol, 0)}` : ''}</span>
-              <span className="text-bear text-right">Sold {hit.n > 0 ? hit.n.toLocaleString('en-US') : '—'}{hit.n > 0 ? ` ${money(hit.px)} avg · ${money(hit.dol, 0)}` : ''}</span>
-            </div>
-            {barAll > 0 ? (
-              <div className="mt-1.5" title={daySide ? "The contract's whole day, by side. The dollars above are only the prints on this page." : 'These prints, by side.'}>
-                <div className="flex h-1.5 overflow-hidden rounded-full bg-ink/[0.08]">
-                  <div className="h-full bg-bear/80" style={{ width: `${share(barBid)}%` }} />
-                  <div className="h-full bg-ink/30" style={{ width: `${share(barMid)}%` }} />
-                  <div className="h-full bg-bull/80" style={{ width: `${share(barAsk)}%` }} />
-                </div>
-                <div className="mt-1 flex justify-between gap-2 font-mono text-t10 tnum text-textMuted">
-                  <span className="text-bear">Sold {share(barBid).toFixed(0)}%</span>
-                  <span>Mid {share(barMid).toFixed(0)}%</span>
-                  <span className="text-bull">Bought {share(barAsk).toFixed(0)}%</span>
-                </div>
-              </div>
-            ) : null}
-            <p className="mt-1 font-mono text-t11 text-textPrimary">
-              {barAll > 0
-                ? `${daySide ? 'The day' : 'These prints'}: ${dayAskPct.toFixed(0)}% of the contracts paid the ask.${printsDiffer ? ` These prints: ${askPct.toFixed(0)}%.` : ''}`
-                : optionTape.ready ? 'No prints yet.' : 'Reading the tape.'}
-              {hasRange ? ` High ${money(peak)}. Low ${money(trough)}.` : ''}
-            </p>
-            {(bookVol > 0 || bookOi > 0 || Number.isFinite(otmPct)) ? (
-              <p className="mt-0.5 font-mono text-t10 tnum text-textMuted">
-                {bookVol > 0 ? `Vol ${Math.round(bookVol).toLocaleString('en-US')}` : ''}
-                {bookOi > 0 ? `${bookVol > 0 ? ' · ' : ''}OI ${Math.round(bookOi).toLocaleString('en-US')}` : ''}
-                {Number.isFinite(volOi) ? ` · Vol/OI ${volOi.toFixed(2)}` : ''}
-                {Number.isFinite(otmPct) ? ` · ${Math.abs(otmPct).toFixed(1)}% ${otmPct >= 0 ? 'OTM' : 'ITM'}` : ''}
-              </p>
-            ) : null}
-          </div>
-          <ul className="shrink-0 border-b border-borderSubtle/60">
-            {prints.map((p, i) => {
-              const pos = Number.isFinite(p.fillPos) ? p.fillPos : p.ask > p.bid ? (p.fill - p.bid) / (p.ask - p.bid) : NaN;
-              const at = Number.isFinite(pos) ? Math.max(0, Math.min(1, pos)) : NaN;
-              return (
-              <li key={`${p.id}-${i}`} className="h-6 px-3.5 flex items-center gap-3 font-mono text-t11 tnum">
-                <span className="w-12 shrink-0 text-textMuted">{p.time}</span>
-                <span className={`w-12 shrink-0 ${p.side === 'ASK' ? 'text-bull' : p.side === 'BID' ? 'text-bear' : 'text-textMuted'}`}>{p.side === 'ASK' ? 'Bought' : p.side === 'BID' ? 'Sold' : 'Mid'}</span>
-                <span className="w-8 shrink-0 text-textPrimary">{Math.round(p.size)}</span>
-                <span className="w-14 shrink-0 text-textPrimary">{money(p.fill)}</span>
-                {Number.isFinite(at) && p.ask > p.bid ? (
-                  <span className="relative w-14 shrink-0 h-3" title={`Bid ${money(p.bid)} · fill ${money(p.fill)} · ask ${money(p.ask)}`}>
-                    <span className="absolute left-0 right-0 top-1/2 h-px bg-ink/30" />
-                    <span className="absolute top-1/2 h-1.5 w-1.5 -mt-[3px] rounded-full bg-textPrimary" style={{ left: `calc(${at * 100}% - 3px)` }} />
-                  </span>
-                ) : <span className="w-14 shrink-0 text-textMuted">—</span>}
-                <span className="ml-auto text-textSecondary">{money(p.fill * p.size * 100, 0)}</span>
-              </li>
-              );
-            })}
-          </ul>
-          <div className="px-3.5 h-6 flex items-center border-b border-borderSubtle/60 paper-band shrink-0">
-            <span className="font-mono text-t9 uppercase tracking-widest text-textPrimary">The contract</span>
-          </div>
-          <ul className="shrink-0">
-            <Fact k="Delta" v={gWord(gDeltaN)} />
-            <Fact k="Gamma" v={gWord(second && Number.isFinite(second.gamma) ? second.gamma : greeks.gamma, 3)} />
-            <Fact k="Theta" v={gWord(gTheta)} />
-            <Fact k="Vega" v={gWord(gVega)} />
-            <Fact k="IV" v={greekOk ? `${ivPct.toFixed(1)}%` : '—'} />
-            <Fact k="Bid size" v={bids[0] && bids[0].sz > 0 ? Math.round(bids[0].sz).toLocaleString('en-US') : '—'} />
-            <Fact k="Ask size" v={asks[0] && asks[0].sz > 0 ? Math.round(asks[0].sz).toLocaleString('en-US') : '—'} />
-            <Fact k="Spread" v={Number.isFinite(spreadOfMid) ? `${spreadOfMid.toFixed(1)}%` : '—'} />
-            <Fact k="Volume" v={bookVol > 0 ? Math.round(bookVol).toLocaleString('en-US') : '—'} />
-            <Fact k="Open interest" v={bookOi > 0 ? Math.round(bookOi).toLocaleString('en-US') : '—'} />
-          </ul>
-          <button type="button" onClick={() => setMore(v => !v)} className="h-6 px-3.5 flex items-center border-b border-borderSubtle/60 font-mono text-t10 uppercase tracking-wider text-textMuted shrink-0" data-contract-more={more ? 'open' : 'closed'}>{more ? 'Less' : 'More+'}</button>
+          <p className="px-3 py-1.5 shrink-0 font-mono text-t11 text-textPrimary border-b border-borderSubtle/60 truncate">
+            {barAll > 0
+              ? `${daySide ? 'The day' : 'These prints'}: ${dayAskPct.toFixed(0)}% paid the ask.${printsDiffer ? ` These prints: ${askPct.toFixed(0)}%.` : ''}`
+              : optionTape.ready ? 'No prints yet.' : 'Reading the tape.'}
+            {hasRange ? ` High ${money(peak)}. Low ${money(trough)}.` : ''}
+          </p>
+          <button type="button" onClick={() => setMore(v => !v)} className="h-8 px-3 flex items-center border-b border-borderSubtle/60 font-mono text-t11 uppercase tracking-wider text-textMuted shrink-0" data-contract-more={more ? 'open' : 'closed'}>{more ? 'Less' : 'Prints, the session, and the rest'}</button>
           {more ? (
-            <ul className="shrink-0">
-              <Fact k="Rho" v={gWord(gRho)} />
-              <Fact k="From spot" v={place || '—'} />
-              <Fact k="From the wall" v={wall ? `${wall.pts.toFixed(0)} pts · ${wall.kind}` : '—'} />
-              <Fact k="Called" v={setup.seenAt ? nyClock(setup.seenAt, { zone: true }) : '—'} />
-              <Fact k="Expires" v={dayStamp(setup.expiryDate)} />
-              <Fact k="Breakeven" v={Number.isFinite(breakeven) ? money(breakeven) : '—'} />
-            </ul>
-          ) : null}
-          <div className="px-3.5 h-6 flex items-center border-b border-borderSubtle/60 paper-band shrink-0">
-            <span className="font-mono text-t9 uppercase tracking-widest text-textPrimary">If you took it</span>
-          </div>
-          <ul className="shrink-0">
-            <Fact k="Entry price" v={line > 0 ? money(line) : '—'} />
-            <Fact k="Current price" v={q.bid > 0 ? `${money(q.bid)} ${nowClock} ET` : '—'} />
-            <Fact k="P&L" v={Number.isFinite(dollars) ? `${signedDol(dollars)} ${signedPct(captured)}` : '—'} ink={inkOf(dollars)} />
-            <Fact k="Premium paid" v={Number.isFinite(paid) ? money(paid, 0) : '—'} />
-            <Fact k="Current value" v={Number.isFinite(worth) ? money(worth, 0) : '—'} />
-            <Fact k="Risk" v={Number.isFinite(riskDol) ? `${signedDol(riskDol)} Stop ${shownStop > 0 ? money(shownStop) : '—'}` : '—'} ink="text-bear" />
-          </ul>
-          <p className="px-3.5 h-6 flex items-center border-b border-borderSubtle/60 font-mono text-t10 text-textMuted shrink-0">One contract. Paper. Nothing is sent.</p>
-          <div className="px-3.5 h-7 flex items-center border-b border-borderSubtle/60 paper-band shrink-0">
-            <span className="font-mono text-t9 uppercase tracking-widest text-textPrimary">The session</span>
-          </div>
-          <ol>
-            {sessionLog.map(a => (
-              <li key={a.key} className="h-8 px-3.5 flex items-center gap-3 border-b border-borderSubtle/40 min-w-0">
-                <span className="w-14 shrink-0 font-mono text-t11 tnum text-textMuted">{a.t}</span>
-                <span className="w-14 shrink-0 font-mono text-t11 text-textMuted">{a.kind}</span>
-                <span className={`w-16 shrink-0 truncate font-mono text-t12 ${a.ink}`}>{a.word}</span>
-                <span className="min-w-0 flex-1 truncate font-mono text-t11 text-textSecondary">{a.why}</span>
-              </li>
-            ))}
-          </ol>
-          {(!ticket || (checkFail && !tracked && tapeOpen && !expired) || closed) ? (
-          <div className="shrink-0 bg-panel border-t border-borderSubtle p-2" data-setup-action={verdict.word}>
-            {!ticket ? (
-              <button type="button" disabled className="w-full h-8 inline-flex items-center justify-center rounded-md border border-borderSubtle text-textMuted font-mono text-t11 font-semibold uppercase tracking-wider cursor-not-allowed" data-setup-track="blocked">{setup.whyText || 'Not a ticket.'}</button>
-            ) : checkFail && !tracked && tapeOpen && !expired ? (
-              <button type="button" disabled className="w-full h-8 inline-flex items-center justify-center rounded-md border border-borderSubtle text-textMuted font-mono text-t11 font-semibold uppercase tracking-wider cursor-not-allowed" data-setup-track="blocked">{checkFail}</button>
-            ) : (
-              <button type="button" onClick={() => navigate('/compass/blotter')} className="w-full h-8 inline-flex items-center justify-center rounded-md border border-borderSubtle text-textPrimary font-mono text-t11 font-semibold uppercase tracking-wider" data-setup-track="closed">{closed && closed.result === 'unavailable' ? 'Unavailable · on the blotter' : closed && closed.result === 'win' ? 'Win · on the blotter' : 'Loss · on the blotter'}</button>
-            )}
-          </div>
+            <div className="min-h-0 md:flex-1 md:overflow-y-auto">
+              <div className="px-3 py-1.5 border-b border-borderSubtle/60">
+                <div className="flex items-baseline justify-between gap-3 font-mono text-t11 tnum min-w-0">
+                  <span className="text-bull truncate">Bought {lift.n > 0 ? lift.n.toLocaleString('en-US') : '—'}{lift.n > 0 ? ` ${money(lift.px)} avg` : ''}</span>
+                  <span className="text-bear text-right truncate">Sold {hit.n > 0 ? hit.n.toLocaleString('en-US') : '—'}{hit.n > 0 ? ` ${money(hit.px)} avg` : ''}</span>
+                </div>
+                {(bookVol > 0 || bookOi > 0 || Number.isFinite(otmPct)) ? (
+                  <p className="mt-0.5 font-mono text-t11 tnum text-textMuted truncate">
+                    {bookVol > 0 ? `Vol ${Math.round(bookVol).toLocaleString('en-US')}` : ''}
+                    {bookOi > 0 ? `${bookVol > 0 ? ' · ' : ''}OI ${Math.round(bookOi).toLocaleString('en-US')}` : ''}
+                    {Number.isFinite(volOi) ? ` · Vol/OI ${volOi.toFixed(2)}` : ''}
+                    {Number.isFinite(otmPct) ? ` · ${Math.abs(otmPct).toFixed(1)}% ${otmPct >= 0 ? 'OTM' : 'ITM'}` : ''}
+                  </p>
+                ) : null}
+              </div>
+              <ul className="border-b border-borderSubtle/60">
+                {prints.map((p, i) => (
+                  <li key={`${p.id}-${i}`} className="h-6 px-3 flex items-center gap-3 font-mono text-t11 tnum min-w-0 overflow-hidden">
+                    <span className="w-12 shrink-0 text-textMuted">{p.time}</span>
+                    <span className={`w-14 shrink-0 ${p.side === 'ASK' ? 'text-bull' : p.side === 'BID' ? 'text-bear' : 'text-textMuted'}`}>{p.side === 'ASK' ? 'Bought' : p.side === 'BID' ? 'Sold' : 'Mid'}</span>
+                    <span className="w-10 shrink-0 text-textPrimary">{Math.round(p.size)}</span>
+                    <span className="shrink-0 text-textPrimary">{money(p.fill)}</span>
+                    <span className="ml-auto text-textSecondary truncate">{money(p.fill * p.size * 100, 0)}</span>
+                  </li>
+                ))}
+              </ul>
+              <ul>
+                <Fact k="Bid size" v={bids[0] && bids[0].sz > 0 ? Math.round(bids[0].sz).toLocaleString('en-US') : '—'} />
+                <Fact k="Ask size" v={asks[0] && asks[0].sz > 0 ? Math.round(asks[0].sz).toLocaleString('en-US') : '—'} />
+                <Fact k="Volume" v={bookVol > 0 ? Math.round(bookVol).toLocaleString('en-US') : '—'} />
+                <Fact k="Open interest" v={bookOi > 0 ? Math.round(bookOi).toLocaleString('en-US') : '—'} />
+                <Fact k="Rho" v={gWord(gRho)} />
+                <Fact k="From spot" v={place || '—'} />
+                <Fact k="From the wall" v={wall ? `${wall.pts.toFixed(0)} pts · ${wall.kind}` : '—'} />
+                <Fact k="Called" v={setup.seenAt ? nyClock(setup.seenAt, { zone: true }) : '—'} />
+                <Fact k="Expires" v={dayStamp(setup.expiryDate)} />
+                <Fact k="Breakeven" v={Number.isFinite(breakeven) ? money(breakeven) : '—'} />
+                <Fact k="Premium paid" v={Number.isFinite(paid) ? money(paid, 0) : '—'} />
+                <Fact k="Current value" v={Number.isFinite(worth) ? money(worth, 0) : '—'} />
+              </ul>
+              <div className="px-3 h-7 flex items-center border-y border-borderSubtle/60 paper-band">
+                <span className="font-mono text-t11 uppercase tracking-widest text-textPrimary">The session</span>
+              </div>
+              <ol>
+                {sessionLog.map(a => (
+                  <li key={a.key} className="h-8 px-3 flex items-center gap-3 border-b border-borderSubtle/40 min-w-0 overflow-hidden">
+                    <span className="w-14 shrink-0 font-mono text-t11 tnum text-textMuted">{a.t}</span>
+                    <span className="w-14 shrink-0 font-mono text-t11 text-textMuted">{a.kind}</span>
+                    <span className={`w-16 shrink-0 truncate font-mono text-t12 ${a.ink}`}>{a.word}</span>
+                    <span className="min-w-0 flex-1 truncate font-mono text-t11 text-textSecondary">{a.why}</span>
+                  </li>
+                ))}
+              </ol>
+              <p className="px-3 h-7 flex items-center font-mono text-t11 text-textMuted">One contract. Paper. Nothing is sent.</p>
+            </div>
           ) : null}
         </div>
       </div>

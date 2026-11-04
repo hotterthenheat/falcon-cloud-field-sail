@@ -503,6 +503,8 @@ export interface SpreadLeg {
   contracts?: number;
   /** Per-share theta, as the vendor sends it */
   theta?: number;
+  /** Per-share delta, as the vendor sends it. Absent: the structure keeps the vendor net, labeled vendor. */
+  delta?: number;
   /** The leg's OCC symbol */
   occ?: string;
   /** The leg contract's day volume and open interest, and its IV (%) */
@@ -567,6 +569,8 @@ export interface SpreadTrade {
   maxProfit: number | 'uncapped' | null;
   iv: number;
   delta: number;
+  /** 'legs' is the sum of the legs' own deltas. 'vendor' is net_delta, shown only when a leg has none. */
+  deltaFrom?: 'legs' | 'vendor';
   /** Whose name the shape wears: 'legs' when the app named it from the legs as they were bought and sold, 'vendor' when it
       is the vendor's label (its legs not read, or not settled into one textbook shape) — said so on the row */
   namedBy?: 'legs' | 'vendor';

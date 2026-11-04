@@ -28,8 +28,9 @@ const CompassLayout = () => {
   const location = useLocation();
   const line = location.pathname.startsWith('/compass/blotter') ? BLOTTER_LINE : location.pathname.startsWith('/compass/tracker') ? TRACKER_LINE : location.pathname.startsWith('/compass/review') ? REVIEW_LINE : location.pathname.startsWith('/compass/study') ? STUDY_LINE : COMPASS_LINE;
   const onBoard = location.pathname === '/compass' || location.pathname === '/compass/';
+  const onContract = /^\/compass\/(?!tracker\/?$|blotter\/?$|review\/?$|study\/?$)[^/]+$/.test(location.pathname);
   return (
-    <div className="flex flex-col xl:flex-1 xl:min-h-0">
+    <div className={`flex flex-col min-w-0 xl:flex-1 xl:min-h-0 ${onContract ? 'md:flex-1 md:min-h-0 md:h-full md:overflow-hidden' : ''}`}>
       <header className="flex items-start gap-6 flex-wrap pb-3 border-b border-borderSubtle shrink-0" data-shell data-compass-shell>
         <div className="min-w-0 flex-1">
           <div className="h-6 flex items-center gap-2.5" data-shell-page>
@@ -43,9 +44,9 @@ const CompassLayout = () => {
         <CallPing />
         <SessionBook />
       </header>
-      <div className={onBoard ? 'mt-4 grid grid-cols-1 xl:grid-cols-12 gap-4 items-start xl:flex-1 xl:min-h-0 xl:items-stretch' : 'contents'} data-compass-row={onBoard ? '' : undefined}>
-        <div className={onBoard ? 'xl:col-span-8 min-w-0 xl:min-h-0 xl:h-full' : 'contents'}>
-          <div className={`flex flex-col min-w-0 ${onBoard ? 'xl:h-full xl:min-h-0' : 'gap-4 mt-4'}`}>
+      <div className={onBoard ? 'mt-4 grid grid-cols-1 xl:grid-cols-12 gap-4 items-start xl:flex-1 xl:min-h-0 xl:items-stretch' : onContract ? 'mt-3 flex-1 min-h-0 flex flex-col md:overflow-hidden' : 'contents'} data-compass-row={onBoard ? '' : undefined}>
+        <div className={onBoard ? 'xl:col-span-8 min-w-0 xl:min-h-0 xl:h-full' : onContract ? 'flex flex-col min-w-0 flex-1 min-h-0 md:overflow-hidden' : 'contents'}>
+          <div className={`flex flex-col min-w-0 ${onBoard ? 'xl:h-full xl:min-h-0' : onContract ? 'flex-1 min-h-0 md:overflow-hidden' : 'gap-4 mt-4'}`}>
             <KeepOutlet fallback={<CompassRouteSkeleton pathname={location.pathname} />} />
           </div>
         </div>

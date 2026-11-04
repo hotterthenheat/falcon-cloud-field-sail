@@ -261,7 +261,7 @@ const nextSession = (iso: string): string => {
 export const reactionIsoOf = (iso: string, slot: ReportSlot, timeKnown: boolean): string => (slot === 'BMO' && timeKnown ? iso : nextSession(iso));
 /** The reacting session is today and has opened (from 09:30) — the vendor's frozen figure is not shown then */
 const reactionSessionOn = (rIso: string, today: string = nyToday()): boolean => rIso === today && sessionAt(Date.now()).lastRegular === today;
-const liveMoves = new Map<string, { pct: number; live: boolean; at: number }>();
+const liveMoves = new Map<string, { pct: number; live: boolean; at: number; source: 'session versus prior close' | 'regular close' }>();
 const liveMoveAsked = new Map<string, number>();
 const LIVE_MOVE_EVERY = 60_000;
 /** Reads the move so far of reports whose reacting session is today (deduped, a minute apart a name) */
@@ -272,7 +272,7 @@ async function refreshReactions(items: readonly { ticker: string; iso?: string; 
   /* after the bell each name's regular close is a daily-row read — the known names only, at most thirty */
   const afterBell = nyMinutesNow() >= regularCloseMin(today);
   /* a move read in the session is the day's move once the bell has rung */
-  if (afterBell) for (const [k, v] of liveMoves) if (v.live) liveMoves.set(k, { ...v, live: false });
+  if (afterBell) for (const [k, v] of liveMoves) if (v.live) liveMoves.set(k, { ...v, live: false, source: 'regular close' });
   const want = items
     .filter(e => e.iso && e.reported && reactionIsoOf(e.iso, e.slot, e.timeKnown !== false) === today && now - (liveMoveAsked.get(e.ticker) ?? 0) > LIVE_MOVE_EVERY - 2000)
     /* and the smaller names on screen */
@@ -297,15 +297,16 @@ async function refreshReactions(items: readonly { ticker: string; iso?: string; 
       if (!r || r.pct == null || r.date !== today) continue;
       const pct = Number(r.pct.toFixed(2));
       const key = `${t}|${iso}`;
+      const source = inSession ? 'session versus prior close' as const : 'regular close' as const;
       const had = liveMoves.get(key);
-      if (!had || had.pct !== pct || had.live !== inSession) changed = true;
-      liveMoves.set(key, { pct, live: inSession, at: Date.now() });
+      if (!had || had.pct !== pct || had.live !== inSession || had.source !== source) changed = true;
+      liveMoves.set(key, { pct, live: inSession, at: Date.now(), source });
     }
   }
   if (changed && feed.status === 'live') {
     mapEvents(e => {
       const m = liveMoves.get(`${e.ticker}|${e.iso}`);
-      return m && (m.pct !== e.actualMovePct || m.live !== e.moveLive) ? { ...e, actualMovePct: m.pct, moveLive: m.live, reported: true } : e;
+      return m && (m.pct !== e.actualMovePct || m.live !== e.moveLive || m.source !== e.moveSource) ? { ...e, actualMovePct: m.pct, moveLive: m.live, moveSource: m.source, reported: true } : e;
     });
   }
   if (changed) emit();
@@ -350,6 +351,7 @@ function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
   const rIso = reactionIsoOf(iso, slotOf(row.report_time), timeKnownOf(row.report_time));
   const live = liveMoves.get(`${ticker}|${iso}`);
   const known = isKnownName(ticker, { sp500: !!row.is_s_p_500, marketCap: num(row.marketcap) || null });
+  const moveSource: EarningsEvent['moveSource'] = live ? live.source : reactionSessionOn(rIso, today) ? undefined : reaction != null && Number.isFinite(reaction) ? 'vendor reaction' : undefined;
   const partial = {
     ticker,
     name: row.full_name ? titleName(row.full_name) : companyName(ticker),
@@ -369,7 +371,7 @@ function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
     /* no history, no usual move: zero until the name's own past moves land, and nothing is priced against it */
     histAvgMovePct: 0,
     histCount: 0,
-    pastMoves: [] as { label: string; movePct: number }[],
+    pastMoves: [] as { label: string; movePct: number; source: 'vendor reaction' }[],
     richness: 0,
     beatRate8q: 0,
     ivRank: 0,
@@ -379,6 +381,7 @@ function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
     reactionIso: rIso,
     /* in the reacting session the move is the live close against the close before the report */
     actualMovePct: live ? live.pct : reactionSessionOn(rIso, today) ? null : reaction != null && Number.isFinite(reaction) ? Number((reaction * 100).toFixed(2)) : null,
+    moveSource,
     moveLive: live ? live.live : false,
   };
   return partial;
@@ -391,7 +394,7 @@ function historyOf(rows: SlotRow[], before: string) {
   const moved = dated.filter(r => moveOf(r.post_earnings_move_1d) != null).slice(0, 8).reverse();
   const pastMoves = moved.map(r => {
     const own = impliedPct(r.expected_move_perc);
-    return { label: qLabel((r.ending_fiscal_quarter || r.report_date || '').slice(0, 10)), movePct: moveOf(r.post_earnings_move_1d) ?? 0, impliedPct: own > 0 ? own : null };
+    return { label: qLabel((r.ending_fiscal_quarter || r.report_date || '').slice(0, 10)), movePct: moveOf(r.post_earnings_move_1d) ?? 0, impliedPct: own > 0 ? own : null, source: 'vendor reaction' as const };
   });
   /* the last eight reports with an actual and an estimate, the print itself once its EPS is in */
   const withOwn = rows.filter(r => (r.report_date || '').slice(0, 10) <= before.slice(0, 10)).sort((a, b) => (b.report_date || '').localeCompare(a.report_date || ''));
@@ -977,7 +980,7 @@ function keepEnriched(events: EarningsEvent[]): EarningsEvent[] {
     const next = withHistory(e, rows.map(r => ({ ...r, symbol: r.symbol || e.ticker })));
     const rank = ivRankOf(e.ticker);
     const move = liveMoves.get(`${e.ticker}|${e.iso}`);
-    return { ...next, ...(rank > 0 ? { ivRank: rank } : {}), ...(move ? { actualMovePct: move.pct, moveLive: move.live, reported: true } : {}) };
+    return { ...next, ...(rank > 0 ? { ivRank: rank } : {}), ...(move ? { actualMovePct: move.pct, moveLive: move.live, moveSource: move.source, reported: true } : {}) };
   });
 }
 async function pullFortnight(kept: KeptRead | null = null): Promise<void> {

@@ -46,6 +46,7 @@ export function spreadLeg(leg: Record<string, unknown>, fallbackExpiry: string, 
     dte: leg.dte != null && leg.dte !== '' && Number.isFinite(Number(leg.dte)) ? Math.max(0, Number(leg.dte)) : dteOf(expiryIso),
     fill: num(leg.price || leg.fill || leg.avg_price),
     theta: leg.theta != null ? num(leg.theta) : undefined,
+    delta: leg.delta != null && leg.delta !== '' ? num(leg.delta) : undefined,
     occ: leg.option_symbol ? String(leg.option_symbol) : undefined,
     volume: leg.volume != null ? num(leg.volume) : undefined,
     oi: leg.open_interest != null ? num(leg.open_interest) : undefined,
@@ -108,6 +109,13 @@ export function positionThetaCapped(legs: SpreadLeg[], netPremium?: number): { v
     }
   }
   return { value: v, capped };
+}
+
+/** Signed delta, the same way theta is summed: buy +, sell −, times contracts, times 100 (the leg delta is per share).
+    Null when any leg has no side or no delta — the card then shows the vendor net, labeled vendor. */
+export function positionDelta(legs: SpreadLeg[]): number | null {
+  if (!legs.length || legs.some(l => l.side == null || l.delta == null || !Number.isFinite(l.delta))) return null;
+  return legs.reduce((a, l) => a + (l.side === 'BUY' ? 1 : -1) * (l.delta as number) * (l.contracts ?? 1) * 100, 0);
 }
 
 /** Profit and loss at expiry from settled legs on ONE expiry: the payoff is piecewise straight between strikes, so its
@@ -438,7 +446,12 @@ export function settleSpreadWith(t: SpreadTrade, raw: Record<string, unknown>[] 
     unverified,
     ...(() => {
       const th = positionThetaCapped(legs, known ? t.netPremium : undefined);
-      return { theta: th ? th.value : NaN, thetaCapped: th?.capped || undefined };
+      const summed = positionDelta(legs);
+      return {
+        theta: th ? th.value : NaN,
+        thetaCapped: th?.capped || undefined,
+        ...(summed != null ? { delta: summed, deltaFrom: 'legs' as const } : { deltaFrom: 'vendor' as const }),
+      };
     })(),
     /* what the legs' side tags say: the count, and why a partial set cannot settle it */
     read: known
@@ -505,6 +518,7 @@ export function spreadOf(row: Record<string, unknown>): SpreadTrade {
     maxProfit: null,
     iv: num(row.avg_iv) * 100,
     delta: num(row.net_delta),
+    deltaFrom: 'vendor',
     theta: NaN,
     spot: num(row.underlying_price) || indexLevel(ticker),
     legs: [],

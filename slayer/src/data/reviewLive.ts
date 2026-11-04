@@ -15,8 +15,9 @@ import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { weekdayDte } from './compassParams';
 import { compassHost } from './compassHost';
 import { reviewFile } from './compassReview';
+import { noteLaterPrint } from './laterTurn';
 
-export const REVIEW_LIVE = 4;
+export const REVIEW_LIVE = 5;
 
 export type ReviewSleeve = '0' | '1-7' | '8-30';
 export type ReviewBand = 0 | 1 | 2 | 3;
@@ -46,11 +47,21 @@ export interface ReviewHit {
   /** The option session this move belongs to */
   session: WindowKind;
   sessionDay: string;
-  /** The turn. The minute the bid stopped falling, before the next minute rose. */
+  /** The turn bid. */
   baseAsk: number;
   baseAt: number;
   /** This run's own turn. */
   baseFrom: 'turn';
+  /** The turn minute's ask and sizes. Not the live quote. */
+  turnAsk: number | null;
+  turnBidSize: number | null;
+  turnAskSize: number | null;
+  /** (peak bid / turn bid) − 1. The bands read this. */
+  reviewPct: number;
+  /** The turn could have been bought: bid, ask, size, and an 8% mid. */
+  fillable: boolean;
+  /** (peak bid / turn ask) − 1. Set only when the turn was fillable. */
+  tradePct: number | null;
   bid: number | null;
   ask: number | null;
   bidSize: number | null;
@@ -92,6 +103,18 @@ export interface LiveReview {
   passAt: number;
   rows: ReviewHit[];
 }
+
+/** A turn that could be bought. The spread is on the mid. Size has to stand on both sides. */
+export function fillableQuote(bid: number, ask: number | null, bidSize: number | null, askSize: number | null): boolean {
+  if (!(bid >= 0.4) || ask == null || !(ask >= 0.5) || !(ask >= bid)) return false;
+  if (!(bidSize != null && bidSize > 0) || !(askSize != null && askSize > 0)) return false;
+  const mid = (ask + bid) / 2;
+  if (!(mid > 0)) return false;
+  return (ask - bid) / mid <= 0.08 + 1e-12;
+}
+
+const tradeOf = (peak: number, ask: number | null, fillable: boolean): number | null =>
+  fillable && ask != null && ask > 0 ? peak / ask - 1 : null;
 
 /** 60–99 is its own band. 100–300, 301–800, 801 and up. Past 5,000 stays in the top band. Under 60 is not a run. */
 export function bandOf(pct: number): ReviewBand | null {
@@ -139,6 +162,9 @@ export function emptyReview(day: string, line: string): LiveReview {
 interface MinuteBid {
   minute: number;
   bid: number;
+  ask: number | null;
+  bidSize: number | null;
+  askSize: number | null;
   at: number;
   session: WindowKind;
   sessionDay: string;
@@ -148,6 +174,9 @@ interface MinuteBid {
 interface OpenRun {
   turn: number;
   turnAt: number;
+  turnAsk: number | null;
+  turnBidSize: number | null;
+  turnAskSize: number | null;
   peak: number;
   peakAt: number;
   /** The peak the current pullback fell from. */
@@ -170,8 +199,6 @@ interface Seen {
   run: OpenRun | null;
   quote: Quote | null;
 }
-
-const runPct = (turn: number, peak: number) => ((peak - turn) / turn) * 100;
 
 function liveDraws(run: OpenRun): ReviewDraw[] {
   const out = run.draws.map(d => ({ ...d }));
@@ -196,9 +223,12 @@ function closeDraw(run: OpenRun): void {
 }
 
 function publish(rows: Map<string, ReviewHit>, index: Map<string, ReviewHit[]>, key: string, run: OpenRun, q: QuoteIn, quote: Quote | null, end: RunEnd, endBid: number | null, endAt: number | null): boolean {
-  const pct = runPct(run.turn, run.peak);
+  const reviewPct = run.peak / run.turn - 1;
+  const pct = reviewPct * 100;
   const band = bandOf(pct);
   const id = `${key}|${run.turnAt}`;
+  const fillable = fillableQuote(run.turn, run.turnAsk, run.turnBidSize, run.turnAskSize);
+  const tradePct = tradeOf(run.peak, run.turnAsk, fillable);
   if (band == null) {
     if (rows.delete(id)) {
       const list = index.get(key);
@@ -214,6 +244,9 @@ function publish(rows: Map<string, ReviewHit>, index: Map<string, ReviewHit[]>, 
     prev.band = band;
     prev.over = pct > 5000;
     prev.pct = Number(pct.toFixed(1));
+    prev.reviewPct = reviewPct;
+    prev.fillable = fillable;
+    prev.tradePct = tradePct;
     prev.peakBid = run.peak;
     prev.peakPct = Number(pct.toFixed(1));
     prev.peakAt = run.peakAt;
@@ -246,6 +279,12 @@ function publish(rows: Map<string, ReviewHit>, index: Map<string, ReviewHit[]>, 
     baseAsk: run.turn,
     baseAt: run.turnAt,
     baseFrom: 'turn',
+    turnAsk: run.turnAsk,
+    turnBidSize: run.turnBidSize,
+    turnAskSize: run.turnAskSize,
+    reviewPct,
+    fillable,
+    tradePct,
     bid: null,
     ask: null,
     bidSize: null,
@@ -328,7 +367,10 @@ export function noteBid(seenMap: Map<string, Seen>, rows: Map<string, ReviewHit>
   seen.quote = quoteOf(q);
   let opened = false;
   const minute = Math.floor(q.at / 60_000);
-  const stamp: MinuteBid = { minute, bid, at: q.at, session: q.session, sessionDay: q.sessionDay, sessionTo };
+  const stamp: MinuteBid = {
+    minute, bid, ask: q.ask, bidSize: q.bidSize, askSize: q.askSize,
+    at: q.at, session: q.session, sessionDay: q.sessionDay, sessionTo,
+  };
   if (seen.forming && minute < seen.forming.minute) return opened;
   if (!seen.forming || seen.forming.minute === minute) {
     seen.forming = stamp;
@@ -349,6 +391,9 @@ export function noteBid(seenMap: Map<string, Seen>, rows: Map<string, ReviewHit>
     seen.run = {
       turn: b.bid,
       turnAt: b.at,
+      turnAsk: b.ask,
+      turnBidSize: b.bidSize,
+      turnAskSize: b.askSize,
       peak: closed.bid,
       peakAt: closed.at,
       ddPeak: closed.bid,
@@ -621,7 +666,7 @@ type Book = { doc: LiveReview; bases: Map<string, Seen>; rows: Map<string, Revie
 
 const CANCELLED = new Set([40, 41, 42, 43, 44]);
 
-function take(data: unknown, book: (day: string) => Book, root: string, product: ReturnType<typeof productOf>, kind: 'print' | 'quote'): number {
+function take(dir: string, data: unknown, book: (day: string) => Book, root: string, product: ReturnType<typeof productOf>, kind: 'print' | 'quote'): number {
   let added = 0;
   const prints: { r: Record<string, unknown>; at: number }[] = [];
   for (const r of flatRows(data)) {
@@ -670,6 +715,24 @@ function take(data: unknown, book: (day: string) => Book, root: string, product:
       const bid = px(r.bid);
       if (bid == null || !sess.window) continue;
       if (noteBid(b.bases, b.rows, b.index, fields, bid, sess.window.to)) added += 1;
+      try {
+        noteLaterPrint(dir, {
+          root,
+          expiry: exp,
+          strike,
+          right,
+          session: sess.window.kind,
+          sessionDay: sess.tradingDay,
+          at,
+          bid,
+          ask: fields.ask,
+          bidSize: fields.bidSize,
+          askSize: fields.askSize,
+          under: fields.under,
+        });
+      } catch {
+        /* the log is not the scan */
+      }
     } else noteQuote(b.bases, b.index, fields);
     b.dirty = true;
   }
@@ -756,7 +819,7 @@ async function loop(dir: string, log: (line: string) => void, gen: number): Prom
               failed += 1;
               continue;
             }
-            if (got.data) added += take(got.data, book, root, product, 'print');
+            if (got.data) added += take(dir, got.data, book, root, product, 'print');
           } catch {
             error = 'terminal_down';
             break;
@@ -798,7 +861,7 @@ async function loop(dir: string, log: (line: string) => void, gen: number): Prom
     if (wantGreeks) {
       try {
         const got = await compassHost().theta(pathQ, true);
-        if (!got.error && got.data) take(got.data, book, root, product, 'quote');
+        if (!got.error && got.data) take(dir, got.data, book, root, product, 'quote');
       } catch {
         /* the prints still stand; the greeks stay blank */
       }

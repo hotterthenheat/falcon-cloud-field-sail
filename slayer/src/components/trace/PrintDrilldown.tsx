@@ -647,6 +647,10 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
                 valueCls={cost.spreadPct == null ? 'text-textMuted' : cost.spreadPct > 10 ? 'text-warn' : 'text-textPrimary'}
               />
               <Fact
+                label={<span title="Flow">Delta · Flow</span>}
+                value={print.delta != null && Number.isFinite(print.delta) ? print.delta.toFixed(3) : '—'}
+              />
+              <Fact
                 label="A day of theta"
                 value={theta.title ? <span title={theta.title}>{theta.text}</span> : theta.text}
                 valueCls={cost.thetaPct == null ? 'text-textMuted' : theta.warn ? 'text-warn' : 'text-textPrimary'}

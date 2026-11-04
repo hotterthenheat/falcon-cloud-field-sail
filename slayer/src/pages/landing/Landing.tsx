@@ -371,7 +371,7 @@ const Plan = ({ planKey, period, onChoose, onPick }: { planKey: PlanKey; period:
     <div className={`flex flex-col lg:grid lg:row-span-7 lg:grid-rows-subgrid py-7 lg:py-8 lg:px-8 first:lg:pl-0 ${featured ? 'max-lg:-mx-4 max-lg:px-4 sm:max-lg:-mx-6 sm:max-lg:px-6 bg-ink/[0.025]' : ''}`} data-landing-plan={planKey}>
       <div className="flex items-center gap-2.5">
         <h3 className="text-t19 font-medium tracking-tight">{plan.name}</h3>
-        {featured && <span className="h-5 px-2 inline-flex items-center rounded-full bg-textPrimary text-canvas font-mono text-t9 font-bold uppercase tracking-widest">All of it</span>}
+        {featured && <span className="h-5 px-2 inline-flex items-center rounded-full bg-textPrimary text-canvas font-mono text-t11 font-bold uppercase tracking-widest">All of it</span>}
       </div>
       <p className="mt-2 max-w-[34ch] text-t14 leading-snug text-textSecondary" data-plan-for>
         {PLAN_FOR[planKey]}
@@ -421,7 +421,7 @@ const Plan = ({ planKey, period, onChoose, onPick }: { planKey: PlanKey; period:
                 {/* an ORANGE CAPSULE: a solid pill, the Map's capsules' shape, in the house's orange — `warn`
                     follows the ground, so it is a visible orange on paper too; the dark word on it is the same on
                     both (4.6:1 on paper, 9:1 on black) */}
-                {soon && <span className="self-center h-[20px] px-2 inline-flex items-center rounded-full bg-warn font-mono text-t9 font-bold uppercase tracking-[0.14em] text-onfoil">Soon</span>}
+                {soon && <span className="self-center h-[20px] px-2 inline-flex items-center rounded-full bg-warn font-mono text-t11 font-bold uppercase tracking-[0.14em] text-onfoil">Soon</span>}
               </li>
             );
           })}
@@ -440,7 +440,7 @@ const PlansSideBySide = () => {
   /* a reader that hears the table hears the words */
   const mark = (h: Holds) =>
     h === 'soon' ? (
-      <span className="h-[20px] px-2 inline-flex items-center rounded-full bg-warn font-mono text-t9 font-bold uppercase tracking-[0.14em] text-onfoil">Soon</span>
+      <span className="h-[20px] px-2 inline-flex items-center rounded-full bg-warn font-mono text-t11 font-bold uppercase tracking-[0.14em] text-onfoil">Soon</span>
     ) : h ? (
       <>
         <Check className="w-4 h-4 text-silver" strokeWidth={2.25} aria-hidden="true" />

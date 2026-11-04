@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { setCompassView } from '../../data/compassView';
 import { ArrowLeft, LayoutGrid } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
 import { suggest } from '../notFound/suggest';
@@ -125,10 +124,6 @@ function setupFromTicket(t: TailTicket): Setup {
 
 const SetupPage = () => {
   const { id = '' } = useParams();
-  /* landing here makes this THE contract the reader is inside — the sidebar keeps it until another page like this one is landed on */
-  useEffect(() => {
-    if (id) setCompassView({ chosenId: id });
-  }, [id]);
   const location = useLocation();
   const navigate = useNavigate();
   const { activeTicker, changeTicker } = useTicker();
@@ -225,7 +220,7 @@ const SetupPage = () => {
       return (
         <>
           {back}
-          <div key={id} className="animate-soft-in-slow flex flex-col h-[calc(100dvh-128px)] min-h-0" data-setup-page={id}>
+          <div key={id} className="animate-soft-in-slow flex flex-col min-h-0 md:flex-1 md:min-h-0 md:overflow-hidden" data-setup-page={id}>
             <CampaignAnalysis
               setup={built}
               revision={built.quotedAt ?? 0}
@@ -247,7 +242,7 @@ const SetupPage = () => {
       return (
         <>
           {back}
-          <div key={id} className="animate-soft-in-slow flex flex-col h-[calc(100dvh-128px)] min-h-0" data-setup-page={id} data-setup-record={fired.key}>
+      <div key={id} className="animate-soft-in-slow flex flex-col min-h-0 md:flex-1 md:min-h-0 md:overflow-hidden" data-setup-page={id} data-setup-record={fired.key}>
             <CampaignAnalysis
               setup={fromRecord}
               revision={fired.quoteAt || fired.firedAt}
@@ -281,7 +276,7 @@ const SetupPage = () => {
   return (
     <>
       {back}
-      <div key={id} className="animate-soft-in-slow flex flex-col h-[calc(100dvh-128px)] min-h-0" data-setup-page={id}>
+      <div key={id} className="animate-soft-in-slow flex flex-col min-h-0 md:flex-1 md:min-h-0 md:overflow-hidden" data-setup-page={id}>
         <CampaignAnalysis
           setup={setup}
           revision={setup.quotedAt ?? 0}

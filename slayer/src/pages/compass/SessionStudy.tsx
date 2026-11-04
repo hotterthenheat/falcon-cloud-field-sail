@@ -54,7 +54,8 @@ const takenLine = (s: Signal) => {
   const o = s.outcome;
   if (!o?.fill) return o?.status === 'unavailable' ? 'No quote a minute later. Never filled.' : 'Not filled yet.';
   if (o.status !== 'closed' || !o.exit) return 'Still open.';
-  return o.peak > o.exit.px ? `Left on ${o.exit.why}. The bid later reached ${o.peak.toFixed(2)}.` : `Left on ${o.exit.why}.`;
+  const measured = (s.book === 'A' || s.book === 'B') && o.peak > 0;
+  return measured ? `Left on ${o.exit.why}. While it was open the bid reached ${o.peak.toFixed(2)}.` : `Left on ${o.exit.why}.`;
 };
 
 const whyTaken = (s: Signal): string => {
@@ -73,10 +74,12 @@ const leftOnTable = (s: Signal): string => {
   if (!o?.fill || o.status !== 'closed' || !o.exit) return o?.status === 'unavailable' ? 'No quote a minute later. Never filled.' : 'Still open. No hindsight until it closes.';
   const fill = o.fill.ask;
   const peak = o.peak;
-  if (!(fill > 0) || !(peak > fill)) return `Left on ${o.exit.why}. The exit was the best bid read.`;
+  const measured = (s.book === 'A' || s.book === 'B') && peak > 0;
+  if (!measured) return `Left on ${o.exit.why}.`;
+  if (!(fill > 0) || !(peak > fill)) return `Left on ${o.exit.why}. While it was open the bid reached ${peak.toFixed(2)}.`;
   const held = ((peak - fill) / fill) * 100;
   const got = ((o.exit.px - fill) / fill) * 100;
-  return `Left on ${o.exit.why}. Hindsight only: the bid later reached ${peak.toFixed(2)}, ${held >= 0 ? '+' : '−'}${Math.abs(held).toFixed(1)}% instead of ${got >= 0 ? '+' : '−'}${Math.abs(got).toFixed(1)}%. The live rule is not changed.`;
+  return `Left on ${o.exit.why}. While it was open the bid reached ${peak.toFixed(2)}, ${held >= 0 ? '+' : '−'}${Math.abs(held).toFixed(1)}% instead of ${got >= 0 ? '+' : '−'}${Math.abs(got).toFixed(1)}%. The live rule is not changed.`;
 };
 
 const catchLine = (gate: string): string => {
@@ -86,7 +89,7 @@ const catchLine = (gate: string): string => {
   if (gate === 'theta burns the stop before the flat') return 'Decay would have eaten the stop before the flat. The rule stood aside. Not applied.';
   if (gate === 'side or drive rule') return 'The side or the drive rule said no. Catching it means dropping that rule. Not applied.';
   if (gate === 'bid at or under $0.15') return 'The bid was at or under $0.15. The book does not buy that. Not applied.';
-  if (gate === 'spread over 8%') return 'The spread was over 8% of the ask. Catching it means paying a wider market. Not applied.';
+  if (gate === 'spread over 8%') return 'The spread was over 8% of the mid. Catching it means paying a wider market. Not applied.';
   if (gate.startsWith('not scored')) return `${gate}. The scan never had a row to fire from. Not applied.`;
   if (gate === 'called' || gate === 'would have called (late mark)') return 'This one was a call.';
   return `The first gate was “${gate}”. That is the rule that said no. Not applied.`;

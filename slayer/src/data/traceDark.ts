@@ -29,10 +29,10 @@ export function intentOf(cents: number, sized: boolean): DarkPoolIntent {
 /** Where a dark print sat against the quote. Two decimals of percent is 0.00%
     on a fill a few cents through a tight spread, which is most of this tape. */
 export function quotePlace(pct: number, price: number): { text: string; cents: number } {
-  const cents = (pct / 100) * price * 100;
-  /* a quarter cent, not a half: on a one-cent spread the bid is half a cent under the mid */
+  const scale = 1 + pct / 100;
+  const mid = scale > 0 && price > 0 ? price / scale : NaN;
+  const cents = Number.isFinite(mid) ? (price - mid) * 100 : NaN;
   if (!Number.isFinite(cents) || Math.abs(cents) < 0.25) return { text: 'at the mid', cents: 0 };
-  /* one unit, cents */
   const abs = Math.abs(cents);
   const n = abs >= 10 ? Math.round(abs).toLocaleString('en-US') : (Math.round(abs * 10) / 10).toFixed(1).replace(/\.0$/, '');
   return { text: `${cents > 0 ? '+' : '−'}${n}¢`, cents };
@@ -93,7 +93,8 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
   const ownWords = [...new Set((own.some(c => AUCTION_CODES.has(c) && c !== 'cross_trade') ? own.filter(c => c !== 'cross_trade') : own).map(c => SPECIAL_WORD[c]))];
   const special = ownWords.length ? ownWords.join(', ') : null;
   const auction = own.some(c => AUCTION_CODES.has(c));
-  const sized = notional >= DARK_SIZED_USD;
+  const ticker = String(row.ticker || '').toUpperCase();
+  const sized = notional >= darkSizedFloor(advUsdOf(ticker));
   /* Stocks: regular is 09:30–16:00. A print in that window is regular even when the vendor sets an extended-hours
      code on a late regular print — it is not after hours. Before the open and from 16:00 it is extended, flag or not. */
   const when = clock(row.executed_at);
@@ -135,7 +136,7 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
     epochMs: when.ms || undefined,
     dateIso: when.ms ? nyDateOf(when.ms) : undefined,
     auction: auction || undefined,
-    ticker: String(row.ticker || '').toUpperCase(),
+    ticker,
     price,
     size,
     notional,

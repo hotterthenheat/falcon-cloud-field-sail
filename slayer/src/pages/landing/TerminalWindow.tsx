@@ -277,7 +277,7 @@ const TerminalWindow = ({ path, theme, desk, natural = false, film, boot, bootSw
         
         <SlayerMark size={16} bare label="" />
         <Prompt path={drawn} />
-        <span className="ml-auto text-t95 uppercase tracking-[0.16em] text-textMuted whitespace-nowrap" title="A recording of the page, played back. The numbers in it are not live.">recording · not live</span>
+        <span className="ml-auto text-t11 uppercase tracking-[0.16em] text-textMuted whitespace-nowrap" title="A recording of the page, played back. The numbers in it are not live.">recording · not live</span>
       </div>
 
       {/* THE SCREEN */}

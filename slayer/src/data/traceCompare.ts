@@ -106,8 +106,8 @@ export function buildTraceSide(
   const netCall = byCut ? byCut.calls : onTenor.reduce((a, e) => a + e.callNet, 0);
   const netPut = byCut ? byCut.puts : onTenor.reduce((a, e) => a + e.putNet, 0);
   const netCovers: NetCovers = byCut
-    ? { since: '09:30', until: 'the last print', source: "the book's contracts", leaves: [`strikes not ${mny.toUpperCase()}`, `contracts past the book's ${rows.length}`], approx: true }
-    : { since: '09:30', until: 'the last print', source: 'flow by expiry', leaves: tenor === 'all' ? [] : ['expiries off the clock'] };
+    ? { since: '09:30', until: 'the last print', source: 'Estimated from the side mix', leaves: [`strikes not ${mny.toUpperCase()}`, `contracts past the book's ${rows.length}`], approx: true }
+    : { since: '09:30', until: 'the last print', source: 'Flow per expiry, ask side minus bid side', leaves: tenor === 'all' ? [] : ['expiries off the clock'] };
   /* the rows' own session date, not the wall's: before the open the data is still the previous session's */
   const rowsDay = expiries.find(e => e.date)?.date ?? todayIso;
   const today = expiries.find(e => e.expiry === rowsDay) ?? null;

@@ -75,7 +75,7 @@ const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean })
     () =>
       e.pastMoves.map(q => {
         const moved = (e.price * Math.abs(q.movePct)) / 100;
-        return { label: q.label, movePct: q.movePct, moved, pl: moved - cost };
+        return { label: q.label, movePct: q.movePct, moved, pl: moved - cost, source: q.source ?? 'vendor reaction' };
       }),
     [e.pastMoves, e.price, cost]
   );
@@ -110,7 +110,7 @@ const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean })
         {reported && e.actualMovePct != null && (
           <span className="text-t11 text-textSecondary" data-replay-moved>
             · the stock {e.moveLive ? 'is moving' : 'moved'} <span className={e.actualMovePct >= 0 ? 'text-bull' : 'text-bear'}>{e.actualMovePct >= 0 ? '+' : '−'}{Math.abs(e.actualMovePct).toFixed(2)}%</span>
-            {e.moveLive ? ' so far' : ''} — {Math.abs(e.actualMovePct) > e.impliedMovePct ? 'more than priced' : 'inside the priced move'}
+            {e.moveLive ? ' so far' : ''}{e.moveSource ? ` · ${e.moveSource}` : ''} — {Math.abs(e.actualMovePct) > e.impliedMovePct ? 'more than priced' : 'inside the priced move'}
           </span>
         )}
       </div>
@@ -127,7 +127,7 @@ const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean })
                 onMouseEnter={ev => setHover({ r, x: ev.clientX, y: ev.clientY })}
                 onMouseMove={ev => setHover({ r, x: ev.clientX, y: ev.clientY })}
                 className="relative flex-1 min-w-0 rounded hover:bg-ink/[0.04] transition-colors cursor-default"
-                aria-label={`${r.label}: moved ${r.movePct >= 0 ? '+' : r.movePct < 0 ? '−' : ''}${Math.abs(r.movePct).toFixed(1)}%, ${r.pl >= 0 ? 'covered' : 'fell short of'} ${priceWord} by $${Math.abs(r.pl).toFixed(2)} per share`}
+                aria-label={`${r.label}: moved ${r.movePct >= 0 ? '+' : r.movePct < 0 ? '−' : ''}${Math.abs(r.movePct).toFixed(1)}% (${r.source}), ${r.pl >= 0 ? 'covered' : 'fell short of'} ${priceWord} by $${Math.abs(r.pl).toFixed(2)} per share`}
                 data-replay-bar={r.label}
               >
                 <span className={`absolute left-1/2 -translate-x-1/2 w-[22px] rounded-[2px] ${r.pl >= 0 ? 'bg-bull/90' : 'bg-bear/80'}`} style={r.pl >= 0 ? { bottom: '50%', height: Math.max(3, (Math.abs(r.pl) / maxAbs) * H) } : { top: '50%', height: Math.max(3, (Math.abs(r.pl) / maxAbs) * H) }} />
@@ -507,7 +507,7 @@ const EarningsName = () => {
                 {reported ? (
                   e.actualMovePct != null ? (
                     <span className="text-textMuted" data-earnings-moved>
-                      {e.moveLive ? 'the stock is moving' : 'the stock moved'} <span className={e.actualMovePct >= 0 ? 'text-bull' : 'text-bear'}>{e.actualMovePct >= 0 ? '+' : '−'}{Math.abs(e.actualMovePct).toFixed(2)}%</span> {e.moveLive ? 'so far' : ''} {e.slot === 'BMO' && e.timeKnown !== false ? 'on the report day' : 'the session after'}
+                      {e.moveLive ? 'the stock is moving' : 'the stock moved'} <span className={e.actualMovePct >= 0 ? 'text-bull' : 'text-bear'}>{e.actualMovePct >= 0 ? '+' : '−'}{Math.abs(e.actualMovePct).toFixed(2)}%</span> {e.moveLive ? 'so far' : ''}{e.moveSource ? ` · ${e.moveSource}` : ''} {e.slot === 'BMO' && e.timeKnown !== false ? 'on the report day' : 'the session after'}
                     </span>
                   ) : (
                     <span className="text-textMuted">{e.reactionIso && e.reactionIso === nyIsoDate() ? 'the reacting session is today — reading its move' : e.slot === 'BMO' ? "the move is the report day's session — the feed has not posted it yet" : "the move is the next session's — it is not made yet"}</span>

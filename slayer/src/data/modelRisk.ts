@@ -69,6 +69,8 @@ export interface TailTicket {
   exitAt: number | null;
   /** 'back' is the first later close back through the line. 'held' is 30 minutes with no cross. 'flat' is an old ticket closed at 15:59. */
   why: 'back' | 'held' | 'flat' | null;
+  /** Bids already read while the trade was open, entry minute through the exit minute. */
+  bids?: { minute: number; bid: number }[];
 }
 
 export interface TailPublic {

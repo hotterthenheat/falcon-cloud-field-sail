@@ -196,15 +196,28 @@ export function recordPicks(now = Date.now()): Signal[] {
 
 const tailKey = (t: TailTicket) => `${t.day}|tail|${t.ticker}|${t.book}|${t.right === 'C' ? 'C' : 'P'}`;
 
+function tailPeak(t: TailTicket): number {
+  const hi = t.exitMinute;
+  let peak = t.entryBid > 0 ? t.entryBid : 0;
+  for (const b of t.bids ?? []) {
+    if (!(b.bid > 0) || b.minute < t.entryMinute) continue;
+    if (hi != null && b.minute > hi) continue;
+    if (b.bid > peak) peak = b.bid;
+  }
+  if (t.exitBid != null && t.exitBid > peak) peak = t.exitBid;
+  return peak;
+}
+
 function tailOutcome(t: TailTicket): Outcome {
   const fill = { at: t.entryAt, bid: t.entryBid, ask: t.entryAsk };
+  const peak = tailPeak(t);
   if (t.why && t.exitBid != null && t.exitAt) {
     const ret = Number(((t.exitBid / t.entryAsk - 1) * 100).toFixed(1));
     return {
       status: 'closed',
       fill,
       exit: { at: t.exitAt, px: t.exitBid, why: t.why === 'back' ? (t.right === 'C' ? 'Back through the range low' : 'Back through the range high') : t.why === 'held' ? 'The break held' : 'Flat at 15:59' },
-      peak: Math.max(t.entryBid, t.exitBid),
+      peak,
       stop: 0,
       last: { t: t.exitAt, bid: t.exitBid, ask: t.exitBid },
       ret,
@@ -212,7 +225,7 @@ function tailOutcome(t: TailTicket): Outcome {
       heldMin: Math.max(0, Math.round((t.exitAt - t.entryAt) / 60_000)),
     };
   }
-  return { status: 'open', fill, exit: null, peak: t.entryBid, stop: 0, last: { t: t.entryAt, bid: t.entryBid, ask: t.entryAsk }, ret: null, pnl: null, heldMin: null };
+  return { status: 'open', fill, exit: null, peak, stop: 0, last: { t: t.entryAt, bid: t.entryBid, ask: t.entryAsk }, ret: null, pnl: null, heldMin: null };
 }
 
 function tailSignal(t: TailTicket): Signal {
@@ -262,6 +275,15 @@ export function closeTail(t: TailTicket): void {
     return;
   }
   rows = rows.map(r => (r.key === key ? { ...r, outcome: tailOutcome(t), pathAt: t.exitAt ?? Date.now() } : r));
+  save();
+  emit();
+}
+
+/** An open Model Risk ticket, remarked from the bids read so far. A closed ticket stays closed. */
+export function touchTail(t: TailTicket): void {
+  const key = tailKey(t);
+  if (!rows.some(r => r.key === key && r.outcome?.status !== 'closed')) return;
+  rows = rows.map(r => (r.key === key ? { ...r, outcome: tailOutcome(t), pathAt: Date.now() } : r));
   save();
   emit();
 }

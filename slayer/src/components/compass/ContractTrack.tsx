@@ -203,8 +203,8 @@ const ContractTrack = ({
         traded={traded}
         onBar={setBar}
       />
-      <div ref={chromeRef} className="absolute top-0 inset-x-0 z-20" data-chart-chrome>
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 pl-2 pr-3 py-1.5 select-none">
+      <div ref={chromeRef} className="absolute top-0 inset-x-0 z-20 pointer-events-none" data-chart-chrome>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 min-w-0 pl-2 pr-3 py-1.5 select-none pointer-events-auto">
           {loadPickRows && onOpenContract ? (
             <ContractPick
               label={`${setup.contract} · ${setup.expiry}`}
@@ -218,37 +218,41 @@ const ContractTrack = ({
             </span>
           )}
           <TimeframeStrip value={timeframe} onChange={setTimeframe} only={['5m', '15m', '30m', '1h', '1D', '1W', '1m']} />
-          <span className="inline-flex items-center h-7 rounded-full bg-ink/[0.06] p-0.5" data-chart-scale={scale}>
-            <button type="button" onClick={() => setScale('price')} className={`h-6 px-2 rounded-full font-mono text-t10 ${scale === 'price' ? 'bg-ink/10 text-textPrimary' : 'text-textMuted'}`}>Price</button>
-            <button type="button" onClick={() => setScale('levels')} className={`h-6 px-2 rounded-full font-mono text-t10 ${scale === 'levels' ? 'bg-ink/10 text-textPrimary' : 'text-textMuted'}`}>Levels</button>
+          <span className="inline-flex items-center h-7 rounded-full bg-ink/[0.06] p-0.5 shrink-0" data-chart-scale={scale}>
+            <button type="button" onClick={() => setScale('price')} title="Price lets the candles set the scale." className={`h-6 px-2 rounded-full font-mono text-t11 ${scale === 'price' ? 'bg-ink/10 text-textPrimary' : 'text-textMuted'}`}>Price</button>
+            <button type="button" onClick={() => setScale('levels')} title="Levels keeps the entry, the stop, and the three targets on the scale." className={`h-6 px-2 rounded-full font-mono text-t11 ${scale === 'levels' ? 'bg-ink/10 text-textPrimary' : 'text-textMuted'}`}>Levels</button>
           </span>
         </div>
-        <div className="px-3 py-1 flex flex-wrap items-center gap-x-3 gap-y-0.5" data-readout-line>
+        <p className="px-3 pb-1 font-mono text-t11 text-textSecondary truncate pointer-events-none" data-chart-scale-why>
+          {scale === 'price' ? 'Price lets the candles set the scale.' : 'Levels keeps the entry, the stop, and the three targets on the scale.'}
+        </p>
+        <div className="px-3 py-1 flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0" data-readout-line>
           <ReadoutCell k="O" v={shown ? px2(shown.open) : '—'} />
           <ReadoutCell k="H" v={shown ? px2(shown.high) : '—'} />
           <ReadoutCell k="L" v={shown ? px2(shown.low) : '—'} />
           <ReadoutCell k={markWord} v={px2(markPx)} />
-          <span className="ml-auto flex items-center gap-3">
+          <span className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1 min-w-0">
             <ReadoutCell k="Day" v={series ? `${px2(series.low)}–${px2(series.high)}` : '—'} />
             <ReadoutCell k="Vol" v={volume > 0 ? count(volume) : '—'} />
             <ReadoutCell k={spotName} v={spot > 0 ? px2(spot) : '—'} />
           </span>
         </div>
-        <div className="px-3 pb-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span className="inline-flex items-baseline gap-1.5" data-today-pct={Number.isFinite(today) ? today.toFixed(1) : ''}>
+        <div className="px-3 pb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+          <span className="inline-flex items-baseline gap-1.5 shrink-0" data-today-pct={Number.isFinite(today) ? today.toFixed(1) : ''}>
             <span className={`font-mono text-t16 font-semibold tnum leading-none ${!Number.isFinite(today) ? 'text-textMuted' : today >= 0 ? 'text-bull' : 'text-bear'}`}>{todayWord}</span>
-            <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Today</span>
+            <span className="font-mono text-t11 uppercase tracking-wider text-textMuted">Today</span>
           </span>
-          <span className="inline-flex items-baseline gap-1.5" data-live-pct={Number.isFinite(up) ? up.toFixed(1) : ''}>
+          <span className="inline-flex items-baseline gap-1.5 shrink-0" data-live-pct={Number.isFinite(up) ? up.toFixed(1) : ''}>
             <span className={`font-mono text-t16 font-semibold tnum leading-none ${!Number.isFinite(up) ? 'text-textMuted' : up >= 0 ? 'text-bull' : 'text-bear'}`}>{upWord}</span>
-            <span className="font-mono text-t9 uppercase tracking-wider text-textMuted">Call</span>
+            <span className="font-mono text-t11 uppercase tracking-wider text-textMuted">Call</span>
           </span>
-          <span className="h-3 w-px bg-borderSubtle" />
-          <LevelCell k="Entry" v={book.entryPremium > 0 ? px2(book.entryPremium) : '—'} pip="bg-warn" />
-          <LevelCell k="Stop" v={stopPx > 0 ? px2(stopPx) : '—'} pip="bg-bear" />
-          <LevelCell k="TP1" v={sellAt > 0 ? px2(sellAt) : '—'} pip="bg-[#30D158]" />
-          <LevelCell k="TP2" v={tp2 > 0 ? px2(tp2) : '—'} pip="bg-[#64D2FF]" />
-          <LevelCell k="TP3" v={tp3 > 0 ? px2(tp3) : '—'} pip="bg-[#BF5AF2]" />
+          <span className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1 min-w-0">
+            <LevelCell k="Entry" v={book.entryPremium > 0 ? px2(book.entryPremium) : '—'} pip="bg-warn" />
+            <LevelCell k="Stop" v={stopPx > 0 ? px2(stopPx) : '—'} pip="bg-bear" />
+            <LevelCell k="TP1" v={sellAt > 0 ? px2(sellAt) : '—'} pip="bg-[#30D158]" />
+            <LevelCell k="TP2" v={tp2 > 0 ? px2(tp2) : '—'} pip="bg-[#64D2FF]" />
+            <LevelCell k="TP3" v={tp3 > 0 ? px2(tp3) : '—'} pip="bg-[#BF5AF2]" />
+          </span>
         </div>
       </div>
     </div>

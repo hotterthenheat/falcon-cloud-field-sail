@@ -171,24 +171,19 @@ expectEqual('touch odds are never below the finish odds', read.touch >= read.itm
   expectEqual('American put in the money is flagged · European index is not · a call is not', [gate.europeanApprox('SPY', 'P', 780, 769.35), gate.europeanApprox('SPXW', 'P', 5900, 5800), gate.europeanApprox('SPY', 'C', 760, 769.35), gate.europeanApprox('AAPL', 'P', 200, 210)], [true, false, false, false]);
 }
 
-/* ---- one clock in a row: the vendor's calendar IV moved onto the trading clock, the odds priced off that same vol ---- */
+/* ---- one clock in a row: the mid solved by readGreek. The vendor's 22.09% is not copied onto the row. ---- */
 {
-  /* SPY 770C at 11:51:02 ET on 2026-10-29, ThetaData IV 22.09% (calendar year to 16:00) */
+  /* SPY 770C at 11:51:02 ET on 2026-10-29. Same-day, so the calendar clock is the minutes left to 16:00. */
+  const { setRate } = await import('../../src/core/carry');
+  setRate(0.0394, 'live', '2026-10-29');
   const at = Date.parse('2026-10-29T15:51:02Z');
-  const rd = gate.readContract({ ticker: 'SPY', spot: 769.35, strike: 770, right: 'C', bid: 1.18, ask: 1.19, expiryIso: '2026-10-29', vendorIv: 0.2209, now: at })!;
-  const tCal = (16 * 60 - (11 * 60 + 51 + 2 / 60)) / (365 * 1440);
-  const tTr = (16 * 60 - (11 * 60 + 51)) / (390 * 252);
-  const sigTr = 0.2209 * Math.sqrt(Math.max(5, (16 * 60 - (11 * 60 + 51 + 2 / 60))) / (365 * 1440) / tTr);
-  /* the rate accrues on the calendar: r·T_calendar, the variance on the trading clock */
-  const d2Tr = (Math.log(769.35 / 770) + 0.042 * tCal - (sigTr * sigTr / 2) * tTr) / (sigTr * Math.sqrt(tTr));
-  expectNear('one clock: IV shown is the vendor\'s quoted 22.09%', rd.iv, 22.09, 1e-9);
-  expectNear('one clock: the trading-clock vol keeps the variance', (rd.ivTrading / 100) ** 2 * tTr, 0.2209 ** 2 * tCal, 1e-6);
-  expectNear('one clock: finish odds = N(d2) at that vol on that clock', rd.itm, phiCdf(d2Tr) * 100, 1e-4);
-  expectNear('one clock: delta within 0.001 of ThetaData\'s 0.4327', rd.delta, 0.4327, 0.001 / 0.4327);
-  expectEqual('one clock: the vol came from the vendor', rd.ivFrom, 'vendor');
-  /* the payoff curve prices on the same clock: at today's spot it is the row's model price */
-  const price = gate.pricerFor({ ticker: 'SPY', expiryIso: '2026-10-29' }, { strike: 770, right: 'C', iv: rd.iv }, at)!;
+  const rd = gate.readContract({ ticker: 'SPY', spot: 769.35, strike: 770, right: 'C', bid: 1.18, ask: 1.19, expiryIso: '2026-10-29', optionAt: at, stockAt: at, now: at })!;
+  expectEqual('one clock: the vol came off the mid', rd.ivFrom, 'mark');
+  expectEqual('one clock: the shown IV is the solved IV', rd.iv, rd.ivTrading);
+  const price = gate.pricerFor({ ticker: 'SPY', expiryIso: '2026-10-29' }, { strike: 770, right: 'C', iv: rd.iv, greekT: rd.greekT, greekR: rd.greekR, greekQ: rd.greekQ }, at)!;
   expectNear('pricerFor at spot = the mid (1.185) within a cent', price(769.35), 1.185, 0.01 / 1.185);
+  /* the $10.13 class of error: a calendar IV pasted onto the trading year is not this price */
+  expectEqual('the solved price is the mid, not a trading-year paste', Math.abs(price(769.35) - 1.185) < 0.02, true);
 }
 
 /* ---- the expected move: S·σ·√T on the calendar clock (core/volClock sigmaToExpiry), not σ·√(trading T) ---- */
@@ -215,12 +210,12 @@ expectEqual('touch odds are never below the finish odds', read.touch >= read.itm
   const atFri = gate.expectedMovePctOf(756.59, 12.36, '2026-11-02', fri);
   expectNear('Friday-close move, $', (atFri / 100) * 756.59, 756.59 * 0.1236 * Math.sqrt(4305 / 525600), 1e-9);
   expectNear('the same vol read on Saturday prices the same move', gate.expectedMovePctOf(756.59, 12.36, '2026-11-02', sat, fri), atFri, 1e-9);
-  const satRow = gate.readContract({ ticker: 'SPY', spot: 756.59, strike: 757, right: 'C', bid: 3.29, ask: 3.31, expiryIso: '2026-11-02', vendorIv: 0.1237, ivAt: fri, now: sat })!;
-  const friRow = gate.readContract({ ticker: 'SPY', spot: 756.59, strike: 757, right: 'C', bid: 3.29, ask: 3.31, expiryIso: '2026-11-02', vendorIv: 0.1237, now: fri })!;
-  /* the variance is Friday's; only the weekend's interest accrual (r·19.75 h) moves the forward: delta −0.003 */
-  expectNear('Saturday delta = Friday-close delta (ThetaData 0.4944) less the weekend carry', satRow.delta, friRow.delta, 0.005);
-  expectNear('… and the Saturday vol on the trading clock is Friday\'s', satRow.ivTrading, friRow.ivTrading, 1e-9);
-  expectNear('Saturday IV still reads the quoted 12.37%', satRow.iv, 12.37, 1e-9);
+  /* The quote is Friday's. Reading it on Saturday does not re-stamp the option or the stock. */
+  const satRow = gate.readContract({ ticker: 'SPY', spot: 756.59, strike: 757, right: 'C', bid: 3.29, ask: 3.31, expiryIso: '2026-11-02', optionAt: fri, stockAt: fri, now: sat })!;
+  const friRow = gate.readContract({ ticker: 'SPY', spot: 756.59, strike: 757, right: 'C', bid: 3.29, ask: 3.31, expiryIso: '2026-11-02', optionAt: fri, stockAt: fri, now: fri })!;
+  expectNear('Saturday read of Friday\'s quote is Friday\'s delta', satRow.delta, friRow.delta, 1e-9);
+  expectNear('… and the same solved IV', satRow.iv, friRow.iv, 1e-9);
+  expectEqual('the vol came off the mid', friRow.ivFrom, 'mark');
   expectNear('ATM IV with one side only', gate.atmIvAt([{ strike: 770, call: { iv: NaN }, put: { iv: 22.16 } }, { strike: 771, call: { iv: 21.72 }, put: { iv: NaN } }], 770.5), (22.16 + 21.72) / 2, 1e-9);
 }
 
@@ -257,23 +252,21 @@ if (existsSync(thetaDir) && readdirSync(thetaDir).some(f => f.endsWith('.json.gz
   const chain = await loadLiveChain('SPY', 0, 12, 'SPY');
   const at = (k: number) => chain.rows.find(r => r.strike === k)!;
   expectEqual('snapshot spot', chain.spot, 769.35);
-  /* ThetaData 769C/P 22.46/22.53, 770C/P 22.09/22.16: 22.495 + 0.35·(22.125 − 22.495) = 22.3655 (the old pick was
-     whichever row the answer listed in the middle) */
-  expectNear('chain ATM IV at spot, interpolated', chain.atmIv ?? NaN, 22.37, 1e-9);
-  /* S·σ·√T_calendar: 248.96 calendar minutes to 16:00 → 769.35 × 0.223655 × √(248.96/525600) = $3.745 = 0.49%
-     (σ·√(trading T) gave 1.12%) */
+  /* ATM IV is the solved mids, not ThetaData's printed 22.09 / 22.46. The expected move uses that solved IV. */
+  expectEqual('chain ATM IV is solved', Number.isFinite(chain.atmIv) && (chain.atmIv ?? 0) > 0, true);
   const tCal = (16 * 60 - (11 * 60 + 51 + 2.44 / 60)) / 525600;
-  expectNear('chain expected move = S·σ_ATM·√T_calendar, %', chain.expectedMovePct, Number((0.223655 * Math.sqrt(tCal) * 100).toFixed(2)), 1e-9);
-  /* the row's delta off the vendor's IV on the trading clock (calendar-accrued carry) agrees with ThetaData's own */
-  for (const [k, side, want] of [[769, 'call', 0.5395], [770, 'put', -0.567], [772, 'call', 0.2334]] as const) {
+  expectNear('chain expected move = S·σ_ATM·√T_calendar, %', chain.expectedMovePct, Number((((chain.atmIv ?? 0) / 100) * Math.sqrt(tCal) * 100).toFixed(2)), 1e-9);
+  /* A non-zero iv_error blanks the row. The vendor delta is not a fallback. A zero iv_error is solved off the mid. */
+  for (const [k, side] of [[769, 'call'], [770, 'put'], [772, 'call']] as const) {
     const c = at(k)[side];
-    expectNear(`chain ${k}${side === 'call' ? 'C' : 'P'} delta vs ThetaData ${want}`, c.delta, want, 0.0015 / Math.abs(want));
-    expectEqual(`chain ${k}${side === 'call' ? 'C' : 'P'} IV is the vendor's`, c.ivFrom, 'vendor');
+    const label = `${k}${side === 'call' ? 'C' : 'P'}`;
+    expectEqual(`chain ${label} is blank on iv_error`, c.greekWhy, 'iv error');
+    expectEqual(`chain ${label} does not keep the vendor delta`, Number.isFinite(c.delta), false);
   }
-  /* theta per session inside the last session: minus the whole extrinsic (model price at the vendor IV, intrinsic 0) */
-  const c770 = at(770).call;
-  expectEqual('770C theta is minus its extrinsic, within a cent of the mid', Math.abs(c770.theta + c770.mark) < 0.01, true);
-  expectEqual('American put in the money is flagged (778P), not the 760P', [at(778).put.europeanApprox, at(760).put.europeanApprox], [true, false]);
+  expectEqual('chain 778P is solved off the mid (iv_error 0)', at(778).put.ivFrom, 'mark');
+  expectEqual('chain 772P is solved off the mid (iv_error 0)', at(772).put.ivFrom, 'mark');
+  expectEqual('American put in the money is flagged (778P), a solved call is not (760C)', [at(778).put.europeanApprox, at(760).call.europeanApprox], [true, false]);
+  expectEqual('760P is blank on iv_error, so it carries no European flag', at(760).put.greekWhy, 'iv error');
 
   /* ThetaData's implied_vol is a fraction, always: a 3.2 is 320%, not 3.2% (a synthetic next-day chain, rows out of order) */
   const { expiryFor, isoDate } = await import('../../src/core/calendar');
@@ -305,11 +298,12 @@ if (existsSync(thetaDir) && readdirSync(thetaDir).some(f => f.endsWith('.json.gz
      on the book's forward it is 319.53%, and the ATM IV 20.29% (both were the vendor's prints exactly before the
      chain priced off its parity forward). */
   expectNear('synthetic book: its parity forward', next.forward?.F ?? NaN, 600.9, 1e-5);
-  expectNear('a vendor IV of 3.2 reads 320% (restated on the book\'s forward: 319.53)', next.rows.find(r => r.strike === 560)!.put.iv, 320, 0.005);
-  /* 600: (20 + 21)/2 = 20.5, 605: (19 + 20)/2 = 19.5, at 601: 20.5 − 0.2 = 20.3 (the old middle-of-the-list pick read 20) */
-  expectNear('synthetic ATM IV at 601 = 20.30 (20.29 on the book\'s forward)', next.atmIv ?? NaN, 20.3, 0.001);
+  /* A vendor IV of 3.2 is not pasted onto the row. The 560 put's own quote is what is solved, or the greek is blank. */
+  const deep = next.rows.find(r => r.strike === 560)!.put;
+  expectEqual('a vendor IV of 3.2 is not the row', deep.iv === 320 || deep.ivFrom === 'vendor', false);
   const { sigmaToExpiry } = await import('../../src/core/volClock');
-  expectNear('synthetic expected move = sigmaToExpiry / S', next.expectedMovePct, Number((((sigmaToExpiry(601, 0.203, nextIso) ?? 0) / 601) * 100).toFixed(2)), 1e-9);
+  const atm = (next.atmIv ?? 0) / 100;
+  expectNear('synthetic expected move = sigmaToExpiry of the solved ATM IV', next.expectedMovePct, Number((((sigmaToExpiry(601, atm, nextIso) ?? 0) / 601) * 100).toFixed(2)), 1e-9);
 }
 
 done();

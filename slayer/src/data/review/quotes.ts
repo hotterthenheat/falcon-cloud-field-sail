@@ -3,8 +3,9 @@
    are the contracts quoted that day. A minute with no two-sided quote is no market: orders wait. */
 
 import { sessionsBetween } from '../../core/calendar';
-import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice, thetaPerSession } from '../../core/greeks';
-import { carryFor } from '../../core/carry';
+import { blackScholesGreeks, blackScholesPrice, thetaPerSession } from '../../core/greeks';
+import { readGreek } from '../../core/readGreek';
+import { nyWallTime } from '../../core/nyTime';
 import { CASH_INDEX_ROOTS, DAY_MIN, LAST_MIN, closePrintOf, dateOf, dayWords, lastTwoSidedAt, listingOf, midsUpTo, nbboAt, spotAt, tradesUpTo, underOf } from './history';
 
 export type Right = 'C' | 'P';
@@ -46,6 +47,10 @@ export interface Quote {
   askSize?: number;
   /** Which quote it is (the feed's stamp: ms live, the recorded row's minute in a backtest) — the shown size is taken once */
   quotedAt?: number;
+  /** The clock and carry readGreek solved on. A what-if reprices on these, not on a second clock. */
+  greekT?: number;
+  greekR?: number;
+  greekQ?: number;
 }
 
 /** How many of an order one quote can fill: what is shown on the side it trades into (a buy takes the ask's size, a sell
@@ -119,16 +124,39 @@ const noQuote = (c: ContractId, spot: number): Quote => ({ bid: 0, ask: 0, mark:
     for the readers that import it from this file. */
 export { thetaPerSession };
 
-/** Greeks of a bought leg from its mid, the name's price and the time left — on the name's carry for that day (core/carry
-    carryFor: the day's own rate, and its dividend yield where one is known), the vol solved, the greeks and the theta all
-    on the same one */
-function greeksOn(c: ContractId, iso: string, mid: number, spot: number, t: number): Pick<Quote, 'iv' | 'delta' | 'gamma' | 'theta' | 'vega' | 'rho'> {
-  const { r, q } = carryFor(c.ticker, { on: iso });
-  const iv = t > 0 && spot > 0 ? impliedVolFromPrice(mid, spot, c.strike, t, c.right, r, q) : null;
-  if (iv == null) return { iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0 };
-  const g = blackScholesGreeks(spot, c.strike, t, iv, r, q);
-  const theta = thetaPerSession(spot, c.strike, t, iv, c.right, r, q);
-  return { iv, delta: c.right === 'C' ? g.deltaCall : g.deltaPut, gamma: g.gamma, theta, vega: g.vega, rho: c.right === 'C' ? g.rhoCall : g.rhoPut };
+/** The end of bar `minute` on `iso`, New York. The option and the stock share this stamp, so they are one minute. */
+function minuteStamp(iso: string, minute: number): number {
+  const [y, mo, da] = iso.split('-').map(Number);
+  const t = 9 * 60 + 30 + Math.max(0, minute) + 1;
+  return nyWallTime(y, mo, da, Math.floor(t / 60), t % 60);
+}
+
+/** Greeks of a bought leg from its mid and the name's price that minute — readGreek, the same solve Weigher and Paper use.
+    The fill is still the recorded bid and ask. A blank greek (no rate, a wide book) leaves the mark's greek at zero. */
+function greeksOn(c: ContractId, iso: string, bid: number, ask: number, spot: number, minute: number): Pick<Quote, 'iv' | 'delta' | 'gamma' | 'theta' | 'vega' | 'rho' | 'greekT' | 'greekR' | 'greekQ'> {
+  const blank = { iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0 };
+  const at = minuteStamp(iso, minute);
+  const solved = readGreek({
+    right: c.right,
+    strike: c.strike,
+    expiry: c.expiry,
+    at,
+    option: { bid, ask, at },
+    stock: { price: spot, at },
+  });
+  if (!solved.ok) return blank;
+  const g = blackScholesGreeks(spot, c.strike, solved.t, solved.iv, solved.r, solved.q);
+  return {
+    iv: solved.iv,
+    delta: solved.delta,
+    gamma: solved.gamma,
+    theta: solved.thetaSession,
+    vega: solved.vega,
+    rho: c.right === 'C' ? g.rhoCall : g.rhoPut,
+    greekT: solved.t,
+    greekR: solved.r,
+    greekQ: solved.q,
+  };
 }
 
 function legQuote(c: ContractId, iso: string, minute: number): Quote {
@@ -138,7 +166,7 @@ function legQuote(c: ContractId, iso: string, minute: number): Quote {
   if (!q || !(q.ask > 0) || !(q.bid > 0)) return { ...noQuote(c, spot), bid: q?.bid ?? 0, ask: q?.ask ?? 0, mark: q ? mid4((q.bid + q.ask) / 2) : NaN };
   const mark = mid4((q.bid + q.ask) / 2);
   const sizes = { ...(q.bidSize != null ? { bidSize: q.bidSize } : {}), ...(q.askSize != null ? { askSize: q.askSize } : {}), quotedAt: dateOf(iso).getTime() / 60_000 + q.at };
-  return { bid: q.bid, ask: q.ask, mark, ...greeksOn(c, iso, (q.bid + q.ask) / 2, spot, yearsLeft(iso, minute, c.expiry)), intrinsic: cents(intrinsic), dead: false, spot, ...sizes };
+  return { bid: q.bid, ask: q.ask, mark, ...greeksOn(c, iso, q.bid, q.ask, spot, minute), intrinsic: cents(intrinsic), dead: false, spot, ...sizes };
 }
 
 /** The quote at the end of a minute, as it was recorded: a spread is its two legs at their natural prices */
@@ -216,10 +244,9 @@ function legWhatIf(c: ContractId, iso: string, minute: number, spot: number): nu
   const live = legQuote(c, iso, minute);
   const t = yearsLeft(iso, minute, c.expiry);
   if (t <= 0) return intrinsicOf(c, spot);
-  if (live.dead || !(live.iv > 0)) return NaN;
-  /* the same carry the vol was solved on (greeksOn) */
-  const { r, q } = carryFor(c.ticker, { on: iso });
-  return blackScholesPrice(spot, c.strike, t, live.iv, c.right, r, q);
+  if (live.dead || !(live.iv > 0) || !(live.greekT != null && live.greekT > 0)) return NaN;
+  /* the clock and carry the vol was solved on (readGreek). A trading-year clock would reprice the mid near the wrong number. */
+  return blackScholesPrice(spot, c.strike, live.greekT, live.iv, c.right, live.greekR ?? 0, live.greekQ ?? 0);
 }
 /** "Where would the name have to be, right now, for this contract to be worth X": the chart's target and stop lines are
     drawn from it, never a fill. The bid and the ask keep the minute's recorded spread around the model's value. */

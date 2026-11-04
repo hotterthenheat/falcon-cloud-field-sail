@@ -352,8 +352,9 @@ const moveCellText = (e: EarningsEvent) =>
 const moveInk = (e: EarningsEvent) => (e.reported ? (e.actualMovePct == null ? 'text-textMuted' : e.actualMovePct > 0 ? 'text-bull' : e.actualMovePct < 0 ? 'text-bear' : 'text-textPrimary') : '');
 const MoveCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
   data ? (
-    <span className="flex flex-col items-end leading-tight" title={data.reported ? `Reported — ${reactionLive(data) ? 'the move so far in the session reacting to it' : 'the move the stock made the session after'}; the options had priced ±${data.impliedMovePct.toFixed(1)}%` : 'The move the options charge for the print — the at-the-money straddle as a percent of the stock'}>
+    <span className="flex flex-col items-end leading-tight" title={data.reported ? `Reported — ${data.moveSource ? `${data.moveSource}. ` : ''}${reactionLive(data) ? 'the move so far in the session reacting to it' : 'the move the stock made the session after'}; the options had priced ±${data.impliedMovePct.toFixed(1)}%` : 'The move the options charge for the print — the at-the-money straddle as a percent of the stock'}>
       <span className={`font-mono text-t11 tnum font-semibold ${data.reported ? moveInk(data) : data.impliedMovePct > 0 ? 'text-textPrimary' : 'text-textMuted'}`}>{moveCellText(data)}</span>
+      {data.reported && data.actualMovePct != null && data.moveSource ? <span className="font-mono text-t9 tnum text-textMuted">{data.moveSource}</span> : null}
       {data.reported && data.impliedMovePct > 0 ? <span className="font-mono text-t9 tnum text-textMuted">priced ±{data.impliedMovePct.toFixed(1)}%</span> : null}
     </span>
   ) : null;

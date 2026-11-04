@@ -83,6 +83,8 @@ export interface NameQuote {
   px: number;
   /** When it was read (ms), and whether it is this browser's copy from an earlier visit */
   takenAt: number;
+  /** The exchange stamp, when the snapshot carried one. The greek needs this minute, not the read. */
+  at?: number;
   kept?: boolean;
 }
 const names = new Map<string, NameQuote>();
@@ -97,11 +99,13 @@ async function pullName(t: string): Promise<void> {
   let q: NameQuote | null = null;
   if (isIndex(t)) {
     const px = num(r.price);
-    if (px > 0) q = { bid: px, ask: px, px, takenAt: now };
+    const at = stampOf(r.timestamp) || undefined;
+    if (px > 0) q = { bid: px, ask: px, px, takenAt: now, ...(at ? { at } : {}) };
   } else {
     const bid = num(r.bid);
     const ask = num(r.ask);
-    if (bid > 0 && ask >= bid) q = { bid, ask, px: Math.round(((bid + ask) / 2) * 10000) / 10000, takenAt: now };
+    const at = stampOf(r.timestamp) || undefined;
+    if (bid > 0 && ask >= bid) q = { bid, ask, px: Math.round(((bid + ask) / 2) * 10000) / 10000, takenAt: now, ...(at ? { at } : {}) };
   }
   if (!q) return;
   names.set(t, q);

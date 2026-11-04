@@ -17,17 +17,15 @@ const SUBPAGES: Record<string, NavLeaf[]> = {
   '/trace': TRACE_SUBPAGES.map(p => ({ path: p.path, label: p.label })),
 };
 
-/** Compass's pages: the board, the Tracker, and "Inside the contract" once one is chosen (it points at the last
-    contract page landed on, the store's `chosenId`). */
-export const subpagesFor = (path: string, pathname: string, chosenId: string | null): NavLeaf[] | undefined => {
+/** Compass's pages. "Inside the contract" is only the contract you are on — leaving that page drops the row. */
+export const subpagesFor = (path: string, pathname: string): NavLeaf[] | undefined => {
   if (path === '/compass') {
     const m = pathname.match(/^\/compass\/([^/?#]+)/);
     const reserved = m != null && (m[1] === 'tracker' || m[1] === 'blotter' || m[1] === 'review' || m[1] === 'study');
-    const here = m && !reserved ? m[1] : null;
-    const id = here ?? chosenId;
+    const here = m && !reserved ? decodeURIComponent(m[1]) : null;
     return [
       { path: '/compass', label: 'The scan' },
-      ...(id ? [{ path: `/compass/${id}`, label: 'Inside the contract' }] : []),
+      ...(here ? [{ path: `/compass/${here}`, label: 'Inside the contract' }] : []),
       { path: '/compass/blotter', label: 'Blotter' },
       { path: '/compass/tracker', label: 'Tracker' },
       { path: '/compass/review', label: 'Review' },

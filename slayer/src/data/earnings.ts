@@ -33,7 +33,7 @@ export interface EarningsEvent {
   /** Average absolute move over the last 8 prints, % */
   histAvgMovePct: number;
   /** The last 8 earnings-day moves, signed %, oldest first, each with the move its options priced (null if not on file) */
-  pastMoves: { label: string; movePct: number; impliedPct?: number | null }[];
+  pastMoves: { label: string; movePct: number; impliedPct?: number | null; source?: 'vendor reaction' | 'session versus prior close' | 'regular close' }[];
   /** implied ÷ realized — the mispricing everything hangs on */
   richness: number;
   /** The street's EPS estimate for the upcoming report, when the vendor's row for it carries one */
@@ -49,6 +49,8 @@ export interface EarningsEvent {
   reported?: boolean;
   /** The stock's move the session after the report, signed % — the vendor's `reaction`, null until it is in */
   actualMovePct?: number | null;
+  /** Which number actualMovePct is. A history row that mixes them says so on each row. */
+  moveSource?: 'vendor reaction' | 'session versus prior close' | 'regular close';
   /** True while actualMovePct is the reacting session's move so far, off the live price */
   moveLive?: boolean;
   /** The New York session that reacts to the report: the report day before the open, the next session after the close */

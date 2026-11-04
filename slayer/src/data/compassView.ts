@@ -13,8 +13,7 @@ interface CompassView {
   /** null = every name */
   tickerFilter: string | null;
   selectedId: string | null;
-  /** The contract the reader is inside: the last setup page landed on — the sidebar's "Inside the contract" points
-      at it and keeps it across the board and the Tracker until another contract takes its place */
+  /** Last contract page opened. The side rail does not keep a row for it — that row exists only while the address is the contract. */
   chosenId: string | null;
   /** Board side. BOTH is the whole book. Call or Put narrows it. */
   right: OptionRight | 'BOTH';

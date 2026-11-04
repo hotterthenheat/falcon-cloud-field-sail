@@ -10,7 +10,7 @@ import DropdownSelect from '../../components/ui/DropdownSelect';
 import ContractLabel from '../../components/ui/ContractLabel';
 import { EmptyBox, ErrorBox, LoadingBox } from '../../components/ui/states';
 import { useCompassDays, useCompassDoc } from '../../data/compassReviewFeed';
-import type { ReviewBand, ReviewHit, ReviewSleeve } from '../../data/reviewLive';
+import { REVIEW_LIVE, type ReviewBand, type ReviewHit, type ReviewSleeve } from '../../data/reviewLive';
 import { isoDate, type Expiry } from '../../core/calendar';
 import { nyClock } from '../../core/nyTime';
 
@@ -52,6 +52,8 @@ const Row = ({ r }: { r: ReviewHit }) => (
     <td className="py-1.5 pr-3 text-right">{n(r.bid)}</td>
     <td className="py-1.5 pr-3 text-right">{n(r.ask)}</td>
     <td className="py-1.5 pr-3 text-right text-bull">{pct(r.pct)}</td>
+    <td className="py-1.5 pr-3 text-right">{r.fillable ? 'Yes' : 'No'}</td>
+    <td className="py-1.5 pr-3 text-right">{r.tradePct == null ? '—' : pct(r.tradePct * 100)}</td>
     <td className="py-1.5 pr-3 text-right">{r.peakBid.toFixed(2)} <span className="text-textMuted">{nyClock(r.peakAt)}</span></td>
     <td className="py-1.5 pr-3 text-right" title={r.draws.map(d => `${d.pct}% from ${d.peak.toFixed(2)} to ${d.low.toFixed(2)}${d.through ? ', through the turn' : ''}`).join(' · ') || 'No pullback'}>
       {r.maxDraw > 0 ? <span className="text-bear">{pct(r.maxDraw)}</span> : '—'}
@@ -75,7 +77,7 @@ const SessionReview = () => {
   const [band, setBand] = useState<BandPick>('all');
   const [session, setSession] = useState<'all' | string>('all');
   const { doc, status, error } = useCompassDoc('review', day, 5_000);
-  const live = doc?.version === 4 && Array.isArray(doc.rows) ? doc : null;
+  const live = doc?.version === REVIEW_LIVE && Array.isArray(doc.rows) ? doc : null;
   const sessions = useMemo(() => [...new Set((live?.rows ?? []).map(r => r.session))], [live]);
   const rows = useMemo(() => (live?.rows ?? []).filter(r => {
     if (sleeve !== 'all' && r.sleeve !== sleeve) return false;
@@ -107,7 +109,7 @@ const SessionReview = () => {
           <DropdownSelect label="Tape" value={session} options={[{ value: 'all', label: 'All sessions' }, ...sessions.map(s => ({ value: s, label: SESSION[s] ?? s }))]} onChange={setSession} title="Which option session" testId="review-session" />
         </>
       }
-      sentence={live ? <span>{live.line}. A turn is a minute whose bid stopped falling and whose next minute rose. The run is the highest bid after that print, until the bid comes back to it or the session ends. A run under 100% is not in All bands. 60%+ keeps those too. A pullback is kept, and one that comes back through the turn ends the run. The same contract can turn again after that. Nothing here is a model call.</span> : false}
+      sentence={live ? <span>{live.line}. A turn is a minute whose bid stopped falling and whose next minute rose. The run is the highest bid after that print, until the bid comes back to it or the session ends. A run under 100% is not in All bands. 60%+ keeps those too. Fillable means the turn could be bought: bid at least 0.40, ask at least 0.50, size on both sides, and the spread at most 8% of the mid. Trade is how far the peak went off that ask, and only when the turn was fillable. An 8–30 day row that is fillable still shows. It is not where the doubles were. A pullback is kept, and one that comes back through the turn ends the run. The same contract can turn again after that. Nothing here is a model call.</span> : false}
     >
       <div className="border-t border-borderSubtle">
         {status === 'loading' && !live ? (
@@ -131,6 +133,8 @@ const SessionReview = () => {
                   <th className="text-right font-normal pb-1 pr-3">Bid</th>
                   <th className="text-right font-normal pb-1 pr-3">Ask</th>
                   <th className="text-right font-normal pb-1 pr-3">Run</th>
+                  <th className="text-right font-normal pb-1 pr-3">Fillable</th>
+                  <th className="text-right font-normal pb-1 pr-3">Trade</th>
                   <th className="text-right font-normal pb-1 pr-3">Peak</th>
                   <th className="text-right font-normal pb-1 pr-3">Drawdown</th>
                   <th className="text-left font-normal pb-1 pr-3">End</th>

@@ -12,7 +12,7 @@ import type { MultiGroup } from '../ui/DropdownMulti';
 import Term from '../ui/Term';
 import type { DeskContract, DeskChain } from '../../data/weigherDesk';
 import type { OptionRight } from '../../types/compass';
-import { useWeigherSpot } from '../../data/weigherTape';
+import { greekCaption } from '../../core/readGreek';
 import { fmtStrike } from '../../core/format';
 import { EUROPEAN_NOTE } from '../../data/weigherGate';
 import { carryWords, useYield } from '../../data/carryFeed';
@@ -38,7 +38,7 @@ export interface ChainCol {
   /** The column header's compact wording */
   head: string;
   term?: string;
-  render: (c: DeskContract) => { text: string; ink?: string; bold?: boolean };
+  render: (c: DeskContract) => { text: string; ink?: string; bold?: boolean; title?: string };
 }
 
 export const CHAIN_COLUMNS: ChainCol[] = [
@@ -66,7 +66,15 @@ export const CHAIN_COLUMNS: ChainCol[] = [
   { key: 'high', label: 'High', head: 'High', render: c => ({ text: money(c.high) }) },
   { key: 'low', label: 'Low', head: 'Low', render: c => ({ text: money(c.low) }) },
   { key: 'prevClose', label: 'Prev close', head: 'Prev close', render: c => ({ text: money(c.prevClose) }) },
-  { key: 'delta', label: 'Delta', head: 'Delta', term: 'Delta', render: c => ({ text: fixed(c.delta, 2) }) },
+  { key: 'delta', label: 'Delta', head: 'Delta', term: 'Delta', render: c => {
+    const title = greekCaption([
+      ...(Number.isFinite(c.delta) ? [{ source: 'readGreek' as const, delta: c.delta }] : []),
+      ...(c.chainDelta != null ? [{ source: 'Chain' as const, delta: c.chainDelta }] : []),
+      ...(c.flowDelta != null ? [{ source: 'Flow' as const, delta: c.flowDelta }] : []),
+      ...(c.thetaDelta != null ? [{ source: 'Theta' as const, delta: c.thetaDelta }] : []),
+    ]);
+    return { text: fixed(c.delta, 2), title: title || (c.greekWhy ? c.greekWhy : c.greekNote || undefined) };
+  } },
   { key: 'gamma', label: 'Gamma', head: 'Gamma', term: 'Gamma', render: c => ({ text: fixed(c.gamma, 4) }) },
   { key: 'theta', label: 'Theta per session', head: 'Theta/sess', term: 'Theta', render: c => ({ text: fixed(c.theta, 4) }) },
   { key: 'vega', label: 'Vega', head: 'Vega', term: 'Vega', render: c => ({ text: fixed(c.vega, 4) }) },
@@ -157,7 +165,7 @@ const factCell =
   ({ data }: ICellRendererParams<ChainGridRow>) => {
     if (data?.kind !== 'row') return null;
     const v = col.render(data.c);
-    return <span className={`font-mono whitespace-nowrap tnum ${v.bold ? 'text-t11 font-bold' : 'text-t10'} ${v.ink ?? (v.bold ? 'text-textPrimary' : 'text-textSecondary')}`}>{v.text}</span>;
+    return <span title={v.title} className={`font-mono whitespace-nowrap tnum ${v.bold ? 'text-t11 font-bold' : 'text-t10'} ${v.ink ?? (v.bold ? 'text-textPrimary' : 'text-textSecondary')}`}>{v.text}</span>;
   };
 
 /* The two full-width rows: the market's hairline, and (Pulse) the weigh-up
@@ -331,9 +339,8 @@ export const ChainCard = memo(function ChainCard({
   const [away, setAway] = useState<'above' | 'below' | null>(null);
   const [ready, setReady] = useState(false);
   const [api, setApi] = useState<GridApi<ChainGridRow> | null>(null);
-  /* The live stock or index print. The greeks snapshot's underlying is only the fallback. */
-  const tape = useWeigherSpot(chain.ticker);
-  const spot = tape && tape.spot > 0 ? tape.spot : chain.spot;
+  /* The hairline is the spot the greek was solved at. A newer tape print does not move it until readGreek runs again. */
+  const spot = chain.greekSpot != null ? chain.greekSpot : chain.spot;
   const bracket = useMemo(() => strikeBracket(chain.rows.map(r => r.strike), spot), [chain.rows, spot]);
   /* The hairline keeps the print from the moment the price crossed into this bracket, so a tick does not rebuild the ladder. */
   const anchorSpot = useMemo(() => spot, [bracket, chain.ticker, chain.expiryIso]); // eslint-disable-line react-hooks/exhaustive-deps

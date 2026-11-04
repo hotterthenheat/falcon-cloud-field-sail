@@ -503,31 +503,24 @@ export function chainForDate(ticker: string, date: string | 'book' | null): { no
   return { nodes, label, kind: kindOf(nodes), date: hit, movedFrom };
 }
 
-/** Share of the book's gamma that expires today, percent. `none`: nothing on this name expires today. `wait`: the
-    listing is not in yet. One number for the Board, Compare, the Agenda and the Trader's Clock. */
+/** Share of the book's dollar gamma that expires today, percent. `none`: nothing on this name expires today. `wait`:
+    the dollar book is not in yet. Share gamma (greek-exposure totals) is not this column. */
 export function peekBellShare(ticker: string): { share: number } | { share: null; why: 'none' | 'wait' } {
   const e = peekEntry(ticker);
-  if (!e || e.status !== 'live') return { share: null, why: 'wait' };
+  if (!e || e.status !== 'live' || !e.gammaLive) return { share: null, why: 'wait' };
   /* the session the book is on (after Friday's bell bookToday is Saturday, and nothing "expired Saturday") */
   const today = isoDate(nextSession(bookToday()));
-  /* Today's date's live open-interest gamma, gross, against the whole live book's (settled dates off); the morning
-     snapshot (greek-exposure/expiry) stands in only until the live rows land. */
-  const listedToday = e.expiries.some(x => x.date === today) || e.totals?.some(t => t.date === today);
+  const listedToday = e.expiries.some(x => x.date === today);
   const todayChain = e.byDate[today];
   /* the whole live book is only final once the contracts that settled come off it (liveAll) */
-  if (e.gammaLive && todayChain?.length && peekSettledNet(e.ticker) == null) return { share: null, why: 'wait' };
-  if (e.gammaLive && todayChain?.length) {
+  if (todayChain?.length && peekSettledNet(e.ticker) == null) return { share: null, why: 'wait' };
+  if (todayChain?.length) {
     const gross = (ch: readonly StrikeNode[]) => ch.reduce((a, n) => a + Math.abs(n.callGex) + Math.abs(n.putGex), 0);
     const total = gross(liveAll(e));
     const dies = gross(todayChain);
     if (total > 0) return { share: Math.min(100, Math.round((100 * dies) / total)) };
   }
-  /* nothing provisional: a name whose date is listed waits for that date's live rows */
-  if (e.gammaLive && listedToday && !todayChain?.length) return { share: null, why: 'wait' };
-  if (!e.totals?.length) return listedToday === false && e.expiries.length ? { share: null, why: 'none' } : { share: null, why: 'wait' };
-  const live = e.totals.filter(t => t.date >= today);
-  const dies = live.filter(t => t.date === today).reduce((a, t) => a + t.gross, 0);
-  if (!live.some(t => t.date === today)) return { share: null, why: 'none' };
-  const total = live.reduce((a, t) => a + t.gross, 0);
-  return total > 0 ? { share: Math.round((100 * dies) / total) } : { share: null, why: 'wait' };
+  if (listedToday) return { share: null, why: 'wait' };
+  if (e.expiries.length) return { share: null, why: 'none' };
+  return { share: null, why: 'wait' };
 }

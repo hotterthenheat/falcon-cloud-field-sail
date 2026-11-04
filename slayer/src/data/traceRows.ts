@@ -501,6 +501,7 @@ export function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
     occ: row.option_chain_id ? String(row.option_chain_id) : row.option_chain ? String(row.option_chain) : row.option_symbol ? String(row.option_symbol) : undefined,
     extended: extended || undefined,
     theta: row.theta != null && row.theta !== '' ? num(row.theta) : undefined,
+    delta: row.delta != null && row.delta !== '' ? num(row.delta) : undefined,
     daySide: row.ask_vol != null || row.bid_vol != null ? { ask: askVol, bid: bidVol, mid: num(row.mid_vol) + num(row.no_side_vol) } : undefined,
     compression: compression || undefined,
     cross: cross || undefined,
@@ -766,7 +767,8 @@ export function tideBetween(rows: { time: number; callPrem: number; putPrem: num
   const puts = end.putPrem - (base?.putPrem ?? 0);
   /* from the window's own start when a point before it is the base, else from the vendor's first minute (07:30) */
   const since = base ? `${String(Math.floor(from / 60)).padStart(2, '0')}:${String(from % 60).padStart(2, '0')}` : hhmm(first);
-  return { calls, puts, net: calls - puts, first, last: end.time, covers: { since, until: hhmm(end.time), source: 'market tide', leaves: [] } };
+  const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  return { calls, puts, net: calls - puts, first, last: end.time, covers: { since, until: hhmm(end.time), source: `Market tide change, ${hm(from)}–${hm(to)} ET`, leaves: [] } };
 }
 
 /** A contract's OCC symbol from its parts — "SPY", 763, P, "10/22/2026" → SPY261022P00763000; an index's weekly root

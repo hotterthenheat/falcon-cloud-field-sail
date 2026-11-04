@@ -225,7 +225,7 @@ export function summarizeTape(prints: FlowPrint[], afterHoursOut = !prints.some(
     notOpening: { count: notOpenCount, premium: notOpenPremium },
     largest: largest ? { ticker: largest.ticker, strike: largest.strike, right: largest.right, premium: largest.premium } : null,
     covers: {
-      ...coversOf(prints.map(p => ({ time: p.epoch ?? 0 })), 'the prints in hand'),
+      ...coversOf(prints.map(p => ({ time: p.epoch ?? 0 })), 'Opening prints in this view'),
       leaves: [
         'spread legs',
         'crosses',

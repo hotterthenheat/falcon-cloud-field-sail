@@ -602,6 +602,18 @@ html[data-type-floor] .pal-label {
   animation: holo-pan 3.5s ease-in-out infinite alternate;
 }
 
+/* The side rail's connector. Same shape as the white mark; the ink is the accent
+   (the foil on a dark desk, the galaxy on paper). It does not pan — a moving
+   background repaints the whole desk. */
+.nav-accent {
+  background-image: var(--holo-gradient);
+  background-size: 100% 220%;
+  background-position: center;
+}
+[data-theme='light'] .nav-accent:not([data-theme='dark'] *) {
+  background-image: var(--galaxy-gradient);
+}
+
 /* 1px living border — gradient rides the border-box under a panel-dark pad. */
 .holo-border {
   border: 1px solid transparent;
@@ -1558,10 +1570,9 @@ html[data-theme='light'] [data-paper-chain-side-pick='P']:not([aria-pressed='tru
    a desk; the ones that also say `truncate` cut at the box's edge, the ones
    that do not ran past it and made the whole page scroll sideways (At the
    wall's and Targets' heads, measured at 390). On a phone a line that cannot
-   fit wraps — the same words, two lines. Below `lg`, not `md`: from 768 the
-   sidebar stands (236px) and the page's column is 532 — narrower than a
-   phone turned sideways — so the narrow rules hold until the desk has its
-   room. */
+   fit wraps — the same words, two lines. The rail is icons from 768 through 1279 (SideNav), so a
+   snapped window keeps the page. These wrap rules still hold through lg: a phone and a short
+   laptop are narrower than a line that was written to stay on one row. */
 @media (max-width: 1023.98px) {
   main p.whitespace-nowrap:not(.truncate) {
     white-space: normal;

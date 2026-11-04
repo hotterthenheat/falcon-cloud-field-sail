@@ -52,6 +52,7 @@ const PROOFS = [
   'carry-proof',
   'rate-proof',
   'forward-proof',
+  'live-check-proof',
   'heatmap-proof',
   'holidays-proof',
   'theta-paths-proof',

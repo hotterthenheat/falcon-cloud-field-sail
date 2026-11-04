@@ -20,8 +20,7 @@ import CompanyLogo from '../ui/CompanyLogo';
 import { NAV_GROUPS, NAV_GROUP_META, NAV_INK, itemsByGroup } from './nav';
 import { subpagesFor } from './navTree';
 import MobileMenu from './MobileMenu';
-import { useCompassView } from '../../data/compassView';
-import { lookup } from '../../data/universe';
+import { useMediaQuery } from '../ui/useMediaQuery';
 import { readSessionClock } from '../../data/moc';
 import { nyClock } from '../../core/nyTime';
 import { marketPhase } from '../../core/marketPhase';
@@ -29,7 +28,6 @@ import { useAllAlerts, useUnseenAll } from '../gex/alertStore';
 import { toggleAlertsDrawer, useAlertsDrawer } from '../../data/alertsDrawer';
 import { toggleWatchlist, useNameWatch, useWatchlistOpen } from '../../data/nameWatch';
 import { beginGlide, endGlide } from '../../core/glide';
-import { alpha } from '../gex/paletteInk';
 import { EMBEDDED } from '../../embed';
 import SlayerMark from '../../brand/SlayerMark';
 import PageGlyph from '../ui/PageGlyph';
@@ -37,10 +35,10 @@ import Wordmark from '../../brand/Wordmark';
 import Signature, { SignatureDot } from '../../brand/Signature';
 import { nextOpenWords, readMarketState } from '../../data/marketState';
 import { useMarketSession } from '../../core/session';
-import { useMediaQuery } from '../ui/useMediaQuery';
+import { lookup } from '../../data/universe';
 
-const SILVER = 'rgb(var(--silver))';
 const COLLAPSED_KEY = 'slayer_sidenav_collapsed';
+const MODE_KEY = 'slayer_sidenav_mode';
 /** The panel's widths — open, and the icon rail */
 const SIDENAV_W = 236;
 const SIDENAV_RAIL_W = 52;
@@ -59,6 +57,18 @@ const readCollapsed = () => {
   } catch {
     return false;
   }
+};
+
+type RailMode = 'icon' | 'offcanvas' | 'fixed';
+
+const readMode = (): RailMode => {
+  try {
+    const v = localStorage.getItem(MODE_KEY);
+    if (v === 'offcanvas' || v === 'fixed' || v === 'icon') return v;
+  } catch {
+    /* private mode — icons for the session */
+  }
+  return 'icon';
 };
 
 interface SideNavProps {
@@ -92,8 +102,6 @@ const NavClock = () => {
 
 const SideNav = ({ onOpenPalette, overlay = false, room = null }: SideNavProps) => {
   const { activeTicker } = useTicker();
-  /* the contract the reader is inside — Compass's tree keeps its row (see subpagesFor) */
-  const { chosenId } = useCompassView();
   const profile = useProfile();
   /* The foot is a sign-in door while signed out; without an account service the sample profile stands. */
   const account = useAccount();
@@ -102,15 +110,18 @@ const SideNav = ({ onOpenPalette, overlay = false, room = null }: SideNavProps) 
   const guest = signedOut || placeholder;
   const { pathname } = useLocation();
   const [storedCollapsed, setCollapsed] = useState(readCollapsed);
-  /* 768–1023 px (a tablet, a narrow window): the open panel would take a quarter of the page, so the rail folds to icons
-     there whatever was saved; opening it there lasts until the window leaves that band and is never written */
-  const narrow = useMediaQuery('(min-width: 768px) and (max-width: 1023.98px)');
+  /* Icons: the 52 px rail. Edge: the panel leaves the frame. Fixed: it stays open. A half-monitor snap
+     still uses icons — 236 px is a quarter of that window. */
+  const [mode, setMode] = useState<RailMode>(readMode);
+  const narrow = useMediaQuery('(min-width: 768px) and (max-width: 1279.98px)');
   const [narrowOpen, setNarrowOpen] = useState(false);
   useEffect(() => {
     if (!narrow) setNarrowOpen(false);
   }, [narrow]);
-  /* over the page the rail is always the open panel — it has all the width it wants there */
-  const collapsed = overlay ? false : narrow ? !narrowOpen : storedCollapsed;
+  /* over the page the rail is always the open panel — it has all the width it wants there.
+     Under 1280 the rail stays icons. Fixed keeps it open on a wide window. Edge hides it completely. */
+  const collapsed = overlay ? false : narrow ? !narrowOpen : mode === 'fixed' ? false : storedCollapsed;
+  const offscreen = !overlay && !narrow && mode === 'offcanvas' && storedCollapsed;
   /* THE REVEAL: the pointer at the left edge slides the rail out after a short rest; leaving the rail slides it back */
   const [revealed, setRevealed] = useState(false);
   const revealTimer = useRef(0);
@@ -204,29 +215,56 @@ const SideNav = ({ onOpenPalette, overlay = false, room = null }: SideNavProps) 
     return () => window.clearInterval(id);
   }, []);
 
+  const writeMode = (next: RailMode) => {
+    setMode(next);
+    if (!EMBEDDED) {
+      try {
+        localStorage.setItem(MODE_KEY, next);
+      } catch {
+        /* private mode — the choice lives for the session */
+      }
+    }
+    if (next === 'fixed') setCollapsed(false);
+  };
+
   const toggleCollapsed = () => {
     /* The main column is told its width once the panel has folded (core/glide.ts), measured off <main>, so desks lay out for it at once. */
     const main = document.querySelector('main');
-    const next = collapsed ? SIDENAV_W : SIDENAV_RAIL_W;
-    const to = main ? { mainWidth: main.getBoundingClientRect().width + (width - next) } : null;
+    const opening = collapsed || offscreen;
+    const nextW = !opening ? (mode === 'offcanvas' && !narrow ? 0 : SIDENAV_RAIL_W) : SIDENAV_W;
+    const fromW = offscreen ? 0 : width;
+    const to = main ? { mainWidth: main.getBoundingClientRect().width + (fromW - nextW) } : null;
     beginGlide(700, 'frame', to);
     setTip(null);
     if (narrow) {
       setNarrowOpen(o => !o);
       return;
     }
+    if (mode === 'fixed') writeMode('icon');
     setCollapsed(c => {
+      const next = mode === 'fixed' ? true : !c;
       if (!EMBEDDED) {
         try {
-          localStorage.setItem(COLLAPSED_KEY, c ? '0' : '1');
+          localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0');
         } catch {
           /* private mode — the choice lives for the session */
         }
       }
-      return !c;
+      return next;
     });
-    setTip(null);
   };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey || !(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'b') return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      e.preventDefault();
+      toggleCollapsed();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   /* The edge bar follows the current product row, measured against the panel; hidden while the row is scrolled out. */
   const measure = useCallback(() => {
@@ -459,7 +497,7 @@ const SideNav = ({ onOpenPalette, overlay = false, room = null }: SideNavProps) 
         )}
         {itemsByGroup(group).map(item => {
           const inside = pathname.startsWith(item.path);
-          const tree = !collapsed && inside ? subpagesFor(item.path, pathname, chosenId) : undefined;
+          const tree = !collapsed && inside ? subpagesFor(item.path, pathname) : undefined;
           const open = !!tree && !folded[item.path];
           const subs = tree;
           /* The page you are on is the longest nested path the pathname starts with (/compass prefixes every Compass page). */
@@ -521,14 +559,14 @@ const SideNav = ({ onOpenPalette, overlay = false, room = null }: SideNavProps) 
                     <span
                       data-nav-fill
                       aria-hidden
-                      className="absolute -left-px w-[2px] rounded-full transition-[height] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
-                      style={{ top: SUB_H / 2, height: Math.max(0, fillTo - SUB_H / 2), background: SILVER, boxShadow: `0 0 6px ${alpha(SILVER, 0.6)}` }}
+                      className="absolute -left-px w-[3px] rounded-full nav-accent transition-[height] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                      style={{ top: SUB_H / 2, height: Math.max(0, fillTo - SUB_H / 2) }}
                     />
                     <span
                       data-nav-fill-dot
                       aria-hidden
-                      className="absolute w-[7px] h-[7px] rounded-full transition-[top] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
-                      style={{ left: -3.5, top: fillTo - 3.5, background: SILVER, boxShadow: `0 0 8px ${SILVER}` }}
+                      className="absolute w-[7px] h-[7px] rounded-full nav-accent transition-[top] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                      style={{ left: -3, top: fillTo - 3.5 }}
                     />
                   </>
                 )}
@@ -562,7 +600,7 @@ const SideNav = ({ onOpenPalette, overlay = false, room = null }: SideNavProps) 
   });
   const [home, ...groups] = groupBlocks;
 
-  const width = collapsed ? SIDENAV_RAIL_W : SIDENAV_W;
+  const width = offscreen ? 0 : collapsed ? SIDENAV_RAIL_W : SIDENAV_W;
   /* Rail rows keep a fixed left inset that centres them in the 52 px rail, so icons do not jump while the width glides. */
 
   return (
@@ -580,6 +618,18 @@ const SideNav = ({ onOpenPalette, overlay = false, room = null }: SideNavProps) 
           aria-hidden
           data-rail-edge
         />
+      )}
+      {offscreen && (
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label="Show the sidebar"
+          title="Show the sidebar · ⌘B"
+          data-sidenav-edge
+          className="hidden md:flex fixed inset-y-0 left-0 z-[69] w-3 items-center justify-center"
+        >
+          <span className="h-8 w-[3px] rounded-full nav-accent" aria-hidden />
+        </button>
       )}
       <aside
         ref={asideRef}
@@ -599,11 +649,13 @@ const SideNav = ({ onOpenPalette, overlay = false, room = null }: SideNavProps) 
             ? /* WAITING, THE RAIL SHOWS NOTHING (the partner tree's 50405ea): clipped while off screen, so nothing of it
                  peeks into the room at x = 0; revealed, the notch stands out again */
               `fixed inset-y-0 left-0 z-[70] hidden md:flex flex-col bg-panel border-r border-ink/[0.07] transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${revealed ? 'overflow-visible shadow-[16px_0_48px_rgba(0,0,0,0.45)]' : 'overflow-hidden'}`
-            : 'relative hidden md:flex shrink-0 h-full flex-col overflow-visible bg-panel border-r border-ink/[0.07] transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]'
+            : `relative hidden md:flex shrink-0 h-full flex-col bg-panel border-r border-ink/[0.07] transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${offscreen ? 'overflow-hidden min-w-0' : 'overflow-visible'}`
         }
         style={overlay ? { width: SIDENAV_W, transform: revealed ? 'translateX(0)' : 'translateX(-100%)' } : { width }}
         data-sidenav
         data-collapsed={collapsed || undefined}
+        data-sidenav-mode={mode}
+        data-sidenav-offcanvas={offscreen || undefined}
         data-sidenav-overlay={overlay || undefined}
         data-sidenav-revealed={(overlay && revealed) || undefined}
         aria-hidden={(overlay && !revealed) || undefined}
@@ -625,8 +677,8 @@ const SideNav = ({ onOpenPalette, overlay = false, room = null }: SideNavProps) 
             <button
               type="button"
               onClick={toggleCollapsed}
-              aria-label={collapsed ? 'Open the sidebar' : 'Collapse the sidebar to icons'}
-              title={collapsed ? 'Open the sidebar' : 'Collapse to icons'}
+              aria-label={collapsed ? 'Open the sidebar' : offscreen ? 'Show the sidebar' : 'Collapse the sidebar to icons'}
+              title={collapsed || offscreen ? 'Open the sidebar · ⌘B' : 'Collapse to icons · ⌘B'}
               data-sidenav-toggle
               className="absolute -right-[11px] top-[15px] z-10 w-[22px] h-[22px] rounded-full border border-ink/[0.12] bg-card text-textMuted hover:text-textPrimary hover:border-silver/60 shadow-md shadow-black/50 flex items-center justify-center transition-colors"
             >
@@ -652,8 +704,8 @@ const SideNav = ({ onOpenPalette, overlay = false, room = null }: SideNavProps) 
           <span
             data-nav-accent
             aria-hidden
-            className="absolute -right-px w-[3px] rounded-full transition-[top] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
-            style={{ top: bar.top, height: BAR_H, background: SILVER, boxShadow: `0 0 8px ${alpha(SILVER, 0.4)}` }}
+            className="absolute -right-px w-[3px] rounded-full nav-accent transition-[top] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+            style={{ top: bar.top, height: BAR_H }}
           />
         )}
 
@@ -734,6 +786,26 @@ const SideNav = ({ onOpenPalette, overlay = false, room = null }: SideNavProps) 
                 </span>
                 <NavClock />
               </span>
+              <div className="mt-2 flex items-center gap-1" role="group" aria-label="Sidebar" data-sidenav-mode={mode}>
+                {(
+                  [
+                    ['icon', 'Icons', 'Collapse to icons'],
+                    ['offcanvas', 'Edge', 'Slide off the page. The accent at the left edge brings it back.'],
+                    ['fixed', 'Fixed', 'Keep the sidebar open'],
+                  ] as const
+                ).map(([id, label, hint]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => writeMode(id)}
+                    aria-pressed={mode === id}
+                    title={hint}
+                    className={`h-6 px-2 rounded-full font-mono text-t11 ${mode === id ? 'bg-ink/10 text-textPrimary' : 'text-textMuted hover:text-textPrimary'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </>
           )}
         </div>

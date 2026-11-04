@@ -129,6 +129,9 @@ const AppShell = () => {
   const standalone = useStandalone(location.pathname);
   const standaloneRoom = standaloneRoomOf(location.pathname);
   const bleedPage = /^\/trace\/(net-flow|odte)/.test(location.pathname);
+  /* A contract page fills the frame. The footer and a forced height used to push the chart and the card past the window. */
+  const contractPage = /^\/compass\/(?!tracker\/?$|blotter\/?$|review\/?$|study\/?$)[^/]+$/.test(location.pathname);
+  const fillFrame = bleedPage || contractPage;
 
   return (
     /* h-dvh: on a phone 100vh excludes the address bar, and this frame never lets the document scroll */
@@ -139,7 +142,7 @@ const AppShell = () => {
       {/* Trace pages reserve the scrollbar gutter so switching between them never changes the page width */}
       <main
         /* max-md:pt-12 clears the fixed phone strip (SideNav, h-12) */
-        className={`flex-1 min-w-0 min-h-0 h-full max-md:pt-12 ${bleedPage ? 'overflow-y-auto md:overflow-hidden' : 'overflow-y-auto'} ${
+        className={`flex-1 min-w-0 min-h-0 h-full max-md:pt-12 overflow-x-hidden ${fillFrame ? 'overflow-y-auto md:overflow-hidden' : 'overflow-y-auto'} ${
           location.pathname.startsWith('/trace') ? '[scrollbar-gutter:stable]' : ''
         }`}
         /* THE EDITOR'S ROOM ON EVERY PAGE (the partner tree's c6d73e5): the script editor docks fixed at the window's right
@@ -147,11 +150,11 @@ const AppShell = () => {
            stands beside the code the way a takeover does */
         style={{ paddingRight: 'var(--editor-w, 0px)' }}
       >
-        <div className={`w-full min-w-0 max-w-full flex flex-col ${bleedPage ? 'min-h-full md:h-full' : 'min-h-full'}`}>
+        <div className={`w-full min-w-0 max-w-full flex flex-col ${fillFrame ? 'min-h-full md:h-full' : 'min-h-full'}`}>
             <ScrollHome />
             <WayBack />
             <div
-              className={`${bleedPage ? 'px-4 lg:px-6 2xl:px-8 pt-5 pb-16 md:pb-0 gap-4 md:h-full md:min-h-0 md:overflow-hidden' : 'px-4 lg:px-6 2xl:px-8 pt-5 pb-16 gap-4'} flex flex-col flex-grow min-w-0 max-w-full`}
+              className={`${fillFrame ? 'px-4 lg:px-6 2xl:px-8 pt-5 pb-16 md:pb-4 gap-4 md:h-full md:min-h-0 md:overflow-hidden' : 'px-4 lg:px-6 2xl:px-8 pt-5 pb-16 gap-4'} flex flex-col flex-grow min-w-0 max-w-full overflow-x-hidden`}
             >
               <RouteBoundary resetKey={location.pathname}>
                 <Suspense
@@ -162,13 +165,13 @@ const AppShell = () => {
                     </>
                   }
                 >
-                  <PlanGate fill={!bleedPage}>
+                  <PlanGate fill={!fillFrame}>
                     <DeskKeep />
                   </PlanGate>
                 </Suspense>
               </RouteBoundary>
             </div>
-            {!location.pathname.startsWith('/trace') && !location.pathname.startsWith('/terrain') && <SiteFooter />}
+            {!location.pathname.startsWith('/trace') && !location.pathname.startsWith('/terrain') && !contractPage && <SiteFooter />}
         </div>
       </main>
       <EditorDockGate />

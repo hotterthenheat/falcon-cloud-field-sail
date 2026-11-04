@@ -8,8 +8,9 @@ interface CompanyLogoProps {
   className?: string;
 }
 
-/* A company mark for any ticker: public/logos/{TICKER}.svg, else a monogram tile, both in one fixed box
-   with no in-flow text so swapping faces never shifts the baseline. */
+/* A company mark for any ticker: public/logos/{TICKER}.svg, else a monogram tile. An image stays in the
+   asked square. A letter tile is at least 11px — the terminal's type floor — and grows wider than the square
+   when the symbol would not fit, so SPY is not drawn at 6px inside a 14px box. */
 /* names without a file are remembered for the session, so the letters draw at once and the request is not repeated */
 /* symbols the remote logo source has no mark for, remembered across visits so a miss costs one request, not one per page */
 const MISS_KEY = 'slayer_logo_miss_v1';
@@ -148,24 +149,24 @@ const CompanyLogo = ({ ticker, size = 20, className = '' }: CompanyLogoProps) =>
   const masked = local && (deep !== undefined || INK_MARKS.has(sym)) && probe !== 'opaque';
   const shape = `url(/logos/${sym}.svg) center / contain no-repeat`;
 
+  const mark = sym.length <= 5 ? sym : sym.slice(0, 4);
+  const markPx = Math.max(11, Math.round(size * 0.5));
+  const boxW = Math.max(size, Math.ceil(mark.length * markPx * 0.66) + 6);
+
   return (
     <span
       aria-hidden
       /* overflow-hidden pins the inline-block baseline to its bottom edge, so glyph and tile align identically */
       className={`relative inline-block align-middle shrink-0 select-none overflow-hidden ${className}`}
-      style={{ width: size, height: size }}
+      style={{ width: failed ? boxW : size, height: size }}
     >
       {failed ? (
         <span
           className={`absolute inset-0 flex items-center justify-center rounded-[5px] font-mono font-bold leading-none ${fund ? 'bg-textPrimary text-canvas' : 'border border-borderMuted bg-ink/[0.05] text-textPrimary'}`}
           data-logo-mark={fund ? 'fund' : undefined}
-          style={{
-            fontSize: Math.max(6, Math.round(size * (sym.length > 4 ? 0.21 : sym.length > 3 ? 0.26 : 0.34))),
-            letterSpacing: '-0.02em',
-          }}
+          style={{ fontSize: markPx, letterSpacing: '-0.02em' }}
         >
-          {/* the whole symbol, up to five letters */}
-          {sym.length <= 5 ? sym : sym.slice(0, 4)}
+          {mark}
         </span>
       ) : !local ? (
         <img

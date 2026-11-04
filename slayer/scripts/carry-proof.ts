@@ -10,7 +10,7 @@
 */
 import { carryFor, setDividend } from '../src/core/carry';
 import { carryWords, screenerYield } from '../src/data/carryFeed';
-import { clockCarry, readContract } from '../src/data/weigherGate';
+import { clockCarry, modelAt } from '../src/data/weigherGate';
 import { blackScholesPrice, thetaPerSession } from '../src/core/greeks';
 import { thetaPerSession as backtestTheta } from '../src/data/review/quotes';
 
@@ -31,21 +31,22 @@ check(`SPY's yield off its row: ${(spyQ! * 100).toFixed(4)}% = 7.582718 / 757.12
 check(`QQQ's: ${(qqqQ! * 100).toFixed(4)}% = 3.09182 / 692.74`, qqqQ != null && Math.abs(qqqQ - 3.09182 / 692.74) < 1e-6);
 check('SPX has none in our data: null, not a number made up', screenerYield({ data: rows }, 'SPX') === null);
 
-/* the Weigher's own read of one contract: SPY 757 call and put, 20 sessions out, 15% on the calendar year */
+/* A yield lowers the forward. Compass still prices with modelAt (the trees keep their own rate). readGreek does not
+   take the screener yield: with no parity forward it is cash spot, dividend 0, and without a loaded rate it is blank. */
 const now = Date.parse('2026-10-30T15:00:00Z');
 const expiryIso = '2026-11-27';
-const read = (right: 'C' | 'P') => readContract({ ticker: 'SPY', spot: 757.12, strike: 757, right, bid: 0, ask: 0, expiryIso, vendorIv: 0.15, now } as never);
+const T = 28 / 365;
 check('before the yield lands, SPY is priced with q = 0', carryFor('SPY').q === 0);
-const c0 = read('C')!;
-const p0 = read('P')!;
+const read = (right: 'C' | 'P', q: number) => modelAt(757.12, 757, right, 1, 1.05, T, 0.15, { r: 0.042, q })!;
+const c0 = read('C', 0);
+const p0 = read('P', 0);
 setDividend('SPY', spyQ!);
-const c1 = read('C')!;
-const p1 = read('P')!;
+const c1 = read('C', spyQ!);
+const p1 = read('P', spyQ!);
 const k = clockCarry('SPY', expiryIso, now);
 check(`with it, the Weigher's carry for SPY is q = ${(carryFor('SPY').q * 100).toFixed(4)}% (on its trading clock ${(k.q * 100).toFixed(4)}%)`, Math.abs(carryFor('SPY').q - spyQ!) < 1e-12 && k.q > 0);
 /* a yield lowers the forward S·e^{(r−q)T}. By hand, on the calendar clock (T = 28/365, σ√T = 0.15·√T = 0.04155):
    d1 = (ln(757.12/757) + (r + σ²/2)·T) / σ√T, and with the yield d1 − q·T/σ√T; Δcall = e^{−qT}·N(d1); Δput = Δcall − e^{−qT} */
-const T = 28 / 365;
 const sd = 0.15 * Math.sqrt(T);
 const ncdf = (x: number) => 0.5 * (1 + erf(x / Math.SQRT2));
 function erf(x: number): number {

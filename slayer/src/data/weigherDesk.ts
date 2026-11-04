@@ -8,7 +8,7 @@ import { listExpirations } from './chainDates';
 import { chainSnapshot } from './chainStore';
 /** A chain read this young is the chain now: the Weigher's refresh and another reader of the expiry share it */
 const CHAIN_FRESH_MS = 1_500;
-import { atmIvAt, expectedMovePctOf, readContract } from './weigherGate';
+import { atmIvAt, expectedMovePctOf, explainContract } from './weigherGate';
 import { weekdayDte } from './compassParams';
 import { nameTape } from './compassSession';
 import { nyIsoDate, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
@@ -20,6 +20,7 @@ import { sameName } from './spotGexBook';
 import { carryFor, setForward, type ForwardRead } from '../core/carry';
 import { parityForward, type ParityPair } from '../core/parity';
 import { calendarYears } from '../core/volClock';
+import { type ChainPair } from '../core/readGreek';
 
 // ---- the chain --------------------------------------------------------------
 
@@ -34,17 +35,30 @@ export interface DeskContract {
   gamma: number;
   /** Where the gamma came from */
   gammaFrom?: 'vendor' | 'model';
-  /** Per trading SESSION: the price change over one session on the trading clock, spot and vol held (core/greeks
-      thetaPerSession). Inside the last session it is minus the extrinsic. */
+  /** Per session: the annual theta divided by 252, off readGreek. */
   theta: number;
-  /** The decay over the next trading hour (or what is left of the session), same clock. */
+  /** The same solve's theta, per calendar hour. */
   thetaHour?: number;
-  /** Per point of the quoted IV */
+  /** Per 1.00 of volatility. A column headed "per point" divides by 100. */
   vega: number;
-  /** Percent, quoted on the calendar year (the vendor's convention), whether the vendor sent it or it was solved */
+  /** Percent. Solved off the mid on the calendar clock. */
   iv: number;
-  /** Where the IV came from */
+  /** Where the IV came from. The row's greek is the mid's, not the vendor print. */
   ivFrom?: 'vendor' | 'mark';
+  /** Why the greek is blank, when it is. */
+  greekWhy?: string;
+  /** The card's words when the forward is missing ("cash spot, dividend 0"). */
+  greekNote?: string;
+  /** A Theta delta, shown only when the option and the stock share a minute. Never the row's delta. */
+  thetaDelta?: number;
+  /** An Unusual Whales chain delta, shown beside the solve. Never copied over it. */
+  chainDelta?: number;
+  /** A flow print's delta, shown beside the solve. Never copied over it. */
+  flowDelta?: number;
+  /** The clock readGreek used, so the payoff curve does not move the IV onto another clock. */
+  greekT?: number;
+  greekR?: number;
+  greekQ?: number;
   /** A European price for an American put in the money: the UI says so (weigherGate EUROPEAN_NOTE) */
   europeanApprox?: boolean;
   /** Risk-neutral odds the contract finishes in the money — N(d2) family */
@@ -122,6 +136,8 @@ export interface DeskChain {
   /** The expiry's implied forward from put-call parity on these quotes, when the book had enough of them: its contracts
       are priced at the implied yield (core/carry carryFor) */
   forward?: ForwardRead;
+  /** The spot readGreek solved at. The chain's hairline uses this, not a later tape print. 0 when no row solved. */
+  greekSpot?: number;
 }
 
 /** The expiry rail: requested horizons resolved to REAL sessions, deduped —
@@ -487,6 +503,7 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
   let spot = 0;
   let quotedAt = 0;
   let forward: ForwardRead | undefined;
+  let greekSpot = 0;
   const now = Date.now();
   /* The terminal did not answer: an empty chain that says so. The desk keeps the chain it had. */
   if (got.error && !noData(got)) return { ticker: name, spot: 0, step: 1, rows: [], expiry, expectedMovePct: 0, source: 'live', quotedAt: 0, expiryIso: iso, optRoot: symbol, offline: true };
@@ -494,6 +511,7 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
     const items = snapRows(got.data);
     /* one spot for every row: the newest underlying print on the snapshot */
     let spotAt = -1;
+    const pairs = new Map<number, ParityPair>();
     for (const item of items) {
       const under = numOr(item.data.underlying_price);
       const uAt = stampMs(item.data.underlying_timestamp) || 0;
@@ -501,31 +519,30 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
         spot = under;
         spotAt = uAt;
       }
+      const strike = numOr(item.contract.strike);
+      const word = String(item.contract.right || '').toLowerCase();
+      if (strike == null || !(strike > 0) || !/^[cp]/.test(word)) continue;
+      const key = contractKey(item.contract);
+      const book = key ? nbbo.get(key) : undefined;
+      const bid = book && Number.isFinite(book.bid) ? book.bid : (numOr(item.data.bid) ?? NaN);
+      const ask = book && Number.isFinite(book.ask) ? book.ask : (numOr(item.data.ask) ?? NaN);
+      const p = pairs.get(strike) ?? { strike, callBid: NaN, callAsk: NaN, putBid: NaN, putAsk: NaN };
+      if (word.startsWith('c')) Object.assign(p, { callBid: bid, callAsk: ask });
+      else Object.assign(p, { putBid: bid, putAsk: ask });
+      pairs.set(strike, p);
     }
+    const chainPairs: ChainPair[] = [...pairs.values()];
     /* the expiry's implied forward from put-call parity on these same quotes (core/parity.ts), before any row is priced:
        every contract of the expiry is then priced at its implied yield (core/carry carryFor with the expiry) */
     if (spot > 0) {
-      const pairs = new Map<number, ParityPair>();
-      for (const item of items) {
-        const strike = numOr(item.contract.strike);
-        const word = String(item.contract.right || '').toLowerCase();
-        if (strike == null || !(strike > 0) || !/^[cp]/.test(word)) continue;
-        const key = contractKey(item.contract);
-        const book = key ? nbbo.get(key) : undefined;
-        const bid = book && Number.isFinite(book.bid) ? book.bid : (numOr(item.data.bid) ?? NaN);
-        const ask = book && Number.isFinite(book.ask) ? book.ask : (numOr(item.data.ask) ?? NaN);
-        const p = pairs.get(strike) ?? { strike, callBid: NaN, callAsk: NaN, putBid: NaN, putAsk: NaN };
-        if (word.startsWith('c')) Object.assign(p, { callBid: bid, callAsk: ask });
-        else Object.assign(p, { putBid: bid, putAsk: ask });
-        pairs.set(strike, p);
-      }
       const t = calendarYears(iso, now);
-      const fwd = parityForward([...pairs.values()], spot, carryFor(name).r, t);
+      const fwd = parityForward(chainPairs, spot, carryFor(name).r, t);
       if (fwd) {
         forward = { F: fwd.F, spot, b: fwd.b, t, n: fwd.n, lo: fwd.lo, hi: fwd.hi, at: now, day: nyIsoDate(now) };
         setForward(name, iso, forward);
       }
     }
+    let greekDist = Infinity;
     for (const item of items) {
       const strike = numOr(item.contract.strike);
       const word = String(item.contract.right || '').toLowerCase();
@@ -540,13 +557,39 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
       const at = (book && book.at) || stampMs(item.data.timestamp);
       if (at > quotedAt) quotedAt = at;
       const feed = (key: string) => numOr(item.data[key]);
-      /* ThetaData sends implied_vol as a fraction on the calendar year, always (0.2246 is 22.46%) */
-      const feedIv = feed('implied_vol');
-      /* every model number in the row off one vol on one clock: the vendor's IV moved onto the trading clock, else the
-         mid's own (data/weigherGate readContract) */
-      const solved = spot > 0 ? readContract({ ticker: name, root: symbol, spot, strike, right, bid: bidN, ask: askN, expiryIso: iso, vendorIv: feedIv, ivAt: at, now }) : null;
-      const ivPct = solved ? solved.iv : NaN;
+      /* The row's greek is readGreek: this contract's NBBO and this row's stock, one minute. A vendor delta is not a fallback. */
+      const underPx = numOr(item.data.underlying_price);
+      const underAt = stampMs(item.data.underlying_timestamp);
+      const rowSpot = underPx != null && underPx > 0 ? underPx : spot;
+      const pair = pairs.get(strike);
+      const otherBid = right === 'C' ? pair?.putBid : pair?.callBid;
+      const otherAsk = right === 'C' ? pair?.putAsk : pair?.callAsk;
+      const explained = rowSpot > 0 ? explainContract({
+        ticker: name,
+        root: symbol,
+        spot: rowSpot,
+        strike,
+        right,
+        bid: bidN,
+        ask: askN,
+        expiryIso: iso,
+        now,
+        optionAt: at || 0,
+        stockAt: underAt || 0,
+        ivError: feed('iv_error'),
+        ...(otherBid != null && Number.isFinite(otherBid) && otherAsk != null && Number.isFinite(otherAsk) ? { otherBid, otherAsk, otherAt: at || 0 } : {}),
+        chain: chainPairs,
+      }) : { ok: false as const, why: 'quote' as const };
+      const solved = explained.ok ? explained.read : null;
       const feedDelta = feed('delta');
+      const stampsMatch = at > 0 && underAt > 0 && Math.abs(at - underAt) <= 60_000;
+      if (solved) {
+        const dist = Math.abs(strike - rowSpot);
+        if (dist < greekDist) {
+          greekDist = dist;
+          greekSpot = solved.spot;
+        }
+      }
       const mark = bidN >= 0 && askN >= bidN && askN > 0 ? (bidN + askN) / 2 : NaN;
       const intrinsic = spot > 0 ? Math.max(0, right === 'C' ? spot - strike : strike - spot) : NaN;
       const breakeven = askN > 0 ? (right === 'C' ? strike + askN : strike - askN) : NaN;
@@ -554,7 +597,7 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
         strike,
         right,
         mark: Number.isFinite(mark) ? Number(mark.toFixed(2)) : NaN,
-        delta: solved ? Number(solved.delta.toFixed(4)) : feedDelta != null ? Number(feedDelta.toFixed(4)) : NaN,
+        delta: solved ? Number(solved.delta.toFixed(4)) : NaN,
         /* the model's gamma off the row's one vol; the vendor's own per-contract gamma replaces it once the book has
            this expiry's contracts (withVendorGamma). The first-order snapshot sends no gamma, so none is read from it. */
         gamma: solved ? Number(solved.gamma.toFixed(4)) : NaN,
@@ -562,8 +605,12 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
         theta: solved ? Number(solved.theta.toFixed(4)) : NaN,
         thetaHour: solved ? Number(solved.thetaHour.toFixed(4)) : NaN,
         vega: solved ? Number(solved.vega.toFixed(4)) : NaN,
-        iv: Number.isFinite(ivPct) ? Number(ivPct.toFixed(2)) : NaN,
+        iv: solved ? Number(solved.iv.toFixed(2)) : NaN,
         ivFrom: solved?.ivFrom,
+        greekWhy: explained.ok ? undefined : explained.why,
+        greekNote: solved?.note,
+        thetaDelta: stampsMatch && feedDelta != null ? Number(feedDelta.toFixed(4)) : undefined,
+        ...(solved?.greekT ? { greekT: solved.greekT, greekR: solved.greekR, greekQ: solved.greekQ } : {}),
         europeanApprox: solved?.europeanApprox,
         itmOdds: solved ? Number(solved.itm.toFixed(2)) : NaN,
         rho: solved ? Number(solved.rho.toFixed(4)) : NaN,
@@ -639,6 +686,7 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
     quotedAt,
     expiryIso: iso,
     optRoot: symbol,
+    greekSpot,
     ...(forward ? { forward } : {}),
   };
 }

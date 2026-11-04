@@ -321,7 +321,7 @@ const ReviewPanel = ({ signal, onClose }: { signal: Signal; onClose: () => void 
         {pnl != null && <span className={pnl > 0 ? 'text-bull' : 'text-bear'}> · {pnl > 0 ? '+' : '−'}${Math.abs(pnl).toFixed(2)}</span>}
       </p>
       <p className="mt-1 font-mono text-t11 text-textSecondary">
-        {!o?.fill ? (o?.status === 'unavailable' ? 'No quote a minute later. Never filled.' : 'Not filled yet.') : o.status !== 'closed' || !o.exit ? 'Still open.' : `Left on ${o.exit.why}.${o.peak > o.exit.px ? ` The bid later reached ${o.peak.toFixed(2)}.` : ''}`}
+        {!o?.fill ? (o?.status === 'unavailable' ? 'No quote a minute later. Never filled.' : 'Not filled yet.') : o.status !== 'closed' || !o.exit ? 'Still open.' : `Left on ${o.exit.why}.${o.peak > o.exit.px ? ` While it was open the bid reached ${o.peak.toFixed(2)}.` : ''}`}
       </p>
     </div>
   );

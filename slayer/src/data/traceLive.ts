@@ -1649,6 +1649,8 @@ interface TopNet {
   net: number;
   volume: number;
   count: number;
+  /** The vendor's net_premium. Not the pane, not the tide. */
+  source: 'Whole day net premium';
 }
 
 export function useTopNet(limit = 40): LivePack<TopNet[]> {
@@ -1661,6 +1663,7 @@ export async function readTopNet(limit: number): Promise<TopNet[]> {
     net: num(r.net_premium),
     volume: num(r.volume),
     count: num(r.count) || 1,
+    source: 'Whole day net premium',
   }));
 }
 
@@ -1750,12 +1753,14 @@ export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; 
 /** What a name's pane line covers: its regular session's minute ticks, every expiry and strike, from 09:30 — a cut's
     line or the tide runs from the vendor's own day start (07:30), so the two are said apart */
 export function paneCovers(name: string, points: readonly PaneFlowPoint[]): NetCovers {
-  return coversOf(points, 'net-prem-ticks', ['pre-market', `after ${sessionEndLabel(name)}`]);
+  const end = sessionEndMin(name) === 975 ? '16:15' : '16:00';
+  return coversOf(points, `Regular session, sum of net-premium ticks, 09:30–${end} ET`, ['pre-market', `after ${sessionEndLabel(name)}`]);
 }
 /** What a cut's line covers: the vendor's net flow by expiry (or a sector's tide) from its first minute */
 export function cutCovers(seg: NetFlowSegment, mny: MoneynessKey, zeroDte: boolean, points: readonly PaneFlowPoint[]): NetCovers {
   if (seg.startsWith('sector:')) return coversOf(points, 'sector tide', []);
-  return coversOf(points, 'net flow by expiry', [...(mny !== 'all' ? [`strikes not ${mny.toUpperCase()}`] : []), zeroDte ? 'expiries after today' : 'expiries past the week']);
+  if (zeroDte) return coversOf(points, '0DTE net flow, vendor cumulative', [...(mny !== 'all' ? [`strikes not ${mny.toUpperCase()}`] : []), 'expiries after today']);
+  return coversOf(points, 'net flow by expiry', [...(mny !== 'all' ? [`strikes not ${mny.toUpperCase()}`] : []), 'expiries past the week']);
 }
 
 /** A name's running net call and put premium through its regular session, priced by its one-minute closes */
