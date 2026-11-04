@@ -1,6 +1,6 @@
-/* LEVELS — the exposure nodes' default look (deskPrefs `nodeLook: 'levels'`): the book's biggest nodes NOW, each one
-   level band across the whole chart, every candle left to right — the way GEX level overlays are read everywhere — not
-   a bead or a waveform a bar.
+/* LEVELS — the exposure nodes' default look (deskPrefs `nodeLook: 'levels'`): the book's biggest nodes NOW, drawn the
+   way the key-levels ladder draws a rung (ladderPaint.ts). A faint dotted trace crosses the tape so the strike is
+   findable, and a short solid rung at the right edge carries the size. Nothing is painted as a band through the candles.
 
    - Which: the newest column of the field (the cut the page reads: Terrain's expiry pick, in the model the Live /
      Settled switch picks — the field's own numbers, dealer sign), its LEVELS_TOP_N largest strikes by |exposure|, none
@@ -8,10 +8,10 @@
    - No stacking: two bands closer than LEVELS_MIN_GAP_PX on the price axis are one — the weaker is skipped (merged into
      the stronger, which names it), and each band's swell is capped at half the gap to its drawn neighbours, so no two
      bands ever touch. Only the top LEVELS_LABELS are named, through the edge's label fit (edgeLabelFit.ts).
-   - The look is the beads' (Noah's ribbon): thickness from the strength t^1.6 between a hairline and the swell, a wide
-     faint halo under a soft core, see-through so the candles read through it; the long-gamma side in the glacier, the
-     short-gamma side in the ember (heatmap.ts's house ramp, nodeHeat.heatHueAt), and the supreme, the call wall and the
-     put wall in the key levels' identity inks (palette.ts).
+   - The trace is one device pixel, dotted, and quiet. The rung is the same pixel (the largest node a hair thicker) and
+     its length is the node's size. The label column stays clear of both. The long-gamma side is the glacier, the
+     short-gamma side the ember (heatmap.ts's house ramp, nodeHeat.heatHueAt), and the supreme, the call wall and the
+     put wall keep the key levels' identity inks (palette.ts).
 
    Pure selection (pickLevels, spaceLevels) for scripts/node-levels-proof.ts; drawLevels is the painter. */
 
@@ -125,46 +125,57 @@ export function levelInk(p: { strike: number; value: number; t: number }, ids: {
 
 export interface LevelsView {
   levels: readonly (LevelPick & { y: number })[];
-  /** where the bands start (the first candle's left edge) and end (the pane's right edge), CSS px */
+  /** where the trace starts (the first candle's left edge) and where the rung ends, CSS px */
   x0: number;
   x1: number;
   H: number;
   hr: number;
   vr: number;
+  /** CSS px kept clear at the right for the edge label. The rung ends on its left. */
+  gutter?: number;
   ids: { supreme: number | null; cw: number | null; pw: number | null };
   light: boolean;
 }
 
-/** The bands into `ctx` (bitmap space). Returns each drawn strike's half-height (CSS px), the hover reads it. */
+/** Shortest and longest solid rung, CSS px. Length is the node's size. */
+const RUNG_MIN = 16;
+const RUNG_MAX = 44;
+
+/** The traces and rungs into `ctx` (bitmap space). Returns a hover half-height (CSS px) for each drawn strike. */
 export function drawLevels(ctx: CanvasRenderingContext2D, v: LevelsView): Map<number, number> {
   const out = new Map<number, number>();
-  const ys = v.levels.map(l => l.y);
   const L = Math.round(Math.max(0, v.x0) * v.hr);
-  const R = Math.round(v.x1 * v.hr);
-  if (R <= L) return out;
-  /* weakest first, so the largest lies on top where two halos meet */
+  const edge = Math.round(v.x1 * v.hr) - Math.round(Math.max(0, v.gutter ?? 0) * v.hr);
+  if (edge <= L + 4) return out;
+  ctx.save();
+  ctx.lineCap = 'butt';
+  /* weakest first, so the largest lies on top where two lines share a pixel */
   for (const l of [...v.levels].sort((a, b) => a.t - b.t)) {
     if (l.y < -8 || l.y > v.H + 8) continue;
-    const room = levelRoom(l.y, ys);
-    const half = Math.min(levelHalf(l.t), room);
-    const haloHalf = Math.min(Math.max(half * 1.9, half + 1.5), room + 0.5);
-    const { core, halo } = levelAlpha(l.t);
     const [r, g, b] = levelInk(l, v.ids, v.light);
-    const yc = l.y * v.vr;
-    /* the halo: wider and faint, what makes the band soft — the ends fade in so it never starts on a hard edge */
-    const fade = Math.min((R - L) * 0.08, 28 * v.hr);
-    const grad = ctx.createLinearGradient(L, 0, L + fade, 0);
-    grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
-    grad.addColorStop(1, `rgba(${r},${g},${b},${halo.toFixed(3)})`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(L, Math.round(yc - haloHalf * v.vr), R - L, Math.max(1, Math.round(haloHalf * 2 * v.vr)));
-    const gc = ctx.createLinearGradient(L, 0, L + fade, 0);
-    gc.addColorStop(0, `rgba(${r},${g},${b},0)`);
-    gc.addColorStop(1, `rgba(${r},${g},${b},${core.toFixed(3)})`);
-    ctx.fillStyle = gc;
-    const hPx = Math.max(1, Math.round(half * 2 * v.vr));
-    ctx.fillRect(L, Math.round(yc - hPx / 2), R - L, hPx);
-    out.set(l.strike, half);
+    const s = Math.pow(Math.max(0, Math.min(1, l.t)), 0.85);
+    const lw = Math.max(1, Math.round((l.rank === 0 ? 1.35 : 1) * v.vr));
+    const yc = Math.round(l.y * v.vr) + (lw % 2 === 0 ? 0 : 0.5);
+    const rung = Math.round((RUNG_MIN + (RUNG_MAX - RUNG_MIN) * s) * v.hr);
+    const rungL = Math.max(L, edge - rung);
+    ctx.strokeStyle = `rgb(${r},${g},${b})`;
+    ctx.lineWidth = lw;
+    ctx.setLineDash([1.5 * v.hr, 4.5 * v.hr]);
+    ctx.globalAlpha = 0.14 + s * 0.12;
+    ctx.beginPath();
+    ctx.moveTo(L, yc);
+    ctx.lineTo(Math.max(L, rungL - 5 * v.hr), yc);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.78 + s * 0.18;
+    ctx.beginPath();
+    ctx.moveTo(rungL, yc);
+    ctx.lineTo(edge, yc);
+    ctx.stroke();
+    out.set(l.strike, 6);
   }
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+  ctx.restore();
   return out;
 }

@@ -1,6 +1,6 @@
 /*
-  The exposure nodes' default look (src/components/gex/nodeLevels.ts): the book's biggest nodes now, one band each across
-  the chart. Known books in, known levels out:
+  The exposure nodes' default look (src/components/gex/nodeLevels.ts): the book's biggest nodes now, a dotted trace and a
+  short rung. Known books in, known levels out:
     - the top N by |exposure| (dealer sign kept), largest first, none under the share floor, no strike without a reading;
     - two strikes nearer than the gap on the axis are one band: the weaker is skipped and named on the stronger;
     - no two drawn bands ever touch: each band's swell is held under half the gap to its neighbours;
@@ -8,7 +8,7 @@
     - the bands' names go through the edge's label fit and never overlap.
   Run:  npx tsx scripts/node-levels-proof.ts
 */
-import { LEVELS_MIN_GAP_PX, LEVELS_MIN_SHARE, LEVELS_TOP_N, LEVEL_A_MAX, LEVEL_A_MIN, levelHalf, levelInk, levelRoom, levelSideInk, pickLevels, spaceLevels, type LevelRow } from '../src/components/gex/nodeLevels';
+import { LEVELS_MIN_GAP_PX, LEVELS_MIN_SHARE, LEVELS_TOP_N, LEVEL_A_MAX, LEVEL_A_MIN, drawLevels, levelHalf, levelInk, levelRoom, levelSideInk, pickLevels, spaceLevels, type LevelRow } from '../src/components/gex/nodeLevels';
 import { fitEdgeLabels, labelsOverlap } from '../src/components/gex/edgeLabelFit';
 import { CALL_WALL, PUT_WALL, SUPREME } from '../src/components/gex/palette';
 
@@ -98,6 +98,36 @@ const placed = fitEdgeLabels(
 let over = false;
 for (let i = 0; i < placed.length; i++) for (let j = i + 1; j < placed.length; j++) if (labelsOverlap(placed[i], placed[j], 16)) over = true;
 check('the names and the levels beside them never overlap', !over && placed.length >= 2, placed.map(p => `${p.id}@${p.ty.toFixed(0)}`).join(' '));
+
+/* ---- the painter: a dotted trace and a short rung, never a filled band ---- */
+const ops: string[] = [];
+const fake = {
+  save() { ops.push('save'); },
+  restore() { ops.push('restore'); },
+  beginPath() {},
+  moveTo() {},
+  lineTo() {},
+  stroke() { ops.push('stroke'); },
+  setLineDash(d: number[]) { ops.push(d.length ? 'dash' : 'solid'); },
+  fillRect() { ops.push('fill'); },
+  lineCap: 'butt',
+  lineWidth: 1,
+  strokeStyle: '',
+  globalAlpha: 1,
+} as unknown as CanvasRenderingContext2D;
+const painted = drawLevels(fake, {
+  levels: wide.map(l => ({ ...l, y: yWide(l.strike) })),
+  x0: 0,
+  x1: 800,
+  gutter: 96,
+  H: 600,
+  hr: 2,
+  vr: 2,
+  ids,
+  light: false,
+});
+check('every placed level is hoverable', painted.size === wide.length, String(painted.size));
+check('the painter strokes a trace and a rung, and never fills a band', ops.includes('stroke') && ops.includes('dash') && ops.includes('solid') && !ops.includes('fill'), ops.join(' '));
 
 if (fail) {
   console.log(`\n${fail} FAILED`);

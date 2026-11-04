@@ -42,7 +42,7 @@ export const clockZoneOf = (c: ClockZone): string | null => CLOCK_ZONES.find(z =
     ribbon whose thickness is its strength (ribbon) */
 export type NodeLook = 'levels' | 'beads' | 'heat' | 'both' | 'ribbon';
 export const NODE_LOOKS: readonly { value: NodeLook; label: string; hint: string }[] = [
-  { value: 'levels', label: 'Levels', hint: "The biggest nodes of the book now, each a band across the whole chart, its thickness the node's size" },
+  { value: 'levels', label: 'Levels', hint: "The biggest nodes now. A faint dotted trace across the tape, and a short rung at the right whose length is the node's size" },
   { value: 'beads', label: 'Beads', hint: 'A row of dots on each heavy strike, each dot sized by the exposure at that bar' },
   { value: 'heat', label: 'Heat', hint: 'The filled field: every strike, every bar, coloured by its exposure' },
   { value: 'both', label: 'Both', hint: 'The beads over a faint field' },

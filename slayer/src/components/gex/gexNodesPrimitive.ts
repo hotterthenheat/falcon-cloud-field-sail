@@ -47,8 +47,8 @@ const rampAt = (stops: readonly (readonly [number, number, number])[], t: number
   const b = stops[i + 1];
   return [Math.round(a[0] + (b[0] - a[0]) * f), Math.round(a[1] + (b[1] - a[1]) * f), Math.round(a[2] + (b[2] - a[2]) * f)];
 };
-/** A cell's alpha at strength t: quiet cells recede */
-const alphaAt = (t: number): number => 0.14 + 0.62 * Math.pow(Math.max(0, Math.min(1, t)), 0.75);
+/** A cell's alpha at strength t: quiet cells recede, and even the loudest stays see-through so a candle reads on it */
+const alphaAt = (t: number): number => 0.05 + 0.32 * Math.pow(Math.max(0, Math.min(1, t)), 0.9);
 const LUT: { pos: string[]; neg: string[]; posSolid: string[]; negSolid: string[] } = { pos: [], neg: [], posSolid: [], negSolid: [] };
 for (let s = 0; s < STEPS; s++) {
   const t = (s + 0.5) / STEPS;
@@ -118,8 +118,8 @@ const RASTER_MX = 0.35;
 const RASTER_MY = 0.25;
 const SETTLE_MS = 120;
 
-/** The heat's seam between two strikes' bands, device px, by the row's height */
-const heatInset = (h: number): number => (h >= 10 ? Math.round(h * 0.2) : h >= 5 ? 1 : 0);
+/** The heat's seam between two strikes' bands, device px, by the row's height. Wide enough that neighbouring strikes stay strata. */
+const heatInset = (h: number): number => (h >= 8 ? Math.max(2, Math.round(h * 0.28)) : h >= 4 ? 1 : 0);
 
 /** The cell under the pointer, as the card reads it */
 export interface BeadHit {
@@ -480,73 +480,22 @@ class FieldRenderer {
             bctx.fill(path);
           }
           bctx.globalAlpha = 1;
-          /* THE KING: in each moment, the heaviest cell in view glows — the foil along its edges, a soft bloom under it,
-             its own ink lifted. Runs of the same king merge, so a node that holds the crown reads as one lit bar. */
+          /* THE KING: in each moment, the heaviest cell in view gets a one-pixel foil on its strike. No bloom and no
+             star — the band is already the brightest cell, and a glow over it buried the candle. Runs merge. */
           if (hInk) {
-            const lw = Math.max(1, Math.round(vr));
             const crown = hInk.crown;
-            const bloom = hInk.bloom;
             let runRow = -1;
             let runL = 0;
             let runR = 0;
-            let runSide = 0;
-            /* the star: one at the moment a node takes the crown, where its reign is long enough to read (the king's
-               mark, as the references star theirs), never two within STAR_GAP of each other */
-            const STAR_MIN = 26 * hr;
-            const STAR_GAP = 56 * hr;
-            /* the labels' column at the edge: a crown taken under it is named there ("★ Top"), not starred */
-            const STAR_CLEAR = Math.min(150, wCss * 0.3);
-            let lastStar = -Infinity;
-            const g0 = src.groundRgb();
-            const star = (cx: number, cy: number, rad: number) => {
-              bctx.beginPath();
-              for (let i = 0; i < 10; i++) {
-                const a = -Math.PI / 2 + (i * Math.PI) / 5;
-                const rr = i % 2 ? rad * 0.45 : rad;
-                const px = cx + Math.cos(a) * rr;
-                const py = cy + Math.sin(a) * rr;
-                if (i) bctx.lineTo(px, py);
-                else bctx.moveTo(px, py);
-              }
-              bctx.closePath();
-              bctx.lineWidth = Math.max(1, 1.6 * hr);
-              bctx.strokeStyle = `rgba(${g0[0]},${g0[1]},${g0[2]},0.9)`;
-              bctx.stroke();
-              bctx.fillStyle = `rgba(${crown[0]},${crown[1]},${crown[2]},0.98)`;
-              bctx.fill();
-            };
             const flushKing = () => {
               if (runRow < 0) return;
               const ya = edgeY[runRow];
               const yb = edgeY[runRow + 1];
               if (Number.isFinite(ya) && Number.isFinite(yb)) {
-                const y0 = Math.round(Math.min(ya, yb));
-                const y1 = Math.round(Math.max(ya, yb));
-                const inset = heatInset(y1 - y0);
-                /* never thinner than three pixels: the king reads in a short pane too */
-                const mid = (y0 + y1) / 2;
-                const half = Math.max(1.5 * vr, (y1 - inset - (y0 + inset)) / 2);
-                const yT = Math.round(mid - half);
-                const yB = Math.max(yT + lw, Math.round(mid + half));
-                /* the bloom alone: the shape is drawn far off the raster and only its shadow lands here */
-                bctx.save();
-                const far = 20000;
-                bctx.shadowColor = `rgba(${bloom[0]},${bloom[1]},${bloom[2]},${light ? 0.22 : 0.3})`;
-                bctx.shadowBlur = 10 * hr;
-                bctx.shadowOffsetX = far;
-                bctx.fillStyle = '#000';
-                bctx.fillRect(runL - far, yT, runR - runL, yB - yT);
-                bctx.restore();
-                /* its own hue at the ramp's top, lit nearly solid: the brightest band on the chart */
-                bctx.fillStyle = hInk.solid[runSide][STEPS - 1].replace('rgb(', 'rgba(').replace(')', `,${light ? 0.5 : 0.62})`);
-                bctx.fillRect(runL, yT, runR - runL, yB - yT);
-                bctx.fillStyle = `rgba(${crown[0]},${crown[1]},${crown[2]},${light ? 0.6 : 0.5})`;
-                bctx.fillRect(runL, yT, runR - runL, lw);
-                bctx.fillRect(runL, yB - lw, runR - runL, lw);
-                if (runR - runL >= STAR_MIN && runL - lastStar >= STAR_GAP && runL < (wCss - STAR_CLEAR) * hr) {
-                  lastStar = runL;
-                  star(runL + 7 * hr, mid, Math.max(3.6, Math.min(5.5, ((y1 - y0) / vr) * 0.9)) * hr);
-                }
+                const mid = (Math.min(ya, yb) + Math.max(ya, yb)) / 2;
+                const foil = Math.max(1, Math.round(vr));
+                bctx.fillStyle = `rgba(${crown[0]},${crown[1]},${crown[2]},${light ? 0.45 : 0.62})`;
+                bctx.fillRect(runL, Math.round(mid - foil / 2), Math.max(1, runR - runL), foil);
               }
               runRow = -1;
             };
@@ -578,7 +527,6 @@ class FieldRenderer {
               runRow = best;
               runL = L;
               runR = xr[c - cFrom];
-              runSide = vals[base + best] > 0 ? 0 : 1;
             }
             flushKing();
           }
@@ -649,7 +597,7 @@ interface Zone {
   value: number;
 }
 
-const BEAD_R_MAX = 5;
+const BEAD_R_MAX = 3.2;
 const BEAD_MIN_PITCH = 3.2;
 const TAG_H = 14;
 const TAG_FONT = 9.5;
@@ -677,15 +625,6 @@ function shortDollars(v: number): string {
 }
 const priceText = (p: number): string => fmtStrikePx(p);
 
-/** The row's newest reading inside the window, NaN for none */
-function lastIn(vals: Float64Array, R: number, r: number, first: number, last: number): number {
-  for (let c = last - 1; c >= first; c--) {
-    const v = vals[c * R + r];
-    if (v === v && v !== 0) return v;
-  }
-  return NaN;
-}
-
 let measureCanvas: HTMLCanvasElement | null = null;
 function measureCtx(): CanvasRenderingContext2D | null {
   if (typeof document === 'undefined') return null;
@@ -694,10 +633,10 @@ function measureCtx(): CanvasRenderingContext2D | null {
 }
 
 /**
- * The Slayer nodes, drawn under the candles: a row of beads for each heavy strike (a dot at every bar with a reading,
- * its radius the square root of the cell's size), the heaviest node now in white with a soft glow, an outlined zone
- * around the two or three heaviest from the bar they became that, and a short bar per strike at the plot's right edge
- * for where the book stands now. The edge tags are laid out here and painted on the top layer (TagsRenderer).
+ * The Slayer nodes, drawn under the candles. Levels (the default) are a faint dotted trace and a short rung at the
+ * right edge (nodeLevels.ts) — the same grammar as the key-levels ladder, never a band through the candles. Beads are
+ * small dots on the heavy strikes. The heaviest node is the brighter ink. A zone is a dotted trace from the bar it
+ * became one. The edge tags carry the size and are painted on the top layer (TagsRenderer).
  */
 class NodesRenderer {
   constructor(private source: GexTrailsPrimitive) {}
@@ -900,39 +839,66 @@ class NodesRenderer {
       const H = scope.mediaSize.height;
       ctx.save();
 
-      /* ZONES: a 1px outline and a faint fill around the heaviest nodes, from the bar each became one to the edge */
+      /* ZONES: a dotted trace from the bar a node became one of the heaviest, stopping short of the label column */
+      ctx.save();
+      ctx.lineCap = 'butt';
       for (const z of zones) {
         if (z.row < rLo || z.row >= rHi || !keep.has(z.row)) continue;
         const y = yOf(strikes[z.row]);
         if (y == null) continue;
         const xs = ts.timeToCoordinate(cols[z.start].time as Time);
         const x0 = Math.max(0, (xs ?? 0) - barSpacing / 2);
-        if (x0 >= W) continue;
-        const half = Math.max(4, Math.min(10, rowGap(z.row) * 0.45));
+        if (x0 >= W - 8) continue;
         const strong = z.row === strongRow;
         const t = Math.min(1, Math.abs(z.value) / (ref || 1));
         const ink = strong ? crown : (z.value > 0 ? BEADS.pos : BEADS.neg)[Math.min(STEPS - 1, Math.floor(t * STEPS))];
         const L = Math.round(x0 * hr);
-        const Rr = Math.round(W * hr);
-        const T = Math.round((y - half) * vr);
-        const B = Math.round((y + half) * vr);
-        ctx.fillStyle = rgba(ink, strong ? 0.08 : 0.065);
-        ctx.fillRect(L, T, Rr - L, B - T);
-        const lw = Math.max(1, Math.round(hr));
-        ctx.fillStyle = rgba(ink, strong ? 0.6 : 0.45);
-        ctx.fillRect(L, T, Rr - L, lw);
-        ctx.fillRect(L, B - lw, Rr - L, lw);
-        ctx.fillRect(L, T, lw, B - T);
+        const Rr = Math.round((W - Math.min(108, W * 0.22)) * hr);
+        if (Rr <= L) continue;
+        const yc = Math.round(y * vr) + 0.5;
+        ctx.strokeStyle = rgba(ink, 1);
+        ctx.globalAlpha = strong ? 0.42 : 0.22;
+        ctx.lineWidth = Math.max(1, Math.round(vr));
+        ctx.setLineDash([2 * hr, 4 * hr]);
+        ctx.beginPath();
+        ctx.moveTo(L, yc);
+        ctx.lineTo(Rr, yc);
+        ctx.stroke();
       }
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      ctx.restore();
 
       if (bands.length) {
         const x0 = ts.logicalToCoordinate(0 as Logical);
-        const lkey = `${src.rev}|${W}|${H}|${hr}|${vr}|${x0 == null ? 'x' : x0.toFixed(1)}|${light}|${src.supremeStrike}|${src.cwStrike}|${src.pwStrike}|${bands.map(l => `${l.strike}@${l.y.toFixed(1)}`).join(',')}`;
+        const levelsNow = src.edgeLevels?.() ?? [];
+        const roleShort = (strike: number, strong: boolean): string => {
+          const lv = levelsNow.find(l => Math.abs(l.price - strike) < 1e-6);
+          if (lv) return lv.short;
+          if (src.supremeStrike != null && Math.abs(src.supremeStrike - strike) < 1e-6) return 'S';
+          if (src.cwStrike != null && Math.abs(src.cwStrike - strike) < 1e-6) return 'CW';
+          if (src.pwStrike != null && Math.abs(src.pwStrike - strike) < 1e-6) return 'PW';
+          return strong ? 'Top' : 'N';
+        };
+        const measure = measureCtx();
+        if (measure) measure.font = `${TAG_FONT}px ${TAG_MONO}`;
+        let named = 0;
+        let gutter = 0;
+        for (const l of bands) {
+          if (l.y < 0 || l.y > H || named >= LEVELS_LABELS) continue;
+          named++;
+          const short = roleShort(l.strike, l.rank === 0);
+          const text = `${priceText(l.strike)}${short === 'N' ? '' : ` ${short}`} ${shortDollars(l.value)}`;
+          gutter = Math.max(gutter, Math.ceil((measure ? measure.measureText(text).width : text.length * 6) + 16));
+        }
+        gutter = Math.min(W * 0.36, gutter);
+        const lkey = `${src.rev}|${W}|${H}|${hr}|${vr}|${x0 == null ? 'x' : x0.toFixed(1)}|${gutter}|${light}|${src.supremeStrike}|${src.cwStrike}|${src.pwStrike}|${bands.map(l => `${l.strike}@${l.y.toFixed(1)}`).join(',')}`;
         const drawn = this.levelsCache.paint(ctx, lkey, scope.bitmapSize.width, scope.bitmapSize.height, b =>
           drawLevels(b, {
             levels: bands,
             x0: x0 == null ? 0 : x0 - barSpacing / 2,
             x1: W,
+            gutter,
             H,
             hr,
             vr,
@@ -996,7 +962,6 @@ class NodesRenderer {
         const paths = new Map<number, Path2D>();
         const crownPath = new Path2D();
         const crownFaint = new Path2D();
-        const guide: { y: number; x: number; ink: readonly [number, number, number]; strong: boolean }[] = [];
         for (let i = 0; i < selected.length; i++) {
           const r = selected[i];
           const y = ys[i];
@@ -1012,7 +977,6 @@ class NodesRenderer {
           beadRows.set(r, rCap);
           const strong = r === strongRow;
           const yb = y * vr;
-          let firstX = NaN;
           for (let c = c0; c < last; c += k) {
             const x = xs[c - first];
             if (x !== x) continue;
@@ -1023,8 +987,8 @@ class NodesRenderer {
               if (w === w && w !== 0 && (v !== v || Math.abs(w) > Math.abs(v))) v = w;
             }
             if (v !== v) continue;
-            if (firstX !== firstX) firstX = x;
             const t = Math.min(1, Math.abs(v) / ref);
+            if (t < 0.16) continue;
             const rad = Math.max(1, (rFloor + (rCap - rFloor) * Math.sqrt(t)) * hr);
             const xb = x * hr;
             if (strong) {
@@ -1040,62 +1004,22 @@ class NodesRenderer {
             p.moveTo(xb + rad, yb);
             p.arc(xb, yb, rad, 0, Math.PI * 2);
           }
-          if (firstX === firstX) {
-            const side = lastIn(vals, R, r, first, last) > 0 ? BEADS.pos : BEADS.neg;
-            guide.push({ y: yb, x: Math.max(0, firstX * hr), ink: strong ? crown : side[STEPS >> 1], strong });
-          }
         }
         src.beadRows = beadRows;
-        /* the guide under each row, faint, from its first bead to the edge */
-        const lw = Math.max(1, Math.round(vr));
-        for (const g of guide) {
-          ctx.fillStyle = rgba(g.ink, g.strong ? 0.22 : 0.1);
-          ctx.fillRect(Math.round(g.x), Math.round(g.y - lw / 2), Math.round(W * hr - g.x), lw);
-        }
         for (const [key, p] of paths) {
           const step = key % STEPS;
           const t = (step + 0.5) / STEPS;
           const ink = key < STEPS ? BEADS.pos[step] : BEADS.neg[step];
-          ctx.fillStyle = rgba(ink, 0.42 + 0.58 * Math.pow(t, 0.6));
+          ctx.fillStyle = rgba(ink, 0.38 + 0.48 * Math.pow(t, 0.6));
           ctx.fill(p);
         }
-        /* the heaviest node now: white beads with a soft glow */
-        ctx.fillStyle = rgba(crown, 0.5);
+        /* the heaviest node now: the same ink, a step brighter, with no bloom */
+        ctx.fillStyle = rgba(crown, 0.45);
         ctx.fill(crownFaint);
-        ctx.shadowColor = light ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.75)';
-        ctx.shadowBlur = 6 * hr;
-        ctx.fillStyle = rgba(crown, 0.96);
+        ctx.fillStyle = rgba(crown, 0.92);
         ctx.fill(crownPath);
-        ctx.shadowBlur = 0;
-        ctx.shadowColor = 'transparent';
       }
 
-      /* PROFILE: where each strike's net stands now, a short bar in from the plot's right edge */
-      if (haveField && cN >= 0 && rHi > rLo && !levelsLook) {
-        let top = 0;
-        for (let r = rLo; r < rHi; r++) {
-          const v = nowAt(r);
-          if (v === v) top = Math.max(top, Math.abs(v));
-        }
-        if (top > 0) {
-          const maxW = Math.max(22, Math.min(54, W * 0.06));
-          const right = Math.round((W - 1) * hr);
-          for (let r = rLo; r < rHi; r++) {
-            const v = nowAt(r);
-            if (v !== v || v === 0 || !keep.has(r)) continue;
-            const y = yOf(strikes[r]);
-            if (y == null) continue;
-            const th = Math.max(1, Math.min(6, rowGap(r) * 0.7));
-            const len = Math.max(1, (maxW * Math.abs(v)) / top);
-            const t = Math.min(1, Math.abs(v) / ref);
-            const strong = r === strongRow;
-            const ink = strong ? crown : (v > 0 ? BEADS.pos : BEADS.neg)[Math.min(STEPS - 1, Math.floor(t * STEPS))];
-            ctx.fillStyle = rgba(ink, strong ? 0.9 : 0.72);
-            const yT = Math.round((y - th / 2) * vr);
-            ctx.fillRect(Math.round(right - len * hr), yT, Math.round(len * hr), Math.max(1, Math.round(th * vr)));
-          }
-        }
-      }
       ctx.restore();
     });
 
@@ -1119,7 +1043,7 @@ class NodesRenderer {
       const strong = l.rank === 0;
       const role = roleOf(l.strike, strong);
       const ink = rgba(levelInk(l, { supreme: src.supremeStrike, cw: src.cwStrike, pw: src.pwStrike }, light), 1);
-      const text = narrow ? `${priceText(l.strike)}${role.short === 'N' ? '' : ` ${role.short}`} ${shortDollars(l.value)}` : `${priceText(l.strike)} · ${role.name} · ${signedDollars(l.value)}`;
+      const text = `${priceText(l.strike)}${role.short === 'N' ? '' : ` ${role.short}`} ${shortDollars(l.value)}`;
       const named = role.short !== 'N' && role.short !== 'Top';
       tags.push({ price: l.strike, y: l.y, ty: l.y, text, ink, prio: strong ? 10 : named ? 9 : 9 - named0, keep: strong || named0 === 1 || named, w: 0, zone: true });
       used.push(l.strike);
@@ -1133,7 +1057,7 @@ class NodesRenderer {
       const role = roleOf(strike, strong);
       const t = Math.min(1, Math.abs(z.value) / (ref || 1));
       const ink = rgba(strong ? crown : (z.value > 0 ? BEADS.pos : BEADS.neg)[Math.min(STEPS - 1, Math.floor(t * STEPS))], 1);
-      const text = narrow ? `${priceText(strike)}${role.short === 'N' ? '' : ` ${role.short}`} ${shortDollars(z.value)}` : `${priceText(strike)} · ${role.name} · ${signedDollars(z.value)}`;
+      const text = `${priceText(strike)}${role.short === 'N' ? '' : ` ${role.short}`} ${shortDollars(z.value)}`;
       const named = role.short !== 'N' && role.short !== 'Top';
       tags.push({ price: strike, y, ty: y, text, ink, prio: strong ? 10 : named ? 9 : 6, keep: strong || named, w: 0, zone: true });
       used.push(strike);
@@ -1161,7 +1085,7 @@ class NodesRenderer {
     if (measure) measure.font = `${TAG_FONT}px ${TAG_MONO}`;
     const right = paneW - 3;
     for (const t of tags) {
-      t.w = Math.ceil((measure ? measure.measureText(t.text).width : t.text.length * 6) + 12);
+      t.w = Math.ceil((measure ? measure.measureText(t.text).width : t.text.length * 6) + 8);
       src.chips.push({ strike: t.price, left: right - t.w, top: t.ty - TAG_H / 2, bottom: t.ty + TAG_H / 2 });
     }
     src.tags = tags;
@@ -1194,7 +1118,6 @@ class TagsRenderer {
       ctx.font = `${Math.round(TAG_FONT * vr)}px ${TAG_MONO}`;
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'right';
-      const h = TAG_H * vr;
       for (const t of tags) {
         const left = right - t.w * hr;
         const ty = Math.round(t.ty * vr);
@@ -1209,16 +1132,12 @@ class TagsRenderer {
           ctx.stroke();
         }
         ctx.globalAlpha = 1;
-        ctx.fillStyle = `rgba(${g[0]},${g[1]},${g[2]},0.84)`;
-        ctx.fillRect(Math.round(left), Math.round(ty - h / 2), Math.round(right - left), Math.round(h));
-        ctx.globalAlpha = t.zone ? 0.55 : 0.4;
-        ctx.strokeStyle = t.ink;
-        ctx.lineWidth = Math.max(1, Math.round(hr));
-        ctx.strokeRect(Math.round(left) + 0.5, Math.round(ty - h / 2) + 0.5, Math.round(right - left) - 1, Math.round(h) - 1);
-        ctx.globalAlpha = 1;
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = Math.max(1, 1.6 * vr);
+        ctx.strokeStyle = `rgba(${g[0]},${g[1]},${g[2]},0.8)`;
+        ctx.strokeText(t.text, right - 4 * hr, ty + 0.5 * vr);
         ctx.fillStyle = t.ink;
-        ctx.fillRect(Math.round(left), Math.round(ty - h / 2), Math.max(1, Math.round(2 * hr)), Math.round(h));
-        ctx.fillText(t.text, right - 5 * hr, ty + 0.5 * vr);
+        ctx.fillText(t.text, right - 4 * hr, ty + 0.5 * vr);
       }
       ctx.restore();
     });

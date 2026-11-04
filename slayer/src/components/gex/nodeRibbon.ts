@@ -1,7 +1,8 @@
 /* RIBBON — the exposure nodes as waveforms, not dots (the desk's 4th look, deskPrefs `nodeLook: 'ribbon'`).
    Each strike is a horizontal ribbon across time: every bead is as wide as its slot so the beads touch, and the strength
    shows as the ribbon's vertical THICKNESS, flickering bar to bar like an audio waveform. Weak strikes are hairlines.
-   A translucent halo under a soft core lets the candles read through it.
+   The drawn swell is held to 5px so a loud node stays a ribbon and not a band over the candle. A halo is only on the
+   loud half, and only a little wider than the core.
 
    The data is the beads' own: gexNodesPrimitive's grid (values[col * R + row], one column a bar, the last reading of
    each bar kept), its scale (`ref`, the 98th percentile cell) and its view window. No request of its own, nothing
@@ -148,8 +149,9 @@ export function drawRibbons(ctx: CanvasRenderingContext2D, v: RibbonView): Map<n
   if (!(ref > 0) || last <= first || rHi <= rLo) return rows;
   const k = ribbonStride(barSpacing);
   const slot = barSpacing * k;
-  const rx = slot * 0.54 * hr;
-  const aMax = ribbonAMax(barSpacing);
+  const rx = slot * 0.5 * hr;
+  /* the math's cap stays 9px (ribbon-proof); what lands on the tape stops at 5 so the candle stays the subject */
+  const aMax = Math.min(ribbonAMax(barSpacing), 5);
   const outRows = new Int32Array(RIBBON_TOP_N);
   const outVals = new Float64Array(RIBBON_TOP_N);
   const yCache = new Map<number, number | null>();
@@ -202,9 +204,9 @@ export function drawRibbons(ctx: CanvasRenderingContext2D, v: RibbonView): Map<n
       const ink = r === v.supremeRow ? 'k' : r === v.topRow ? 't' : r === v.cwRow ? 'cw' : r === v.pwRow ? 'pw' : `${val > 0 ? 0 : 1}@${ribbonBin(t)}`;
       /* under ~2px a round nose is invisible arc math: hairlines draw as rects */
       const round = ry > 2 * vr;
-      if (t > 0.2 && ry * 1.9 > 2.2 * vr) {
-        const hx = rx * 1.15;
-        const hy = Math.min(ry * 1.9, Math.max(ry, roomRow(r) * vr));
+      if (t > 0.5 && ry > 1.6 * vr) {
+        const hx = rx * 1.04;
+        const hy = Math.min(ry * 1.28, Math.max(ry, roomRow(r) * vr));
         const p = pathFor(halos, `${ink}|${Math.round(halo * 40)}`);
         if (round) {
           p.moveTo(cx + hx, yc);

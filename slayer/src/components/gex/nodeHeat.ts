@@ -2,8 +2,8 @@
    cell lit by its dealer gamma on the desk's own heat palette — the one the matrix, the calendar and the rails wear
    (heatmap.ts), Thermal unless the COLOURS menu at Terrain's foot says House — so the chart and its rails read alike and
    switch together. The strikes that matter (nodeStrikes.ts) carry the light; every other strike is a whisper of context.
-   In each moment only the heaviest node glows — the mark's foil along its cell — so the eye finds the king first and the
-   candles stay readable on top. The field itself is gexNodesPrimitive's raster (the same cells, the same cache and pan
+   In each moment the heaviest node takes a one-pixel foil on its strike, so the eye finds the king without a bloom or a
+   star over the candle. The field itself is gexNodesPrimitive's raster (the same cells, the same cache and pan
    mapping); this file holds its inks, the palette it follows, the king pass's inks and the labels at the price axis. */
 
 import type { KeptLevel } from './nodeStrikes';
