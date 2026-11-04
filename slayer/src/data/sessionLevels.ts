@@ -1,4 +1,6 @@
-import { sessionStarts } from './indicators';
+import { sessionCloseMinOn } from '../core/calendar';
+import { SESSION_OPEN_MIN, nyIsoDate, nyMinutes } from '../core/nyTime';
+import { sessionStarts, tradingDayKey } from './indicators';
 import type { Candle } from '../types/market';
 
 /*
@@ -6,50 +8,37 @@ import type { Candle } from '../types/market';
   SLAYER TERMINAL - SESSION LEVELS (data/sessionLevels.ts)
 
   The reference prices every intraday reader draws
-  by hand before the open — T-6.
+  by hand before the open.
 ==================================================
 
   WHAT IS HERE, AND WHAT IS DELIBERATELY NOT.
 
-    prior day high · low · close      the day that just finished
-    opening range high · low          the first 5, 15 or 30 minutes
-    initial balance high · low        the first hour
+    prior day high · low · close      the previous trading day's CASH session
+    opening range high · low          the first 5, 15 or 30 minutes from 9:30
+    initial balance high · low        the first hour from 9:30
 
-  OVERNIGHT HIGH AND LOW ARE NOT HERE, and their absence is a decision rather
-  than an omission. They need the Globex session, and `core/calendar.ts` has
-  no concept of an intraday session at all — it knows trading DAYS, holidays
-  and expiries. Inventing an overnight range out of a series that holds only
-  RTH bars would be a level with nothing behind it, on a page whose rule is
-  that no number appears the app cannot source. They arrive with T-16.
+  The cash session is 09:30 New York to that day's close (16:00, or 13:00 on
+  an early close). Premarket, after-hours and the overnight are on the tape
+  and they are not these levels. A 4:00 spike is not the opening range, and
+  it is not yesterday's high.
 
-  BY TIME, NOT BY BAR COUNT. "The first fifteen minutes" is a clock statement;
-  counting fifteen bars gives the same answer only while every minute has a
-  bar in it. A halt, a late open or a thin name breaks that, and the version
-  that counts bars would quietly report a thirty-minute range as a fifteen.
+  OVERNIGHT HIGH AND LOW ARE NOT HERE. They are a different session. Drawing
+  them from the same bars and calling them PDH would be a level the name does
+  not claim.
+
+  BY THE CLOCK, NOT BY BAR COUNT. "The first fifteen minutes" starts at 9:30,
+  not at the first bar in the file. A halt inside the window leaves a hole;
+  the high is the high of the bars that printed, and the clock still says
+  whether the window has closed.
 
   A FORMING RANGE IS SAID TO BE FORMING. At 09:33 the fifteen-minute opening
-  range exists but is not finished, and a reader acting on a level that can
-  still move needs to know which it is. `orComplete` is that, and the caller
-  is expected to show it — the levels are still returned, because the running
-  range is the useful thing during the range.
+  range exists but is not finished. `orComplete` is that. The running range
+  is still returned, because that is the useful thing during the range.
 
-  THE SESSION BOUNDARY comes from `sessionStarts` in ./indicators, the same
-  rule the VWAP re-anchors on. Two copies would eventually cut the prior day
-  at a different bar than the VWAP was anchored to, and the two lines would
-  disagree on the same chart.
-
-  AND THAT RULE HAS A KNOWN LIMIT, inherited rather than introduced here. It
-  is "a step of more than 1.5× the bar's own length", so on 1-minute bars any
-  missing minute — a halt, a thin name, a feed hiccup — reads as a new
-  session. It cannot be fixed with a bigger number: the threshold has to be
-  scale-relative or a DAILY series would re-anchor its VWAP on every bar, and
-  no scale-relative threshold separates a two-hour halt from a seventeen-hour
-  night. What separates them is a calendar that knows when the market was
-  open, which `core/calendar.ts` does not have — that is T-16.
-
-  Nothing on screen is wrong today: the simulator's sessions are contiguous
-  390-bar runs with no holes in them. `session-levels-proof.ts` pins the
-  behaviour so the day it changes, it changes on purpose.
+  THE DAY BOUNDARY is `sessionStarts` (the New York trading day, the evening
+  from 20:00 joined to the session it opens) — the same cut the VWAP uses.
+  The cash filter is applied inside that day, so the prior day and the VWAP
+  still change on the same bar.
 */
 
 /** The three opening ranges the desk offers. Minutes from the open. */
@@ -118,6 +107,36 @@ function extent(bars: readonly Candle[]): { high: number; low: number } | null {
   return { high, low };
 }
 
+/** yyyymmdd from `tradingDayKey` as YYYY-MM-DD — the cash session's calendar date. */
+function dayIso(key: number): string {
+  const y = Math.floor(key / 10_000);
+  const m = Math.floor((key % 10_000) / 100);
+  const d = key % 100;
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/** Bars inside the cash session of their own trading day. */
+function cashOf(bars: readonly Candle[]): Candle[] {
+  const out: Candle[] = [];
+  for (const b of bars) {
+    const ms = b.time * 1000;
+    const iso = nyIsoDate(ms);
+    if (iso !== dayIso(tradingDayKey(b.time))) continue;
+    const minute = nyMinutes(ms);
+    if (minute >= SESSION_OPEN_MIN && minute < sessionCloseMinOn(iso)) out.push(b);
+  }
+  return out;
+}
+
+/** Minutes since 9:30, counting the opening minute. 0 before the cash date's open. */
+function cashElapsed(last: Candle, dayKey: number): number {
+  const ms = last.time * 1000;
+  if (nyIsoDate(ms) !== dayIso(dayKey)) return 0;
+  const minute = nyMinutes(ms);
+  if (minute < SESSION_OPEN_MIN) return 0;
+  return minute - SESSION_OPEN_MIN + 1;
+}
+
 /**
  * The session's reference levels, from a symbol's 1-minute base bars.
  *
@@ -132,27 +151,28 @@ export function buildSessionLevels(base: readonly Candle[], orMinutes: OpeningRa
   const prior = starts.length >= 2 ? starts[starts.length - 2] : null;
 
   const curBars = base.slice(cur);
-  const openTime = curBars[0].time;
-  const lastTime = curBars[curBars.length - 1].time;
-  /* Elapsed INCLUDES the opening bar, so a session one bar old has one minute
-     on the clock rather than zero — the difference between "nothing has
-     happened" and "the first minute has". */
-  const elapsed = Math.floor((lastTime - openTime) / 60) + 1;
+  const curCash = cashOf(curBars);
+  const dayKey = tradingDayKey(curBars[0].time);
+  const elapsed = cashElapsed(curBars[curBars.length - 1], dayKey);
 
   const levels: SessionLevel[] = [];
   const put = (key: SessionLevelKey, price: number | null | undefined) => {
     if (typeof price === 'number' && Number.isFinite(price)) levels.push({ key, tag: TAGS[key], price });
   };
 
+  let hasPrior = false;
   if (prior !== null) {
-    const priorBars = base.slice(prior, cur);
-    const e = extent(priorBars);
-    put('prevHigh', e?.high);
-    put('prevLow', e?.low);
-    put('prevClose', priorBars[priorBars.length - 1]?.close);
+    const priorCash = cashOf(base.slice(prior, cur));
+    const e = extent(priorCash);
+    if (e && priorCash.length) {
+      hasPrior = true;
+      put('prevHigh', e.high);
+      put('prevLow', e.low);
+      put('prevClose', priorCash[priorCash.length - 1].close);
+    }
   }
 
-  const within = (minutes: number) => curBars.filter(b => b.time - openTime < minutes * 60);
+  const within = (minutes: number) => curCash.filter(b => nyMinutes(b.time * 1000) - SESSION_OPEN_MIN < minutes);
   const or = extent(within(orMinutes));
   put('orHigh', or?.high);
   put('orLow', or?.low);
@@ -167,7 +187,7 @@ export function buildSessionLevels(base: readonly Candle[], orMinutes: OpeningRa
     orComplete: elapsed >= orMinutes,
     ibElapsed: Math.min(INITIAL_BALANCE_MIN, elapsed),
     ibComplete: elapsed >= INITIAL_BALANCE_MIN,
-    sessionStart: openTime,
-    hasPrior: prior !== null,
+    sessionStart: curCash[0]?.time ?? curBars[0].time,
+    hasPrior,
   };
 }

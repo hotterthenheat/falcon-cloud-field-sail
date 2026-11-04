@@ -6,8 +6,9 @@
      next-hour read are data/volOutlook.ts's, the same fit behind Pulse's Vol outlook tile. This file only turns an
      annualised vol into a price band: a day's forecast spread over the minutes left in today's session (the session
      module's close, so an early close shrinks it), and the next hour's.
-   - Potential energy → the dealer-gamma regime (CALCULATED): the sign of the book's minute net gamma under each bar.
-     Long gamma: moves tend to be damped. Short gamma: moves tend to extend. Never a pin or a pull (the study's #7).
+   - Potential energy → the dealer-gamma regime (CALCULATED): the sign of the book's minute net gamma under each bar,
+     house sign (negative = dealers long gamma). Long gamma: moves tend to be damped. Short gamma: moves tend to extend.
+     Never a pin or a pull (the study's #7).
    - Gravitational wave → the market's vol shock (CALCULATED): SPY's last 15 one-minute returns against its last 390
      (build_features.py lrv15 − lrv390), as a per-minute ratio, flagged on single names only.
    - Reynolds regime → the Kaufman efficiency ratio (CALCULATED): |Σ r| / Σ |r| over the last n returns (lib.py).
@@ -233,14 +234,14 @@ export function harBandSeries(
 
 /* ---- the gamma regime ---- */
 
-/** Each regular bar's regime from the book's minute net gamma aligned to it: +1 long gamma, −1 short gamma, null
-    unknown (no minute under it, a zero, or off the regular session) */
+/** Each regular bar's regime from the book's minute net gamma, house sign (negative = dealers long gamma = damped):
+    +1 long, −1 short, null unknown (no minute under it, a zero, or off the regular session). */
 export function gammaRegimeSeries(bars: readonly { time: number }[], mins: number, gammaPerBar: readonly (number | null)[]): (1 | -1 | null)[] {
   const where = regularOf(bars, mins);
   return bars.map((_, i) => {
     const g = gammaPerBar[i];
     if (!where[i].reg || g === null || !Number.isFinite(g) || g === 0) return null;
-    return g > 0 ? 1 : -1;
+    return g < 0 ? 1 : -1;
   });
 }
 

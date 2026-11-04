@@ -234,8 +234,8 @@ export interface ChartOverlays {
   volDrift: boolean;
   /* Exposure by strike, docked under the chart rather than drawn inside it. */
   dexStrike: boolean;
-  /* The session's reference prices. Prior day high/low/close, the opening range and the initial balance, as
-     horizontal rules with distinct dashes and their shorthand ON the field rather than on the price axis. */
+  /* The session's reference prices. Prior cash-session high/low/close, the opening range from 9:30 and the
+     first hour, as horizontal rules with distinct dashes and their shorthand ON the field rather than on the price axis. */
   session: boolean;
   /* The expected-move cone. */
   cone: boolean;
@@ -3180,7 +3180,10 @@ const StrikeChart = ({
     const sig = `${ticker}|${timeframe}|${barClock}|${full ? 'full' : 'recent'}|${holdFrom}|${mainNonce}|${subBase}|${subsActive.join(',')}|${live.map(p => `${p.chart.id}:${p.script.sourceHash}:${JSON.stringify(p.chart.inputs)}`).join(';')}`;
     const rebuild = scriptSigRef.current !== sig;
     if (rebuild) tearDown();
-    const slayer = { callWall: levels.callWall, putWall: levels.putWall, flip: levels.flip, supreme: levels.supreme };
+    /* House sign, the same minutes Potential Energy reads. A quiet stretch stays na — alignGamma does not carry one print across the session. */
+    const gamma = alignGamma(bars, (bookMinutes ?? []).map(m => ({ time: m.time, levels: [{ value: m.net }] })), mins * 60);
+    const netGex = gamma.map(v => (typeof v === 'number' && Number.isFinite(v) ? v : Number.NaN));
+    const slayer = { callWall: levels.callWall, putWall: levels.putWall, flip: levels.flip, supreme: levels.supreme, netGex };
     let ownPanes = 0;
     for (const ps of live) {
       const own = ps.script.meta?.pane === 'own';
@@ -3222,7 +3225,7 @@ const StrikeChart = ({
     scriptSigRef.current = sig;
     if (live.length) setScriptRunsRev(v => v + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paneId, paneScripts, indicators, ticker, revision, timeframe, mainNonce, compares, altSpec, barClock, fullNonce, focusNonce, levels]);
+  }, [paneId, paneScripts, indicators, ticker, revision, timeframe, mainNonce, compares, altSpec, barClock, fullNonce, focusNonce, levels, bookMinutes]);
 
   /* The handles go with the chart */
   useEffect(
@@ -4098,14 +4101,15 @@ const StrikeChart = ({
       return;
     }
     const now = cut != null ? new Date(cut * 1000) : new Date();
-    const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const ny = nyParts(now);
+    const todayIso = nyIsoDate(now);
     ensureEarnings();
     const key = `${ticker}|${todayIso}|${peekEarningsEvent(ticker)?.iso ?? ''}`;
     if (eventsCalRef.current?.key !== key) {
       eventsCalRef.current = {
         key,
         earnings: peekEarningsEvent(ticker),
-        macro: macroWindow(now).filter(m => !/approximated/i.test(m.detail)),
+        macro: macroWindow(new Date(ny.year, ny.month - 1, ny.day)).filter(m => !/approximated/i.test(m.detail)),
         todayIso,
       };
     }
@@ -5627,7 +5631,7 @@ const StrikeChart = ({
     if (!last || !Number.isFinite(last.net) || last.net === 0) physicsExtras.gammaRegime = 'waiting on the book’s minute gamma';
     else {
       const d = flipDistancePct(last.spot ?? NaN, levels.flip);
-      physicsExtras.gammaRegime = `${regimeWords(last.net > 0 ? 1 : -1)}${d == null ? '' : ` · flip ${Math.abs(d).toFixed(2)}% ${d >= 0 ? 'below' : 'above'}`}`;
+      physicsExtras.gammaRegime = `${regimeWords(last.net < 0 ? 1 : -1)}${d == null ? '' : ` · flip ${Math.abs(d).toFixed(2)}% ${d >= 0 ? 'below' : 'above'}`}`;
     }
   }
   if (indicators.volShock) {

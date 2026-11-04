@@ -125,6 +125,7 @@ const bar = (time: number, open: number, close: number, volume = 0): PhysBar => 
   const chart = readFileSync(join(root, 'src/components/gex/StrikeChart.tsx'), 'utf8');
   check('the chart reads the vol outlook fit and today’s minutes the tile reads (no fetch of its own)', chart.includes("useVolOutlook(ticker, harOn)") && chart.includes("useThetaTape(ticker, '1m', 'rth', harOn)") && chart.includes('hourReadNow(ticker, harMinutes.bars, endMs)'));
   check('the market shock reads the one shared SPY minute tape', chart.includes("useThetaTape('SPY', '1m', 'rth', shockOn)"));
+  check('the legend reads house sign the same way (negative is long gamma)', chart.includes('regimeWords(last.net < 0 ? 1 : -1)'));
   const phys = readFileSync(join(root, 'src/data/physicsReads.ts'), 'utf8');
   check('the reads module makes no request', !/fetch\(|thetaGet|uwGet/.test(phys));
 }
@@ -132,8 +133,8 @@ const bar = (time: number, open: number, close: number, volume = 0): PhysBar => 
 /* ---- the gamma regime and the words ---- */
 {
   const bars = [{ time: OCT28 - 60 }, { time: OCT28 }, { time: OCT28 + 60 }, { time: OCT28 + 120 }];
-  const g = gammaRegimeSeries(bars, 1, [5, 3, -2, 0]);
-  check('long and short gamma by the minute net, nothing off the session or on a zero', g[0] === null && g[1] === 1 && g[2] === -1 && g[3] === null, JSON.stringify(g));
+  const g = gammaRegimeSeries(bars, 1, [-5, -3, 2, 0]);
+  check('long and short gamma by the house-sign minute net (negative = dealers long), nothing off the session or on a zero', g[0] === null && g[1] === 1 && g[2] === -1 && g[3] === null, JSON.stringify(g));
   check('the regime reads damped / extend', regimeWords(1).includes('damped') && regimeWords(-1).includes('extend'));
   check('distance to the flip: + when price is above it', near(flipDistancePct(101, 100), (1 / 101) * 100, 1e-12) && flipDistancePct(0, 100) === null);
   const words = [regimeWords(1), regimeWords(-1), ...INDICATOR_ITEMS.filter(i => i.group === 'physics').map(i => i.hint)].join(' ').toLowerCase();

@@ -78,7 +78,7 @@ hline(0, "Touching", color = color.new(#C7D3E8, 60), linestyle = hline.style_dot
     slug: 'wall-approach',
     group: 'Slayer',
     title: 'Wall approach',
-    description: 'A mark under the bar when price comes within a quarter percent of a wall',
+    description: 'A mark above the bar when price comes within a quarter percent of the call wall, and under the bar for the put wall',
     source: `//@version=6
 indicator("Wall approach", overlay = true)
 
@@ -88,6 +88,59 @@ nearPut  = math.abs(close - slayer.putWall) / close * 100 <= near
 
 plotshape(nearCall, "Near the call wall", shape.triangledown, location.abovebar, #30D158, size = size.tiny)
 plotshape(nearPut,  "Near the put wall",  shape.triangleup,   location.belowbar, #FF3B30, size = size.tiny)`,
+  },
+  {
+    slug: 'distance-to-flip',
+    group: 'Slayer',
+    title: 'Distance to the flip',
+    description: 'How far price sits from the flip, in percent of price. Positive means price is above the flip',
+    source: `//@version=6
+indicator("Distance to the flip")
+
+toFlip = (close - slayer.flip) / close * 100
+plot(toFlip, "To the flip", color = toFlip >= 0 ? #30D158 : #FF3B30, linewidth = 2)
+hline(0, "At the flip", color = color.new(#C7D3E8, 60), linestyle = hline.style_dotted)`,
+  },
+  {
+    slug: 'distance-to-supreme',
+    group: 'Slayer',
+    title: 'Distance to the supreme',
+    description: 'How far the supreme strike sits from price, in percent. Positive means the supreme is above price',
+    source: `//@version=6
+indicator("Distance to the supreme")
+
+toSupreme = (slayer.supreme - close) / close * 100
+plot(toSupreme, "To the supreme", color = #EA00FF, linewidth = 2)
+hline(0, "At the supreme", color = color.new(#C7D3E8, 60), linestyle = hline.style_dotted)`,
+  },
+  {
+    slug: 'in-the-corridor',
+    group: 'Slayer',
+    title: 'In the corridor',
+    description: 'Where price sits between the put wall and the call wall. 0 is the put wall, 1 is the call wall, and the flip is drawn on the same scale',
+    source: `//@version=6
+indicator("In the corridor")
+
+span = slayer.callWall - slayer.putWall
+pos = na(span) or span == 0 ? na : (close - slayer.putWall) / span
+flipAt = na(span) or span == 0 ? na : (slayer.flip - slayer.putWall) / span
+
+plot(pos, "Price", color = #C7D3E8, linewidth = 2)
+plot(flipAt, "The flip", color = #EA00FF, linewidth = 1)
+hline(0, "Put wall", color = color.new(#FF3B30, 40), linestyle = hline.style_dotted)
+hline(1, "Call wall", color = color.new(#30D158, 40), linestyle = hline.style_dotted)`,
+  },
+  {
+    slug: 'minute-gamma',
+    group: 'Slayer',
+    title: 'Minute gamma',
+    description: 'The book’s minute net gamma, house sign. Negative (green) is call-dominant — dealers long gamma, so moves tend to be damped. Blank where that minute has no print',
+    source: `//@version=6
+indicator("Minute gamma")
+
+g = slayer.netGex
+plot(g, "Net gamma", color = g < 0 ? #30D158 : #FF3B30, style = plot.style_columns)
+hline(0, "Flat", color = color.new(#C7D3E8, 60), linestyle = hline.style_dotted)`,
   },
 
   /* ---- Trend ------------------------------------------------------------------- */

@@ -66,6 +66,7 @@ const PROOFS = [
   'ribbon-proof',
   'node-levels-proof',
   'physics-reads-proof',
+  'session-levels-proof',
   'exposure-hist-proof',
   'proxy-auth-proof.mjs',
   'hub-proof.mjs',

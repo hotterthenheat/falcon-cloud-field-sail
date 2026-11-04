@@ -88,6 +88,25 @@ plot(slayer.netGex)`, bars, { slayer, timeframe: '1' });
 const series = gex.plots[0]?.values;
 check('net gamma is the minute, and a gap stays blank', !!series && series[0] === slayer.netGex[0] && Number.isNaN(series[1]));
 
+const last = bars.length - 1;
+const flipDist = scripts.find(s => s.id === 'builtin:distance-to-flip');
+const flipRun = runSource(flipDist!.source, bars, { slayer, timeframe: '1' });
+check('distance to the flip is its own pane, in percent of price', flipDist?.meta?.pane === 'own' && Math.abs((flipRun.plots[0]?.values[last] ?? NaN) - ((bars[last].close - slayer.flip) / bars[last].close) * 100) < 1e-6);
+const supreme = scripts.find(s => s.id === 'builtin:distance-to-supreme');
+const supRun = runSource(supreme!.source, bars, { slayer, timeframe: '1' });
+check('distance to the supreme is percent of price, positive when it is above', Math.abs((supRun.plots[0]?.values[last] ?? NaN) - ((slayer.supreme - bars[last].close) / bars[last].close) * 100) < 1e-6);
+const corridor = scripts.find(s => s.id === 'builtin:in-the-corridor');
+const corrRun = runSource(corridor!.source, bars, { slayer, timeframe: '1' });
+const span = slayer.callWall - slayer.putWall;
+check(
+  'corridor position is 0 at the put wall and 1 at the call wall',
+  Math.abs((corrRun.plots[0]?.values[last] ?? NaN) - (bars[last].close - slayer.putWall) / span) < 1e-6 &&
+    Math.abs((corrRun.plots[1]?.values[last] ?? NaN) - (slayer.flip - slayer.putWall) / span) < 1e-6,
+);
+const minute = scripts.find(s => s.id === 'builtin:minute-gamma');
+const minuteRun = runSource(minute!.source, bars, { slayer, timeframe: '1' });
+check('minute gamma plots the house-sign minute and leaves a gap blank', minute?.meta?.pane === 'own' && minuteRun.plots[0]?.values[0] === slayer.netGex[0] && Number.isNaN(minuteRun.plots[0]?.values[1]));
+
 const ema = emaSeries(candles, 9);
 const sma = smaSeries(candles, 20);
 const vwap = vwapSeries(candles, 1);

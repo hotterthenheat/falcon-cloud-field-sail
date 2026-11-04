@@ -6,7 +6,7 @@ import type { FlowPrint } from '../types/trace';
 import { primaryOf, TYPE_WORDS, type OptionTags } from './printTags';
 
 /* Markers along the tape's bottom edge: this name's next earnings (BMO at the open, AMC at the close), FOMC/CPI/NFP, and the session's
-   largest prints. Past events carry a bar time, future ones trading minutes ahead (the cone's arithmetic). FOMC is the Fed's 2026 calendar; NFP first Friday; CPI approximated (second Wednesday, said so). */
+   largest prints. Past events carry a bar time, future ones trading minutes ahead (the cone's arithmetic). FOMC is the Fed's 2026 calendar; NFP is the first Friday; CPI is the BLS release schedule (08:30 ET). */
 
 export type MarketEventKind = 'earnings' | 'macro' | 'print';
 
@@ -51,13 +51,34 @@ function firstFriday(year: number, month0: number): string {
   return isoOf(d);
 }
 
-/** Second Wednesday — the CPI approximation (see the header). */
-function secondWednesday(year: number, month0: number): string {
-  const d = new Date(year, month0, 1);
-  while (d.getDay() !== 3) d.setDate(d.getDate() + 1);
-  d.setDate(d.getDate() + 7);
-  return isoOf(d);
-}
+/* BLS Schedule of Selected Releases, 08:30 ET. January–March 2026 are the dates on the schedule after the funding-lapse revision.
+   From April 2026 on, the month pages and the CPI release page (bls.gov/schedule/news_release/cpi.htm). */
+const CPI_RELEASES: readonly { iso: string; month: string }[] = [
+  { iso: '2026-01-13', month: 'December 2025' },
+  { iso: '2026-02-13', month: 'January 2026' },
+  { iso: '2026-03-11', month: 'February 2026' },
+  { iso: '2026-04-10', month: 'March 2026' },
+  { iso: '2026-05-12', month: 'April 2026' },
+  { iso: '2026-06-10', month: 'May 2026' },
+  { iso: '2026-07-14', month: 'June 2026' },
+  { iso: '2026-08-12', month: 'July 2026' },
+  { iso: '2026-09-11', month: 'August 2026' },
+  { iso: '2026-10-14', month: 'September 2026' },
+  { iso: '2026-11-10', month: 'October 2026' },
+  { iso: '2026-12-10', month: 'November 2026' },
+  { iso: '2027-01-13', month: 'December 2026' },
+  { iso: '2027-02-11', month: 'January 2027' },
+  { iso: '2027-03-10', month: 'February 2027' },
+  { iso: '2027-04-13', month: 'March 2027' },
+  { iso: '2027-05-12', month: 'April 2027' },
+  { iso: '2027-06-10', month: 'May 2027' },
+  { iso: '2027-07-14', month: 'June 2027' },
+  { iso: '2027-08-11', month: 'July 2027' },
+  { iso: '2027-09-14', month: 'August 2027' },
+  { iso: '2027-10-14', month: 'September 2027' },
+  { iso: '2027-11-10', month: 'October 2027' },
+  { iso: '2027-12-10', month: 'November 2027' },
+];
 
 /** The macro calendar inside a ± window around `today`, real dates. */
 export function macroWindow(today: Date, daysBack = 45, daysAhead = 45): MacroDate[] {
@@ -75,8 +96,9 @@ export function macroWindow(today: Date, daysBack = 45, daysAhead = 45): MacroDa
     const d = new Date(today.getFullYear(), today.getMonth() + m, 1);
     const nfp = firstFriday(d.getFullYear(), d.getMonth());
     if (inWindow(nfp)) out.push({ iso: nfp, label: 'NFP release', detail: `${nfp} · payrolls, first Friday` });
-    const cpi = secondWednesday(d.getFullYear(), d.getMonth());
-    if (inWindow(cpi)) out.push({ iso: cpi, label: 'CPI release', detail: `${cpi} · approximated — exact BLS date arrives with the calendar feed` });
+  }
+  for (const cpi of CPI_RELEASES) {
+    if (inWindow(cpi.iso)) out.push({ iso: cpi.iso, label: 'CPI release', detail: `${cpi.iso} · BLS, 08:30 ET · ${cpi.month}` });
   }
   return out.sort((a, b) => (a.iso < b.iso ? -1 : 1));
 }

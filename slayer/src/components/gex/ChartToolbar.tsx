@@ -747,7 +747,7 @@ const OVERLAY_ITEMS: { key: keyof ChartOverlays; label: string; hint: string }[]
   { key: 'netDrift', label: 'Net drift', hint: 'The flow pane summed through each session, one line. Same prints, same filters.' },
   { key: 'volDrift', label: 'Vol drift', hint: 'Realised vol of these bars against the morning at-the-money IV. One number, not a made-up path.' },
   { key: 'dexStrike', label: 'Exposure by strike', hint: 'Delta, gamma or vega across the chain — docked under the tape' },
-  { key: 'session', label: 'Session levels', hint: "Yesterday's high, low & close, the opening range and the first hour" },
+  { key: 'session', label: 'Session levels', hint: "Yesterday's cash high, low and close, the opening range from 9:30, and the first hour" },
   { key: 'cone', label: 'Expected move', hint: "The ±1σ/±2σ band the options priced for today, and what's left of it" },
   { key: 'wind', label: 'Wind · model forecast', hint: "A model's paths for the rest of today's session: the options' implied vol, bent by the dealer book (short gamma widens, long gamma holds, the heavy same-day strike pulls at the close). A forecast, not a market price." },
   { key: 'events', label: 'Events', hint: 'Earnings, FOMC/CPI/NFP and the biggest option prints, marked on the tape' },

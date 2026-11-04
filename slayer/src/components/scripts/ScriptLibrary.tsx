@@ -183,7 +183,7 @@ const OVERLAY_ROWS: { key: keyof ChartOverlays; label: string; hint: string; pan
   { key: 'flow', label: 'Flow', hint: 'Call premium up, put premium down, on this chart’s minutes.', pane: 'own pane' },
   { key: 'netDrift', label: 'Net drift', hint: 'Running call and put premium.', pane: 'own pane' },
   { key: 'volDrift', label: 'Vol drift', hint: 'Realised vol of these bars against the book’s IV.', pane: 'own pane' },
-  { key: 'session', label: 'Session levels', hint: 'Previous high, low and close, the opening range, the first hour.', pane: 'on the tape' },
+  { key: 'session', label: 'Session levels', hint: 'Previous cash-session high, low and close, the opening range from 9:30, and the first hour.', pane: 'on the tape' },
   { key: 'cone', label: 'Expected move', hint: 'The wedge the options priced from here to the horizon.', pane: 'on the tape' },
   { key: 'wind', label: 'Wind · model forecast', hint: 'A model’s paths for the rest of today’s session: the implied vol, bent by the dealer book. A forecast, not a price.', pane: 'on the tape' },
   { key: 'events', label: 'Events', hint: 'Earnings, FOMC, CPI, NFP, and the largest prints.', pane: 'on the tape' },
@@ -610,7 +610,7 @@ const ScriptLibrary = ({
                   <p className="px-2 pb-1 font-mono text-t10 text-textSecondary leading-snug" data-physics-note>Five reads the physics study tested out of sample, each under its plain name. CALCULATED is measured from the data; MODEL is a forecast. None claims a direction.</p>
                 )}
                 {g.title === 'Slayer' && (
-                  <p className="px-2 pb-1 font-mono text-t10 text-textSecondary leading-snug">slayer.netGex is the minute net on the house sign. Negative is call-dominant. A bar with no snapshot is na.</p>
+                  <p className="px-2 pb-1 font-mono text-t10 text-textSecondary leading-snug">slayer.netGex is the minute net on the house sign. Negative is call-dominant — dealers long gamma. A bar with no snapshot is na.</p>
                 )}
                 {g.rows.map(r => {
                   const idx = rows.indexOf(r);
