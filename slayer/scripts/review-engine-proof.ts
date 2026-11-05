@@ -10,6 +10,8 @@ import { splitQty } from '../src/data/review/ladder';
 import { chainAt, contractKey, contractWords, expiriesAt, quoteAt, quoteWith, spotForBid, yearsLeft } from '../src/data/review/quotes';
 import { LAST_MIN, barTime, closeMinOf, nbboAt, parseBars, parseListing, parseQuotes, putBars, putQuotes, spotAt } from '../src/data/review/history';
 import { D1, D2, D3, FAR, NEAR, askOf, bidOf, installTestMarket, spot } from './review-market-fixture';
+import { readFileSync } from 'node:fs';
+import { setDayRates } from '../src/core/carry';
 
 let misses = 0;
 const ok = (what: string, pass: boolean, detail = '') => {
@@ -19,6 +21,9 @@ const ok = (what: string, pass: boolean, detail = '') => {
 const near = (a: number, b: number, eps = 0.011) => Math.abs(a - b) <= eps;
 
 installTestMarket();
+/* b119d72: the backtest greek is readGreek, blank until that day's rate has loaded — so the hand-made days carry the SOFR
+   rows the terminal answered for them (scripts/fixtures/theta-carry, the same rows rate-proof reads) */
+setDayRates((JSON.parse(readFileSync('scripts/fixtures/theta-carry/sofr-2026-10-20-30.json', 'utf8')).response as { rate: number; created: string }[]).map(x => ({ day: x.created, r: x.rate / 100 })));
 
 /* ---- the recorded answers, read ---- */
 {

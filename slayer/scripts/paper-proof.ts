@@ -18,6 +18,8 @@ import { atmIvAt, expectedMovePctOf, optionQuote, optionsOpen } from '../src/dat
 import { putBook, putName } from '../src/data/paper/thetaFeed';
 import { thetaPerSession } from '../src/data/review/quotes';
 import { blackScholesPrice } from '../src/core/greeks';
+import { readGreek } from '../src/core/readGreek';
+import { setRate } from '../src/core/carry';
 import { isPaperIndex } from '../src/data/paper/products';
 import { optionRootOf } from '../src/data/paper/thetaFeed';
 import type { ContractId } from '../src/data/review/quotes';
@@ -1097,12 +1099,21 @@ const fixed = (price: () => number, t = now): PaperMarket => ({
   const th = thetaPerSession(100, 100, 5 / 252, 0.2, 'C');
   ok('theta per session: ATM 100, 20%, five sessions left → −0.119 a share', near(th, -0.1186, 0.01), th.toFixed(4));
   ok('…inside the last session it is what is left above intrinsic, lost: intrinsic − V', near(thetaPerSession(100, 95, 0.5 / 252, 0.2, 'C'), 5 - blackScholesPrice(100, 95, 0.5 / 252, 0.2, 'C'), 1e-9));
-  /* the paper desk's live quote uses that same definition */
+  /* b119d72 "One greek for Weigher, Paper, and the backtest" (and 210f55e): the paper desk's live quote is readGreek —
+     calendar time to the 16:00 close, the loaded SOFR (blank until one has), a book no wider than 8% of its mid, and theta
+     a session = the annual theta ÷ 252. The 2.00 / 2.20 book (9.5% wide) would be refused, so it is 2.05 / 2.15. */
   const ms = nyInstant('2026-09-23', 11 * 60);
-  putName('ZZQ', { bid: 100, ask: 100, px: 100, takenAt: ms });
-  putBook('ZZQ', '2026-09-30', [{ strike: 100, right: 'C', bid: 2.0, ask: 2.2 }], ms);
+  const unrated = (() => {
+    putName('ZZQ', { bid: 100, ask: 100, px: 100, takenAt: ms });
+    putBook('ZZQ', '2026-09-30', [{ strike: 100, right: 'C', bid: 2.05, ask: 2.15 }], ms);
+    return optionQuote({ ticker: 'ZZQ', strike: 100, right: 'C', expiry: '2026-09-30' }, ms);
+  })();
+  ok('…the paper desk’s greek is blank until a rate has loaded (the fill does not wait on it)', unrated.iv === 0 && unrated.theta === 0 && unrated.bid === 2.05, `${unrated.theta} · iv ${unrated.iv}`);
+  setRate(0.0394, 'live', '2026-09-23');
   const lq = optionQuote({ ticker: 'ZZQ', strike: 100, right: 'C', expiry: '2026-09-30' }, ms);
-  ok('…and the paper desk’s quote carries exactly it, on its own IV and trading clock', lq.iv > 0 && near(lq.theta, thetaPerSession(100, 100, yearsToExpiry('2026-09-30', ms), lq.iv, 'C'), 1e-12), `${lq.theta} · iv ${lq.iv}`);
+  const hand = readGreek({ right: 'C', strike: 100, expiry: '2026-09-30', at: ms, option: { bid: 2.05, ask: 2.15, at: ms }, stock: { bid: 100, ask: 100, price: 100, at: ms } });
+  const tCal = (7 * 1440 + 5 * 60) / (365 * 1440);
+  ok('…and the paper desk’s quote carries readGreek’s theta a session, on its own IV and the calendar clock (7 days 5 hours)', lq.iv > 0 && hand.ok && near(hand.t, tCal, 1e-12) && near(lq.iv, hand.iv, 1e-12) && near(lq.theta, hand.thetaSession, 1e-12) && lq.theta < 0, `${lq.theta} · iv ${lq.iv}`);
 }
 
 console.log(`\n${passed} held · ${failed} missed`);
