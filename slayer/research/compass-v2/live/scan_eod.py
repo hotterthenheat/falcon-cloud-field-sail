@@ -39,6 +39,7 @@ def load_chain():
     for c in ['bid', 'ask', 'delta', 'iv', 'under', 'gamma_bs', 'bid_size', 'ask_size', 'theta', 'vega']:
         df[c] = pd.to_numeric(df[c], errors='coerce')
     df = df[(df['ask'] > 0) & (df['bid'] >= 0) & (df['bid'] <= df['ask'])]
+    df = df[df['mod'] <= 389]  # the 16:00 snapshot is taken after the bell: neither an entry nor an exit
     df['key'] = df['sym'] + ' ' + df['exp'] + ' ' + df['strike'] + df['right']
     return df.drop_duplicates(['key', 'mod'], keep='last')
 
@@ -163,9 +164,10 @@ def compare(x, lab='hit1.5', feats=None):
         rows.append({'feature': f, 'n_obs': int(v.notna().sum()), 'mover_mean': pm, 'all_mean': np.nanmean(v),
                      'nonmover_mean': nm, 'mover_median': np.nanmedian(p), 'all_median': np.nanmedian(v),
                      'cohen_d': (pm - nm) / sd if sd > 0 else np.nan, 'auc': auc(p, n),
-                     'auc_within_name': strat(['sym']), 'auc_within_name_side': strat(['sym', 'right'])})
+                     'auc_within_name': strat(['sym']), 'auc_within_name_side': strat(['sym', 'right']),
+                     'auc_within_name_side_hour': strat(['sym', 'right', 'hour'])})
     r = pd.DataFrame(rows)
-    r['strength'] = (r['auc_within_name_side'] - 0.5).abs()
+    r['strength'] = (r['auc_within_name_side_hour'] - 0.5).abs()
     return r.sort_values('strength', ascending=False)
 
 def move_type(ev, ctx_idx, news_by):
@@ -214,9 +216,10 @@ def main():
     if len(eng):
         x = x.merge(eng, on=['sym', 'exp', 'strike_f', 'right', 'mod'], how='left')
     x = x.copy()
-    x['tod'] = bucket_tod(x['mod']); x['dbucket'] = bucket_delta(x['abs_delta'])
+    x['tod'] = bucket_tod(x['mod']); x['dbucket'] = bucket_delta(x['abs_delta']); x['hour'] = x['mod'] // 60
     x.to_parquet(f'{OUT}/labels.parquet', compression='zstd')
     ev = [json.loads(l) for l in open(f'{OUT}/movers.jsonl')] if os.path.exists(f'{OUT}/movers.jsonl') else []
+    ev = [e for e in ev if e['exit_minute'] < '1600']
     evd = pd.DataFrame(ev)
     # news by (sym, minute) from the context (news15 counts the last 15 min; a jump = a new headline)
     ctx_idx = {(r['sym'], r['mod']): r for r in ctx.to_dict('records')}
@@ -229,14 +232,14 @@ def main():
         evd['dbucket'] = bucket_delta(evd['entry_delta'].abs()); evd['tod'] = bucket_tod(evd['entry_minute'].map(mod))
         evd['minutes_held'] = evd['exit_minute'].map(mod) - evd['entry_minute'].map(mod)
     feats = [c for c in x.columns if c not in ('minute', 'kind', 'sym', 'exp', 'strike', 'right', 'g_ts', 'q_ts', 'under_ts',
-             'key', 'tod', 'dbucket', 'max_mult', 'n_later', 'last_mod_seen', 'engine_ok', 'strike_f', 'chain_refreshed',
+             'key', 'tod', 'dbucket', 'hour', 'max_mult', 'n_later', 'last_mod_seen', 'engine_ok', 'strike_f', 'chain_refreshed',
              'price', 'under', 'mod', 'mae_before_15', 'held_snaps_15', 'news15_all', 'theta', 'vega', 'ask_x_size',
              'engine_bid', 'engine_ask')
              and not c.startswith('hit') and not c.startswith('conf') and x[c].dtype.kind in 'fiub']
     L = []
     n_all = len(x); n_names = x['sym'].nunique()
     L.append(f'# LIVE-SCAN day report, {DAY}\n')
-    L.append('**One day proves nothing.** Everything below describes a single session (with a sharp opening drop). '
+    L.append('**One day proves nothing.** Everything below describes a single session: SPY fell 4.2% open to close (765.8 to 733.4) and VIX rose from 17.3 to 27.5, a crash-type trend day. '
              'Contract-minutes are heavily dependent (one index move lifts dozens of strikes at once and the same contract '
              'is counted every minute), so effective sample sizes are far smaller than the row counts. Nothing here is '
              'validated; the rules at the end are hypotheses to pre-register and test on history and on forward days.\n')
@@ -251,8 +254,11 @@ def main():
              f'({x["key"].nunique()} contracts, {n_names} underlyings with at least one candidate).\n'
              f'- Tier A (SPY QQQ IWM SPXW 0DTE + 8 megacaps nearest expiry) every minute; tier B (the other names of the '
              f'458 universe, nearest expiry) on a rolling budget: median refresh interval '
-             f'{np.median(tb) if tb else float("nan"):.1f} min across {len(tb)} tier-B names (names with no candidate '
-             f'contract were visited every 3rd pass). Labels for tier-B contracts are therefore coarser (a 1.5x touch '
+             f'{np.median(tb) if tb else float("nan"):.1f} min across {len(tb)} tier-B names (from 11:03 ET: each name at most '
+             f'every 4 min, every 12 min when its last chain had nothing kept, at most 110 names a minute; before 11:03 '
+             f'the rotation ran unbounded and some names were read several times a minute, de-duplicated here). On the '
+             f'engine\'s 5-minute marks only tier A was read, one request at a time. Roots SPX, NDX, RUT, VIX have no '
+             f'daily expiry: their nearest expiry is the monthly (Nov 20 / Nov 18). Labels for tier-B contracts are therefore coarser (a 1.5x touch '
              f'between visits is missed): compare within tier.\n'
              f'- Terminal health at the close: {cov[-1]["health"]}. Cycle seconds: median {np.median([c["secs"] for c in cov]):.0f}, '
              f'max {max(c["secs"] for c in cov):.0f}.\n')
@@ -307,12 +313,25 @@ def main():
                  f'- snapshots the bid stayed >= 1.5x after the first touch: median {h["held_snaps_15"].median():.0f}; share held only one snapshot: {(h["held_snaps_15"] == 1).mean():.2f}\n'
                  f'- entry spread % of mid: movers median {h["spread_pct"].median():.1f} vs all {x["spread_pct"].median():.1f}; tier-A displayed ask size at entry: movers median {h["ask_size"].median():.0f} vs all {x["ask_size"].median():.0f}\n'
                  f'- entry ask: movers median {h["ask"].median():.2f} vs all {x["ask"].median():.2f}\n')
+    # naive baseline: buy every buyable contract-minute at the ask, resting take-profit at 1.5x, else sell the 15:59 bid
+    last = ch.sort_values('mod').groupby('key')['bid'].last()
+    nb = x[['key', 'right', 'tierA', 'dte0', 'ask', 'hit1.5']].copy()
+    nb['last_bid'] = nb['key'].map(last)
+    nb = nb[nb['last_bid'].notna()]
+    nb['ret'] = np.where(nb['hit1.5'], 0.5, nb['last_bid'] / nb['ask'] - 1)
+    nb['ret_fee'] = nb['ret'] - 1.30 / (nb['ask'] * 100)
+    rows_nb = []
+    for name, g in [('all', nb), ('calls', nb[nb.right == 'C']), ('puts', nb[nb.right == 'P']), ('tier A', nb[nb.tierA == 1]), ('0DTE', nb[nb.dte0 == 1])]:
+        rows_nb.append({'set': name, 'trades': len(g), 'mean_ret': g['ret'].mean(), 'mean_ret_after_fee': g['ret_fee'].mean(), 'median_ret': g['ret'].median()})
+    L.append('\n## Naive baseline: buy everything buyable, resting take-profit at 1.5x, else sell at the 15:59 bid\n')
+    L.append(md_table(pd.DataFrame(rows_nb)) + '\n')
     L.append('\n## Movers vs ALL buyable contract-minutes: context at entry\n')
     L.append('Label = the contract-minute later reached 1.5x (hit1.5). `auc` = probability a random mover row has a higher '
              'value than a random non-mover row (0.5 = no difference); `auc_within_name` computes it inside each '
              'underlying and averages (weights = rows), which removes the "which name was moving today" confound. '
              '`auc_within_name_side` does the same inside each underlying x call/put, which also removes "puts won today because '
-             'the market fell". cohen_d = mean difference / pooled sd. Sorted by |auc_within_name_side - 0.5|.\n')
+             'the market fell", and `auc_within_name_side_hour` also inside each clock hour (removes "it was early in a trend '
+             'day"). cohen_d = mean difference / pooled sd. Sorted by |auc_within_name_side_hour - 0.5|.\n')
     for name, g in [('all buyable contract-minutes', x), ('tier A only (minute-sampled)', x[x.tierA == 1])]:
         cmp = compare(g, 'hit1.5', feats)
         L.append(f'\n### {name}: {len(g)} rows, {int(g["hit1.5"].sum())} reached 1.5x\n')
@@ -330,12 +349,16 @@ def main():
     early, late = x[x['mod'] < 195], x[x['mod'] >= 195]
     if len(early) > 100 and len(late) > 100:
         ce = compare(early, 'hit1.5', feats).set_index('feature'); cl = compare(late, 'hit1.5', feats).set_index('feature')
-        j = ce[['auc_within_name_side']].join(cl[['auc_within_name_side']], lsuffix='_am', rsuffix='_pm').dropna()
-        j['same_side'] = np.sign(j['auc_within_name_side_am'] - 0.5) == np.sign(j['auc_within_name_side_pm'] - 0.5)
-        j['strength'] = (j[['auc_within_name_side_am', 'auc_within_name_side_pm']] - 0.5).abs().min(axis=1)
+        A = 'auc_within_name_side_hour'
+        j = ce[[A]].join(cl[[A]], lsuffix='_am', rsuffix='_pm').dropna()
+        j['same_side'] = np.sign(j[A + '_am'] - 0.5) == np.sign(j[A + '_pm'] - 0.5)
+        j['strength'] = (j[[A + '_am', A + '_pm']] - 0.5).abs().min(axis=1)
         j = j.sort_values('strength', ascending=False).head(20).drop(columns=['strength']).reset_index()
         L.append('\n### Stability check: morning (09:30-12:45) vs afternoon entries (same day, NOT validation)\n')
         L.append(md_table(j) + '\n')
+    notes = os.path.join(HERE, f'notes-{DAY}.md')  # the hand-written reading and the candidate rules
+    if os.path.exists(notes):
+        L.insert(2, open(notes).read() + '\n')
     open(REPORT, 'w').write('\n'.join(L))
     summ = {'day': DAY, 'contract_minutes': n_all, 'base_rate_1.5': float(x['hit1.5'].mean()),
             'base_rate_2': float(x['hit2.0'].mean()), 'base_rate_5': float(x['hit5.0'].mean()),
