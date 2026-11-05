@@ -1,12 +1,15 @@
 /* Where the expiry may finish, as the chain prices it: the risk-neutral density of the close (data/weigherDensity.ts,
    Breeden–Litzenberger off the chain on the desk) with the options' one-standard-move band, each wall's chance of being
-   touched before the close, and the chain's implied vol against the realised-vol forecast (data/volOutlook.ts). */
+   touched before the close, and the next session's implied vol against the realised-vol forecast (data/volOutlook.ts):
+   the ATM IV of the first expiry at least one session out (volOutlook useImplied, the read Pulse's tile compares), on
+   the trading clock, against the HAR forecast — the model's median (exp of a forecast of the log), said so. It once set
+   the CHOSEN expiry's ATM vol, weeks out as like as not, against a one-session forecast. */
 
 import { useMemo } from 'react';
 import { CALL_WALL, PUT_WALL, SUPREME } from '../gex/paletteInk';
 import { MONTHS } from '../../core/nyTime';
 import { expiryDensity, wallTouch } from '../../data/weigherDensity';
-import { useVolOutlook } from '../../data/volOutlook';
+import { useImplied, useVolOutlook } from '../../data/volOutlook';
 import type { DeskChain } from '../../data/weigherDesk';
 import type { PaneLevels } from '../../pages/terrain/paneLevels';
 
@@ -30,6 +33,7 @@ export default function ExpiryDensity({ chain, levels, ticker }: { chain: DeskCh
   /* the chain re-prices on every sweep; the density is one pass over ~600 strikes */
   const d = useMemo(() => (chain.rows.length && chain.spot > 0 ? expiryDensity(chain) : null), [chain]);
   const outlook = useVolOutlook(ticker);
+  const implied = useImplied(ticker);
   const walls = useMemo(() => {
     if (!d) return [];
     const list: { key: string; label: string; k: number; ink: string }[] = [];
@@ -49,7 +53,7 @@ export default function ExpiryDensity({ chain, levels, ticker }: { chain: DeskCh
   const em = chain.expectedMovePct > 0 ? chain.expectedMovePct / 100 : d.sd / d.spot;
   const band = [d.spot * (1 - em), d.spot * (1 + em)];
   const inBand = d.cdf(band[1]) - d.cdf(band[0]);
-  const spread = outlook.state === 'ready' || outlook.origin ? d.atmVol - outlook.forecast : NaN;
+  const spread = implied && (outlook.state === 'ready' || outlook.origin) ? implied.trading - outlook.forecast : NaN;
   const ticks = [d.spot * Math.exp(-2 * (d.sd / d.spot)), d.spot * Math.exp(-(d.sd / d.spot)), d.spot, d.spot * Math.exp(d.sd / d.spot), d.spot * Math.exp(2 * (d.sd / d.spot))];
   return (
     <div className="h-full min-h-0 grid grid-cols-[minmax(0,1fr)_minmax(0,300px)] max-lg:grid-cols-1 gap-x-4 gap-y-2 p-2.5" data-expiry-density="ready">
@@ -109,7 +113,7 @@ export default function ExpiryDensity({ chain, levels, ticker }: { chain: DeskCh
         </div>
         <div data-vol-gap>
           <div className="font-mono text-t9 uppercase tracking-widest text-textMuted mb-1 flex items-center gap-2">
-            Implied − forecast <Tag word="Modeled" title="MODELED: the realised-vol forecast is a fitted HAR model (Pulse's Vol outlook)" />
+            Implied − forecast <Tag word="Modeled" title="MODELED: the realised-vol forecast is a fitted HAR model (Pulse's Vol outlook), its median case" />
           </div>
           {Number.isFinite(spread) ? (
             <div className="leading-snug text-textSecondary">
@@ -117,10 +121,10 @@ export default function ExpiryDensity({ chain, levels, ticker }: { chain: DeskCh
                 {spread >= 0 ? '+' : '−'}
                 {Math.abs(spread * 100).toFixed(1)} pts
               </span>{' '}
-              — ATM implied {pct(d.atmVol, 1)} against a realised-vol forecast of {pct(outlook.forecast, 1)} for the next session. Both on the trading clock; the forecast counts regular-session moves only.
+              — ATM implied {pct(implied!.trading, 1)} on {dayOf(implied!.expiryIso)} (the first expiry a session out) against the realised-vol forecast&rsquo;s median of {pct(outlook.forecast, 1)} for the next session. Both on the trading clock; the forecast counts regular-session moves only.
             </div>
           ) : (
-            <div className="text-textMuted">{outlook.progress.of ? `Reading the minute history · ${outlook.progress.done} of ${outlook.progress.of}` : 'The realised-vol forecast is loading.'}</div>
+            <div className="text-textMuted">{outlook.progress.of ? `Reading the minute history · ${outlook.progress.done} of ${outlook.progress.of}` : outlook.origin && !implied ? 'The next session’s implied vol is loading.' : 'The realised-vol forecast is loading.'}</div>
           )}
         </div>
       </div>

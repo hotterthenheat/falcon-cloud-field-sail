@@ -5,7 +5,8 @@
    minute's end. Where the history cannot be had, the order stays working and says which minutes went unjudged. */
 
 import { isTradingDay, isoDate, sessionCloseMinOn, sessionLengthOn } from '../../core/calendar';
-import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
+import { blackScholesGreeks, blackScholesPrice } from '../../core/greeks';
+import { readGreek } from '../../core/readGreek';
 import { carryFor } from '../../core/carry';
 import { ensureDayRates } from '../rateFeed';
 import { thetaAllowedHere, thetaCall } from '../theta';
@@ -164,14 +165,42 @@ function recorded(c: ContractId, day: string, m: number, f: Fetched, at: number)
     const intrinsic = spot > 0 ? Math.max(0, k.right === 'C' ? spot - k.strike : k.strike - spot) : 0;
     if (!q || !(q.ask > 0) || !(q.bid > 0)) return { bid: 0, ask: 0, mark: NaN, iv: 0, delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, intrinsic, dead: true, spot };
     const mid = (q.bid + q.ask) / 2;
-    const t = Math.max(yearsToExpiry(lastTradeDayOf(k), at), 1 / (252 * 390));
-    /* the day's own rate (core/carry rateOn; data/rateFeed ensureDayRates reads its month) and the name's yield */
-    const { r, q: y } = carryFor(k.ticker, { on: day });
-    const iv = spot > 0 ? impliedVolFromPrice(mid, spot, k.strike, t, k.right, r, y) : null;
-    const g = iv != null ? blackScholesGreeks(spot, k.strike, t, iv, r, y) : null;
+    /* the greek is readGreek, as the live desk's (feed.ts legQuote): the calendar clock to the expiry's close, the day's
+       own rate (core/carry rateOn; data/rateFeed ensureDayRates reads its month), the other side's quote at the same
+       minute when it was read, theta per session, vega per 1.00 of vol, rho per 1.00. It was once its own solve — the
+       trading-year clock, a flat 4.2% fallback, theta and rho 0 — so a replayed minute's greeks were not the live ones. */
+    const od = f.quotes.get(`${legKey({ ...k, right: k.right === 'C' ? 'P' : 'C' })}|${day}`);
+    const oq = od ? (m > lastMinOn(day) ? rowAt(od, m) : standingAt(od, m)) : null;
+    const solved = spot > 0
+      ? readGreek({
+          right: k.right,
+          strike: k.strike,
+          expiry: k.expiry,
+          at,
+          option: { bid: q.bid, ask: q.ask, at },
+          other: oq && oq.ask > 0 && oq.bid > 0 ? { bid: oq.bid, ask: oq.ask, at } : null,
+          stock: { price: spot, at },
+        })
+      : null;
+    const g = solved?.ok ? blackScholesGreeks(solved.spot, k.strike, solved.t, solved.iv, solved.r, solved.q) : null;
     /* the sizes the row showed: a replayed fill is capped the way a live one is (the row's minute is which quote it is) */
     const sz = { ...(q.bidSize != null ? { bidSize: q.bidSize } : {}), ...(q.askSize != null ? { askSize: q.askSize } : {}), quotedAt: nyInstant(day, OPEN_MIN) + (q.at + 1) * 60_000 };
-    return { bid: q.bid, ask: q.ask, mark: cents(mid), iv: iv ?? 0, delta: g ? (k.right === 'C' ? g.deltaCall : g.deltaPut) : 0, gamma: g?.gamma ?? 0, theta: 0, vega: g?.vega ?? 0, rho: 0, intrinsic: cents(intrinsic), dead: false, spot, ...sz };
+    return {
+      bid: q.bid,
+      ask: q.ask,
+      mark: cents(mid),
+      iv: solved?.ok ? solved.iv : 0,
+      delta: solved?.ok ? solved.delta : 0,
+      gamma: solved?.ok ? solved.gamma : 0,
+      theta: solved?.ok ? solved.thetaSession : 0,
+      vega: solved?.ok ? solved.vega : 0,
+      rho: g ? (k.right === 'C' ? g.rhoCall : g.rhoPut) * 100 : 0,
+      intrinsic: cents(intrinsic),
+      dead: false,
+      spot,
+      ...(solved?.ok ? { greekT: solved.t, greekR: solved.r, greekQ: solved.q } : {}),
+      ...sz,
+    };
   };
   if (c.short == null) return leg(c);
   const b = leg(longLeg(c));
@@ -181,6 +210,9 @@ function recorded(c: ContractId, day: string, m: number, f: Fetched, at: number)
   const { bid, ask } = spreadBook(b.bid - s.ask, b.ask - s.bid, width);
   return { ...b, bid, ask, mark: bookMark(bid, ask, cents), delta: b.delta - s.delta, dead: bid <= 0, ...spreadSizes(b, s) };
 }
+
+/** A replayed minute's quote as the replay prices it (for scripts/paper-proof.ts) */
+export const replayedQuote = (c: ContractId, day: string, m: number, f: Fetched, at: number): Quote => recorded(c, day, m, f, at);
 
 /** Did this name print a quote after 16:00 that day — so a missing minute in that window is a hole, not a closed session */
 function tradesLate(f: Fetched, c: ContractId, day: string): boolean {

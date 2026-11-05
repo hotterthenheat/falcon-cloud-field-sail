@@ -344,6 +344,8 @@ export interface UwState {
 
 export interface UwGreekStrike {
   strike?: string | number;
+  /** The session the row was priced on (greek-exposure rows: that session's close) */
+  date?: string;
   expiry?: string;
   dte?: number;
   call_gex?: string | number;

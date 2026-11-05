@@ -16,7 +16,8 @@ import { nyIsoDate, nyMinutes } from '../core/nyTime';
 import { thetaCall } from './theta';
 
 export const RATE_SYMBOL = 'SOFR';
-const KEY = 'slayer.rate.v1';
+/* v2: the kept rate is the continuous one (sofrToContinuous); a v1 copy held SOFR as quoted */
+const KEY = 'slayer.rate.v2';
 /** 08:30 New York: the day's SOFR is out by then */
 const PUBLISHED_MIN = 8 * 60 + 30;
 /** Days of history in the live window: a long weekend and a holiday still leave a row */
@@ -50,7 +51,13 @@ export function monthPath(day: string, now = Date.now()): string {
   return `/interest_rate/history/eod?symbol=${RATE_SYMBOL}&start_date=${ymd(isoPlus(first, -7))}&end_date=${ymd(last < today ? last : today)}&format=json`;
 }
 
-/** The rate history's rows: { rate: 3.94 (percent), created: "2026-10-30" } → { day, r: 0.0394 }, oldest first */
+/** SOFR as quoted — an overnight rate, simple interest on ACT/360, percent — as the continuously-compounded ACT/365
+    rate every greek is priced at (core/carry): one night at SOFR grows $1 by 1 + SOFR/360, so r = 365 · ln(1 + SOFR/360).
+    (3.94% quoted is 3.9945% continuous; read as is, every forward and rho was 0.05 pts short.) */
+export const sofrToContinuous = (pct: number): number => 365 * Math.log1p(pct / 100 / 360);
+
+/** The rate history's rows: { rate: 3.94 (percent), created: "2026-10-30" (the fixing's date) } → { day, r }, r the
+    continuous ACT/365 rate (sofrToContinuous: 0.039945 for 3.94), oldest first */
 export function parseRates(data: unknown): { day: string; r: number }[] {
   const rows = Array.isArray(data) ? data : data && typeof data === 'object' && Array.isArray((data as { response?: unknown }).response) ? (data as { response: unknown[] }).response : [];
   const out: { day: string; r: number }[] = [];
@@ -59,7 +66,7 @@ export function parseRates(data: unknown): { day: string; r: number }[] {
     const day = String(raw.created ?? raw.date ?? '').slice(0, 10);
     const pct = Number(raw.rate);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(pct) || raw.rate === '' || raw.rate == null) continue;
-    out.push({ day, r: pct / 100 });
+    out.push({ day, r: sofrToContinuous(pct) });
   }
   return out.sort((a, b) => a.day.localeCompare(b.day));
 }
@@ -137,8 +144,10 @@ const dayWords = (iso: string | null) => {
 
 /** The rate in words, for a hover: which one is in use, and why */
 export function rateWords(read: RateRead = rateNow()): string {
-  if (read.source === 'live') return `a ${pct(read.r)} rate (the overnight SOFR rate for ${dayWords(read.asOf)})`;
-  if (read.source === 'held') return `a ${pct(read.r)} rate (the last SOFR rate read, for ${dayWords(read.asOf)}; today's has not loaded)`;
+  /* the rate in use is continuous (sofrToContinuous); the quote a trader knows is SOFR as published */
+  const quoted = pct(360 * Math.expm1(read.r / 365));
+  if (read.source === 'live') return `a ${pct(read.r)} rate (the overnight SOFR rate for ${dayWords(read.asOf)}, ${quoted} as quoted, compounded)`;
+  if (read.source === 'held') return `a ${pct(read.r)} rate (${quoted} as quoted: the last SOFR rate read, for ${dayWords(read.asOf)}; today's has not loaded)`;
   return `a fixed ${pct(DEFAULT_R)} rate (no market rate has loaded)`;
 }
 

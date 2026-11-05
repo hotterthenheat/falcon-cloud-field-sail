@@ -194,9 +194,11 @@ export function expiryDensity(chain: Pick<DeskChain, 'rows' | 'spot' | 'expiryIs
 }
 
 /** The chance a level is touched before the expiry's close: weigherGate touchChance with the smile's vol at that
-    strike on the trading clock and the name's carry as drift — the chain's own touch-odds formula */
+    strike on the trading clock and the log drift (r − q − σ²/2) off the name's carry — the chain's own touch-odds formula */
 export function wallTouch(d: Pick<ExpiryDensity, 'spot' | 't' | 'volAt' | 'expiryIso'>, ticker: string, level: number, now = Date.now()): number {
   if (!(level > 0) || !(d.t > 0)) return NaN;
   const carry = clockCarry(ticker, d.expiryIso, now);
-  return touchChance(d.spot, level, d.volAt(level) * Math.sqrt(d.t), (carry.r - carry.q) * d.t);
+  const v = d.volAt(level);
+  /* the log price's drift, (r − q − σ²/2)·T */
+  return touchChance(d.spot, level, v * Math.sqrt(d.t), (carry.r - carry.q - (v * v) / 2) * d.t);
 }

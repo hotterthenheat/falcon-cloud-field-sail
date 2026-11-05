@@ -77,10 +77,11 @@ const mu = r - v * v / 2;
 const above = (level: number) => phiCdf((Math.log(S / level) + mu * t) / (v * Math.sqrt(t)));
 expectNear('profit odds long = P(S_T > 776.27), %', read.profitLong, above(beLong) * 100, 1e-5);
 expectNear('profit odds short = P(S_T < 776.22), %', read.profitShort, (1 - above(beShort)) * 100, 1e-5);
-/* touch: the reflection formula for an up barrier with log drift ν = r − q (the walk around the forward, no −σ²/2 —
-   the same function Pinpoint's driftless touch is at ν = 0), P(max ≥ K) = N(a) + (K/S)^(2ν/σ²)·N(b),
-   a = (ln(S/K) + νt)/σ√t, b = (ln(S/K) − νt)/σ√t */
-const nu = r;
+/* touch: the reflection formula for an up barrier with log drift ν = r − q − σ²/2 (the log price's own drift — corrected,
+   audit W1: this once took ν = r − q, the drift of the price itself, and its Monte Carlo below walked that same wrong
+   drift, so neither could catch it; the same function Pinpoint's driftless touch is at ν = 0),
+   P(max ≥ K) = N(a) + (K/S)^(2ν/σ²)·N(b), a = (ln(S/K) + νt)/σ√t, b = (ln(S/K) − νt)/σ√t */
+const nu = r - (v * v) / 2;
 const a = (Math.log(S / K) + nu * t) / (v * Math.sqrt(t));
 const b = (Math.log(S / K) - nu * t) / (v * Math.sqrt(t));
 const touchHand = phiCdf(a) + Math.pow(K / S, (2 * nu) / (v * v)) * phiCdf(b);
@@ -120,8 +121,8 @@ expectEqual('touch odds are never below the finish odds', read.touch >= read.itm
   };
   const gauss = () => Math.sqrt(-2 * Math.log(rnd() || 1e-12)) * Math.cos(2 * Math.PI * rnd());
   const dt = T / steps;
-  /* the walk the touch odds assume: log drift r − q, no −σ²/2 */
-  const drift = r * dt;
+  /* the walk itself: log price drift r − q − σ²/2 (corrected, audit W1: once r − q, the formula's own mistake) */
+  const drift = (r - (sig * sig) / 2) * dt;
   const vol = sig * Math.sqrt(dt);
   let hit = 0;
   for (let p = 0; p < paths; p++) {
@@ -133,7 +134,7 @@ expectEqual('touch odds are never below the finish odds', read.touch >= read.itm
     }
   }
   const mc = hit / paths;
-  const m2 = r;
+  const m2 = r - (sig * sig) / 2;
   const s = sig * Math.sqrt(T);
   const formula = phiCdf((Math.log(S0 / B) + m2 * T) / s) + Math.pow(B / S0, (2 * m2) / (sig * sig)) * phiCdf((Math.log(S0 / B) - m2 * T) / s);
   /* the app's touch for a 105 call priced at exactly 30% vol */

@@ -428,6 +428,11 @@ Every rule below has a known-number check in `scripts/paper-proof.ts` (paper) an
   at 3.00: average **2.00**, banked **$100**, open **$200** (equity +$300 either way; the old lifetime average said 1.67,
   $33.33 and $266.67, and the balance a firm's target and drawdown read was $66.67 short). A closed trade's `avgIn` is
   still the average of every way in (what the trade paid), and its P&L is its cash, unchanged.
+- **The balance has every commission paid taken out, an open position's entry commission included** (2026-11-05 math
+  audit W7): balance = cash + what the open positions cost (their basis, fees not in it). Options Funding's FAQ: "The
+  commission comes out of your trading account balance … so it counts toward your profit and loss and your drawdown."
+  It once read worth − open P&L, which handed the open entry commissions back. 50 bought at 2.00 on Options Funding
+  ($0.65): the balance is the start − $32.50 while they are open (TradeFundrr $0.30: − $15.00; no-fee firms: the start).
 - **Early closes** (`core/calendar` EARLY_CLOSES: the day after Thanksgiving, July 3, December 24). The options session
   ends at **13:00**: the bell (`clock.ts bellOf`) is 13:00, a contract expiring that day settles then, the session stops
   taking fills (`feed.ts optionsOpen`), and a late name's window runs to 13:15 (catch-up replays to there, not 16:15).

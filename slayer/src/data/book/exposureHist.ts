@@ -186,10 +186,13 @@ function volPaths(iv: HistInputs['iv']): Map<string, { strikes: number[]; paths:
   return out;
 }
 
-/** A path's vol at t: linear between grid points, the carried value (or the first) before them, the last after */
+/** A path's vol at t: the last grid value known at t (a step, held until the next grid point — never a value from
+    later in the day, so a replay or a backtest reading this minute sees only what was quoted by then). Before the
+    day's first grid point it is the session before's last vol carried; with none carried the leg has no vol yet (NaN)
+    and is not priced. Once interpolated toward the next point, and the pre-market took the 09:30 vol: look-ahead. */
 function volAt(p: VolPath, t: number, before: number | undefined): number {
   const { ts, vs } = p;
-  if (t <= ts[0]) return before != null && before > 0 && t < ts[0] ? before : vs[0];
+  if (t < ts[0]) return before != null && before > 0 ? before : Number.NaN;
   if (t >= ts[ts.length - 1]) return vs[vs.length - 1];
   let lo = 0;
   let hi = ts.length - 1;
@@ -198,8 +201,7 @@ function volAt(p: VolPath, t: number, before: number | undefined): number {
     if (ts[m] <= t) lo = m;
     else hi = m;
   }
-  const f = (t - ts[lo]) / (ts[hi] - ts[lo]);
-  return vs[lo] + (vs[hi] - vs[lo]) * f;
+  return vs[lo];
 }
 
 /** The nearest strike with a vol path on the expiry (flat past the last) */
@@ -472,7 +474,10 @@ export function rebuildDay(inp: HistInputs, cut: 'book' | string, carried: Carri
       for (const p of priced) {
         /* a leg is gone from its expiry's close */
         if (t >= p.close) continue;
-        const g = dollarGammaPerContract(S, k, p.years[i], volAt(p.path, t, p.before));
+        const sigma = volAt(p.path, t, p.before);
+        /* no vol known yet at this minute (before the day's first quote, nothing carried): not priced */
+        if (!(sigma > 0)) continue;
+        const g = dollarGammaPerContract(S, k, p.years[i], sigma);
         settled += (DEALER_SIDE.C * p.oiC + DEALER_SIDE.P * p.oiP) * g;
         let c = p.oiC;
         let q = p.oiP;

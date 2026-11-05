@@ -6,7 +6,8 @@ import type { Candle, StrikeNode } from '../../types/market';
 import type { Entry } from './store';
 import type { LiveGamma } from './scale';
 
-const VERSION = 1;
+/* 2: vanna is priced off the contracts only (book/scale.ts) — a v1 book kept the vendor's vanna rows */
+const VERSION = 2;
 const DB = 'slayer-book';
 const STORE = 'books';
 

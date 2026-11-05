@@ -88,6 +88,14 @@ export function bsVega(S: number, K: number, t: number, v: number, r = 0.042): n
   return (S * Math.exp((-d1 * d1) / 2) * Math.sqrt(t)) / Math.sqrt(2 * Math.PI) / 100;
 }
 
+/** One long contract's vanna, ∂Δ/∂σ per 1.00 of vol: −φ(d1)·d2/σ, r = 4.2%, no dividend — written out here, independent of
+    core/greeks.ts */
+export function bsVanna(S: number, K: number, t: number, v: number, r = 0.042): number {
+  const d1 = (Math.log(S / K) + (r + (v * v) / 2) * t) / (v * Math.sqrt(t));
+  const d2 = d1 - v * Math.sqrt(t);
+  return (-Math.exp((-d1 * d1) / 2) / Math.sqrt(2 * Math.PI)) * (d2 / v);
+}
+
 /** Implied vol off a quote mid by bisection (put through parity), null outside the model's range */
 function solveVol(mid: number, S: number, K: number, t: number, right: string, r = 0.042): number | null {
   const call = right === 'C' ? mid : mid + S - K * Math.exp(-r * t);

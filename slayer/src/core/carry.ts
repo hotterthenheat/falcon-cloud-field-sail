@@ -86,11 +86,14 @@ const isoMinus = (iso: string, days: number): string => {
   return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
 };
 
-/** A day's own rate: that day's published row, else the newest one up to DAY_REACH days before it; with neither loaded,
-    the rate in use now (and it says so: `asOf` is not the day). */
+/** The rate a day was priced at: the newest fixing PUBLISHED by that day — the row of the day before it, else the
+    newest up to DAY_REACH days before (a weekend's rows carry Friday's fixing; a holiday, a gap in the history). A
+    day's own SOFR fixing is published the next morning (about 08:00 New York), so it was not known on the day: reading
+    it put tomorrow's number into a backtest. With none loaded, the rate in use now (and it says so: `asOf` is not the
+    day). The rows are keyed by the fixing's own date (data/rateFeed.ts parseRates). */
 export function rateOn(day: string): RateRead {
-  for (let i = 0; i <= DAY_REACH; i++) {
-    const d = i ? isoMinus(day, i) : day;
+  for (let i = 1; i <= DAY_REACH; i++) {
+    const d = isoMinus(day, i);
     const r = byDay.get(d);
     if (r != null) return { r, source: 'live', asOf: d };
   }

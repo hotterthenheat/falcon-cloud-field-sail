@@ -71,8 +71,9 @@ const at = (segs: number[], t: number) => {
   const expiryClose = nyWallTime(2026, 11, 6, 16, 0);
   const hand = (S: number, t: number) => {
     const T = (expiryClose - (t + 59_999)) / (365 * 86_400_000);
-    /* 10:00 is halfway from 09:30 to 10:30: the call's vol is 25%; 10:01 is 31/60 of the way: 25.1667% */
-    const sigma = 0.2 + 0.1 * ((t - t930) / (t1030 - t930));
+    /* corrected (audit T7): this once read 10:00 as halfway along the grid (25%, a value from 10:30, later in the day).
+       The vol is the last grid value known at the minute: 09:30's 20% holds until the 10:30 point. */
+    const sigma = t >= t1030 ? 0.3 : 0.2;
     const d1 = (Math.log(S / 100) + (r - q + (sigma * sigma) / 2) * T) / (sigma * Math.sqrt(T));
     const gamma = (Math.exp(-q * T) * Math.exp(-(d1 * d1) / 2)) / Math.sqrt(2 * Math.PI) / (S * sigma * Math.sqrt(T));
     return (1000 - 400) * gamma * 100 * S * S * 0.01;
@@ -80,7 +81,7 @@ const at = (segs: number[], t: number) => {
   const got = rebuildDay(inp, 'book');
   check('hand example: one strike, two bars, the whole book', got.series.length === 1 && got.series[0][0] === ALL && got.series[0][1] === 100 && got.series[0][2].length === 8);
   const segs = got.series[0][2];
-  check('hand example: 10:00 is side × OI × Γ × 100 × S² × 0.01 at the call\'s vol halfway along its grid', Math.abs(segs[2] - hand(100, b0)) <= 1, `${segs[2]} vs ${hand(100, b0).toFixed(1)}`);
+  check('hand example: 10:00 is side × OI × Γ × 100 × S² × 0.01 at the call\'s last quoted vol (09:30\'s 20%, held — never 10:30\'s)', Math.abs(segs[2] - hand(100, b0)) <= 1, `${segs[2]} vs ${hand(100, b0).toFixed(1)}`);
   check('hand example: 10:01 reprices S and the vol, the open interest unchanged', Math.abs(segs[6] - hand(101, b1)) <= 1, `${segs[6]} vs ${hand(101, b1).toFixed(1)}`);
   check('hand example: one segment a bar, a minute long, flow = open interest (no trades are guessed)', segs[0] === b0 && segs[1] === b0 + 59_999 && segs[3] === segs[2] && segs[4] === b1);
   const oneExpiry = rebuildDay(inp, '2026-11-06');
@@ -97,7 +98,15 @@ const at = (segs: number[], t: number) => {
     return (600 * Math.exp(-q * T) * Math.exp(-(d1 * d1) / 2)) / Math.sqrt(2 * Math.PI) / (100 * sigma * Math.sqrt(T)) * 100 * 100 * 100 * 0.01;
   };
   check('pre-market holds the session before\'s last vol', Math.abs(pre.series[0][2][2] - preHand(0.4)) <= 1, `${pre.series[0][2][2]} vs ${preHand(0.4).toFixed(1)}`);
-  check('with none carried, pre-market holds the day\'s first', Math.abs(preNo.series[0][2][2] - preHand(0.2)) <= 1);
+  /* corrected (audit T7): this once priced the pre-market bar at the day's first vol — 09:30's, not yet quoted at 08:00 */
+  check('with none carried, the pre-market bar is not priced (09:30\'s vol is not known at 08:00)', preNo.series.length === 0, JSON.stringify(preNo.series));
+  {
+    /* no look-ahead: the minute before the 10:30 point is priced exactly as if the grid stopped at 10:29 */
+    const b1029 = nyWallTime(2026, 10, 30, 10, 29);
+    const full = rebuildDay({ ...inp, bars: [[b1029, 100]] }, 'book').series[0][2][2];
+    const cut = rebuildDay({ ...inp, bars: [[b1029, 100]], iv: inp.iv.map(r => [r[0], r[1], r[2], [r[3][0]], [r[4][0]], [r[5][0]]] as typeof r) }, 'book').series[0][2][2];
+    check('10:29 reads nothing from the 10:30 grid point (the same gamma with that point deleted)', full === cut, `${full} vs ${cut}`);
+  }
   const late = nyWallTime(2026, 10, 30, 19, 0);
   const post = rebuildDay({ ...inp, bars: [[late, 100]] }, 'book');
   check('after the last grid point the vol holds (the call\'s 30%)', post.series[0][2].length === 4 && post.series[0][2][2] > 0);
@@ -167,6 +176,8 @@ const at = (segs: number[], t: number) => {
       [b0, 100],
     ],
   };
+  /* the session before's last vol, carried, so the 08:00 bar is priced (with none carried it has no vol yet — audit T7) */
+  const CARRY = { '2026-11-03|100': 0.2 };
   const m = nyWallTime(2026, 10, 30, 9, 45);
   const flow: FlowInputs = {
     format: FLOW_FORMAT,
@@ -177,28 +188,28 @@ const at = (segs: number[], t: number) => {
       ['2026-11-03', 100, 'P', [m], [100], [100], [0], [0], [0]],
     ],
   };
-  const got = rebuildDay(inp, 'book', {}, flow).series[0][2];
+  const got = rebuildDay(inp, 'book', CARRY, flow).series[0][2];
   const g = got[6] / 500;
   check('Live hand example: Settled is (1,000 − 500) × g', Math.abs(got[6] - 500 * g) < 1e-6 && got[6] !== 0);
   check('Live hand example: calls 1,000 − 270 + 90 = 820, puts 500 + 100 = 600, Live = 220 × g', Math.abs(got[7] - Math.round(220 * g)) <= 1, `${got[7]} vs ${(220 * g).toFixed(1)}`);
   check('Live before the first print is Settled (the pre-market bar)', got[2] === got[3]);
   check('Live = Settled with no prints', (() => {
-    const a = rebuildDay(inp, 'book').series[0][2];
-    const b = rebuildDay(inp, 'book', {}, { ...flow, legs: [] }).series[0][2];
+    const a = rebuildDay(inp, 'book', CARRY).series[0][2];
+    const b = rebuildDay(inp, 'book', CARRY, { ...flow, legs: [] }).series[0][2];
     return a.every((v, i) => i % 4 !== 3 || v === a[i - 1]) && b.every((v, i) => v === a[i]);
   })());
   /* the same prints on an expiry past the Live book's five sessions (Fri 11-13) leave it settled */
   const far: HistInputs = { ...inp, oi: inp.oi.map(r => ['2026-11-13', r[1], r[2], r[3]] as HistInputs['oi'][number]), iv: [['2026-11-13', 100, 'C', [t930], [0.2], [100]]] };
   const farFlow: FlowInputs = { ...flow, legs: flow.legs.map(l => ['2026-11-13', ...l.slice(1)] as FlowInputs['legs'][number]) };
-  const f = rebuildDay(far, 'book', {}, farFlow).series[0][2];
+  const f = rebuildDay(far, 'book', { '2026-11-13|100': 0.2 }, farFlow).series[0][2];
   check('Live past five sessions to expiry stays Settled', f[7] === f[6]);
   /* balanced prints (as many at the bid as at the ask) are under the noise: the strike keeps its settled count */
   const even: FlowInputs = { ...flow, legs: [['2026-11-03', 100, 'C', [m], [400], [200], [200], [0], [0]]] };
-  const e = rebuildDay(inp, 'book', {}, even).series[0][2];
+  const e = rebuildDay(inp, 'book', CARRY, even).series[0][2];
   check('Live where the signed net is under the noise stays Settled', e[7] === e[6]);
   /* a print that set no side (mid) does not move the count */
   const mid: FlowInputs = { ...flow, legs: [['2026-11-03', 100, 'C', [m], [400], [300], [0], [0], [100]]] };
-  const md = rebuildDay(inp, 'book', {}, mid).series[0][2];
+  const md = rebuildDay(inp, 'book', CARRY, mid).series[0][2];
   check('Live: a mid print adds volume, not count (1,000 − 300 = 700 calls)', Math.abs(md[7] - Math.round((700 - 500) * g)) <= 1);
 
   /* the terminal's prints read: a cancelled print dropped, a multi-leg print kept apart, each sided against its quote */

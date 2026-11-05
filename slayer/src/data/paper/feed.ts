@@ -179,16 +179,13 @@ export function atmIvAt(rows: { strike: number; call: { iv: number }; put: { iv:
   return lo.iv + ((hi.iv - lo.iv) * (spot - lo.k)) / (hi.k - lo.k);
 }
 /** The one-sigma move to the expiry's close as a share of the name, percent — through core/volClock `sigmaToExpiry`, the
-    one expected-move formula. The desk's IV is solved on the trading clock (yearsToExpiry), so it is put on the calendar
-    year first with the variance kept (σ_cal² · T_cal = σ_trade² · T_trade): S·σ·√T on either clock is the same move. */
-export function expectedMovePctOf(spot: number, ivTradePct: number, c: { ticker: string; expiry: string }, ms: number): number {
-  if (!(spot > 0) || !(ivTradePct > 0)) return 0;
+    one expected-move formula. The desk's IV is readGreek's, the quoted vol on the calendar clock (calendarYearsOpen) —
+    the vol sigmaToExpiry takes — so it goes in as it is. (It was once rescaled by √(T_trade/T_cal) as if it were a
+    trading-clock vol: a Friday-to-Monday move read √(1/3) of itself.) */
+export function expectedMovePctOf(spot: number, ivQuotedPct: number, c: { ticker: string; expiry: string }, ms: number): number {
+  if (!(spot > 0) || !(ivQuotedPct > 0)) return 0;
   const expiry = lastTradeDayOf(c);
-  const tTrade = yearsToExpiry(expiry, ms);
-  const tCal = calendarYears(expiry, ms);
-  if (!(tTrade > 0) || !(tCal > 0)) return 0;
-  const sigmaCal = (ivTradePct / 100) * Math.sqrt(tTrade / tCal);
-  const move = sigmaToExpiry(spot, sigmaCal, expiry, ms);
+  const move = sigmaToExpiry(spot, ivQuotedPct / 100, expiry, ms);
   return move != null && move > 0 ? (move / spot) * 100 : 0;
 }
 

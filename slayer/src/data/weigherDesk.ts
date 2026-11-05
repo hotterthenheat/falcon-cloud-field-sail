@@ -2,7 +2,7 @@
    the session's volume and open interest, and yesterday's close. With the terminal down the last chain stays, stamped
    with when it was read; nothing stands in for it. */
 
-import { expiryFor, isoDate, isTradingDay, type Expiry, MONTHS as MONTHS_SHORT } from '../core/calendar';
+import { expiryFor, isoDate, isTradingDay, sessionBefore, type Expiry, MONTHS as MONTHS_SHORT } from '../core/calendar';
 import { keepTheta, keptTheta, noData, thetaGet } from './thetaFeed';
 import { listExpirations } from './chainDates';
 import { chainSnapshot } from './chainStore';
@@ -17,10 +17,9 @@ import type { OptionRight } from '../types/compass';
 import type { StrikeNode } from '../types/market';
 import { peekEntry } from './book/store';
 import { sameName } from './spotGexBook';
-import { carryFor, setForward, type ForwardRead } from '../core/carry';
-import { parityForward, type ParityPair } from '../core/parity';
-import { calendarYears } from '../core/volClock';
-import { type ChainPair } from '../core/readGreek';
+import { carryFor, rateOn, setForward, type ForwardRead } from '../core/carry';
+import { type ParityPair } from '../core/parity';
+import { calendarYearsOpen, parityMedianRead, type ChainPair } from '../core/readGreek';
 
 // ---- the chain --------------------------------------------------------------
 
@@ -295,26 +294,22 @@ export async function entryRange(ticker: string, expiry: string, strike: number,
   }
   return null;
 }
-function priorWeekdayYmd(now = Date.now()): string {
-  const p = nyParts(now);
-  let t = nyWallTime(p.year, p.month, p.day, 12, 0) - 86_400_000;
-  for (let i = 0; i < 6; i++) {
-    const q = nyParts(t);
-    if (q.weekday !== 0 && q.weekday !== 6) return `${q.year}${String(q.month).padStart(2, '0')}${String(q.day).padStart(2, '0')}`;
-    t -= 86_400_000;
-  }
-  const q = nyParts(t);
-  return `${q.year}${String(q.month).padStart(2, '0')}${String(q.day).padStart(2, '0')}`;
+/** The session before today's in New York, YYYYMMDD — the close a contract's change is measured from. Weekends AND
+    market holidays are skipped (core/calendar sessionBefore): the Monday after Good Friday reads Thursday's close, the
+    Friday after Thanksgiving Wednesday's (this once skipped weekends only and asked the vendor for a holiday's close). */
+export function priorSessionYmd(now = Date.now()): string {
+  const [y, m, d] = nyIsoDate(now).split('-').map(Number);
+  return isoDate(sessionBefore(new Date(y, m - 1, d))).replace(/-/g, '');
 }
 
 const eodCache = new Map<string, { at: number; rows: Map<string, number> }>();
 const priorCache = new Map<string, { at: number; rows: Map<string, number> }>();
 
 async function eodCloses(symbol: string, expiration: string): Promise<Map<string, number>> {
-  const key = `${symbol}|${expiration}|${priorWeekdayYmd()}`;
+  const key = `${symbol}|${expiration}|${priorSessionYmd()}`;
   const hit = eodCache.get(key);
   if (hit && Date.now() - hit.at < 6 * 60 * 60 * 1000) return hit.rows;
-  const day = priorWeekdayYmd();
+  const day = priorSessionYmd();
   const got = await thetaGet(`/option/history/eod?symbol=${encodeURIComponent(symbol)}&expiration=${expiration}&start_date=${day}&end_date=${day}&format=json`);
   const rows = new Map<string, number>();
   if (got.error) return rows;
@@ -536,10 +531,14 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
     /* the expiry's implied forward from put-call parity on these same quotes (core/parity.ts), before any row is priced:
        every contract of the expiry is then priced at its implied yield (core/carry carryFor with the expiry) */
     if (spot > 0) {
-      const t = calendarYears(iso, now);
-      const fwd = parityForward(chainPairs, spot, carryFor(name).r, t);
-      if (fwd) {
-        forward = { F: fwd.F, spot, b: fwd.b, t, n: fwd.n, lo: fwd.lo, hi: fwd.hi, at: now, day: nyIsoDate(now) };
+      /* THE parity forward (readGreek parityMedian), on readGreek's own clock and the day's own rate — read once here and
+         handed to every row's greek, so the chain's carry and its rows' prices stand on one F. (This once read its own
+         forward, parityForward's four strikes around S·e^{rT}, while each row solved on parityMedian's six nearest S.) */
+      const t = calendarYearsOpen(iso, now);
+      const r = rateOn(nyIsoDate(now)).r;
+      const fwd = t != null && t > 0 ? parityMedianRead(chainPairs, spot, r, t) : null;
+      if (fwd && t != null) {
+        forward = { F: fwd.F, spot, b: Math.log(fwd.F / spot) / t, t, n: fwd.n, lo: fwd.lo, hi: fwd.hi, at: now, day: nyIsoDate(now) };
         setForward(name, iso, forward);
       }
     }
@@ -580,6 +579,7 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
         ivError: feed('iv_error'),
         ...(otherBid != null && Number.isFinite(otherBid) && otherAsk != null && Number.isFinite(otherAsk) ? { otherBid, otherAsk, otherAt: at || 0 } : {}),
         chain: chainPairs,
+        forward: forward?.F ?? null,
       }) : { ok: false as const, why: 'quote' as const };
       const solved = explained.ok ? explained.read : null;
       const feedDelta = feed('delta');

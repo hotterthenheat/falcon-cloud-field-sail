@@ -117,6 +117,22 @@ check('the type filter keeps only its type: Spread legs passes legs only, Single
 check('a folded minute (prints under $50K) is in at any size, out under a size floor', rows.some(p => p.aggregate) && rows.filter(p => p.aggregate).every(p => passesFlow(p, ANY) && !passesFlow(p, { ...ANY, prem: '50k' })));
 check(`the caption names the type and the legs: "${flowCaption({ ...ANY, kind: 'sweep' })}"`, flowCaption({ ...ANY, kind: 'sweep' }).includes('SWEEPS') && flowCaption(ANY).includes('NO LEGS'));
 
+/* ---- 5b. legs in: a cross trade and a print on a crossed or stale quote read neither (audit T8) ----
+   The vendor's tape already makes them MID (traceRows printSideOf), checked here off raw rows; a leg that kept its
+   flag with a side from anywhere else still adds nothing once the legs are counted in. */
+{
+  const { tradeToPrint } = await import('../src/data/traceRows');
+  const { flowSign } = await import('../src/data/flowBuckets');
+  const at = new Date(nyInstant(DAY, 600)).toISOString();
+  const raw = (extra: Record<string, unknown>) => ({ id: `x${JSON.stringify(extra)}`, ticker: 'SPY', option_type: 'call', strike: '700', expiry: '2026-12-18', executed_at: at, price: '2.10', nbbo_bid: '2.00', nbbo_ask: '2.10', size: '50', volume: '5000', open_interest: '100', upstream_condition_detail: 'mlet', ...extra });
+  const crossRow = tradeToPrint(raw({ report_flags: ['cross_trade'] }));
+  const crossedQuote = tradeToPrint(raw({ nbbo_bid: '2.20', nbbo_ask: '2.10' }));
+  const plain = tradeToPrint(raw({}));
+  check(`the vendor's tape: a cross and a crossed quote print MID (${crossRow.side}, ${crossedQuote.side}); the same leg on a good quote at the ask (${plain.side})`, crossRow.side === 'MID' && crossedQuote.side === 'MID' && plain.side === 'ASK');
+  check('…so with the legs in, those add nothing and the plain leg leans', flowSign(crossRow, true) === 0 && flowSign(crossedQuote, true) === 0 && flowSign(plain, true) === 1);
+  check('a leg flagged a cross, or on a crossed or stale quote, reads neither even with a side on it', flowSign({ ...plain, cross: true }, true) === 0 && flowSign({ ...plain, quoteNoRead: 'crossed' }, true) === 0 && flowSign({ ...plain, quoteNoRead: 'stale' }, true) === 0);
+}
+
 /* ---- 6. the reader: two reads at most, the open interest first, contiguous windows, the newest minute live ---- */
 {
   const FRI_1400 = nyInstant(DAY, 840);
