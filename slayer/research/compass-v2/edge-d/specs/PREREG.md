@@ -47,3 +47,10 @@ D3 (single-name earnings straddles / drift): registered in concept only; run onl
 (c) Synthetic zero-drift sessions at the realized vol with BS prices (eval/nulls.synthetic_session), 20 seeds.
 A result counts only if it beats >= 95% of null runs; null pass rate > 5% = broken pipeline.
 Freeze (frozen/<ID>.py + commit hash) only a VALIDATION survivor; the blind scorer scores LOCKED once.
+
+## Amendment A1 (2026-11-05, before any 2022+ outcome; only a 2018 smoke run with 1 executable straddle had been seen)
+Data finding: SPXW has NO GTH pre-open quotes from 2018-12 to 2021-12 (chain rows all zero; Cboe added SPXW to GTH in
+late 2021); 2018 pre-open spreads are 16-45% of mid (unexecutable under rule 4). The testable sample is therefore
+2022-01..2024-12 (DEV, ex locked Jun-Sep 2022 and Aug 2024) and 2025-04..12 (VALIDATION). To reach a usable count,
+PPI (BLS archive, 08:30) is ADDED to the 08:30 event set with the same rules; retail sales dropped (Census schedule
+archive not reachable). Controls: weekday-matched non-event days 2022+ (1 per 2 events). Variants unchanged.
