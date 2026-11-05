@@ -89,3 +89,11 @@ outcome. Fix (causal, keeps EDGE's t − 60 board convention): the trigger is ev
 crossing at 09:31:00 is executed at 09:32:00 (board stamped 09:31, spot = the 09:31 bar close, fill at the quote in
 force at 09:32:02). Triggers at 09:32..09:35 are unchanged. The smoke test (sessions 2023-12-20 and 2024-10-24) showed
 exit reasons for 4 SPY/QQQ/SPXW trades; nothing was tuned on it. No variant added.
+
+## AMENDMENT A2 (2026-11-05, during the DEV run, before any full-DEV null was computed)
+Pipeline finding from a 2-rep smoke run of the synthetic null on the first 54 sessions: EDGE's registered generator
+(one flat 1-minute vol for the whole day) gives ~3.5 H1 triggers per 159 root-sessions vs 47 real ones, because the
+real opening minutes are far more volatile than the day's average; a null that almost never trades cannot calibrate
+H1. Added (not replacing): the same zero-drift generator at the real day's 5-minute RMS-return profile (the
+foundation's eval/nulls.py synthetic_session convention). Both are reported; the DEV bar uses the lower of the two
+beat rates. No variant added; no real-trade number changes.
