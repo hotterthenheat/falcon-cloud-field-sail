@@ -61,3 +61,18 @@ GDP, Philly Fed), not within +-1 day of any CPI/NFP/PPI/FOMC date, day-of-month 
 starts, Empire/import prices) and outside 24-31 (durable goods, GDP, personal income/PCE). 57 controls 2022+,
 weekday-matched where possible (specs/controls.txt). Drift legs: fetched by Black-Scholes |delta| nearest 0.30 on the
 08:36 forward (+-1 strike, both rights) instead of a fixed +-3-strike band, which did not reach 0.25-0.40 on high-IV days.
+
+## Amendment A3 — D3 concrete rule (2026-11-05, registered before any D3 data was fetched)
+Long premium only (owner constraint: long calls and puts only; a straddle = two long legs). Calendar: UW
+/api/earnings/{ticker}, report_time == 'postmarket' only. Universe (fixed, liquid weeklies): AAPL MSFT AMZN GOOGL META
+NVDA TSLA NFLX AMD INTC CRM ADBE ORCL QCOM MU. Events 2022-01..2025-12; DEV = 2022-2024 ex locked (Jun-Sep 2022,
+Aug 2024), VALIDATION = 2025 ex Jan-Mar. Contract: the first listed expiration strictly AFTER the report date (1-DTE
+when the report is the day before an expiry, else 2-4 DTE; a 1-DTE expiry is not always listed for single names).
+Strike: listed strike nearest the stock NBBO mid at 15:55:00 (stock quotes stamped <= 15:55:00; assertion).
+Entry: decision 15:55:00, fill both legs at the ask in force at 15:55:02 (1-s NBBO); skip if either leg spread > 8% of
+mid or ask size < 1. Fee $0.65/contract/side.
+Variants (3): D3-Y1 sell both legs at the bid at 09:35:02 next session; D3-Y2 at 10:00:02; D3-Y3 at 15:55:02.
+Expected sign: NEGATIVE (implied earnings move > realized on average; literature). Realized/implied =
+|S(next 09:35) - S(15:55)| / straddle mid at 15:55.
+Key null: the identical rule on the same name 14 calendar days before the report (non-event control; skipped if that
+day is within 3 days of another report). D3b (next-morning drift) is NOT run (time): 0 trials.
