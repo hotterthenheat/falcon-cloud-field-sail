@@ -1,0 +1,5 @@
+triggers: no look-ahead on 300 recorded triggers
+selection: identical on 301/301 with boards truncated to t - 60
+exits: identical on 267/267 paths truncated at the exit fill
+canary selection (board stamped at t): differs on 103/109 -> caught
+canary exit (peeks 60 s ahead): differs on 100/100 -> caught
