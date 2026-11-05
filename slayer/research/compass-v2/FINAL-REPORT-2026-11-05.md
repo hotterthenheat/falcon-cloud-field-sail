@@ -34,7 +34,8 @@ and puts only.
 | D3 earnings straddle | 3 | DEV +3..+6% (CI incl. 0), VAL −6..−26% | FAIL |
 | V1 VWAP pullback (from the owner's 5.8× SPY 768C, Nov 4) | 24 | −15% to +3%, no CI above 0; doubled-rate 20–36% vs zero-drift random walk 24–28% | FAIL |
 | L1 buy when forecast vol > implied | 8 | −32% to +17%, n 8–142; realized/implied 0.91 on all days, 0.98 in the top bucket — never > 1 | FAIL |
-| L3 vol-shock spillover, M 1–3 DTE re-expression | — | running at deadline | pending |
+| L3 vol-shock spillover (SPY shock → AAPL/MSFT/NVDA) | 2 | +1.5% [−2.7, +6.4] and −1.9% [−4.8, +1.1]; real but uneconomic | FAIL |
+| M same signals on 1–3 DTE options | — | running at deadline | pending |
 
 ## What the hunt established
 1. **Long short-dated options pay the variance risk premium.** Across all DEV sessions realized vol was ~0.91× the
