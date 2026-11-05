@@ -1,0 +1,77 @@
+enterable contract-marks 93204 contracts 2190 base win rate 14.3% mean ret -8.7%
+contracts that ran >= 1.5x from some enterable ask: 1222  (contract-marks 14726); reached 1.5x before the stop (win) from some mark: 1215
+contracts that ran >= 2x from some enterable ask: 805  (contract-marks 5763); reached 1.5x before the stop (win) from some mark: 1215
+contracts that ran >= 5x from some enterable ask: 98  (contract-marks 329); reached 1.5x before the stop (win) from some mark: 1215
+
+by root:
+tier   1.5-2x  2-5x  >=5x   All
+root                           
+AAPL       19    15     0    34
+AMD        11    33     7    51
+AMZN       14    16     3    33
+AVGO       22    33     5    60
+GLD         7    14     1    22
+GOOGL      10    24     3    37
+IWM        15    30     5    50
+META       28    49    16    93
+MSFT       21    19     2    42
+MU         11    27    15    53
+NDXP       46    29     0    75
+NVDA       17    15     1    33
+QQQ        21    84    23   128
+RUTW       26    40     0    66
+SLV         5     1     0     6
+SMH         3    15     0    18
+SPXW       31    87     1   119
+SPY        31    60     1    92
+TLT         6     4     0    10
+TQQQ        3     7     1    11
+TSLA       25    39    11    75
+USO        11    13     1    25
+XLE         2     2     1     5
+XLF         3     0     0     3
+XSP        29    51     1    81
+All       417   707    98  1222
+
+by dte:
+tier  1.5-2x  2-5x  >=5x   All
+dte                           
+0        163   360    98   621
+1        125   213     0   338
+2        129   134     0   263
+All      417   707    98  1222
+
+by dband:
+tier       1.5-2x  2-5x  >=5x   All
+dband                              
+0.10-0.25      31   173    31   235
+0.25-0.40      35   137    22   194
+0.40-0.60      86   161    19   266
+<0.10          33   104    13   150
+>=0.60        228   130    13   371
+n/a             4     2     0     6
+All           417   707    98  1222
+
+by tod:
+tier         1.5-2x  2-5x  >=5x   All
+tod                                  
+09:35-10:30     307   676    97  1080
+10:35-12:00      90    29     1   120
+12:05-14:00      18     2     0    20
+14:05-15:00       2     0     0     2
+All             417   707    98  1222
+
+by move:
+tier                                              1.5-2x  2-5x  >=5x   All
+move                                                                      
+continuation (underlying already moving its way)     117   194    34   345
+from flat (|move| < 0.15%)                            97   100    14   211
+reversal (underlying moving against it)              203   413    50   666
+All                                                  417   707    98  1222
+
+by right:
+tier   1.5-2x  2-5x  >=5x   All
+right                          
+C         264   321    36   621
+P         153   386    62   601
+All       417   707    98  1222

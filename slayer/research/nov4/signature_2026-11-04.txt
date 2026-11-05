@@ -1,0 +1,23 @@
+Compass calls matched to rows: 32 of 32 (Book C fires at 15:20, outside the 09:35-15:00 marks; a Book A/B call off the band is unmatched)
+feature                                        amazing (ran>=2x)           all enterable  all enterable 0.20-0.4  Compass calls (A/B, ma
+minutes after 09:30                                           20                     165                     150                      25
+DTE                                                            0                       1                       1                       0
+|delta|                                                   0.2929                  0.7454                  0.3223                  0.6699
+ask $                                                       2.28                    8.15                    2.23                   5.765
+premium / expected move                                   0.1871                   1.083                  0.2167                  0.6812
+spread / mid                                             0.04255                  0.0322                 0.02632                 0.03195
+realised 30m / ATM IV                                      1.737                  0.9348                  0.9779                   2.083
+underlying 15m, side-signed                            -0.001275               3.501e-05               6.144e-05                0.001377
+underlying since open, side-signed                     -0.006186                0.002468               -0.001843                 0.01078
+vs VWAP, side-signed                                   -0.003066               0.0008645              -0.0001649                 0.00779
+position in day range (side)                              0.1181                   0.559                   0.476                  0.7915
+contract vol rate 15m / session                           0.6667                  0.3333                  0.6667                  0.8623
+contract prints vs mid (half-spreads)                   0.002409                       0                       0                -0.04385
+chain net aggressive premium, side                       0.04366               -0.004957                0.006419                -0.09296
+chain premium burst 15m                                   0.6667                  0.5774                  0.6086                  0.9658
+volume so far / OI                                         1.135                   1.078                   4.799                   1.752
+OI change prior day                                       0.1696                 0.07285                 0.06931                  0.1863
+gamma flip distance, side                                  0.006                  -0.002                   0.007                  -0.011
+net gamma sign                                                 1                       1                       1                       1
+n                                                            805                   93204                   13208                      32
+win (1.5x before stop) rate                                  89%                     14%                     30%                     28%

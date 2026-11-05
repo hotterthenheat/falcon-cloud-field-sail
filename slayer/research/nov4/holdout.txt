@@ -1,0 +1,20 @@
+baseline every enterable odte 0.20-0.45 delta contract-mark: n=27594 sessions=12 win=42% [42%,43%] ret/call=-11.7% [-16.6%,-7.0%]
+   random one-a-root draw (odte): n~198 win=40% (draws 2.5-97.5%: 34%-46%) ret=-14.0%
+baseline every enterable weekly 0.20-0.45 delta contract-mark: n=81002 sessions=12 win=25% [24%,25%] ret/call=-7.4% [-11.0%,-3.3%]
+   random one-a-root draw (weekly): n~235 win=26% (draws 2.5-97.5%: 21%-31%) ret=-7.5%
+R1 flow-aligned 0DTE: n=181 sessions=12 win=45% [38%,52%] ret/call=-9.2% [-15.1%,-0.9%]
+   by day: 10-15:33%/9 10-16:43%/21 10-19:35%/20 10-20:71%/7 10-21:67%/18 10-22:50%/8 10-23:35%/23 10-26:39%/18 10-27:38%/8 10-28:45%/20 10-29:71%/7 10-30:41%/22
+R2 hot-tape weekly: n=147 sessions=12 win=37% [29%,45%] ret/call=-10.2% [-22.2%,+1.2%]
+   by day: 10-15:75%/16 10-16:54%/13 10-19:9%/11 10-20:54%/13 10-21:31%/13 10-22:59%/17 10-23:25%/12 10-26:14%/14 10-27:33%/6 10-28:0%/5 10-29:19%/16 10-30:27%/11
+R3 gamma-flip side 0DTE: n=170 sessions=12 win=40% [33%,48%] ret/call=-14.2% [-25.9%,-3.9%]
+   by day: 10-15:71%/7 10-16:50%/20 10-19:35%/20 10-20:57%/7 10-21:50%/18 10-22:57%/7 10-23:38%/21 10-26:55%/20 10-27:38%/8 10-28:5%/19 10-29:29%/7 10-30:25%/16
+R4 opening reversal 0DTE: n=70 sessions=11 win=59% [47%,69%] ret/call=+6.2% [-15.8%,+25.3%]
+   by day: 10-15:0%/1 10-16:71%/7 10-19:86%/7 10-20:0%/1 10-21:86%/7 10-22:100%/1 10-23:13%/15 10-26:73%/11 10-28:71%/7 10-29:100%/1 10-30:58%/12
+R1 flow-aligned 0DTE: n=181 win=45% session-bootstrap [39%,52%]; sessions with win>=60%: 3/12; median session ret -11.8%; without its best session: win=44% ret=-10.3%
+R2 hot-tape weekly: n=147 win=37% session-bootstrap [24%,49%]; sessions with win>=60%: 1/12; median session ret -13.9%; without its best session: win=32% ret=-14.5%
+R3 gamma-flip side 0DTE: n=170 win=40% session-bootstrap [29%,49%]; sessions with win>=60%: 1/12; median session ret -9.8%; without its best session: win=39% ret=-15.6%
+R4 opening reversal 0DTE: n=70 win=59% session-bootstrap [37%,77%]; sessions with win>=60%: 7/11; median session ret +19.6%; without its best session: win=58% ret=+5.6%
+  by root: {'AMD': {'size': 5, 'mean': 0.8}, 'AMZN': {'size': 3, 'mean': 0.67}, 'AVGO': {'size': 6, 'mean': 0.67}, 'GOOGL': {'size': 3, 'mean': 0.67}, 'INTC': {'size': 3, 'mean': 0.33}, 'IWM': {'size': 5, 'mean': 0.4}, 'META': {'size': 5, 'mean': 0.4}, 'MSFT': {'size': 3, 'mean': 0.33}, 'MU': {'size': 6, 'mean': 0.83}, 'NVDA': {'size': 6, 'mean': 0.5}, 'TQQQ': {'size': 6, 'mean': 0.67}, 'TSLA': {'size': 5, 'mean': 0.6}}
+  by right: {'C': {'n': 40, 'win': 0.75, 'ret': 0.234}, 'P': {'n': 30, 'win': 0.367, 'ret': -0.168}}
+  by entry clock: {'09:45': {'n': 6, 'win': 1.0}, '09:50': {'n': 4, 'win': 0.0}, '09:55': {'n': 14, 'win': 0.43}, '10:00': {'n': 10, 'win': 0.5}, '10:05': {'n': 6, 'win': 0.83}, '10:10': {'n': 7, 'win': 0.57}, '10:15': {'n': 6, 'win': 0.67}, '10:20': {'n': 6, 'win': 0.83}, '10:25': {'n': 4, 'win': 0.5}, '10:30': {'n': 7, 'win': 0.57}}
+  median |delta| 0.31 median ask 1.0099999904632568 median s_open -0.0091
