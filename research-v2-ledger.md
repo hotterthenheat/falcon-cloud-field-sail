@@ -278,3 +278,6 @@ One line per hypothesis/variant/look: date | worker | id | set | n | result | no
 2026-11-05 | EDGE-M | M6 E2 a0.35 2-3DTE Y2s | DEV (all) | 127 | win 43%, exp -9.8% [-14.6,-5.3] net | FAIL; 10:00 macro-release quote blowouts (fill at blown ask, stops on blown bid)
 2026-11-05 | EDGE-M | M7 = M6 + quote guard (A1) | DEV (all) | 127 | win 52%, exp -1.8% [-4.8,+1.1] net | FAIL; shuffle 78%
 2026-11-05 | EDGE-M | M8 = M3 + quote guard (A1) | DEV-M | 323 | win 44%, exp -1.2% [-2.8,+0.6] net | FAIL; shuffle 98%, synthetic 100%; PBO(M2-M8) 0.67, DSR 0.000 at N=308; nothing to VALIDATION, nothing frozen
+2026-11-05 | EDGE-T | PREREG H1 OPENING DRIVE (first 1-5 min |S/O-1| >= k x prior-session RV, k 0.30/0.60; 0DTE d0.20/0.35; RULES.md exits) | spec | - | registered, 4 variants | edge-t/specs/PREREG.md
+2026-11-05 | EDGE-T | PREREG H2 TREND DAY (live RULES.md exactly; Compass top score replaced by fixed delta 0.35/0.20) | spec | - | registered, 2 variants | edge-t/specs/PREREG.md
+2026-11-05 | EDGE-T | PREREG H3 EXIT RULES (TP1.5 vs trail x 5-min reversal x raw vs sane stops, on H1-k0.30-d0.35 entries; base cell = H1 variant) | spec | - | registered, 7 variants | edge-t/specs/PREREG.md
