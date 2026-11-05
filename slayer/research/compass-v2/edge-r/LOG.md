@@ -49,6 +49,8 @@ any EDGE-R terminal request or outcome.
 - ~17:25 ET: second container restart killed workers 1069/1070 at 166 sessions (all files re-read cleanly; 0 misses).
   The q1s/board/bar cache writes are now atomic too (`.part` + rename; `.part` files are never read). Terminal
   answered; workers restarted 17:30 ET (PIDs 978, 980).
+- 18:11 ET: interim analysis at 300 of 651 sessions committed (results/DEV.md, summary.json; no synthetic null yet),
+  as a restart safeguard. Nothing in the rules, fills or analysis changes because of it; the run continues to 651.
 
 ## Live record 2026-11-05 (motivation; execution artefacts only, not a test)
 Book R closed 29 tickets on 23 names (−$1,691 at 15:12 ET). 16 of 29 were held ≤ 5 s (−$259): the live scan reads bars
