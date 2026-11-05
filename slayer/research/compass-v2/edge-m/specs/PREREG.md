@@ -67,3 +67,16 @@ M2/M3/M5/M6; the 0DTE control M1 <= 0 (EDGE's result); M4 (overnight hold) uncer
 - Cost side reported directly: at entry, on the same root-day-minute boards, median spread % of mid and BS theta per
   trading hour % of mid for 0DTE / 1DTE / 2–3DTE; payoff per unit underlying move = OLS slope of option return on the
   signed underlying return over the hold (and the median per-trade ratio).
+
+## AMENDMENT A1 (2026-11-05, after the E2 DEV look M5/M6 and 9 E1 triggers; before any M7/M8 computation)
+Finding while reading M6's stop exits: at 10:00:00–10:00:06 ET (macro releases: ISM, JOLTS, sentiment) market makers
+widen the 1–3 DTE quotes for a few seconds (e.g. IWM 184P 2023-12-08: 0.94/0.98 at 10:00:07, but 0.21/1.75 at
+10:00:03). E2's protocol fill (first quote >= 10:00:02) buys that blown-out ask and the stop reads that blown-out bid.
+This is an execution artefact, not the signal. Two post-hoc variants, counted (total 8; DSR N = 308):
+- M7 = M6 (E2 a0.35, 2–3DTE, Y2s) and M8 = M3 (E1 z0.5, 2–3DTE, X2s) with a QUOTE GUARD: the simulator only acts on
+  1-second quotes whose spread <= 10% of mid (entry: first such quote >= t + 2 s with ask size >= 1, within 60 s;
+  stop/trail decisions and the exit fill use only such quotes). Causal: a quote's spread is known when it prints.
+- 2–3DTE chosen for both because its entry cost (spread + theta × hold) is lower than 1DTE's in the cost table
+  (E1: 4.8% vs 7.7%; E2: 10% vs 15%), not by outcome.
+- Synthetic null: the BS null has constant spreads, so the guard never binds there; M7/M8 synthetic null = M6/M3's.
+- Also the synthetic null runs on every root-session of the set (nullsyn_m.infos docstring), not only trigger days.
