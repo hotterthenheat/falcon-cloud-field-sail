@@ -44,6 +44,8 @@ def fetch_one(t, session, lo, hi):
 
 def main(fams):
     ev = pd.concat([pd.read_parquet(f'{DATA}/events_{f}.parquet') for f in fams])
+    if os.environ.get('EDGEB_SPLIT'):
+        ev = ev[ev['split'] == os.environ['EDGEB_SPLIT']]
     g = ev.groupby(['ticker', 'session']).agg(lo=('sod0', 'min'), hi=('sod0', 'max')).reset_index()
     jobs = [(r.ticker, r.session, max(OPEN, r.lo - 1800 - 5), min(CLOSE, r.hi + 62 * 60 + 15)) for r in g.itertuples()]
     for s in sorted(ev['session'].unique()):
