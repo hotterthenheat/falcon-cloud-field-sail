@@ -80,8 +80,12 @@ export function odteEventModel(sleeve: SleeveKey): typeof MODEL4 | null {
   return model4OnOdte(sleeve);
 }
 
+/* COMPASS_WEEKLY_ALL=1: the weekly scan reads every root of the 458-name book, not only the 20 with the full feature
+   row. The others score with their open-interest columns missing (the trees read those as missing, not as 0). */
+const WEEKLY_ALL = typeof process !== 'undefined' && process.env?.COMPASS_WEEKLY_ALL === '1';
+
 function weeklyNames(now: number): string[] {
-  return WEEKLY_FOCUS.filter(t => optionScanOpen(t, 1, now));
+  return (WEEKLY_ALL ? ALL : WEEKLY_FOCUS).filter(t => optionScanOpen(t, 1, now));
 }
 
 /* ---- reading the terminal ---- */
