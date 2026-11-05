@@ -294,3 +294,6 @@ One line per hypothesis/variant/look: date | worker | id | set | n | result | no
 2026-11-05 | EDGE-T | H3-TP-off-raw | DEV-T | 269 | exp -4.9% [-11.0,+1.3] | FAIL
 2026-11-05 | EDGE-T | H3-TP-rev-sane | DEV-T | 269 | exp -5.3% [-11.4,+0.9] | FAIL
 2026-11-05 | EDGE-T | H3-TP-rev-raw | DEV-T | 269 | exp -5.1% [-11.1,+1.1] | FAIL; PBO(H3) 0.81, DSR <= 0.19 at N=608 for all 13 variants; H3b (E3 entries) not run (0 trials); nothing to VALIDATION, nothing frozen | edge-t/LOG.md
+2026-11-05 | EDGE-R | PREREG R0 MODEL RISK as coded (30-close range break fade, 0 / 1-7 DTE, back-or-30-min exit, no stop, one seat; SPXW/SPY/QQQ) | spec | - | registered, 1 variant | edge-r/specs/PREREG.md
+2026-11-05 | EDGE-R | PREREG R1 = R0 + SPX direction filter (no call fade if SPX <= -1.0% from 09:30 open and below its 30-close range; mirror for puts) | spec | - | registered, 1 variant | edge-r/specs/PREREG.md
+2026-11-05 | EDGE-R | PREREG R2 = R0 + sane-bid stop -35% of fill + no SPY/QQQ entries before the 09:30 bar closes | spec | - | registered, 1 variant | edge-r/specs/PREREG.md
