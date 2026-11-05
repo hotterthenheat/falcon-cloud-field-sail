@@ -230,7 +230,7 @@ def fetch():
             print('disk low')
             break
         q1(r.sym, r.day, r.exp, r.k, r.side > 0, r['T'], r['T'] + 3720)
-        if np.isfinite(r.k_opp):
+        if np.isfinite(r.k_opp) and os.environ.get('OPP', '0') == '1':
             q1(r.sym, r.day, r.exp, r.k_opp, r.side < 0, r['T'], r['T'] + 3720)
         name_bars(r.sym, r.day)
     print('fetched')
@@ -281,7 +281,7 @@ def run():
             q = q1(r.sym, r.day, r.exp, r.k, r.side > 0, T, T + 3720)
             res = trade(q, T, bm, bc, r.side, rule, sd60)
             opp = None
-            if np.isfinite(r.k_opp):
+            if np.isfinite(r.k_opp) and os.path.exists(os.path.join(D3, 'q1s', r.sym, r.day, f"{r.exp}_{f'{r.k_opp:.3f}'.rstrip('0').rstrip('.')}{'P' if r.side > 0 else 'C'}_{T}.npz")):
                 qo = q1(r.sym, r.day, r.exp, r.k_opp, r.side < 0, T, T + 3720)
                 opp = trade(qo, T, bm, bc, -r.side, rule, sd60)
             if res:
