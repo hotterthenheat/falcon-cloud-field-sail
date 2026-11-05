@@ -14,6 +14,7 @@ import { INDEX, UNDER } from './compassFeatures';
 import {
   CLS_INDEX,
   NO_SAME_DAY,
+  OVERNIGHT_ROOTS,
   atmStrike,
   printOf,
   spreadPass,
@@ -503,6 +504,10 @@ export async function tailPass(now: number, set: (t: TailPublic) => void): Promi
         if (!range || px == null) continue;
         const side = breakSide(px, range.high, range.low);
         if (!side) continue;
+        /* An equity or ETF option does not trade before 09:30: its pre-open quote is not a fill (Nov 5: SPY 766C
+           "bought" at 09:24:39). Only the roots with overnight options take a ticket before the first full regular
+           minute. */
+        if (!OVERNIGHT_ROOTS.includes(ticker) && minuteOfDay < REGULAR_OPEN_MIN + 1) continue;
         if ((skipUntil.get(ticker) ?? 0) > now) continue;
         const books: TailBook[] = [];
         let sameDay = false;
