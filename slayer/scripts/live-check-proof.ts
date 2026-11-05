@@ -91,7 +91,8 @@ const S = (S_BID + S_ASK) / 2;
 const CALL = { bid: 7.37, ask: 7.47, at: AT, ivError: 0 as number | null };
 const PUT = { bid: 5.5, ask: 5.61, at: AT, ivError: 0 as number | null };
 resetCarry();
-setDayRates([{ day: '2026-11-03', r: 0.0395 }]);
+/* the fixing published by 11-03 is 11-02's (core/carry rateOn; corrected, audit W9: this once keyed 11-03's own) */
+setDayRates([{ day: '2026-11-02', r: 0.0395 }]);
 const tCal = calendarYearsOpen(EXP, AT)!;
 const grow = Math.exp(0.0395 * tCal);
 const callMid = (CALL.bid + CALL.ask) / 2;
@@ -168,7 +169,8 @@ check(`iv_error other than 0 is rejected (${erred.ok ? 'solved' : erred.why})`, 
 resetCarry();
 const unloaded = readGreek({ right: 'C', strike: 753, expiry: EXP, option: CALL, other: PUT, stock, chain });
 check(`no rate loaded is blank (${unloaded.ok ? 'solved' : unloaded.why})`, !unloaded.ok && unloaded.why === 'rate not loaded');
-setDayRates([{ day: '2026-11-03', r: 0.0395 }]);
+/* the fixing published by 11-03 is 11-02's (core/carry rateOn; corrected, audit W9: this once keyed 11-03's own) */
+setDayRates([{ day: '2026-11-02', r: 0.0395 }]);
 
 /* ---- Weigher, Paper, and a backtest mark on one stored minute ---- */
 {

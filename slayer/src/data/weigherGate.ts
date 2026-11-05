@@ -69,7 +69,9 @@ export function solveIv(mark: number, spot: number, strike: number, t: number, r
 /**
  * THE touch odds for every page: the chance a lognormal walk with total log-sd `sigmaT` (σ√T) and total log drift
  * `driftT` (μT) touches `barrier` before the horizon — the reflection principle. With `driftT` 0 this is exactly
- * 2·(1 − Φ(|ln(B/S)| / σ√T)); the Weigher passes (r − q)·T, the walk around the forward. A fraction, 0 to 1.
+ * 2·(1 − Φ(|ln(B/S)| / σ√T)). `driftT` is the drift of the LOG price, (r − q − σ²/2)·T — the walk whose mean is the
+ * forward (passing (r − q)·T, the drift of the price itself, once overstated an upward touch: 60% vol over a
+ * quarter read 39.3% to +30% against a Monte Carlo 34.3%, scripts/weigher-density-proof.ts). A fraction, 0 to 1.
  */
 export function touchChance(spot: number, barrier: number, sigmaT: number, driftT = 0): number {
   if (!(spot > 0) || !(barrier > 0) || !(sigmaT > 0) || !Number.isFinite(driftT)) return NaN;
@@ -133,7 +135,7 @@ export function modelAt(spot: number, strike: number, right: OptionRight, bid: n
   const itm = right === 'C' ? ncdf(d2) : ncdf(-d2);
   /* a call touches upward, a put downward; already past its strike is a touch */
   const past = right === 'C' ? spot >= strike : spot <= strike;
-  const touch = past ? 1 : touchChance(spot, strike, vol * sq, (carry.r - carry.q) * t);
+  const touch = past ? 1 : touchChance(spot, strike, vol * sq, (carry.r - carry.q - (vol * vol) / 2) * t);
   return {
     delta: right === 'C' ? g.deltaCall : g.deltaPut,
     gamma: g.gamma,
@@ -160,7 +162,8 @@ export function bsOnMark(spot: number, strike: number, right: OptionRight, bid: 
 }
 
 export interface ContractRead extends BsRead {
-  /** The vol the row was solved at, percent. One IV when the parity forward is in. */
+  /** The vol the row was solved at, percent. With the parity forward in, the call's and the put's IVs averaged
+      (readGreek); else the side's own. */
   ivTrading: number;
   /** Where the vol came from. The row's greek is solved off the mid, not the vendor's print. */
   ivFrom: 'vendor' | 'mark';
@@ -211,6 +214,8 @@ export function readContract(input: {
   otherAt?: number;
   /** Two-sided strikes for the parity forward. */
   chain?: readonly ChainPair[] | null;
+  /** The expiry's shared parity forward (readGreek parityMedian), when the chain already read it */
+  forward?: number | null;
 }): ContractRead | null {
   const solved = explainContract(input);
   return solved.ok ? solved.read : null;
@@ -238,6 +243,8 @@ export function explainContract(input: {
   otherAsk?: number;
   otherAt?: number;
   chain?: readonly ChainPair[] | null;
+  /** The expiry's shared parity forward (readGreek parityMedian), when the chain already read it */
+  forward?: number | null;
 }): { ok: true; read: ContractRead } | { ok: false; why: GreekWhy } {
   const now = input.now ?? Date.now();
   const iso = isoOf(input.expiryIso);
@@ -255,6 +262,7 @@ export function explainContract(input: {
     other,
     stock: input.stockBid != null && input.stockAsk != null ? { bid: input.stockBid, ask: input.stockAsk, price: spot, at: stockAt } : { price: spot, at: stockAt },
     chain: input.chain,
+    forward: input.forward,
   });
   if (!solved.ok) return solved;
   const carry = { r: solved.r, q: solved.q };
@@ -266,11 +274,12 @@ export function explainContract(input: {
       ...model,
       delta: solved.delta,
       gamma: solved.gamma,
-      /* A column headed "per session" is the annual theta divided by 252. */
+      /* A column headed "per session" is the annual theta divided by 252 — never more than the extrinsic inside the last
+         session (readGreek thetaOver), the same figure ChainGrid's Decay/sess shows × 100 */
       theta: solved.thetaSession,
       /* A calendar hour of the calendar-day theta. The strike card says "calendar hour".
          The next trading hour is thetaPerSessionHour, and it is not this number. */
-      thetaHour: solved.thetaDay / 24,
+      thetaHour: solved.thetaHour,
       /* Per 1.00 of volatility. A column headed "per point" divides by 100. */
       vega: solved.vega,
       /* modelAt's rho is per point. This read uses vega's unit, per 1.00 of the rate. */

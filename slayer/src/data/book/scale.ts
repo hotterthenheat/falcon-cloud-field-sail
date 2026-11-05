@@ -3,6 +3,7 @@
    the house sign of core/dealerSign.ts. Pure: no fetch, no state. */
 
 import { nyIsoDate } from '../../core/nyTime';
+import { nyInstant, regularCloseMin } from '../../core/session';
 import { keptLeg, keptVendorLeg, DEALER_SIDE, type Right } from '../../core/dealerSign';
 import { type StrikeNode } from '../../types/market';
 import { blackScholesGreeks } from '../../core/greeks';
@@ -44,20 +45,21 @@ export const emptyNode = (strike: number): StrikeNode => ({
   netCharm: 0,
 });
 
-/* greek-exposure rows are shares (greek × OI × 100); scaled to the house's dollars: GEX per 1% × S²·1%, DEX × S, vanna
-   per vol point × S·1%, charm per session × S/252 × sessionShare (one expiry's rows; the whole book's stay on the calendar
-   year). Its gamma is dealer-signed; its delta, vanna and charm are the holder's. */
-function nodeFrom(row: UwGreekStrike, spot: number, oi?: { c: number; p: number }, expiry?: string): StrikeNode {
+/* greek-exposure rows are shares (greek × OI × 100); scaled to the house's dollars: GEX per 1% × S²·1%, DEX × S, charm
+   per session × S/252 × sessionShare at the rows' own clock (rowsClock: the close of the session they were priced on —
+   never the wall clock, or a shut market's charm drifts overnight with no new rows; one expiry's rows; the whole book's
+   stay on the calendar year). Its gamma is dealer-signed; its delta and charm are the holder's. Vanna is NOT taken
+   from these rows: the vendor's vanna unit is not one unit across names (vanna × S × 1% matches Black-Scholes
+   vanna·S·OI on SPY and NVDA, reads ~11× on SPX and ~0.04× on F), so vanna waits for the date's contracts (paintLegs
+   prices it off each contract, like vega) and is 0 until then (exposureSurface isContractGreek). */
+function nodeFrom(row: UwGreekStrike, spot: number, oi?: { c: number; p: number }, expiry?: string, at = Date.now()): StrikeNode {
   const g = spot > 0 ? spot * spot * 0.01 : 1;
   const d = spot > 0 ? spot : 1;
-  const v = spot > 0 ? spot * 0.01 : 1;
-  const c = (spot > 0 ? spot / 252 : 1) * (expiry ? sessionShare(expiry, Date.now()) : 1);
+  const c = (spot > 0 ? spot / 252 : 1) * (expiry ? sessionShare(expiry, at) : 1);
   const callGex = keptVendorLeg('C', num(row.call_gex) * g, true);
   const putGex = keptVendorLeg('P', num(row.put_gex) * g, true);
   const callDex = keptVendorLeg('C', num(row.call_delta) * d, false);
   const putDex = keptVendorLeg('P', num(row.put_delta) * d, false);
-  const callVanna = keptVendorLeg('C', num(row.call_vanna) * v, false);
-  const putVanna = keptVendorLeg('P', num(row.put_vanna) * v, false);
   const callCharm = keptVendorLeg('C', num(row.call_charm) * c, false);
   const putCharm = keptVendorLeg('P', num(row.put_charm) * c, false);
   const strike = num(row.strike);
@@ -71,21 +73,27 @@ function nodeFrom(row: UwGreekStrike, spot: number, oi?: { c: number; p: number 
     callDex,
     putDex,
     netDex: callDex + putDex,
-    callVanna,
-    putVanna,
-    netVanna: callVanna + putVanna,
     callCharm,
     putCharm,
     netCharm: callCharm + putCharm,
   };
 }
 
+/** The instant greek-exposure rows were priced at: the close of the latest session they name (row.date) — or now,
+    while that session is still trading (rows of today are today's, not tomorrow's) — else now */
+export function rowsClock(rows: readonly UwGreekStrike[], now = Date.now()): number {
+  let day = '';
+  for (const r of rows) if (typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.date > day) day = r.date;
+  return day ? Math.min(now, nyInstant(day, regularCloseMin(day))) : now;
+}
+
 export function chainFrom(rows: UwGreekStrike[], spot: number, oi: Map<number, { c: number; p: number }>, flow?: Map<number, { call: number; put: number }>, expiry?: string): StrikeNode[] {
   const out: StrikeNode[] = [];
+  const at = expiry ? rowsClock(rows) : Date.now();
   for (const row of rows) {
     const strike = num(row.strike);
     if (!(strike > 0)) continue;
-    const node = nodeFrom(row, spot, oi.get(strike), expiry);
+    const node = nodeFrom(row, spot, oi.get(strike), expiry, at);
     const traded = flow?.get(strike);
     if (traded && (traded.call > 0 || traded.put > 0)) {
       node.callVol = traded.call;
@@ -228,8 +236,8 @@ export function liveGammaRows(rows: unknown, into: LiveGamma, stamp?: { price: n
 }
 
 /** A chain with its gamma replaced by the live open-interest book (house sign) — strikes the live book holds that the
-    chain lacks are added, strikes it lacks carry no gamma. Vanna and charm on those rows are the same minute's book:
-    vanna × price × 1% is $Δ per vol point, charm ÷ CHARM_SESSION is $Δ per session. */
+    chain lacks are added, strikes it lacks carry no gamma. Delta and charm on those rows are the same minute's book:
+    delta_oi ÷ (price × 1%) is $Δ, charm ÷ CHARM_SESSION is $Δ per session. Their vanna is not read (see below). */
 /** charm_oi ÷ this = $Δ per 1/252 of a CALENDAR year: Black-Scholes calendar charm × OI × 100 × S ÷ 252 off the same
     contracts (SPY 10/30 780C: −1.92e11 ÷ 919.8 = −208.8M against −208.0M). sessionShare then puts it on the session clock. */
 const CHARM_SESSION = 0.01 * 365 * 252;
@@ -237,7 +245,7 @@ const CHARM_SESSION = 0.01 * 365 * 252;
     charm × this is the trading-clock charm the contracts' own greeks print (core/volClock.ts quotedVolPoint, squared) */
 const sessionShare = (expiry: string, at: number): number => quotedVolPoint(expiry, at) ** 2;
 /* `expiry`: one date's rows (charm goes on its session clock); without it the whole book's rows stay on the calendar
-   year. A leg whose contracts were read (callBook/putBook) keeps their vanna and charm; only its gamma is replaced. */
+   year. A leg whose contracts were read (callBook/putBook) keeps their delta, vanna and charm; only its gamma is replaced. */
 export function withLiveGamma(chain: readonly StrikeNode[], live: LiveGamma, expiry?: string): StrikeNode[] {
   const seen = new Set<number>();
   const paint = (n: StrikeNode, l: LiveLeg | undefined): StrikeNode => {
@@ -256,12 +264,13 @@ export function withLiveGamma(chain: readonly StrikeNode[], live: LiveGamma, exp
       };
     }
     const painted = n.callBook != null || n.putBook != null;
-    if (!painted && l?.vanna && l.px != null && l.px > 0) {
-      const callVanna = keptVendorLeg('C', l.cv * l.px * 0.01, true);
-      const putVanna = keptVendorLeg('P', l.pv * l.px * 0.01, true);
-      next.callVanna = callVanna;
-      next.putVanna = putVanna;
-      next.netVanna = callVanna + putVanna;
+    if (!painted) {
+      /* vanna is priced off the date's contracts only (paintLegs): the vendor's vanna_oi × price × 1% is $Δ per vol
+         point on SPY and NVDA but ~11× that on SPX and ~0.04× on F (2026-11-04 rows against Black-Scholes vanna·S·OI off
+         the same contracts), so until the contracts are read the leg has none */
+      next.callVanna = 0;
+      next.putVanna = 0;
+      next.netVanna = 0;
     }
     if (!painted && l?.delta && l.px != null && l.px > 0) {
       /* $Δ = delta_oi ÷ (price × 1%) (SPY 10/29 772C: 387.9M ÷ 7.72 = 50.2M against Δ·OI·100·S = 50.8M) */
@@ -426,13 +435,9 @@ function add3(right: Right, dealerSigned: boolean, scale: (v: number) => number,
 }
 
 /** The flow book beside the open-interest book. A failed gate, or a gap too small to mark, draws the open-interest figure. N still moves with the tape. */
-function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: string, spot: number, ticker: string, near: boolean, years: number, volPt: number, r?: number, q?: number, priceSpot = spot): void {
+function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: string, spot: number, ticker: string, near: boolean, years: number, volPt: number, r?: number, q?: number, priceSpot = spot, pricedAt = Date.now()): void {
   if (!(spot > 0)) return;
-  const share = expiry ? quotedVolPoint(expiry, Date.now()) ** 2 : 1;
   const ident = (v: number) => v;
-  const dexOf = (v: number) => v / (spot * 0.01);
-  const vanOf = (v: number) => v * spot * 0.01;
-  const chmOf = (v: number) => (v / CHARM_SESSION) * share;
   const blankH = () => ({ call: 0, put: 0 });
   const drafts: { n: StrikeNode; held: boolean; outside: boolean; gex: { call: number; put: number }; dex: { call: number; put: number }; vanna: { call: number; put: number }; charm: { call: number; put: number }; vex: { call: number; put: number }; pack: { color: { call: number; put: number }; vomma: { call: number; put: number }; speed: { call: number; put: number }; veta: { call: number; put: number }; zomma: { call: number; put: number } } }[] = [];
   for (const n of nodes) {
@@ -441,11 +446,16 @@ function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: stri
     const outside = !near;
     const thin = near && n.flowFirm === false;
     const heldGate = outside || thin || !v?.asks;
+    /* the vendor's columns are scaled at the price and minute they were priced at (v.px, v.at), as the open-interest
+       book's are (withLiveGamma) — never the live spot or the wall clock, or Live drifts from Settled with no new rows */
+    const vPx = v?.px && v.px > 0 ? v.px : spot;
+    const share = expiry ? sessionShare(expiry, v?.at ?? pricedAt) : 1;
+    const dexOf = (x: number) => x / (vPx * 0.01);
+    const chmOf = (x: number) => (x / CHARM_SESSION) * share;
     const callCount = !leg || heldGate ? (leg?.callOI ?? n.callOI) : dealerInventory(leg.callOI, leg.callAsk, leg.callBid, leg.callMulti, leg.callVol);
     const putCount = !leg || heldGate ? (leg?.putOI ?? n.putOI) : dealerPuts(leg.putOI, leg.putAsk, leg.putBid, leg.putMulti, leg.putVol);
     const gex = v?.asks && !heldGate ? { call: add3('C', true, ident, v.g[0], v.g[1], v.g[2]), put: add3('P', true, ident, v.g[3], v.g[4], v.g[5]) } : { call: n.callGex, put: n.putGex };
     const dex = v?.asks && !heldGate ? { call: add3('C', false, dexOf, v.d[0], v.d[1], v.d[2]), put: add3('P', false, dexOf, v.d[3], v.d[4], v.d[5]) } : { call: n.callDex, put: n.putDex };
-    const vanna = v?.asks && !heldGate ? { call: add3('C', true, vanOf, v.v[0], v.v[1], v.v[2]), put: add3('P', true, vanOf, v.v[3], v.v[4], v.v[5]) } : { call: n.callVanna, put: n.putVanna };
     const charm = v?.asks && !heldGate ? { call: add3('C', true, chmOf, v.c[0], v.c[1], v.c[2]), put: add3('P', true, chmOf, v.c[3], v.c[4], v.c[5]) } : { call: n.callCharm, put: n.putCharm };
     const callBs = n.callIv && n.callIv > 0 && years > 0 ? blackScholesGreeks(priceSpot, n.strike, years, n.callIv, r, q) : null;
     const putBs = n.putIv && n.putIv > 0 && years > 0 ? blackScholesGreeks(priceSpot, n.strike, years, n.putIv, r, q) : null;
@@ -460,6 +470,9 @@ function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: stri
         console.info(`[flow] ${ticker} ${n.strike}C ${sign} ${gap.toFixed(1)}%`);
       }
     }
+    /* vanna off the contracts, like vega: the flow count × Black-Scholes vanna × S per quoted vol point (the vendor's
+       vanna columns are not one unit across names) — the open-interest figure when the gate holds */
+    const vanna = v?.asks && !heldGate ? { call: callBs ? keptLeg('C', callBs.vanna * spot * volPt, callCount) : n.callVanna, put: putBs ? keptLeg('P', putBs.vanna * spot * volPt, putCount) : n.putVanna } : { call: n.callVanna, put: n.putVanna };
     const hc = callBs ? contractHigher(priceSpot, n.strike, years, n.callIv ?? 0, callCount, 'C', volPt) : null;
     const hp = putBs ? contractHigher(priceSpot, n.strike, years, n.putIv ?? 0, putCount, 'P', volPt) : null;
     const higher = { color: { call: hc?.color ?? 0, put: hp?.color ?? 0 }, vomma: { call: hc?.vomma ?? 0, put: hp?.vomma ?? 0 }, speed: { call: hc?.speed ?? 0, put: hp?.speed ?? 0 }, veta: { call: hc?.veta ?? 0, put: hp?.veta ?? 0 }, zomma: { call: hc?.zomma ?? 0, put: hp?.zomma ?? 0 } };
@@ -578,9 +591,10 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
     /* Vega is repriced here, on this clock and this vol, not the vendor's calendar-time vega. */
     n.callBook = callN;
     n.putBook = putN;
-    /* Vega is repriced here. Delta, vanna and charm stay the vendor's open-interest rows (withLiveGamma) where the
-       rows carried them; a row without them (both legs zero) is not a zero book — its contracts price them, one long
-       contract's $ figures: delta × 100 × S; vanna per quoted vol point (× 1% × 100 × S); charm per session */
+    /* Vega and vanna are priced here, off the contracts. Delta and charm stay the vendor's open-interest rows
+       (withLiveGamma) where the rows carried them; a row without them (both legs zero) is not a zero book — its
+       contracts price them, one long contract's $ figures: delta × 100 × S; vanna per quoted vol point (× 1% × 100 × S);
+       charm per session */
     if (call && callN !== 0) n.callVex = keptLeg('C', call.vega * 100 * volPt, callN);
     else n.callVex = 0;
     if (put && putN !== 0) n.putVex = keptLeg('P', put.vega * 100 * volPt, putN);
@@ -591,10 +605,9 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
       n.callDex = call && callN !== 0 ? keptLeg('C', call.deltaCall * 100 * spot, callN) : 0;
       n.putDex = put && putN !== 0 ? keptLeg('P', put.deltaPut * 100 * spot, putN) : 0;
     }
-    if (!carried(v?.v)) {
-      n.callVanna = call && callN !== 0 ? keptLeg('C', call.vanna * spot * volPt, callN) : 0;
-      n.putVanna = put && putN !== 0 ? keptLeg('P', put.vanna * spot * volPt, putN) : 0;
-    }
+    /* vanna always off the contracts, whatever the rows carried: vanna × S × OI per quoted vol point */
+    n.callVanna = call && callN !== 0 ? keptLeg('C', call.vanna * spot * volPt, callN) : 0;
+    n.putVanna = put && putN !== 0 ? keptLeg('P', put.vanna * spot * volPt, putN) : 0;
     if (!carried(v?.c)) {
       n.callCharm = call && callN !== 0 ? keptLeg('C', (call.charmCall / 252) * 100 * spot, callN) : 0;
       n.putCharm = put && putN !== 0 ? keptLeg('P', (put.charmPut / 252) * 100 * spot, putN) : 0;
@@ -604,7 +617,7 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
     n.netVanna = n.callVanna + n.putVanna;
     n.netCharm = n.callCharm + n.putCharm;
   }
-  stampFlow(painted, book, expiry, spot, ticker, near, t, volPt, carry?.r, carry?.q, spotPx);
+  stampFlow(painted, book, expiry, spot, ticker, near, t, volPt, carry?.r, carry?.q, spotPx, priced.at);
   if (ticker && spot > 0 && near) {
     const flow = peakStrikes(painted.map(n => ({ strike: n.strike, value: (n.flow?.gex.call ?? 0) + (n.flow?.gex.put ?? 0) })));
     const oi = peakStrikes(painted.map(n => ({ strike: n.strike, value: n.netGex })));
@@ -690,8 +703,18 @@ export function mergeChains(parts: StrikeNode[][]): StrikeNode[] {
       prev.callVex += n.callVex;
       prev.putVex += n.putVex;
       prev.netVex += n.netVex;
+      /* every leg, not only the nets: a merged node's call and put vanna and charm (and its traded volume) once kept
+         only the first date's, beside nets that summed every date */
+      prev.callVanna += n.callVanna;
+      prev.putVanna += n.putVanna;
       prev.netVanna += n.netVanna;
+      prev.callCharm += n.callCharm;
+      prev.putCharm += n.putCharm;
       prev.netCharm += n.netCharm;
+      if (n.callVol != null || n.putVol != null) {
+        prev.callVol = (prev.callVol ?? 0) + (n.callVol ?? 0);
+        prev.putVol = (prev.putVol ?? 0) + (n.putVol ?? 0);
+      }
     }
   }
   return [...by.values()];

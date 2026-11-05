@@ -22,7 +22,7 @@
 
 import { isTradingDay, sessionCloseMinOn, sessionLengthOn } from '../core/calendar';
 import { nyMinutes, nyParts } from '../core/nyTime';
-import { REGULAR_OPEN_MIN } from '../core/session';
+import { REGULAR_CLOSE_MIN, REGULAR_OPEN_MIN } from '../core/session';
 
 export interface PhysBar {
   time: number;
@@ -174,11 +174,14 @@ export const dayOfAnnual = (annual: number): number => annual / Math.sqrt(TRADIN
 /** An hour's annualised vol, back to one hour: ÷ √(252 × 390 / 60), data/volOutlook.ts annualiseHour's inverse */
 export const hourOfAnnual = (annual: number): number => annual / Math.sqrt((TRADING_DAYS * FULL_SESSION_BARS) / 60);
 
-/** The rest of the day's 1σ, as a fraction of price: the day's forecast spread evenly over the session's minutes, the
-    share still to come. 0 at the bell; the whole day's at the open. */
+/** The rest of the day's 1σ, as a fraction of price: the forecast's variance on the trading clock, one full session's
+    worth per regular session's minutes (REGULAR_CLOSE_MIN − REGULAR_OPEN_MIN, 390), times the minutes still to come
+    (at most the day's own session). 0 at the bell; the whole day's at a full day's open, and on an early close only its
+    210 minutes' share (√(210/390) of it) — the same clock the cone's sigmaMove counts, which once read 1.36× tighter. */
+const FULL_SESSION_MIN = REGULAR_CLOSE_MIN - REGULAR_OPEN_MIN;
 export function restOfDaySigma(dayAnnual: number, minutesLeft: number, sessionMinutes: number): number {
   if (!(dayAnnual > 0) || !(sessionMinutes > 0)) return NaN;
-  const share = Math.max(0, Math.min(1, minutesLeft / sessionMinutes));
+  const share = Math.max(0, Math.min(sessionMinutes, minutesLeft)) / FULL_SESSION_MIN;
   return dayOfAnnual(dayAnnual) * Math.sqrt(share);
 }
 

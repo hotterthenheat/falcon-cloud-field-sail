@@ -18,6 +18,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PROOFS = [
   'trace-moneyness-proof',
   'gamma-sign-proof',
+  'book-scale-proof',
   'lgbm-parity-proof',
   'chart-proof',
   'clock-proof',
@@ -42,6 +43,7 @@ const PROOFS = [
   'indicators-mz-proof',
   'vol-outlook-proof',
   'weigher-density-proof',
+  'weigher-audit-proof',
   'session-proof',
   'session-literal-proof',
   'symbol-directory-proof',

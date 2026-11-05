@@ -91,17 +91,21 @@ export function deskTape(ticker: string, session: DeskSession = getDeskSession()
 
 /** Sum the per-expiry vega already on the book onto the aggregate chain (a new aggregate — see paintLegs). */
 export function vexOntoAll(entry: Entry): void {
-  const agg = new Map<number, { call: number; put: number }>();
+  /* vega and vanna: both priced off the contracts only (book/scale.ts paintLegs), so the whole book's are the live
+     painted dates' summed */
+  const agg = new Map<number, { call: number; put: number; vc: number; vp: number }>();
   /* the live dates only: a date that settled at the bell holds no vega (its contracts are gone), and summing its last
      painted vex onto the whole book counted dead contracts */
   const floor = isoDate(bookToday());
   for (const [date, chain] of Object.entries(entry.byDate)) {
     if (date < floor || !expiryOpen(date)) continue;
     for (const n of chain) {
-      if (!n.callVex && !n.putVex) continue;
-      const cur = agg.get(n.strike) ?? { call: 0, put: 0 };
+      if (!n.callVex && !n.putVex && !n.callVanna && !n.putVanna) continue;
+      const cur = agg.get(n.strike) ?? { call: 0, put: 0, vc: 0, vp: 0 };
       cur.call += n.callVex;
       cur.put += n.putVex;
+      cur.vc += n.callVanna;
+      cur.vp += n.putVanna;
       agg.set(n.strike, cur);
     }
   }
@@ -109,9 +113,9 @@ export function vexOntoAll(entry: Entry): void {
   let changed = false;
   const next = entry.all.map(n => {
     const v = agg.get(n.strike);
-    if (!v || (n.callVex === v.call && n.putVex === v.put)) return n;
+    if (!v || (n.callVex === v.call && n.putVex === v.put && n.callVanna === v.vc && n.putVanna === v.vp)) return n;
     changed = true;
-    return { ...n, callVex: v.call, putVex: v.put, netVex: v.call + v.put };
+    return { ...n, callVex: v.call, putVex: v.put, netVex: v.call + v.put, callVanna: v.vc, putVanna: v.vp, netVanna: v.vc + v.vp };
   });
   if (changed) entry.all = next;
 }

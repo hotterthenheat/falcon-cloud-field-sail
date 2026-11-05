@@ -73,7 +73,10 @@ export function passesFlow(p: FlowPrint, f: FlowFilters): boolean {
     own side like any other print (still only where it likely opened, never at the mid or after hours). */
 export function flowSign(p: FlowPrint, legs = false): 1 | -1 | 0 {
   if (legs && isSpreadLeg(p)) {
-    if (p.side === 'MID' || p.extended || p.compression || !printOpens(p)) return 0;
+    /* a cross trade and a print on a crossed or stale quote have no side; the vendor's tape already marks them MID
+       (traceRows printSideOf) and the server tape's quote read does the same, but a print that kept its flag with a
+       side from elsewhere still reads neither */
+    if (p.side === 'MID' || p.cross || p.quoteNoRead || p.extended || p.compression || !printOpens(p)) return 0;
     return (p.right === 'C' && p.side === 'ASK') || (p.right === 'P' && p.side === 'BID') ? 1 : -1;
   }
   const s = sentimentOf(p);

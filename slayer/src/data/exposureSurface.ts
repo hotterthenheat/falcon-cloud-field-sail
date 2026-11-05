@@ -18,8 +18,9 @@ import type { ExposureLevels, ExposureProfileData } from '../types/gex';
 export type Greek = 'gex' | 'dex' | 'vex' | 'vanna' | 'charm' | 'color' | 'vomma' | 'speed' | 'veta' | 'zomma';
 export type BookMode = 'oi' | 'flow';
 export const GREEKS: Greek[] = ['gex', 'dex', 'vex', 'vanna', 'charm', 'color', 'vomma', 'speed', 'veta', 'zomma'];
-/** Needs the option-contracts read. Spot GEX, DEX, vanna and charm do not. */
-const CONTRACT_GREEKS: ReadonlySet<Greek> = new Set<Greek>(['vex', 'color', 'vomma', 'speed', 'veta', 'zomma']);
+/** Needs the option-contracts read. Spot GEX, DEX and charm do not; vanna does (book/scale.ts prices it off the
+    contracts — the vendor's vanna unit is not one unit across names). */
+const CONTRACT_GREEKS: ReadonlySet<Greek> = new Set<Greek>(['vex', 'vanna', 'color', 'vomma', 'speed', 'veta', 'zomma']);
 export const isContractGreek = (g: Greek): boolean => CONTRACT_GREEKS.has(g);
 
 /** True once a live book's contracts have been read, or immediately for a house chain that already carries vega. */

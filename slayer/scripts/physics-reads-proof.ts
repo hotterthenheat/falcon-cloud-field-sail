@@ -22,6 +22,7 @@ import {
 import { annualiseDay, annualiseHour } from '../src/data/volOutlook';
 import { isEarlyClose, sessionLengthOn } from '../src/core/calendar';
 import { INDICATOR_ITEMS } from '../src/components/gex/indicatorItems';
+import { sigmaMove } from '../src/data/terrainCone';
 
 let fail = 0;
 const check = (what: string, ok: boolean, detail = '') => {
@@ -116,11 +117,20 @@ const bar = (time: number, open: number, close: number, volume = 0): PhysBar => 
   const b = bar(NOV27 + 105 * 60, 100, 100);
   const hour = annualiseHour(0.002);
   const band = harBandSeries([b, bar(OCT28, 100, 100)], 1, '2026-11-27', annual, () => hour, 1);
-  check('the early close spreads the day over 210 minutes', near(band.up[0], 100 * (1 + day * Math.sqrt(104 / 210)), 1e-9), String(band.up[0]));
+  /* corrected (audit T4): this once asserted √(104/210), the whole day's σ spread over the 210 minutes — 1.36× wider at
+     the open than the cone's own clock, where an early close holds 210 of a full session's 390 minutes of variance */
+  check('the early close holds its minutes on the trading clock: 104 of a full 390', near(band.up[0], 100 * (1 + day * Math.sqrt(104 / 390)), 1e-9), String(band.up[0]));
+  {
+    const len = sessionLengthOn('2026-11-27');
+    const open = restOfDaySigma(annual, len, len);
+    const cone = sigmaMove(1, annual, len);
+    check(`at the early close's open the band's σ is the cone's (${(open * 100).toFixed(3)}% vs ${(cone * 100).toFixed(3)}%)`, near(open, cone, 1e-12), `${open} vs ${cone}`);
+    check('…and a full day\'s open is still the whole day, the cone\'s 390 minutes', near(restOfDaySigma(annual, 390, 390), sigmaMove(1, annual, 390), 1e-12));
+  }
   check('the next-hour band is ± the hour read de-annualised', near(band.hourDn[0], 100 * (1 - 0.002), 1e-9), String(band.hourDn[0]));
   check('another day stays blank (the forecast is for one session)', band.up[1] === null && band.hourUp[1] === null);
   const k2 = harBandSeries([b], 1, '2026-11-27', annual, () => null, 2);
-  check('the width input scales the band and a missing hour read leaves its lines blank', near(k2.up[0], 100 * (1 + 2 * day * Math.sqrt(104 / 210)), 1e-9) && k2.hourUp[0] === null);
+  check('the width input scales the band and a missing hour read leaves its lines blank', near(k2.up[0], 100 * (1 + 2 * day * Math.sqrt(104 / 390)), 1e-9) && k2.hourUp[0] === null);
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
   const chart = readFileSync(join(root, 'src/components/gex/StrikeChart.tsx'), 'utf8');
   check('the chart reads the vol outlook fit and today’s minutes the tile reads (no fetch of its own)', chart.includes("useVolOutlook(ticker, harOn)") && chart.includes("useThetaTape(ticker, '1m', 'rth', harOn)") && chart.includes('hourReadNow(ticker, harMinutes.bars, endMs)'));

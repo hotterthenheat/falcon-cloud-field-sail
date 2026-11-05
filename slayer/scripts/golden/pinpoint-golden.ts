@@ -9,7 +9,7 @@
 import { done, expectEqual, expectNear, freezeClock, installUwFixtures, recordedAt, settleOn } from './uwFixtures';
 import { pruneSet } from './pinpointRaw';
 import { dealerOf } from '../../src/core/dealerSign';
-import { bsVega, byStrike, contractRow, contractOi, contractVols, exposureRows, impliedMove, levelsOfRows, oiChangeRows, phiCdf, pricedFlip, pricedFlowTo, pricedLegs, pricedNet, rawAnswers, terminalOiDiffs, termVols, vendorOiDiffs, yearsTrading } from './pinpointRaw';
+import { bsVanna, bsVega, byStrike, contractRow, contractOi, contractVols, exposureRows, impliedMove, levelsOfRows, oiChangeRows, phiCdf, pricedFlip, pricedFlowTo, pricedLegs, pricedNet, rawAnswers, terminalOiDiffs, termVols, vendorOiDiffs, yearsTrading } from './pinpointRaw';
 
 const SET = 'pinpoint-2026-10-29';
 const NAMES = ['SPY', 'NVDA'] as const;
@@ -217,7 +217,6 @@ for (const t of NAMES) {
     const sideSign = right === 'C' ? 1 : -1;
     const oi = Number(row.open_interest);
     const leg = right === 'C' ? { dex: node.callDex, vex: node.callVex, vanna: node.callVanna, charm: node.callCharm } : { dex: node.putDex, vex: node.putVex, vanna: node.putVanna, charm: node.putCharm };
-    const px = Number(se.get(k)!.price);
     /* the vendor's charm is per calendar year: per session it is × T_cal/T_trade (from its 16:15 pricing to the 4:00 close) */
     const tCal = (Date.parse(`${gold.front}T20:00:00Z`) - Date.parse(String(se.get(k)!.time))) / (365 * 86_400_000);
     const share = tCal / yearsTrading('2026-10-28', gold.front);
@@ -226,14 +225,19 @@ for (const t of NAMES) {
       /* the vendor's vega is at its own price; the page prices vega at spot — the vendor's figure moved there by the ratio
          of Black-Scholes vegas at the contract's solved vol (sticky strike), never the app's vol */
       vex: sideSign * Number(row.vega) * oi * 100 * (bsVega(spot, k, yearsTrading('2026-10-28', gold.front), vols.get(`${gold.front}|${k}|${right}`) ?? NaN) / bsVega(marked, k, yearsTrading('2026-10-28', gold.front), vols.get(`${gold.front}|${k}|${right}`) ?? NaN)),
-      vanna: Number(se.get(k)![right === 'C' ? 'call_vanna_oi' : 'put_vanna_oi']) * px * 0.01,
+      /* corrected (audit T1): this once checked the page against the vendor's own vanna_oi × price × 1% — the very figure
+         the page printed, so it could not fail, and that unit is not $Δ per vol point on every name (SPX ~11×, F
+         ~0.04×). Now an independent Black-Scholes vanna at the contract's solved vol on the session clock, × S × OI, per
+         point of the quoted vol (√(T_cal/T_trade)) */
+      vanna: sideSign * bsVanna(spot, k, yearsTrading('2026-10-28', gold.front), vols.get(`${gold.front}|${k}|${right}`) ?? NaN) * spot * oi * Math.sqrt(((Date.parse(`${gold.front}T20:00:00Z`) - Date.parse(String(se.get(k)!.time))) / (365 * 86_400_000)) / yearsTrading('2026-10-28', gold.front)),
       charm: (Number(se.get(k)![right === 'C' ? 'call_charm_oi' : 'put_charm_oi']) / (0.01 * 365 * 252)) * share,
     };
-    const tol = { dex: 0.1, vex: 0.06, vanna: 0.2, charm: 0.05 } as const;
+    const tol = { dex: 0.1, vex: 0.06, vanna: 0.01, charm: 0.05 } as const;
     for (const g of ['dex', 'vex', 'vanna', 'charm'] as const) {
       const got = dealerOf(leg[g]);
-      expectEqual(`${t} ${k}${right} ${g}: the dealer sign is the vendor's (${(got / 1e6).toFixed(3)}M, vendor ${(want[g] / 1e6).toFixed(3)}M)`, Math.sign(got), Math.sign(want[g]));
-      expectNear(`${t} ${k}${right} ${g}: size against the vendor's own figure`, got, want[g], tol[g]);
+      const ref = g === 'vanna' ? 'Black-Scholes off the contract' : 'vendor';
+      expectEqual(`${t} ${k}${right} ${g}: the dealer sign is the ${ref}'s (${(got / 1e6).toFixed(3)}M, ${ref} ${(want[g] / 1e6).toFixed(3)}M)`, Math.sign(got), Math.sign(want[g]));
+      expectNear(`${t} ${k}${right} ${g}: size against the ${ref}'s own figure`, got, want[g], tol[g]);
     }
   }
   /* the higher greeks of the same legs: vomma and veta as finite differences of an independent dealer vega (Black-Scholes at

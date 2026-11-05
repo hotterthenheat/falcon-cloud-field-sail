@@ -734,7 +734,8 @@ export interface PaperView {
   /** Cash + the longs at their bid, less the shorts at their ask — what it would close for now (a plan that values open
       contracts so) */
   equityBid: number;
-  /** What it is worth less what is open, up or down: the start and every closed trade (a firm's "balance") */
+  /** What it is worth less what is open, up or down: the start, every closed trade, less every commission paid —
+      the open positions' entry commissions too (a firm's "balance") */
   balance: number;
   /** What is open, up or down */
   openPnl: number;
@@ -792,7 +793,11 @@ export function viewOf(a: PaperAccount, m: PaperMarket): PaperView {
     cash,
     equity,
     equityBid,
-    balance: cents(equity - openPnl),
+    /* the start and every closed trade, less every commission paid — an open position's entry commission included (it
+       has left the account: Options Funding's FAQ, "The commission comes out of your trading account balance … so it
+       counts toward your profit and loss and your drawdown"): the cash plus what the open positions cost, fees out of
+       that cost. (equity − openPnl once added the open entry commissions back.) */
+    balance: cents(cash + opt.reduce((x, p) => x + p.dir * p.basis, 0)),
     openPnl,
     optValue,
     free,

@@ -347,6 +347,44 @@ function vendor(clock: () => number, opt: { status?: (p: string) => number; onCa
   const after = JSON.parse(fs.readFileSync(lockFile, 'utf8')) as { pid: number };
   check('a rival taking a stale lock between the read and the write keeps it; this process loses', fired && !lost.ok && lost.pid === process.ppid && after.pid === process.ppid, `${JSON.stringify(lost)}, file names ${after.pid}`);
   check('… and nothing is left aside', !fs.readdirSync(raced).some(f => f.includes('.stale')));
+  /* the two-holder interleaving the six-process race hit now and then (2 runs in 4), made to happen every time: this
+     process reads a dead process's lock; a rival (the parent's pid) takes it over and holds a fresh lock; then, the
+     instant anything moves that name aside, a third taker creates the name. The old move-aside-and-link-back moved the
+     rival's fresh lock aside, could not link it back, deleted it, and took the third lock as its own: two recorders.
+     Through the takeover gate the stale lock is read again first, found changed, and the round is lost. */
+  const robbed = folder();
+  const robbedLock = path.join(robbed, 'recorder.lock');
+  fs.writeFileSync(robbedLock, JSON.stringify({ pid: 2 ** 22 + 12345, at: Date.now() }));
+  const realRename = fs.renameSync;
+  let movedAside = 0;
+  fs.renameSync = ((from: fs.PathLike, to: fs.PathLike) => {
+    realRename(from, to);
+    if (String(from) === robbedLock && String(to).endsWith('.stale')) {
+      movedAside += 1;
+      fs.writeFileSync(robbedLock, JSON.stringify({ pid: process.pid, at: Date.now() }), { flag: 'wx' });
+    }
+  }) as typeof fs.renameSync;
+  let rivalIn = false;
+  let robbedGot: ReturnType<typeof takeLock>;
+  try {
+    robbedGot = takeLock(robbed, Date.now(), {
+      afterRead: () => {
+        if (rivalIn) return;
+        rivalIn = true;
+        fs.writeFileSync(`${robbedLock}.rival`, JSON.stringify({ pid: process.ppid, at: Date.now() }));
+        realRename(`${robbedLock}.rival`, robbedLock);
+      },
+    });
+  } finally {
+    fs.renameSync = realRename;
+  }
+  const robbedAfter = JSON.parse(fs.readFileSync(robbedLock, 'utf8')) as { pid: number };
+  check(
+    "a rival's fresh lock is never moved aside or deleted by a second taker: the rival keeps it and this process loses",
+    rivalIn && !robbedGot.ok && robbedAfter.pid === process.ppid && movedAside === 0,
+    `${JSON.stringify(robbedGot)}, file names ${robbedAfter.pid} (rival ${process.ppid}), moved aside ${movedAside}×`,
+  );
+  check('… and the takeover gate is let go', !fs.existsSync(`${robbedLock}.takeover`));
 }
 
 /* ---- 6. pruning: ten days kept, a finished day gzipped and still served ---- */

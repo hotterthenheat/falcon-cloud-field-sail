@@ -18,14 +18,15 @@ import { atmIvAt, expectedMovePctOf, optionQuote, optionsOpen } from '../src/dat
 import { putBook, putName } from '../src/data/paper/thetaFeed';
 import { thetaPerSession } from '../src/data/review/quotes';
 import { blackScholesPrice } from '../src/core/greeks';
-import { readGreek } from '../src/core/readGreek';
-import { setRate } from '../src/core/carry';
+import { calendarYearsOpen, readGreek } from '../src/core/readGreek';
+import { calendarYears } from '../src/core/volClock';
+import { setDayRates, setRate } from '../src/core/carry';
 import { isPaperIndex } from '../src/data/paper/products';
 import { optionRootOf } from '../src/data/paper/thetaFeed';
 import type { ContractId } from '../src/data/review/quotes';
 import { priceWith } from './paper-test-pricer';
 import { excursionOf } from '../src/data/review/excursion';
-import { replayGaps, type Fetched } from '../src/data/paper/catchUp';
+import { replayGaps, replayedQuote, type Fetched } from '../src/data/paper/catchUp';
 import { legKey } from '../src/data/review/history';
 import { gapOf } from '../src/data/paper/engine';
 import type { Candle } from '../src/types/market';
@@ -998,11 +999,22 @@ const fixed = (price: () => number, t = now): PaperMarket => ({
   /* unsorted, and the middle element of the old list was 30: at 501.5 between 500 (avg 20) and 505 (avg 25) → 20 + 5 × 1.5/5 = 21.5 */
   ok('ATM IV: the call and put average at the two strikes either side of the name, straight between them — 21.5, not the list’s middle', near(atmIvAt([row(510, 30, 32), row(500, 19, 21), row(505, 24, 26), row(495, 40, 44)], 501.5), 21.5, 1e-9));
   ok('…one side alone stands for its strike; past the strikes, the nearest', near(atmIvAt([row(500, 20, NaN), row(505, NaN, 30)], 502.5), 25, 1e-9) && atmIvAt([row(500, 20, 22)], 510) === 21);
-  /* a trading-clock 20% vol on the 2026-10-16 expiry from 2026-09-23 10:00: the move is S·σ·√T on the trading clock */
+  /* corrected (audit W2): this fixture once fed a TRADING-clock 20% and wanted 20 × √T_trading — but the desk's IV is
+     readGreek's quoted vol on the CALENDAR clock (calendarYearsOpen), which expectedMovePctOf then shrank by
+     √(T_trade/T_cal) a second time. A quoted (calendar) 20% on the 2026-10-16 expiry from 2026-09-23 10:00: the move is
+     S·σ·√T_calendar to the expiry's close. */
   const ms = nyInstant('2026-09-23', 10 * 60);
   const em = expectedMovePctOf(500, 20, { ticker: 'SPY', expiry: '2026-10-16' }, ms);
-  const want = 20 * Math.sqrt(yearsToExpiry('2026-10-16', ms));
-  ok('the expected move goes through sigmaToExpiry and keeps the variance: 20% on the trading clock → 20 × √T_trading %', near(em, want, 0.002), `${em} vs ${want}`);
+  const want = 20 * Math.sqrt(calendarYears('2026-10-16', ms));
+  ok('the expected move goes through sigmaToExpiry with the quoted (calendar) vol as it is: 20% → 20 × √T_calendar %', near(em, want, 0.002), `${em} vs ${want}`);
+  /* over a weekend the clocks part: Friday 15:00 to Monday's close is 1¼ sessions but 3 calendar days and 1 hour */
+  const fri = nyInstant('2026-11-13', 15 * 60);
+  setDayRates([{ day: '2026-11-11', r: 0.04 }, { day: '2026-11-12', r: 0.04 }, { day: '2026-11-13', r: 0.04 }]);
+  const emWk = expectedMovePctOf(700, 20, { ticker: 'SPY', expiry: '2026-11-16' }, fri);
+  const greek = readGreek({ right: 'C', strike: 700, expiry: '2026-11-16', at: fri, option: { bid: 4.9, ask: 5.1, at: fri }, stock: { price: 700, at: fri } });
+  const emOfGreek = greek.ok ? expectedMovePctOf(700, greek.iv * 100, { ticker: 'SPY', expiry: '2026-11-16' }, fri) : NaN;
+  const straddleish = greek.ok ? 100 * greek.iv * Math.sqrt(calendarYearsOpen('2026-11-16', fri)!) : NaN;
+  ok(`…readGreek's own IV in, the move it prices out: ${emOfGreek.toFixed(3)}% = σ_cal·√T_cal ${straddleish.toFixed(3)}% (and 20% over the weekend → ${emWk.toFixed(3)}%)`, near(emOfGreek, straddleish, 0.002) && near(emWk, 20 * Math.sqrt(calendarYears('2026-11-16', fri)), 0.002), `${emOfGreek} vs ${straddleish}`);
 }
 
 {
@@ -1018,9 +1030,11 @@ const fixed = (price: () => number, t = now): PaperMarket => ({
   pxk[505] = 6;
   x = optPlace(x, mk(T0 + 60_000), { contract: { ticker: 'SPY', strike: 500, right: 'C', expiry: E }, side: 'sell', qty: 1, kind: 'market' });
   const pr = progressOf(x, viewOf(x, mk(T0 + 60_000)));
-  /* closed: (5 − 2) × 100 − 0.60 = 299.40; still open: (6 − 1) × 100 − 0.30 = 499.70, not counted */
-  ok('the best day is the day’s closed P&L, 299.40 — not 799.10 with the open trade in', near(pr.best, 299.4), `${pr.best}`);
-  ok('…and it is a profitable day (≥ 250) on what closed', pr.good === 1 && near(pr.profit, 299.4), `${pr.good} · ${pr.profit}`);
+  /* closed: (5 − 2) × 100 − 0.60 = 299.40; still open: (6 − 1) × 100 = 500 on paper, not counted — but its entry
+     commission, 0.30, has been paid and is out of the balance (corrected, audit W7: this once read 299.40, the balance
+     with the open trade's commission handed back), so the day's balance change is 299.10 */
+  ok('the best day is the day’s balance change, 299.10 (299.40 closed less the open trade’s 0.30 commission) — not 799.10 with the open trade in', near(pr.best, 299.1), `${pr.best}`);
+  ok('…and it is a profitable day (≥ 250) on the balance', pr.good === 1 && near(pr.profit, 299.1), `${pr.good} · ${pr.profit}`);
 }
 
 {
@@ -1114,6 +1128,53 @@ const fixed = (price: () => number, t = now): PaperMarket => ({
   const hand = readGreek({ right: 'C', strike: 100, expiry: '2026-09-30', at: ms, option: { bid: 2.05, ask: 2.15, at: ms }, stock: { bid: 100, ask: 100, price: 100, at: ms } });
   const tCal = (7 * 1440 + 5 * 60) / (365 * 1440);
   ok('…and the paper desk’s quote carries readGreek’s theta a session, on its own IV and the calendar clock (7 days 5 hours)', lq.iv > 0 && hand.ok && near(hand.t, tCal, 1e-12) && near(lq.iv, hand.iv, 1e-12) && near(lq.theta, hand.thetaSession, 1e-12) && lq.theta < 0, `${lq.theta} · iv ${lq.iv}`);
+}
+
+{
+  /* the replayed minute's greek is readGreek's, as the live desk's (audit W3): the calendar clock, the day's own rate,
+     theta per session, vega per 1.00, rho — it once solved on the trading-year clock at a flat 4.2% with theta and rho 0 */
+  const DAY = '2026-09-24';
+  /* the fixing published by the 24th is the 23rd's (core/carry rateOn) */
+  setDayRates([{ day: '2026-09-23', r: 0.0397 }]);
+  const c: ContractId = { ticker: 'SPY', strike: 505, right: 'C', expiry: '2026-10-16' };
+  const bid = new Array(390).fill(NaN);
+  const ask = new Array(390).fill(NaN);
+  for (let m = 0; m < 390; m++) {
+    bid[m] = 6.1;
+    ask[m] = 6.2;
+  }
+  const f: Fetched = { quotes: new Map([[`${legKey(c)}|${DAY}`, { bid, ask }]]), bars: new Map([[`SPY|${DAY}`, Array.from({ length: 390 }, (_, i) => ({ time: Math.floor(nyInstant(DAY, 9 * 60 + 30 + i) / 1000), close: 507 }))]]), failed: new Map() };
+  const at = nyInstant(DAY, 10 * 60 + 31);
+  const got = replayedQuote(c, DAY, 61, f, at);
+  const hand = readGreek({ right: 'C', strike: 505, expiry: '2026-10-16', at, option: { bid: 6.1, ask: 6.2, at }, stock: { price: 507, at } });
+  ok(
+    `a replayed minute's greek is readGreek's: iv ${got.iv.toFixed(4)}, delta ${got.delta.toFixed(4)}, theta ${got.theta.toFixed(4)} a session, vega ${got.vega.toFixed(3)}, rho ${got.rho.toFixed(3)}`,
+    hand.ok && near(got.iv, hand.iv, 1e-12) && near(got.delta, hand.delta, 1e-12) && near(got.gamma, hand.gamma, 1e-12) && near(got.theta, hand.thetaSession, 1e-12) && near(got.vega, hand.vega, 1e-12) && got.theta < 0 && got.rho > 0 && got.greekR === 0.0397,
+    hand.ok ? `${got.iv} vs ${hand.iv} · theta ${got.theta} vs ${hand.thetaSession} · r ${got.greekR}` : hand.why,
+  );
+}
+
+{
+  /* the balance with a position open (audit W7): the entry commission is out of it — Options Funding's FAQ, "The
+     commission comes out of your trading account balance … so it counts toward your profit and loss and your drawdown".
+     It once read equity − open P&L, which handed the open entry commission back. Every firm's fee stays exact. */
+  const T0 = nyInstant('2026-09-23', 10 * 60);
+  const c: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: '2026-10-16' };
+  for (const [id, fee] of [['of-growth-25k', 0.65], ['tf-preprop-25k', 0.3], ['vq-basic-10k', 0]] as const) {
+    const plan = planById(id);
+    if (!plan) {
+      ok(`plan ${id} is listed`, false);
+      continue;
+    }
+    const start = plan.size;
+    let x = newAccount({ id: `w7${id}`, kind: 'evaluation', name: id, startCash: start, plan, now: T0 });
+    x = optPlace(x, fixed(() => 2, T0), { contract: c, side: 'buy', qty: 50, kind: 'market' });
+    const open = viewOf(x, fixed(() => 3, T0 + 60_000));
+    ok(`${id}: 50 bought at 2.00, marked 3.00 — the balance is the start less $${(50 * fee).toFixed(2)} commission (${open.balance}), the open P&L $5,000 less nothing more`, near(x.opt.fills[0]?.fee ?? NaN, 50 * fee, 1e-9) && near(open.balance, start - 50 * fee, 1e-9) && near(open.equity, start - 50 * fee + 5_000, 1e-9), `fee ${x.opt.fills[0]?.fee} · balance ${open.balance} · equity ${open.equity}`);
+    x = optPlace(x, fixed(() => 3, T0 + 120_000), { contract: c, side: 'sell', qty: 50, kind: 'market' });
+    const shut = viewOf(x, fixed(() => 3, T0 + 120_000));
+    ok(`${id}: …sold at 3.00 the balance is the start + 5,000 less both commissions (${shut.balance}) and equals worth`, near(shut.balance, start + 5_000 - 100 * fee, 1e-9) && near(shut.balance, shut.equity, 1e-9), `${shut.balance} vs ${shut.equity}`);
+  }
 }
 
 console.log(`\n${passed} held · ${failed} missed`);

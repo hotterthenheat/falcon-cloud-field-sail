@@ -12,7 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DEFAULT_R, carryFor, getCarry, rateNow, rateOn, resetCarry, setRate } from '../src/core/carry';
 import { impliedVolFromPrice } from '../src/core/greeks';
-import { loadHeldRate, monthPath, parseRates, publishDay, ratePath, rateWords, takeRates } from '../src/data/rateFeed';
+import { loadHeldRate, monthPath, parseRates, publishDay, ratePath, rateWords, sofrToContinuous, takeRates } from '../src/data/rateFeed';
 import { readContract, explainContract, modelAt } from '../src/data/weigherGate';
 import { thetaTtl } from '../shared/thetaPaths.mjs';
 import { createHub } from '../server/hub.mjs';
@@ -39,18 +39,28 @@ resetCarry();
 check(`before any read the rate is the fixed ${pct(DEFAULT_R)}: carryFor('SPY').r = ${carryFor('SPY').r}, source ${rateNow().source}`, carryFor('SPY').r === 0.042 && rateNow().source === 'fixed');
 check(`the hover says so: "${rateWords()}"`, rateWords().includes('fixed 4.20%'));
 
-/* ---- the answer ---- */
+/* ---- the answer ----
+   corrected (audit W9): these once read SOFR as quoted straight into r (3.94 → 0.0394). SOFR is simple interest on
+   ACT/360; every greek prices at a continuous ACT/365 rate: one night grows $1 by 1 + SOFR/360, so
+   r = 365 · ln(1 + SOFR/360) — 3.94% quoted is 3.9945%. Checked here by compounding, not by the function's own formula. */
+const cont = (quoted: number) => Math.log((1 + quoted / 100 / 360) ** 365);
+check(`SOFR 3.94% (ACT/360 simple) is ${pct(sofrToContinuous(3.94), 4)} continuous: (1 + 0.0394/360)^365 = e^r`, Math.abs(sofrToContinuous(3.94) - cont(3.94)) < 1e-12 && Math.abs(sofrToContinuous(3.94) - 0.039945) < 5e-7);
 const rows = parseRates(sofr.response);
-check(`11 daily rows parsed, percent → fraction: ${rows.map(r => (r.r * 100).toFixed(2)).join(' ')}`, rows.length === 11 && rows[0].r === 0.0388 && rows[10].r === 0.0394 && rows[10].day === '2026-10-30');
+check(`11 daily rows parsed, SOFR → continuous: ${rows.map(r => (r.r * 100).toFixed(3)).join(' ')}`, rows.length === 11 && Math.abs(rows[0].r - cont(3.88)) < 1e-12 && Math.abs(rows[10].r - cont(3.94)) < 1e-12 && rows[10].day === '2026-10-30');
 const last = takeRates(sofr);
-check(`the newest row is the rate in use: ${pct(rateNow().r)} for ${rateNow().asOf} (${rateNow().source})`, last?.r === 0.0394 && rateNow().r === 0.0394 && rateNow().asOf === '2026-10-30' && rateNow().source === 'live');
-check(`every pricer's default carry moves with it: getCarry().r ${getCarry().r}, carryFor('SPX').r ${carryFor('SPX').r}`, getCarry().r === 0.0394 && carryFor('SPX').r === 0.0394);
-check(`hover: "${rateWords()}"`, rateWords() === 'a 3.94% rate (the overnight SOFR rate for Oct 30)');
+const r394 = cont(3.94);
+check(`the newest row is the rate in use: ${pct(rateNow().r, 4)} for ${rateNow().asOf} (${rateNow().source})`, Math.abs((last?.r ?? NaN) - r394) < 1e-12 && Math.abs(rateNow().r - r394) < 1e-12 && rateNow().asOf === '2026-10-30' && rateNow().source === 'live');
+check(`every pricer's default carry moves with it: getCarry().r ${getCarry().r}, carryFor('SPX').r ${carryFor('SPX').r}`, getCarry().r === rateNow().r && carryFor('SPX').r === rateNow().r);
+check(`hover: "${rateWords()}"`, rateWords() === 'a 3.99% rate (the overnight SOFR rate for Oct 30, 3.94% as quoted, compounded)');
 
-/* ---- past days: that day's own rate ---- */
-check(`a backtest day is priced at its own rate: 2026-10-21 ${pct(rateOn('2026-10-21').r)}, 10-27 ${pct(rateOn('2026-10-27').r)}`, rateOn('2026-10-21').r === 0.0388 && rateOn('2026-10-27').r === 0.0395);
-check(`carryFor(…, { on }) takes it: SPY on 2026-10-22 r = ${carryFor('SPY', { on: '2026-10-22' }).r}`, carryFor('SPY', { on: '2026-10-22' }).r === 0.039);
-check(`a day with no row of its own takes the newest before it (2026-10-31, a Saturday past the window: ${pct(rateOn('2026-10-31').r)} of ${rateOn('2026-10-31').asOf})`, rateOn('2026-10-31').r === 0.0394 && rateOn('2026-10-31').asOf === '2026-10-30');
+/* ---- past days: the rate published by that day ----
+   corrected (audit W9): a backtest day D once read D's own fixing — published the next morning, so not known on D. It
+   reads the fixing of the day before (a weekend's rows carry Friday's). Rows 10-20 … 10-30: 3.88 3.88 3.90 3.92 3.92
+   3.92 3.93 3.95 3.94 3.94 3.94. */
+check(`a backtest day is priced at the rate published by it: 2026-10-21 ${pct(rateOn('2026-10-21').r, 3)} (10-20's), 10-27 ${pct(rateOn('2026-10-27').r, 3)} (10-26's, not its own 3.95)`, Math.abs(rateOn('2026-10-21').r - cont(3.88)) < 1e-12 && rateOn('2026-10-21').asOf === '2026-10-20' && Math.abs(rateOn('2026-10-27').r - cont(3.93)) < 1e-12 && rateOn('2026-10-27').asOf === '2026-10-26');
+check(`carryFor(…, { on }) takes it: SPY on 2026-10-22 r = ${carryFor('SPY', { on: '2026-10-22' }).r} (10-21's 3.88, not 10-22's 3.90)`, Math.abs(carryFor('SPY', { on: '2026-10-22' }).r - cont(3.88)) < 1e-12);
+check(`a day past the window takes the newest before it (2026-10-31, a Saturday: ${pct(rateOn('2026-10-31').r, 3)} of ${rateOn('2026-10-31').asOf})`, Math.abs(rateOn('2026-10-31').r - r394) < 1e-12 && rateOn('2026-10-31').asOf === '2026-10-30');
+check('the first day of the history has no fixing published by it inside the reach but its own: it is not read (2026-10-20 → today\'s)', rateOn('2026-10-20') === rateNow());
 check(`a day long before the window has none loaded: it says it is today's rate (asOf ${rateOn('2024-03-01').asOf})`, rateOn('2024-03-01') === rateNow());
 
 /* the backtest's own quote (data/review/quotes.ts quoteAt) on the hand-made market: SPY 500C on that stored minute.
@@ -120,7 +130,7 @@ check(`a day long before the window has none loaded: it says it is today's rate 
 /* ---- the fallbacks: the last good read, then 4.2% ---- */
 resetCarry();
 loadHeldRate(true);
-check(`a reload before today's read prices at the kept one: ${pct(rateNow().r)} for ${rateNow().asOf} (${rateNow().source})`, rateNow().r === 0.0394 && rateNow().source === 'held');
+check(`a reload before today's read prices at the kept one: ${pct(rateNow().r)} for ${rateNow().asOf} (${rateNow().source})`, Math.abs(rateNow().r - r394) < 1e-12 && rateNow().source === 'held');
 check(`and says so: "${rateWords()}"`, rateWords().includes("last SOFR rate read, for Oct 30; today's has not loaded"));
 check('a held copy never replaces a live read', setRate(0.039, 'live', '2026-10-31') && !setRate(0.05, 'held', '2026-10-01') && rateNow().r === 0.039);
 check('a bad number is refused (NaN, 300%): the rate stays', !setRate(NaN, 'live', null) && !setRate(3, 'live', null) && rateNow().r === 0.039);
