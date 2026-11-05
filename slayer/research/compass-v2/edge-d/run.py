@@ -176,8 +176,8 @@ def main():
     ap.add_argument('--family', required=True)          # D1 | D2 | D1b | D2b
     ap.add_argument('--events', default='CPI,NFP')
     ap.add_argument('--release', default='08:30')
-    ap.add_argument('--shuffle-seeds', type=int, default=100)
-    ap.add_argument('--synth-seeds', type=int, default=20)
+    ap.add_argument('--shuffle-seeds', type=int, default=50)
+    ap.add_argument('--synth-seeds', type=int, default=8)
     a = ap.parse_args()
     T = clock(a.release)
     events = a.events.split(',')
