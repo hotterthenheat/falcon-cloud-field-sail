@@ -116,7 +116,50 @@ def trig_e3(root, day):
             'band': (0.25, 0.50, 0.35)}
 
 
-TRIG = {'E1': trig_e1, 'E2': trig_e2, 'E3': trig_e3}
+def pin_strike(root, day, S):
+    f = os.path.join(sim.ROOT, 'oi', root, f'{day}.parquet')
+    if not os.path.exists(f) or not np.isfinite(S):
+        return np.nan
+    o = pd.read_parquet(f)
+    if not len(o):
+        return np.nan
+    o = o[(o.e == 0) & (np.abs(o.k / S - 1) <= 0.03)]
+    if not len(o):
+        return np.nan
+    g = o.groupby('k')['oi'].sum()
+    return float(g.idxmax())
+
+
+def trig_e6(root, day):
+    bars = sim.day_bars(root, day)
+    if len(bars) < 300:
+        return None
+    t = 15 * 3600
+    S = sim.spot_at(bars, t)
+    K = pin_strike(root, day, S)
+    iv = atm_iv(root, day, t, S)
+    if not (np.isfinite(K) and np.isfinite(iv)):
+        return None
+    T = 60 / sim.YEAR_MIN
+    d = (K - S) / (S * iv * math.sqrt(T))
+    if abs(d) < 0.5 or abs(d) > 2.0:
+        return None
+    return {'t': t, 't_end': 15 * 3600 + 50 * 60, 'up': K > S, 'z': abs(d), 'S': S, 'K': K, 'band': (0.25, 0.50, 0.35)}
+
+
+TRIG = {'E1': trig_e1, 'E2': trig_e2, 'E3': trig_e3, 'E6': trig_e6}
+
+
+def under_rule_e6(bars, tr):
+    closes = dict(zip(bars.m.values.tolist(), bars.c.values.tolist()))
+    K, up = tr['K'], tr['up']
+
+    def rule(mm):
+        c = closes.get(mm - 1)
+        if c is None:
+            return False
+        return c >= K if up else c <= K
+    return rule
 
 
 # ---------------------------------------------------------------- variants
@@ -168,6 +211,10 @@ def variants(H, tr, sel, bars):
             ok = tr['z'] >= a
             v[f'a{a}-Y1'] = (RULE_X1, ur, ok)
             v[f'a{a}-Y2'] = (RULE_TR, ur, ok)
+    elif H == 'E6':
+        ur = under_rule_e6(bars, tr)
+        v['P1'] = (RULE_X1, ur, True)
+        v['P2'] = (RULE_TR, ur, True)
     elif H == 'E3':
         ur = under_rule_e3(bars, tr)
         g = tr['gex']
@@ -178,11 +225,48 @@ def variants(H, tr, sel, bars):
     return v
 
 
+CHUNK = 1800
+
+
+def chunked(root, d, sel, call, tr, bars, vs):
+    """Fetch the 1-second path in 30-minute chunks, only as far as some variant still holds the position: a trade's
+    decisions use only quotes up to each decision, so extending the path never changes an earlier exit."""
+    end = tr['t_end'] + 30
+    a = int(tr['t'])
+    parts, res = [], {}
+    pending = dict(vs)
+    while pending and a < end:
+        b = min(a + CHUNK, end)
+        q = sim.q1s(root, d, sel['k'], call, a, b)
+        if q is None:
+            return res, None
+        parts.append(q)
+        path = {x: np.concatenate([p[x] for p in parts]) for x in parts[0]}
+        last = int(path['s'][-1]) if len(path['s']) else b
+        for name, (rules, ur, ok) in list(pending.items()):
+            out = sim.run_trade(path, tr['t'], tr['t_end'], rules, bars, ur)
+            if out is None and b >= end:
+                pending.pop(name)
+                continue
+            if out is None:
+                continue
+            closed = out['exit_s'] < last - 1 or b >= end
+            if closed:
+                res[name] = out
+                pending.pop(name)
+        a = b + 1
+    return res, path if parts else None
+
+
 def materialise(H, which, fetch_ok=True):
     os.makedirs(OUTD, exist_ok=True)
-    f = os.path.join(OUTD, f'{H}_{which}.json')
+    f = os.path.join(OUTD, f'{H}_{which}{os.environ.get("EDGE_SUFFIX", "")}.json')
     have = json.load(open(f)) if os.path.exists(f) else {}
     days = F.want_days(which)
+    if os.environ.get('EDGE_FROM'):  # a second worker over a disjoint later range, newest first (merged after)
+        days = [d for d in days if d >= os.environ['EDGE_FROM']][::-1]
+    if os.environ.get('EDGE_TO'):
+        days = [d for d in days if d < os.environ['EDGE_TO']]
     n_new = 0
     for d in days:
         for root in F.ROOTS:
@@ -203,24 +287,11 @@ def materialise(H, which, fetch_ok=True):
                 if sel is None:
                     rec['sides'][side_name] = None
                     continue
-                if not fetch_ok:
-                    f1 = None
-                else:
-                    f1 = sim.q1s(root, d, sel['k'], call, tr['t'], tr['t_end'] + 30)
+                vs = {n: x for n, x in variants(H, tr, sel, bars).items() if x[2]}
+                res, f1 = chunked(root, d, sel, call, tr, bars, vs) if fetch_ok else ({}, None)
                 if f1 is None:
                     rec['sides'][side_name] = {'sel': sel, 'res': None, 'missing': True}
                     continue
-                res = {}
-                for name, (rules, ur, ok) in variants(H, tr, sel, bars).items():
-                    if not ok:
-                        continue
-                    if H == 'E2' and side_name == 'opp':
-                        ur2 = ur  # same underlying resolution times for the opposite side (the null keeps timing)
-                    else:
-                        ur2 = ur
-                    out = sim.run_trade(f1, tr['t'], tr['t_end'], rules, bars, ur2)
-                    if out:
-                        res[name] = out
                 rec['sides'][side_name] = {'sel': sel, 'res': res}
                 n_new += 1
             have[key] = rec
@@ -248,6 +319,7 @@ def trades(have, variant, side='real'):
 def variant_names(H):
     return {'E1': [f'z{z}-{x}' for z in (0.5, 1.0) for x in ('X1', 'X2', 'X3')],
             'E2': [f'a{a}-{y}' for a in (0.35, 0.60) for y in ('Y1', 'Y2')],
+            'E6': ['P1', 'P2'],
             'E3': ['gex<0-Z1', 'gex<0-Z2', 'gex>=0-Z1 (contrast)', 'gex>=0-Z2 (contrast)']}[H]
 
 

@@ -26,7 +26,7 @@ def sessions_info(H, which):
     if os.path.exists(f):
         return json.load(open(f))
     have = json.load(open(os.path.join(sim.ROOT, 'results', f'{H}_{which}.json')))
-    t_ref = {'E1': 15 * 3600 + 25 * 60, 'E2': 10 * 3600, 'E3': 10 * 3600}[H]
+    t_ref = {'E1': 15 * 3600 + 25 * 60, 'E2': 10 * 3600, 'E3': 10 * 3600, 'E6': 15 * 3600}[H]
     out = []
     import fetch as F
     for d in F.want_days(which):
@@ -50,7 +50,8 @@ def sessions_info(H, which):
             if H == 'E3' and not rec:
                 o = sim.day_bars(root, d)
                 g = hyp.gex(root, d, float(o.c.iloc[29]), hyp.atm_iv(root, d, 600 * 60, float(o.c.iloc[29])))
-            out.append({'root': root, 'day': d, 'pc': pc, 'sd': sd, 's1m': s1m, 'iv': iv, 'gex': g})
+            K = hyp.pin_strike(root, d, S) if H == 'E6' else np.nan
+            out.append({'root': root, 'day': d, 'pc': pc, 'sd': sd, 's1m': s1m, 'iv': iv, 'gex': g, 'K': K})
     json.dump(out, open(f, 'w'))
     return out
 
@@ -102,6 +103,15 @@ def trigger(H, bars, info):
         if a < 0.35 or pull < 0.25:
             return None
         return {'t': 36000, 't_end': 43200, 'up': m < 0, 'z': a, 'S': S, 'O': O, 'X': X, 'm': m, 'band': (0.20, 0.45, 0.30)}
+    if H == 'E6':
+        S = float(bars.c.values[899 - 570])
+        K = info.get('K', np.nan)
+        if not np.isfinite(K):
+            return None
+        d = (K - S) / (S * info['iv'] * math.sqrt(60 / sim.YEAR_MIN))
+        if abs(d) < 0.5 or abs(d) > 2.0:
+            return None
+        return {'t': 54000, 't_end': 57000, 'up': K > S, 'z': abs(d), 'S': S, 'K': K, 'band': (0.25, 0.50, 0.35)}
     if H == 'E3':
         orb = bars.iloc[:30]
         hi, lo = float(orb.h.max()), float(orb.l.min())

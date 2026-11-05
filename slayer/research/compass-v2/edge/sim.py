@@ -246,6 +246,9 @@ def run_trade(q, t_sec, t_end, rules, bars=None, under_rule=None):
         if under_rule is not None and sj // 60 > last_min:
             # bars that closed at a minute boundary in (last_min, sj]
             for mm in range(last_min + 1, sj // 60 + 1):
+                # the bar evaluated is bar mm-1 (closed at mm*60); never one still forming at the current second
+                if mm * 60 > sj:
+                    raise AssertionError('look-ahead: underlying bar not closed at the decision second')
                 if under_rule(mm):
                     decide, why = mm * 60, 'under'
                     break
