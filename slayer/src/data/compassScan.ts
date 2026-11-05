@@ -41,7 +41,8 @@ import { tailPass } from './modelRiskScan';
 export const INDEX_OF: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', XSP: 'XSP', RUT: 'RUT', RUTW: 'RUT', VIX: 'VIX', NDX: 'NDX', NDXP: 'NDX' };
 export const OPTION_OF: Record<string, string> = { SPX: 'SPXW', RUT: 'RUTW', NDX: 'NDXP' };
 /** A snapshot quote older than this is not on the board */
-const FRESH_MS = 90 * 1000;
+/* COMPASS_FRESH_MS: a live-run override for a lagging snapshot feed (default 90 s) */
+const FRESH_MS = (typeof process !== 'undefined' && Number(process.env?.COMPASS_FRESH_MS)) || 90 * 1000;
 
 /* ---- the names ---- */
 
