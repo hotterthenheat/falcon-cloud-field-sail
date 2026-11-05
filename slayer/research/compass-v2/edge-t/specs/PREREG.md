@@ -80,3 +80,12 @@ unknown. H3b (optional, counted only if run): the same 8 cells on EDGE's E3 real
   a canary that reads the forming bar and one that peeks 60 s ahead must be caught).
 - A variant goes to VALIDATION only if on DEV: n >= 150, expectancy net CI excludes 0 (> 0), and it beats >= 95% of
   both nulls. Otherwise nothing is fetched for 2025 and nothing is frozen.
+
+## AMENDMENT A1 (2026-11-05, after a 2-session smoke test of the code, before the DEV run)
+Data finding: the 0DTE chain board stamped 09:30 has no valid quotes for SPY and QQQ on every checked session (0/37,
+0/35) and for SPXW on 1/3 of them (25/37); the 09:31 board is valid on all. Under the spec a trigger at t = 09:31
+(board stamped 09:30) could never get a contract, which removes the first-minute drives by construction, not by
+outcome. Fix (causal, keeps EDGE's t − 60 board convention): the trigger is evaluated as registered; a trigger first
+crossing at 09:31:00 is executed at 09:32:00 (board stamped 09:31, spot = the 09:31 bar close, fill at the quote in
+force at 09:32:02). Triggers at 09:32..09:35 are unchanged. The smoke test (sessions 2023-12-20 and 2024-10-24) showed
+exit reasons for 4 SPY/QQQ/SPXW trades; nothing was tuned on it. No variant added.
