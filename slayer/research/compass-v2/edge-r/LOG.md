@@ -37,7 +37,10 @@ any EDGE-R terminal request or outcome.
 - ~16:58 ET: a container restart killed both workers after 102 sessions (all 102 JSONs, 2,822 q1s files and 411
   parquets re-read cleanly at resume; logs show 0 quote misses). 91 MB used.
 - 17:05 ET (resume, new run): committed the above as found (the stray `edge/__pycache__` .pyc change restored, not
-  committed).
+  committed). `sim_r.run` now refuses to write a session in which any terminal request failed (a failed board or quote
+  fetch would otherwise be stored as "no contract" / "no quotes"); it waits 60 s and re-runs that session (6 tries),
+  and writes each session JSON atomically. Terminal answered (one 2-minute SPY bar request, 0.7 s); workers restarted
+  17:07 ET (PIDs 1069, 1070), 1 request in flight each.
 
 ## Live record 2026-11-05 (motivation; execution artefacts only, not a test)
 Book R closed 29 tickets on 23 names (−$1,691 at 15:12 ET). 16 of 29 were held ≤ 5 s (−$259): the live scan reads bars

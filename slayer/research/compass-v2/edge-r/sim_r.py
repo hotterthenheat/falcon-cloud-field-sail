@@ -294,12 +294,30 @@ def run(k, n, max_minutes=1e9, fetch=True):
         if time.time() - t0 > max_minutes * 60:
             print('time cut', flush=True)
             break
-        try:
-            res = run_day(day, Q)
-        except term.Refused as e:
-            print('refused:', e, flush=True)
+        res = None
+        for attempt in range(6):
+            f0, m0 = term.STATS['fail'], Q.miss
+            try:
+                res = run_day(day, Q)
+            except term.Refused as e:
+                print('refused:', e, flush=True)
+                res = 'refused'
+                break
+            if term.STATS['fail'] == f0 and Q.miss == m0:
+                break
+            print(time.strftime('%H:%M:%S'), f'w{k} {day}: a terminal request failed; session not written, retry in 60 s',
+                  flush=True)
+            res = None
+            M._BD.clear()
+            time.sleep(60)
+        if res == 'refused':
             break
-        json.dump(_clean(res), open(f, 'w'))
+        if res is None:
+            print(f'w{k} {day}: still failing after 6 tries; stopping', flush=True)
+            break
+        tmp = f + '.tmp'
+        json.dump(_clean(res), open(tmp, 'w'))
+        os.replace(tmp, f)
         done += 1
         if done % 5 == 0:
             print(time.strftime('%H:%M:%S'), f'w{k} days {done} req {term.STATS["req"]} ({term.STATS["sec"]:.0f}s) '
