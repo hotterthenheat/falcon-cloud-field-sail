@@ -57,3 +57,14 @@ expiry. One trade per root per session per hypothesis at most.
   prices from BS at the real entry IV with the real entry spread fraction, 200 runs. Report the fraction of null runs
   that would "pass" (expectancy > 0 with CI excluding 0) = the pipeline's false-discovery rate (must be <= 5%).
 - PBO by CSCV (16 session blocks) over each hypothesis's variants; DSR with the global trial count.
+
+## E6 CHARM-PIN (rank 6; registered 2026-11-05 after E1 failed DEV, before any E6 computation)
+- Mechanism: 0DTE open interest concentrated at one strike; as expiry nears, dealers' hedges of the 0DTE book
+  (charm/gamma) pull the index toward the largest-OI strike (pin) in the last hour.
+- t = 15:00:00. K* = the 0DTE strike with the largest call+put OI (OI stamped on the session = prior close)
+  within ±3% of S. d = (K* − S) / (S σ_ATM √T) in expected moves to the close (σ_ATM from the 14:59 board).
+  Trade if |d| >= 0.5 and |d| <= 2.0.
+- Side = toward K* (call if K* > S). 0DTE, |delta| nearest 0.35 within 0.25–0.50.
+- Exits: P1 = take when a closed bar crosses K* (the pin reached); bid <= 0.50 × fill; time stop 15:50.
+  P2 = P1 + trail (once bid >= 1.25 × fill, exit at 0.75 × peak bid).
+- Variants: {P1, P2} = 2. Expected sign positive; same nulls, same selection rule and bar.
