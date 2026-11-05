@@ -252,4 +252,4 @@ def evaluate():
 
 
 if __name__ == '__main__':
-    {'fetch': fetch, 'eval': evaluate}[sys.argv[1]]()
+    {'fetch': fetch, 'score': evaluate}[sys.argv[1]]()
