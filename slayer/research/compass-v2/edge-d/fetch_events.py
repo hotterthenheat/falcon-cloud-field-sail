@@ -121,7 +121,7 @@ def write(df, path):
     pq.write_table(pa.Table.from_pandas(df, preserve_index=False), path, compression='zstd', compression_level=9)
 
 
-def fetch_day(D, event, T_str, kind, band=2):
+def fetch_day(D, event, T_str, kind, band=3):
     out = os.path.join(OUT, D)
     if os.path.exists(os.path.join(out, 'meta.json')):
         return 'skip'
