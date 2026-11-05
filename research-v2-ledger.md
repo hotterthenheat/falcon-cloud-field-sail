@@ -14,3 +14,4 @@ One line per hypothesis/variant/look: date | worker | id | set | n | result | no
 2026-11-05 | EDGE-B | F1-A1 Stage A (flow >=$250k ask-side OTM <=7DTE, underlying drift) | DEV | 1794 ev / 245 sess | h5 +2.3bp [+0.2,+4.7] p.022; h15 +2.5 [-1.3,+6.2]; h30 +6.9bp [+2.1,+11.9] perm p .007 (GATE PASS, Bonferroni .0167); h60 +6.8 [+0.8,+13.3]; win 50% | nulls: perm CI-pass 2.0%, synthetic CI-pass 3.5% (h30)
 2026-11-05 | EDGE-B | F1-A2 Stage A (>= $1M) | DEV | 127 ev | h30 +7.1bp [-14.6,+29.9] p .40 | gate FAIL
 2026-11-05 | EDGE-B | F1-A3 Stage A (>= $250k sweeps) | DEV | 923 ev | h30 +4.0bp [-3.5,+11.2] p .14 | gate FAIL
+2026-11-05 | EDGE-B | PREREG F3 amendment A1 (trade_settlement regular/null, trade_code null/ISO) | spec | - | registered before any F3 outcome | edge-b/specs/PREREG.md @ 240ac41
