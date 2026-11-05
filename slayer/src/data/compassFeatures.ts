@@ -13,7 +13,11 @@ import {
   CLS_INDEX,
   CLS_HIGHBETA,
   yearFrac,
+  yearFracV2,
   minutesLeftCol,
+  minutesLeftColV2,
+  quoteValid,
+  QUOTE_MAX_AGE_MS,
   ivFeature,
   greekVol,
   atmStrike,
@@ -271,6 +275,9 @@ export function features(
   mids: { m5: number; m15: number },
   /** SPY's and the sector ETF's price at the mark, for a live scan whose minute bar is not in yet */
   marks: { spy?: number; sec?: number } = {},
+  /** Feature version 2: the trading minutes from the mark to the contract's expiry (compassParams tradingMinutesTo).
+      Left out, version 1: today's minutes to a 16:00 close (the shipped trees' inputs). */
+  v2: { tradingMinutes: number } | null = null,
 ): number[] | null {
   const indexName = INDEX.has(setup.ticker) || INDEX.has(UNDER[setup.ticker] ?? '');
   const tape = tapeOf(rows, indexName, minute, setup.spot ?? NaN);
@@ -291,7 +298,7 @@ export function features(
   const dir: number = setup.right === 'C' ? 1 : -1;
   const mid = setup.mid > 0 ? setup.mid : NaN;
   const was = (back: number) => (back === 5 ? mids.m5 : back === 15 ? mids.m15 : NaN);
-  const T = yearsLeft(tape.tt);
+  const T = v2 ? yearFracV2(v2.tradingMinutes) : yearsLeft(tape.tt);
   const call = setup.right === 'C';
   const solved = ivFeature(ivStates(mid, s, setup.strike, T, call));
   const vol = greekVol(solved, ivFeature(atmIv));
@@ -324,7 +331,7 @@ export function features(
   x[12] = pd && pd.h > 0 ? s / pd.h - 1 : NaN;
   x[13] = pd && pd.l > 0 ? s / pd.l - 1 : NaN;
   x[14] = pd && pd.c > 0 && op > 0 ? op / pd.c - 1 : NaN;
-  x[15] = minutesLeftCol(tape.tt);
+  x[15] = v2 ? minutesLeftColV2(v2.tradingMinutes) : minutesLeftCol(tape.tt);
   x[16] = indexName ? NaN : tape.vwapZ;
   x[17] = indexName || !(med > 0) ? NaN : tape.cum / med;
   x[18] = indexName || !(med5 > 0) ? NaN : tape.last5 / med5;
@@ -406,6 +413,21 @@ export function netGexBn(pin: PinBook, S: number, T: number, atmIv: number): num
     if (n.put > 0) sum -= n.put * g * S * S * 0.01;
   }
   return sum / 1e9;
+}
+
+/** The rows an ATM pair may read (B4): a valid quote stamped within 90 seconds of the mark, the same check every
+    scored row passes. The pair used to read every board row, so a stale or crossed ATM quote set the ATM vol. */
+export function atmRows(rows: readonly Setup[], now: number): Setup[] {
+  return rows.filter(s => quoteValid(s.bid, s.ask) && !!s.quotedAt && s.quotedAt <= now + 60_000 && now - s.quotedAt <= QUOTE_MAX_AGE_MS);
+}
+
+/** The price decay of a contract from the mark to its flat at an unchanged spot and vol, by full repricing: the value
+    at the mark's T less the value at the flat's T (version 2's theta-burn gate; trading time, so an overnight mark's
+    decay to its 09:20 flat is zero). */
+export function decayOver(S: number, K: number, vol: number, call: boolean, tNow: number, tFlat: number): number {
+  const a = bsStates(S, K, tNow, vol, call).px;
+  const b = bsStates(S, K, Math.min(tNow, tFlat), vol, call).px;
+  return Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, a - b) : NaN;
 }
 
 export function atmPair(rows: Setup[], spot: number, T: number): { iv: number; skew: number } {

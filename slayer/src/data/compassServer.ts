@@ -28,6 +28,7 @@ import { buildSession, builtCurrent, builtOpenCalls, openCalls, reviewFile, stud
 import { startReviewScan, stopReviewScan } from './reviewLive';
 import { poolStudies, type Label, type PooledStudy, type ScoredLine, type StudyDay, type StudyResult } from './compassStudy';
 import { nyParts } from '../core/nyTime';
+import { onShadowCall, setShadow } from './compassShadow';
 import type { Setup } from '../types/compass';
 
 export const RECORD_FORMAT = 'compass-record/1';
@@ -500,6 +501,21 @@ export function startCompassEngine(o: EngineOptions): Engine {
   const logRow = (r: ScoredRow) => {
     rowBuf.push(JSON.stringify(scoredLine(r, day)));
   };
+  /* feature version 2's shadow calls (compassShadow; COMPASS_V2_SHADOW=1 turns it on, off by default): one line each in
+     <dir>/shadow/YYYY-MM-DD.jsonl, never a call, read by the research to settle */
+  let shadowOff: (() => void) | null = null;
+  const startShadow = () => {
+    setShadow(process.env.COMPASS_V2_SHADOW === '1');
+    shadowOff?.();
+    shadowOff = onShadowCall(c => {
+      try {
+        fs.mkdirSync(path.join(o.dir, 'shadow'), { recursive: true });
+        fs.appendFileSync(path.join(o.dir, 'shadow', `${c.day.slice(0, 4)}-${c.day.slice(4, 6)}-${c.day.slice(6, 8)}.jsonl`), `${JSON.stringify(c)}\n`);
+      } catch {
+        /* a read-only disk: the shadow keeps its calls in memory */
+      }
+    });
+  };
   const flushRows = () => {
     if (!rowBuf.length) return;
     const lines = rowBuf;
@@ -568,6 +584,9 @@ export function startCompassEngine(o: EngineOptions): Engine {
     lockTimer = reloadTimer = rowTimer = reviewTimer = null;
     rowOff?.();
     rowOff = null;
+    shadowOff?.();
+    shadowOff = null;
+    setShadow(false);
     stopReviewScan();
   };
 
@@ -617,6 +636,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
       notePast();
     }
     rowOff = onScoredRow(logRow);
+    startShadow();
     rowTimer = setInterval(flushRows, 2_000);
     reviewTimer = setInterval(buildDue, 60_000);
     lockTimer = setInterval(() => {
