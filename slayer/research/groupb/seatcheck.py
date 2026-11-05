@@ -10,7 +10,7 @@ import evaluate as E
 bad = 0
 for day in sys.argv[1:]:
     eng = json.load(open(os.path.join(R.DATA, f'would-{day}.json')))
-    df = R.load([day])
+    df = R.load([day], objects=True)
     calls = E.seat_calls(df, df['p1'].values.astype(float), df['prun'].values.astype(float), 0.7067, 0.5, df['burns1'].values == 1)
     sim = [(df['id'].values[i], int(df['markMs'].values[i]), b) for i, b, _ in calls]
     want = [(c['id'], int(c['mark']), c['book']) for c in eng]

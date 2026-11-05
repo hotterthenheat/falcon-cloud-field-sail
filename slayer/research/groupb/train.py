@@ -32,7 +32,7 @@ OUT = os.path.join(R.DATA, 'models')
 def main():
     days = R.train_days()
     print(f'{len(days)} training sessions {days[0]} .. {days[-1]}', flush=True)
-    cols = R.feature_cols() + ['day', 'session', 'sleeve', 'aGeom', 'bGeom', 'burns1', 'burns2', 'p1', 'prun', 'win', 'win2', 'fill']
+    cols = R.feature_cols() + ['aGeom', 'bGeom', 'burns1', 'burns2', 'p1', 'prun', 'win', 'win2']
     df = R.load(days, cols)
     df = df[df['win'].notna()].reset_index(drop=True)
     print(f'{len(df)} training rows; win {df.win.mean():.3f}, win2 {df.win2.mean():.3f}', flush=True)

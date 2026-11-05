@@ -60,14 +60,24 @@ def load_day(day):
     return back
 
 
-def load(days, cols=None):
+def load(days, cols=None, objects=False):
+    """Many sessions at once; the text columns as one categorical each (the strings were most of the memory), or as
+    plain object arrays (objects=True: the seat simulation compares them element by element)."""
     parts = []
     for d in days:
         x = load_day(d)
         if cols is not None:
             x = x[[c for c in cols if c in x.columns]]
+        for c in TEXT:
+            if c in x.columns:
+                x[c] = x[c].astype('category')
         parts.append(x)
-    return pd.concat(parts, ignore_index=True)
+    text = [c for c in TEXT if c in parts[0].columns]
+    cats = {c: pd.api.types.union_categoricals([p[c] for p in parts], ignore_order=True) for c in text}
+    df = pd.concat([p.drop(columns=text) for p in parts], ignore_index=True)
+    for c in text:
+        df[c] = np.asarray(cats[c].astype(object)) if objects else cats[c]
+    return df
 
 
 def X(df, version):

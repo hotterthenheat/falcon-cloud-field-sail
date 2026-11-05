@@ -264,7 +264,7 @@ def main():
         if not days:
             continue
         need = R.feature_cols() + ['day', 'sleeve', 'ticker', 'id', 'right', 'mark', 'session', 'pass', 'order', 'aGeom', 'bGeom', 'burns1', 'burns2', 'dte', 'tm', 'retOpen', 'regularDay', 'p1', 'prun', 'win', 'retA', 'retR']
-        df = R.load(days, need)
+        df = R.load(days, need, objects=True)
         print(f'{s}: {len(days)} sessions, {len(df)} rows', flush=True)
         X = {1: R.X(df, 1), 2: R.X(df, 2)}
         res = {}
