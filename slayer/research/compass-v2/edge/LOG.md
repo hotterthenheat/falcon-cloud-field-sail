@@ -48,7 +48,8 @@ locked; the PREREG text said 2022-02..05 — every hypothesis saw the same set).
 | E6 P2 | 428 | 34% | −13.6% [−18.2, −9.1] | −11.0% | 0.92 | 10% | | 0.00 |
 
 Synthetic zero-drift nulls (100 runs each): E1 z0.5-X2 null mean −14.2% (p95 −11.3%), pass rate 0%; E2 a0.35-Y2
-null mean −3.4%, pass rate 3%. Shuffled-signal pass rates 0–0.5% everywhere. The pipeline does not manufacture
+null mean −3.4%, pass rate 3%; E6 P2 null mean −12.2%, pass rate 0%; E3 gex<0-Z1 (50 runs) null mean −6.1%,
+p95 +1.1%, pass rate 0%. Shuffled-signal pass rates 0–0.5% everywhere. The pipeline does not manufacture
 passes (FDR <= 5%).
 
 Reading: E1 (intraday momentum into the close) is the mechanism with the best published support; on 1-second fills
@@ -56,3 +57,34 @@ its momentum side is slightly better than a coin (beats 86–96% of shuffled dra
 size is ~2–3% a trade against a ~10–14% round-trip cost of a 0DTE 0.35Δ option in the last 35 minutes (half the
 DEV triggers had no contract inside the 8% spread gate). Conditioning on negative dealer GEX adds nothing. E2 has
 too few triggers (125 < 150) and loses. E6 (pin) is worse than a coin. None goes to VALIDATION.
+
+### E3 GAMMA-BREAK (DEV, 2,058 opening-range breaks with a gated contract)
+| variant | n | win | expectancy net [95%] | no fee | payoff | shuffled: real beats |
+|---|---:|---:|---:|---:|---:|---:|
+| gex<0-Z1 | 976 | 18% | −5.0% [−15.8, +6.6] | −3.5% | 4.13 | 68% |
+| gex<0-Z2 | 976 | 42% | −7.4% [−11.2, −3.3] | −6.0% | 0.87 | 57% |
+| gex>=0-Z1 (contrast) | 1,082 | 16% | −2.7% [−13.8, +9.4] | −1.2% | 4.90 | 86% |
+| gex>=0-Z2 (contrast) | 1,082 | 40% | −6.5% [−10.7, −2.4] | −5.0% | 1.05 | 48% |
+PBO 1.00 (2 variants), DSR 0.00. The sign of prior-close dealer GEX (OI-based, dealers long calls / short puts) does
+not separate continuation from failure: short-gamma breaks are no better than long-gamma breaks or a coin.
+
+## 3. Checks
+- Look-ahead (after the red team's K5 finding): `tests_lookahead.py` recomputes 400 recorded triggers per hypothesis
+  with every later bar and chain quote hidden — identical for E1, E2, E3, E6; a canary that reads the bar starting at t
+  is caught; run_trade asserts each underlying-rule bar closed before the decision second. The only full-day read is
+  the ">= 300 bars" guard, which removes exactly the 20 scheduled half-days (exchange calendar, known in advance).
+- Parity with FOUNDATION's 100 ms engine (46 E1 trades on sessions in both stores): same fill on 46/46, same exit
+  on 24/46; mean return +53.2% (EDGE, 1 s) vs +44.9% (FOUNDATION): 1-second sampling misses sub-second touches of
+  stops/trails, so EDGE's numbers are, if anything, optimistic. Every hypothesis is negative anyway.
+- Long calls/puts only (owner constraint): every E-trade is a single long option, buy to open / sell to close.
+
+## 4. Verdict
+No EDGE hypothesis clears DEV, so nothing went to VALIDATION and nothing is frozen for the locked test. K5, the only
+historical pocket, was killed by the red team (pre-open marks saw day D's 09:30 open); EDGE's DEV reproduction of it
+inherits that leak and is void. The common failure: in 0DTE index options the round trip at the ask/bid on 1-second
+quotes costs ~5–15% of premium, and the directional information in these mechanisms (where it exists at all: E1's
+trailing exit beats a coin in 86% of draws) is worth ~2–4% a trade.
+
+## 5. Variants tried by EDGE (all logged): 23
+E1 8 (6 + 2 GEX), E2 4, E3 4 (2 + 2 contrast), E6 2, K5 DEV reproduction 1, port/look-ahead checks 2 (not trials),
+synthetic nulls 4 runs. Prior trials before v2: 155 (challenger) + 112 (nov4) + 9 (dont-chase).
