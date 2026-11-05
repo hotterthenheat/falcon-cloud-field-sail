@@ -42,7 +42,9 @@ export const INDEX_OF: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', XSP: 
 export const OPTION_OF: Record<string, string> = { SPX: 'SPXW', RUT: 'RUTW', NDX: 'NDXP' };
 /** A snapshot quote older than this is not on the board */
 /* COMPASS_FRESH_MS: a live-run override for a lagging snapshot feed (default 90 s) */
-const FRESH_MS = (typeof process !== 'undefined' && Number(process.env?.COMPASS_FRESH_MS)) || 90 * 1000;
+/* read through globalThis: vite's define turns a bare process.env into {} (vite.config.ts), server side too */
+const serverEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+const FRESH_MS = Number(serverEnv.COMPASS_FRESH_MS) || 90 * 1000;
 
 /* ---- the names ---- */
 
@@ -82,7 +84,7 @@ export function odteEventModel(sleeve: SleeveKey): typeof MODEL4 | null {
 
 /* COMPASS_WEEKLY_ALL=1: the weekly scan reads every root of the 458-name book, not only the 20 with the full feature
    row. The others score with their open-interest columns missing (the trees read those as missing, not as 0). */
-const WEEKLY_ALL = typeof process !== 'undefined' && process.env?.COMPASS_WEEKLY_ALL === '1';
+const WEEKLY_ALL = serverEnv.COMPASS_WEEKLY_ALL === '1';
 
 function weeklyNames(now: number): string[] {
   return (WEEKLY_ALL ? ALL : WEEKLY_FOCUS).filter(t => optionScanOpen(t, 1, now));
