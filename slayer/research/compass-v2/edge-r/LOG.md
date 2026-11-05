@@ -41,6 +41,14 @@ any EDGE-R terminal request or outcome.
   fetch would otherwise be stored as "no contract" / "no quotes"); it waits 60 s and re-runs that session (6 tries),
   and writes each session JSON atomically. Terminal answered (one 2-minute SPY bar request, 0.7 s); workers restarted
   17:07 ET (PIDs 1069, 1070), 1 request in flight each.
+- 17:12 ET: no-cost calibration of the synthetic null on the 102 cached sessions (2 runs, `EDGE_R_SYN_NOCOST=1`):
+  R0 +0.9%, R1 +0.8%, R2 +0.6% mean, FDR 0/2 (zero drift and zero cost give ~0, as it should). `synth_r` can now run
+  in parallel chunks (`synth_r.py RUNS PART`, seed 20261105 + 1000 (PART + 1); `synth_r.py merge`).
+  Look-ahead test re-run on the first 60 sessions (sorted): 637/637 identical on all three checks; canaries caught:
+  forming bar 596/637, 60-s peek 15/15, 8-s peek 637/637.
+- ~17:25 ET: second container restart killed workers 1069/1070 at 166 sessions (all files re-read cleanly; 0 misses).
+  The q1s/board/bar cache writes are now atomic too (`.part` + rename; `.part` files are never read). Terminal
+  answered; workers restarted 17:30 ET (PIDs 978, 980).
 
 ## Live record 2026-11-05 (motivation; execution artefacts only, not a test)
 Book R closed 29 tickets on 23 names (−$1,691 at 15:12 ET). 16 of 29 were held ≤ 5 s (−$259): the live scan reads bars

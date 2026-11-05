@@ -222,7 +222,7 @@ def sim_day(info, paths, variant, iv, half, rng):
     return out
 
 
-def main(runs=100):
+def main(runs=100, part=None):
     infos = []
     for f in sorted(glob.glob(os.path.join(RES, '*.json'))):
         r = json.load(open(f))
@@ -242,7 +242,7 @@ def main(runs=100):
     for r in infos:
         real[r['day']] = {tk: M.day_closes(tk, r['day'])[0] for tk in M.TICKERS}
     res = {v: {'means': [], 'pass': 0} for v in VARS}
-    rng = np.random.default_rng(20261105)
+    rng = np.random.default_rng(20261105 if part is None else 20261105 + 1000 * (part + 1))
     days = [r['day'] for r in infos]
     for run in range(runs):
         per = {v: ([], []) for v in VARS}
@@ -268,9 +268,30 @@ def main(runs=100):
         mm = np.array(res[v]['means'])
         out[v] = {'runs': len(mm), 'mean': float(mm.mean()), 'p95': float(np.percentile(mm, 95)), 'fdr': res[v]['pass'] / max(1, len(mm)),
                   'n_mean': float(np.mean(res[v]['n'])), 'means': mm.tolist()}
-    json.dump(out, open(os.path.join(HERE, 'results', 'synthetic_null.json'), 'w'))
+    name = 'synthetic_null.json' if part is None else f'synthetic_null_part{part}.json'
+    json.dump(out, open(os.path.join(HERE, 'results', name), 'w'))
     print({v: {k: out[v][k] for k in ('mean', 'p95', 'fdr', 'n_mean')} for v in VARS})
 
 
+def merge():
+    """combine synthetic_null_part*.json (parallel chunks, distinct seeds) into synthetic_null.json."""
+    parts = sorted(glob.glob(os.path.join(HERE, 'results', 'synthetic_null_part*.json')))
+    ps = [json.load(open(f)) for f in parts]
+    out = {}
+    for v in VARS:
+        mm = np.array([m for p in ps for m in p[v]['means']])
+        runs = sum(p[v]['runs'] for p in ps)
+        fdr = sum(p[v]['fdr'] * p[v]['runs'] for p in ps) / max(1, runs)
+        out[v] = {'runs': int(runs), 'mean': float(mm.mean()), 'p95': float(np.percentile(mm, 95)), 'fdr': fdr,
+                  'n_mean': float(np.mean([p[v]['n_mean'] for p in ps])), 'means': mm.tolist(), 'parts': len(ps)}
+    json.dump(out, open(os.path.join(HERE, 'results', 'synthetic_null.json'), 'w'))
+    for f in parts:
+        os.remove(f)
+    print({v: {k: out[v][k] for k in ('runs', 'mean', 'p95', 'fdr', 'n_mean')} for v in VARS})
+
+
 if __name__ == '__main__':
-    main(int(sys.argv[1]) if len(sys.argv) > 1 else 100)
+    if len(sys.argv) > 1 and sys.argv[1] == 'merge':
+        merge()
+    else:
+        main(int(sys.argv[1]) if len(sys.argv) > 1 else 100, int(sys.argv[2]) if len(sys.argv) > 2 else None)

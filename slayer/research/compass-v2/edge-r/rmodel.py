@@ -172,6 +172,11 @@ def _month_bars(kind, sym, month):
     return _BM[k]
 
 
+def _atomic_parquet(df, f):
+    df.to_parquet(f + '.part', compression='zstd', engine='pyarrow')
+    os.replace(f + '.part', f)
+
+
 def fetch_month_bars(sym, month):
     """SPY/QQQ stock bars 04:00-20:00, SPX index bars 00:00-23:59, for a month (the code's spans)."""
     f = os.path.join(OUT, 'bars', sym, f'{month}.parquet')
@@ -188,7 +193,7 @@ def fetch_month_bars(sym, month):
         return 'fail'
     os.makedirs(os.path.dirname(f), exist_ok=True)
     if not t.strip():
-        pd.DataFrame(columns=['d', 'm', 'o', 'h', 'l', 'c']).to_parquet(f)
+        _atomic_parquet(pd.DataFrame(columns=['d', 'm', 'o', 'h', 'l', 'c']), f)
         return 'empty'
     df = pd.read_csv(io.StringIO(t))
     ts = pd.to_datetime(df['timestamp'])
@@ -196,7 +201,7 @@ def fetch_month_bars(sym, month):
                         'o': df['open'].astype(float), 'h': df['high'].astype(float), 'l': df['low'].astype(float),
                         'c': df['close'].astype(float)})
     out = out[~out.d.map(F.is_locked)]                      # never store a locked day
-    out.to_parquet(f, compression='zstd')
+    _atomic_parquet(out, f)
     return 'ok'
 
 
@@ -295,7 +300,7 @@ def fetch_board(root, day, exp, start='09:30:00', end='16:15:00', tag=''):
         return 'fail'
     os.makedirs(os.path.dirname(f), exist_ok=True)
     if not t.strip() or not t.startswith('symbol'):
-        pd.DataFrame(columns=['m', 'k', 'r', 'bid', 'ask', 'bs', 'as']).to_parquet(f)
+        _atomic_parquet(pd.DataFrame(columns=['m', 'k', 'r', 'bid', 'ask', 'bs', 'as']), f)
         return 'empty'
     df = pd.read_csv(io.StringIO(t))
     ts = pd.to_datetime(df['timestamp'])
@@ -303,7 +308,7 @@ def fetch_board(root, day, exp, start='09:30:00', end='16:15:00', tag=''):
                         'r': (df['right'].str.upper().str[0] == 'C').astype('int8'), 'bid': df['bid'].astype('float32'),
                         'ask': df['ask'].astype('float32'), 'bs': df['bid_size'].astype('int32'),
                         'as': df['ask_size'].astype('int32')})
-    out.to_parquet(f, compression='zstd')
+    _atomic_parquet(out, f)
     _BD.pop((root, day, exp), None)
     return 'ok'
 
@@ -430,7 +435,7 @@ class Quotes:
             return []
         out = []
         for f in os.listdir(d):
-            if f.startswith(pre):
+            if f.startswith(pre) and f.endswith('.npz'):
                 a, b = f[len(pre):-4].split('_')
                 out.append((int(a), int(b), os.path.join(d, f)))
         return out
@@ -494,7 +499,10 @@ class Quotes:
             z = {'s': s[keep], 'bid': bid[keep], 'ask': ask[keep], 'bs': bs[keep], 'as': asz[keep]}
         d = os.path.join(OUT, 'q1s', root, day)
         os.makedirs(d, exist_ok=True)
-        np.savez_compressed(os.path.join(d, f'{exp}_{_ks(k)}{right}_{a}_{b}.npz'), **z)
+        fn = os.path.join(d, f'{exp}_{_ks(k)}{right}_{a}_{b}.npz')
+        with open(fn + '.part', 'wb') as fh:      # atomic: a restart never leaves a truncated cache file
+            np.savez_compressed(fh, **z)
+        os.replace(fn + '.part', fn)
         return self._dense(z, a, b, change=True, cents=True)
 
     @staticmethod
