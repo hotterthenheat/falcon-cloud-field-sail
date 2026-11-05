@@ -1,0 +1,32 @@
+development: 1015 calls, 253 sessions; win 44.9%, return/call -1.6%
+| X % | Y % | removed | removed win | removed ret | kept calls | kept win | kept ret |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.5 | 10 | 134 | 42.5% | -4.3% | 881 | 45.29% | -1.20% |
+| 0.5 | 20 | 209 | 45.0% | -1.1% | 806 | 44.91% | -1.75% |
+| 0.5 | 30 | 265 | 44.9% | -0.9% | 750 | 44.93% | -1.86% |
+| 0.8 | 10 | 79 | 39.2% | -5.6% | 936 | 45.41% | -1.28% |
+| 0.8 | 20 | 117 | 41.9% | -3.0% | 898 | 45.32% | -1.43% |
+| 0.8 | 30 | 137 | 43.8% | -1.7% | 878 | 45.10% | -1.60% |
+| 1.2 | 10 | 46 | 28.3% | -16.9% | 969 | 45.72% | -0.89% |
+| 1.2 | 20 | 64 | 34.4% | -11.2% | 951 | 45.64% | -0.97% |
+| 1.2 | 30 | 74 | 40.5% | -5.7% | 941 | 45.27% | -1.29% |
+
+FROZEN (selection rule): X = 0.8%, Y = 20%  (best dev kept win 45.72% at 1.2/10; 0.8/20 45.32%)
+
+### Development: X = 0.8%, Y = 20%  (253 sessions)
+| book | calls | win [95% session bootstrap] | return/call [95%] |
+|---|---:|---:|---:|
+| Model 1, no filter | 1015 | 44.9% [41.2, 48.7] | -1.6% [-5.2, +1.9] |
+| Model 1, don't chase | 898 | 45.3% [41.5, 49.1] | -1.4% [-5.2, +2.2] |
+| removed calls | 117 | 41.9% [30.8, 52.4] | -3.0% [-13.6, +7.4] |
+removed 117 of 1015 (12%); paired gain to the book a session (sum of returns) +1.4% [-5.2, +10.1]; kept minus removed, return/call +1.6 pts [-9.3, +12.7]
+1-second exit window not answered (left on its minute exit): 0
+| split (underlying open->close, call side) | calls | removed | removed win | kept win | removed ret | kept ret |
+|---|---:|---:|---:|---:|---:|---:|
+| against < -0.5% | 235 | 9 | 11% | 12% | -43.0% | -40.5% |
+| flat +/-0.5% | 309 | 18 | 6% | 34% | -46.3% | -9.7% |
+| with the call > +0.5% | 471 | 90 | 52% | 73% | +9.6% | +28.1% |
+| not a trend day | 577 | 33 | 9% | 39% | -41.0% | -6.0% |
+| trend day |move| >= 1% | 438 | 84 | 55% | 55% | +11.9% | +5.6% |
+calls (C): 461, removed 62; removed win 45% ret +2.2%; kept win 43% ret -2.6%
+puts (P): 554, removed 55; removed win 38% ret -9.0%; kept win 47% ret -0.5%
