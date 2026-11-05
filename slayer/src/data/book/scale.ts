@@ -528,12 +528,15 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
     }
     return n;
   });
+  /* the quotes are solved at the price the vendor marked them at (priced.px), as before 7178da0; only a short-dated index
+     book that moved to its parity spot solves there. The pre-market print is not the price the close quotes stood at. */
+  const ivPx = spotPx !== spot ? spotPx : priced.px || spot;
   if (expiry && spot > 0) {
     for (const n of painted) {
       const leg = book.get(n.strike);
       if (!leg) continue;
-      if (leg.callIv > 0 || (leg.callBidPx > 0 && leg.callAskPx > 0)) n.callIv = ivOnTradingClock(leg.callBidPx, leg.callAskPx, leg.callIv, spotPx, n.strike, expiry, 'C', priced.at, carry?.r, carry?.q);
-      if (leg.putIv > 0 || (leg.putBidPx > 0 && leg.putAskPx > 0)) n.putIv = ivOnTradingClock(leg.putBidPx, leg.putAskPx, leg.putIv, spotPx, n.strike, expiry, 'P', priced.at, carry?.r, carry?.q);
+      if (leg.callIv > 0 || (leg.callBidPx > 0 && leg.callAskPx > 0)) n.callIv = ivOnTradingClock(leg.callBidPx, leg.callAskPx, leg.callIv, ivPx, n.strike, expiry, 'C', priced.at, carry?.r, carry?.q);
+      if (leg.putIv > 0 || (leg.putBidPx > 0 && leg.putAskPx > 0)) n.putIv = ivOnTradingClock(leg.putBidPx, leg.putAskPx, leg.putIv, ivPx, n.strike, expiry, 'P', priced.at, carry?.r, carry?.q);
     }
   }
   smoothSide(painted, 'callIv');
