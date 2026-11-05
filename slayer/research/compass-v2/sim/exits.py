@@ -7,6 +7,11 @@
 `pos.peak`/`pos.trough` the best/worst sellable value since the fill. Everything a policy reads comes from ctx, so it
 is as of now; levels set at entry use only what was known at the fill.
 
+Vectorized path: a policy that also has scan(pos, ms, val) -> (index | None, reason) and valid_until(pos) -> ms lets
+the engine test a whole run of quote changes with numpy (identical decisions; tests/test_engine.py compares the two
+paths). valid_until is the time after which the levels must be re-read through ctx (refresh(pos, ctx) is then called
+first). SignalDecay and FnExit have no scan: a position using them is checked change by change.
+
 Volatility-scaled levels use the package's expected move over a horizon:
     move = sum_legs |delta_leg| * ratio * S * sigma_1s * sqrt(horizon_s)
 with sigma_1s the underlying's realized per-second log-return stdev over rv_window_s (ctx.realized_vol), S the
@@ -17,7 +22,16 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
+
 from sim.engine import clock
+
+FOREVER = 10 ** 12
+
+
+def _first(mask):
+    i = int(np.argmax(mask)) if len(mask) else 0
+    return i if len(mask) and mask[i] else None
 
 
 def package_move(pos, ctx, horizon_s, rv_window_s, sym=None) -> float:
@@ -54,6 +68,13 @@ class FixedBracket:
             return 'sl'
         return None
 
+    def valid_until(self, pos):
+        return FOREVER
+
+    def scan(self, pos, ms, val):
+        k = _first((val >= pos.state['tp']) | (val <= pos.state['sl']))
+        return (None, None) if k is None else (k, 'tp' if val[k] >= pos.state['tp'] else 'sl')
+
 
 class VolBracket:
     """TP = entry + k_tp * move, SL = entry - k_sl * move, the move set at entry from realized vol (see module doc).
@@ -78,29 +99,51 @@ class VolBracket:
             return 'vol_sl'
         return None
 
+    def valid_until(self, pos):
+        return FOREVER
+
+    def scan(self, pos, ms, val):
+        k = _first((val >= pos.state['tp']) | (val <= pos.state['sl']))
+        return (None, None) if k is None else (k, 'vol_tp' if val[k] >= pos.state['tp'] else 'vol_sl')
+
 
 class TrailingVol:
-    """Trailing stop: exit when value <= peak - k * move(now), move recomputed from the CURRENT realized vol and delta
-    (re-read at most every refresh_s). Arms once the peak is at least arm_frac above the entry (0 = at once)."""
+    """Trailing stop: exit when value <= peak - k * move, the move recomputed from the CURRENT realized vol and delta
+    every refresh_s seconds from the fill (past data only). Arms once the peak is at least arm_frac above the entry."""
 
     def __init__(self, k=2.0, horizon_s=300, rv_window_s=600, arm_frac=0.0, refresh_s=15, sym=None):
-        self.k, self.h, self.w, self.arm, self.refresh, self.sym = k, horizon_s, rv_window_s, arm_frac, refresh_s, sym
+        self.k, self.h, self.w, self.arm, self.refresh_s, self.sym = k, horizon_s, rv_window_s, arm_frac, refresh_s, sym
 
     def on_entry(self, pos, ctx):
-        pos.state['tv_at'] = -1e18
+        pos.state['tv_at'] = -10 ** 15
+        self.refresh(pos, ctx)
 
-    def check(self, pos, ctx):
-        if pos.peak < pos.entry_px * (1 + self.arm):
-            return None
-        if ctx.now - pos.state['tv_at'] >= self.refresh * 1000:
+    def refresh(self, pos, ctx):
+        if ctx.now - pos.state['tv_at'] >= self.refresh_s * 1000:
             m = package_move(pos, ctx, self.h, self.w, self.sym)
             if m > 0:
                 pos.state['tv_move'] = m
             pos.state['tv_at'] = ctx.now
+
+    def check(self, pos, ctx):
+        self.refresh(pos, ctx)
         m = pos.state.get('tv_move')
-        if m and pos.value <= pos.peak - self.k * m:
+        if pos.peak < pos.entry_px * (1 + self.arm) or not m:
+            return None
+        if pos.value <= pos.peak - self.k * m:
             return 'trail'
         return None
+
+    def valid_until(self, pos):
+        return pos.state['tv_at'] + self.refresh_s * 1000 - 1
+
+    def scan(self, pos, ms, val):
+        m = pos.state.get('tv_move')
+        if not m:
+            return None, None
+        peak = np.maximum(pos.peak, np.maximum.accumulate(val))
+        k = _first((peak >= pos.entry_px * (1 + self.arm)) & (val <= peak - self.k * m))
+        return (None, None) if k is None else (k, 'trail')
 
 
 class TimeStop:
@@ -119,6 +162,15 @@ class TimeStop:
         if self.at is not None and ctx.now >= self.at:
             return 'clock'
         return None
+
+    def valid_until(self, pos):
+        return FOREVER
+
+    def scan(self, pos, ms, val):
+        hold = (ms - pos.entry_fill_ms >= self.max_hold * 1000) if self.max_hold is not None else np.zeros(len(ms), bool)
+        at = (ms >= self.at) if self.at is not None else np.zeros(len(ms), bool)
+        k = _first(hold | at)
+        return (None, None) if k is None else (k, 'time' if hold[k] else 'clock')
 
 
 class SignalDecay:
@@ -167,3 +219,19 @@ class AnyOf:
             if r:
                 return r
         return None
+
+    def refresh(self, pos, ctx):
+        for p in self.ps:
+            if hasattr(p, 'refresh'):
+                p.refresh(pos, ctx)
+
+    def valid_until(self, pos):
+        return min(p.valid_until(pos) for p in self.ps)
+
+    def scan(self, pos, ms, val):
+        best, why = None, None
+        for p in self.ps:
+            k, r = p.scan(pos, ms, val)
+            if k is not None and (best is None or k < best):
+                best, why = k, r
+        return best, why

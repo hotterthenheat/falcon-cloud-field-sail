@@ -13,9 +13,10 @@ class MemSession:
         """quotes: {Contract: {'ms','bid','ask','bs','as'} arrays (bid/ask in CENTS, like the store)}
         greeks: {root: DataFrame(exp, strike, right, ms, delta, iv, und)}; underlying: {sym: {'ms','px'}}."""
         self.day = day
-        self._q = {c: {k: np.asarray(v) for k, v in q.items()} for c, q in quotes.items()}
+        self._q = {c: {k: (np.asarray(v, dtype=np.int64) if k == 'ms' else np.asarray(v)) for k, v in q.items()}
+                   for c, q in quotes.items()}
         self._g = greeks or {}
-        self._u = underlying or {}
+        self._u = {k: {**v, 'ms': np.asarray(v['ms'], dtype=np.int64)} for k, v in (underlying or {}).items()}
         self._t = trades or {}
         roots = sorted({c.root for c in self._q})
         self._exp = expirations or {r: sorted({c.exp for c in self._q if c.root == r}) for r in roots}

@@ -1,26 +1,26 @@
 {
  "shuffled side, B3 times kept": {
-  "n_runs": 3,
-  "pass_rate_full_bar": 0.0,
-  "pass_rate_stat_bar": 0.0,
-  "pass_rate_ci_only": 0.3333333333333333,
-  "null_expectancy_mean": 0.033586991038461016,
-  "null_expectancy_p5": -0.18875395388912924,
-  "null_expectancy_p95": 0.2834193177449722,
-  "valid_pipeline": true,
-  "candidate_beats_share": 0.6666666666666666,
-  "candidate_counts": false
- },
- "shuffled side, B3 times resampled": {
-  "n_runs": 3,
+  "n_runs": 4,
   "pass_rate_full_bar": 0.0,
   "pass_rate_stat_bar": 0.0,
   "pass_rate_ci_only": 0.0,
-  "null_expectancy_mean": 0.05878678392822856,
-  "null_expectancy_p5": -0.04330742629929782,
-  "null_expectancy_p95": 0.20601223095751317,
+  "null_expectancy_mean": 0.008572705961962976,
+  "null_expectancy_p5": -0.07590928176064848,
+  "null_expectancy_p95": 0.15983621780962504,
   "valid_pipeline": true,
-  "candidate_beats_share": 0.6666666666666666,
+  "candidate_beats_share": 0.0,
+  "candidate_counts": false
+ },
+ "shuffled side, B3 times resampled": {
+  "n_runs": 4,
+  "pass_rate_full_bar": 0.0,
+  "pass_rate_stat_bar": 0.0,
+  "pass_rate_ci_only": 0.0,
+  "null_expectancy_mean": 0.023882103497429537,
+  "null_expectancy_p5": -0.03123738102227012,
+  "null_expectancy_p95": 0.1369540221251038,
+  "valid_pipeline": true,
+  "candidate_beats_share": 0.0,
   "candidate_counts": false
  },
  "synthetic zero-drift (fair IV), B1_random_side_30d": {
@@ -28,9 +28,9 @@
   "pass_rate_full_bar": 0.0,
   "pass_rate_stat_bar": 0.0,
   "pass_rate_ci_only": 0.0,
-  "null_expectancy_mean": -0.1848522790817425,
-  "null_expectancy_p5": -0.1848522790817425,
-  "null_expectancy_p95": -0.1848522790817425,
+  "null_expectancy_mean": -0.13159926081094053,
+  "null_expectancy_p5": -0.13159926081094053,
+  "null_expectancy_p95": -0.13159926081094053,
   "valid_pipeline": true,
   "candidate_beats_share": 1.0,
   "candidate_counts": true
@@ -40,9 +40,9 @@
   "pass_rate_full_bar": 0.0,
   "pass_rate_stat_bar": 0.0,
   "pass_rate_ci_only": 0.0,
-  "null_expectancy_mean": -0.055094248765076355,
-  "null_expectancy_p5": -0.055094248765076355,
-  "null_expectancy_p95": -0.055094248765076355,
+  "null_expectancy_mean": -0.05024843058507772,
+  "null_expectancy_p5": -0.05024843058507772,
+  "null_expectancy_p95": -0.05024843058507772,
   "valid_pipeline": true,
   "candidate_beats_share": 1.0,
   "candidate_counts": true
@@ -52,9 +52,9 @@
   "pass_rate_full_bar": 0.0,
   "pass_rate_stat_bar": 0.0,
   "pass_rate_ci_only": 0.0,
-  "null_expectancy_mean": 0.1812758498833608,
-  "null_expectancy_p5": 0.1812758498833608,
-  "null_expectancy_p95": 0.1812758498833608,
+  "null_expectancy_mean": 0.09061459794747494,
+  "null_expectancy_p5": 0.09061459794747494,
+  "null_expectancy_p95": 0.09061459794747494,
   "valid_pipeline": true,
   "candidate_beats_share": 0.0,
   "candidate_counts": false
@@ -64,9 +64,9 @@
   "pass_rate_full_bar": 0.0,
   "pass_rate_stat_bar": 0.0,
   "pass_rate_ci_only": 0.0,
-  "null_expectancy_mean": -0.019556892654486024,
-  "null_expectancy_p5": -0.1718764760500759,
-  "null_expectancy_p95": 0.15763884001851705,
+  "null_expectancy_mean": -0.030411031149514437,
+  "null_expectancy_p5": -0.12346417778835425,
+  "null_expectancy_p95": 0.07652829509421966,
   "valid_pipeline": true
  }
 }

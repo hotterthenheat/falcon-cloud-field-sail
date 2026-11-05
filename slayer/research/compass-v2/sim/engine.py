@@ -66,6 +66,7 @@ class SimConfig:
     end_ms: int = clock('16:00')
     max_entry_spread_frac: float | None = None   # reject at arrival if (ask-bid)/mid is wider
     greeks_delay_ms: int = 0             # a 1-minute greeks row stamped T is visible from T + this
+    vectorized_exits: bool = True        # scan quote changes with numpy when every exit component has .scan()
     multiplier: int = 100
 
 
@@ -490,10 +491,13 @@ class Engine:
         self._record(p)
         self.strat.on_fill(self.ctx, p, 'exit')
 
-    def _watch(self, pid, t):
+    def _watch(self, pid, t, bound=None):
         p = self.positions[pid]
         if not p.open:
             return
+        pol = p.exit
+        if self.cfg.vectorized_exits and bound is not None and (p.closing or pol is None or _scannable(pol)):
+            return self._watch_vec(p, t, bound)
         v = self._value(p, t)
         p.value = v
         if v > p.peak:
@@ -505,6 +509,61 @@ class Engine:
             if why:
                 self.submit_exit(p, why)
         self._schedule_watch(p, t)
+
+    def _value_path(self, p, t0, t1):
+        """Change times of the package's legs in [t0, t1] and the package bid value after each."""
+        if len(p.legs) == 1:
+            c, r = p.legs[0]
+            q = self.session.quotes(c)
+            a = int(np.searchsorted(q['ms'], t0, side='left'))
+            b = int(np.searchsorted(q['ms'], t1, side='right'))
+            return q['ms'][a:b].astype(np.int64), q['bid'][a:b] * (r / 100.0)
+        parts = []
+        for c, _ in p.legs:
+            q = self.session.quotes(c)
+            a = int(np.searchsorted(q['ms'], t0, side='left'))
+            b = int(np.searchsorted(q['ms'], t1, side='right'))
+            parts.append(q['ms'][a:b])
+        ms = np.unique(np.concatenate(parts)).astype(np.int64)
+        val = np.zeros(len(ms))
+        for c, r in p.legs:
+            q = self.session.quotes(c)
+            i = np.searchsorted(q['ms'], ms, side='right') - 1
+            val += np.where(i >= 0, q['bid'][np.clip(i, 0, None)], 0) * (r / 100.0)
+        return ms, val
+
+    def _watch_vec(self, p, t, bound):
+        """Every quote change of the position in [t, lim] at once (lim = the next other event, the driving event the
+        loop is advancing to, or the time a policy's levels must be refreshed through ctx). Identical decisions to
+        the change-by-change path (tests/test_engine.py checks it)."""
+        lim = bound
+        if self._heap:
+            lim = min(lim, self._heap[0][0])
+        self.now = max(self.now, t)
+        active = not p.closing and p.exit is not None
+        if active:
+            if hasattr(p.exit, 'refresh'):
+                p.exit.refresh(p, self.ctx)
+            lim = min(lim, p.exit.valid_until(p))
+        lim = max(lim, t)
+        ms, val = self._value_path(p, t, lim)
+        if len(ms) == 0:
+            return self._schedule_watch(p, t)
+        k, why = (p.exit.scan(p, ms, val) if active else (None, None))
+        n = len(ms) if k is None else k + 1
+        seg_ms, seg_v = ms[:n], val[:n]
+        j = int(np.argmax(seg_v))
+        if seg_v[j] > p.peak:
+            p.peak, p.peak_ms = float(seg_v[j]), int(seg_ms[j])
+        j = int(np.argmin(seg_v))
+        if seg_v[j] < p.trough:
+            p.trough, p.trough_ms = float(seg_v[j]), int(seg_ms[j])
+        p.value = float(seg_v[-1])
+        last = int(seg_ms[-1])
+        self.now = max(self.now, last)
+        if k is not None:
+            self.submit_exit(p, why)
+        self._schedule_watch(p, last)
 
     def _record(self, p: Position):
         c = self.cfg
@@ -599,7 +658,7 @@ class Engine:
             elif kind == 'exit':
                 self._try_exit(ref, ts)
             elif kind == 'watch':
-                self._watch(ref, ts)
+                self._watch(ref, ts, t)
             elif kind == 'flat':
                 for p in list(self.positions.values()):
                     if p.open and not p.closing:
@@ -633,6 +692,11 @@ class Engine:
             if p.filled == 0 and p.exit_fill_ms is None:
                 self._reject(p, 'never filled')
         return self.log
+
+
+def _scannable(pol) -> bool:
+    return hasattr(pol, 'scan') and hasattr(pol, 'valid_until') and (
+        not hasattr(pol, 'ps') or all(_scannable(x) for x in pol.ps))
 
 
 def run_sessions(sessions, make_strategy, cfg: SimConfig | None = None, ext_for=None) -> pd.DataFrame:

@@ -65,7 +65,9 @@ def _split_by_contract(df: pd.DataFrame, root: str) -> dict:
     brk = np.flatnonzero(np.any(key[1:] != key[:-1], axis=1)) + 1
     starts = np.r_[0, brk]
     ends = np.r_[brk, len(df)]
-    cols = {c: df[c].to_numpy() for c in df.columns if c not in ('exp', 'strike', 'right')}
+    # ms as int64: numpy's searchsorted casts the whole array when the key's dtype differs (45 us a call on int32)
+    cols = {c: (df[c].to_numpy().astype(np.int64) if c == 'ms' else df[c].to_numpy())
+            for c in df.columns if c not in ('exp', 'strike', 'right')}
     out = {}
     for a, b in zip(starts, ends):
         c = Contract(root, int(key[a, 0]), int(key[a, 1]), int(key[a, 2]))
@@ -135,13 +137,13 @@ class Session:
         if sym == 'SPX':
             df = self._read('und_SPX_price')
             px = df.px.to_numpy() / 10000
-            return {'ms': df.ms.to_numpy(), 'px': px}
+            return {'ms': df.ms.to_numpy().astype(np.int64), 'px': px}
         df = self._read(f'und_{sym}_quotes')
         bid, ask = df.bid.to_numpy() / 10000, df.ask.to_numpy() / 10000
         ok = (bid > 0) & (ask > 0) & (ask >= bid)
         mid = np.where(ok, (bid + ask) / 2, np.nan)
         mid = pd.Series(mid).ffill().to_numpy()
-        return {'ms': df.ms.to_numpy(), 'px': mid, 'bid': bid, 'ask': ask, 'bs': df.bs.to_numpy(), 'as': df['as'].to_numpy()}
+        return {'ms': df.ms.to_numpy().astype(np.int64), 'px': mid, 'bid': bid, 'ask': ask, 'bs': df.bs.to_numpy(), 'as': df['as'].to_numpy()}
 
     @lru_cache(maxsize=8)
     def stock_trades(self, sym: str) -> pd.DataFrame:
