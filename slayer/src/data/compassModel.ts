@@ -48,10 +48,10 @@ import {
   OUTSIDE_TRAINED_WORD,
 } from './compassParams';
 import { COMPASS_TICKERS } from './compassUniverse';
-import { optionScanOpen, sessionDayOpen, sessionIso, sessionYmd } from './compassSession';
+import { optionScanOpen, sessionDayOpen, sessionIso, sessionYmd, tapeClockOf } from './compassSession';
 import type { OptionRight, Setup } from '../types/compass';
 import type { PathBar } from './compassOutcome';
-import { CORE, INDEX, INPUT_NAMES, NO_DAILY, SECTOR_OF, UNDER, atmPair, curveFrom, features, tapeOf, yearsLeft, type Bar, type Curve, type PinBook } from './compassFeatures';
+import { CORE, INDEX, INPUT_NAMES, NO_DAILY, SECTOR_OF, UNDER, atmPair, barsBefore, curveFrom, features, tapeOf, yearsLeft, type Bar, type Curve, type PinBook } from './compassFeatures';
 
 let ENTRY: Tree[] = [];
 let RUNNER: Tree[] = [];
@@ -1192,12 +1192,15 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
   const names = [...new Set(rows.map(s => UNDER[s.ticker] ?? printOf(s.ticker)))];
   /* a live score reads minute t-1's bar (the day range, the returns): a memo up to a minute old may not have it yet */
   const need = !late && minute - 1 >= 9 * 60 + 30 && minute - 1 < 16 * 60 ? minute - 1 : undefined;
+  /* a late mark reads the bars as they stood at it (every bar begun before its minute, what a live score had then):
+     the session's bars as they stand when it is filled reach past it. A live score has nothing later to cut. */
+  const asOf = (bars: Bar[]) => (late ? barsBefore(bars, now) : bars);
   const book = new Map<string, Bar[]>();
-  await Promise.all(names.map(async name => { book.set(name, await loadBars(name, day, true, need)); }));
-  const spy = await loadBars('SPY', day, true, need);
+  await Promise.all(names.map(async name => { book.set(name, asOf(await loadBars(name, day, true, need))); }));
+  const spy = asOf(await loadBars('SPY', day, true, need));
   const etfs = [...new Set(names.map(name => SECTOR_OF[name]).filter(Boolean))];
   const secBars = new Map<string, Bar[]>();
-  await Promise.all(etfs.map(async etf => { secBars.set(etf, await loadBars(etf, day, true, need)); }));
+  await Promise.all(etfs.map(async etf => { secBars.set(etf, asOf(await loadBars(etf, day, true, need))); }));
   const flatT = flatTOf(closeOn(day));
   /* a late mark is judged on the seats and contracts as they stood at its mark */
   const calledBy = (id: string) => seen.has(id) && (!late || (seenMark.get(id) ?? 0) <= mark);
@@ -1280,8 +1283,11 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
     /* the session the mark is in (overnight for the index roots, pre-market for the equity options, regular, curb):
        the entry gate and the call's flat are that session's */
     const overnightRoot = OVERNIGHT_ROOTS.includes(ticker);
-    const left = minutesToFlat(tape.tt, flatT, overnightRoot);
-    const session = sessionKindOf(tape.tt, flatT, overnightRoot) ?? undefined;
+    /* the root's own tape ends: its curb (17:00, 16:15 or none) and the Global Trading Hours window at the mark (to
+       11:30 on a holiday morning) */
+    const tapeClock = tapeClockOf(ticker, now);
+    const left = minutesToFlat(tape.tt, flatT, overnightRoot, tapeClock);
+    const session = sessionKindOf(tape.tt, flatT, overnightRoot, tapeClock) ?? undefined;
     const trained = inModelWindow(tape.tt);
     const notes: string[] = [];
     const scoredP = new Map<string, number>();
@@ -1332,7 +1338,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
         report.setup = { ...s, p1, prun: prun ?? undefined, seenAt: undefined };
       }
       noteMiss(s, p1, prun);
-      if (!entryTimeOk(tape.tt, flatT, overnightRoot)) {
+      if (!entryTimeOk(tape.tt, flatT, overnightRoot, tapeClock)) {
         notes.push(`${word} is outside this root's session`);
         continue;
       }
@@ -1352,8 +1358,8 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       const retOpen = tape.op > 0 && tape.S > 0 ? tape.S / tape.op - 1 : NaN;
       const flatAt = mark + left * 60_000;
       const row = { setup: { ...s, tapeSession: session, outsideTrained: !trained || undefined, flatAt }, p1, prun, gex: x[27], retOpen };
-      if (bookAPass(tape.tt, dist, span, dte, s.bid, s.ask, p1, flatT, overnightRoot)) aPool.push(row);
-      else if (prior && bookBPass(tape.tt, dist, span, dte, s.bid, s.ask, prior.bid, prior.ask, p1, flatT, overnightRoot)) bPool.push(row);
+      if (bookAPass(tape.tt, dist, span, dte, s.bid, s.ask, p1, flatT, overnightRoot, tapeClock)) aPool.push(row);
+      else if (prior && bookBPass(tape.tt, dist, span, dte, s.bid, s.ask, prior.bid, prior.ask, p1, flatT, overnightRoot, tapeClock)) bPool.push(row);
       else if (!prior && dist > span) notes.push(`${word} has no quote from 30 minutes earlier`);
       notes.push(`${word} ${lineWhy(p1)}${prun == null ? ` ${scored.why}` : ''}`);
       scoredP.set(word, p1);
@@ -1558,9 +1564,10 @@ export function paintQuotes(setups: Setup[]): void {
 export async function scoreLottery(setups: Setup[], now = Date.now(), late = false): Promise<void> {
   const clock = nyParts(now);
   const minute = clock.hour * 60 + clock.minute;
-  if (!inLottery(minute, clock.second)) return;
-  if (releaseShut(now)) return;
   const day = ymd(now);
+  /* the session's own window (12:20 to 12:50 on a 13:00 close), the one the scan sweeps in */
+  if (!inLottery(minute, clock.second, closeOn(day))) return;
+  if (releaseShut(now)) return;
   const byRoot = new Map<string, Setup[]>();
   for (const s of setups) {
     if (NO_DAILY.has(s.ticker) || seenRootC.has(s.ticker) || seen.has(s.id)) continue;

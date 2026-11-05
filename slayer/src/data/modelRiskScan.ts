@@ -9,6 +9,7 @@
 
 import { compassHost, onServer } from './compassHost';
 import { nyParts, nyWallStamp } from '../core/nyTime';
+import { REGULAR_OPEN_MIN } from '../core/session';
 import { INDEX, UNDER } from './compassFeatures';
 import {
   CLS_INDEX,
@@ -371,10 +372,10 @@ export function importTail(raw: TailPublic | null | undefined): void {
   day = raw.day;
   const keep = (t: TailTicket): TailTicket => {
     const right = t.right === 'C' || t.right === 'P' ? t : { ...t, right: 'P' as const };
-    if (!(right.entryAt > 0) || right.entryMinute >= 570) return right;
+    if (!(right.entryAt > 0) || right.entryMinute >= REGULAR_OPEN_MIN) return right;
     const q = nyParts(right.entryAt);
     const quoteMin = q.hour * 60 + q.minute;
-    const asCash = right.entryMinute + 570;
+    const asCash = right.entryMinute + REGULAR_OPEN_MIN;
     if (quoteMin >= asCash && quoteMin - asCash <= 2) return { ...right, entryMinute: asCash };
     return right;
   };

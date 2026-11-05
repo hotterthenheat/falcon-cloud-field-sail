@@ -11,6 +11,7 @@
 */
 
 import { normCdf } from '../core/math';
+import { REGULAR_OPEN_MIN } from '../core/session';
 import { R, SESSION_MIN, YEAR_SESSIONS } from './compassParams';
 import { ivStates } from './compassFeatures';
 
@@ -97,7 +98,7 @@ export function emptyTail(day = ''): TailPublic {
 
 /** Minutes after 09:30. 09:30 is 0. 15:59 is 389. 16:00 is 390. */
 export function cashMinute(minuteOfDay: number): number {
-  return minuteOfDay - 570;
+  return minuteOfDay - REGULAR_OPEN_MIN;
 }
 
 /** The scan runs every minute of the New York day. There is no session window. */

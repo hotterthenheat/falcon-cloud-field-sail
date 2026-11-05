@@ -171,9 +171,12 @@ expectEqual('Book A 5 strikes out', bookAPass(60, 5, 4, 0, 1.2, 1.24, 0.8), fals
 expectEqual('Book B 0.40 × 0.42 from 0.90', bookBPass(60, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), true);
 expectEqual('Book B not half (0.42 vs 0.80)', bookBPass(60, 9, 4, 0, 0.4, 0.42, 0.78, 0.8, 0.8), false);
 expectEqual('Book B too near (7 out)', bookBPass(60, 7, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), false);
-/* the gate is the root's own session (owner, 2026-11-02): from the open until the flat, 0DTE and 1–7 DTE.
-   09:40 is off the 5-minute grid. 15:55 and 16:55 are the flats, not entries. 15:05 and 21:00 are inside a session. */
-expectEqual('Book A from the open until the flat; not off the grid, not on the flat', [15, 330, 10, 335, 385, 445, 690].map(t => bookAPass(t, 2, 4, 0, 1.2, 1.24, 0.8)), [true, true, false, true, false, false, true]);
+/* the gate is the root's own session (owner, 2026-11-02): from the open until the flat, 0DTE and 1–7 DTE. There is
+   no 15-minute wait after the open any more (ENTRY_MIN_SINCE 0): 09:40 is on the 5-minute grid and inside the
+   regular session, so it may call (it is marked outside trained hours, t 15 to 330). 15:55 and 16:55 are the flats,
+   not entries. 15:05 and 21:00 are inside a session. */
+expectEqual('Book A from the open until the flat; not off the grid, not on the flat', [15, 330, 10, 335, 385, 445, 690].map(t => bookAPass(t, 2, 4, 0, 1.2, 1.24, 0.8)), [true, true, true, true, false, false, true]);
+expectEqual('Book A off the grid at 09:42', bookAPass(12, 2, 4, 0, 1.2, 1.24, 0.8), false);
 /* overnight (index roots) from 20:15 until the 09:20 flat; an equity root has no overnight session; its pre-market
    opens 07:30 and runs until that same flat */
 const tOf = (h: number, m: number) => h * 60 + m - 570;
@@ -874,10 +877,11 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   /* c. a would-call holds its seat for the later late marks, and one root takes one book (was: the official seats
         only, so a missed morning listed more than five would-calls, and Book A and Book B on one root) */
   model.importModelState({ day: '20261029', rootA: ['AAPL'], rootAt: [['AAPL', nyWallTime(2026, 10, 29, 10, 0)]] }, null);
-  const stubAt = (ticker: string, m: number) => ({ id: `${ticker}-1-C-top-setups-odte`, ticker, contract: `${ticker} 1C`, mark: nyWallTime(2026, 10, 29, 10, m) }) as unknown as Setup;
+  /* a would-seat is the sleeve's (sleeve|ticker, as the book keys it): the stub names its sleeve */
+  const stubAt = (ticker: string, m: number) => ({ id: `${ticker}-1-C-top-setups-odte`, ticker, sleeve: 'odte', contract: `${ticker} 1C`, mark: nyWallTime(2026, 10, 29, 10, m) }) as unknown as Setup;
   model.noteWould(stubAt('MSFT', 0), 'A');
   model.noteWould(stubAt('NVDA', 30), 'A');
-  expectEqual('would seats: at 10:15 AAPL (official) and MSFT (would 10:00), not NVDA (would 10:30)', [...model.heldSeatsAt(nyWallTime(2026, 10, 29, 10, 15), true)].sort(), ['AAPL', 'MSFT']);
+  expectEqual('would seats: at 10:15 AAPL (official) and MSFT (would 10:00, its 0DTE seat), not NVDA (would 10:30)', [...model.heldSeatsAt(nyWallTime(2026, 10, 29, 10, 15), true)].sort(), ['AAPL', 'odte|MSFT']);
   expectEqual('one root, one book: MSFT has a Book A would-call, so no Book B one', model.noteWould({ ...stubAt('MSFT', 5), id: 'MSFT-9-P-top-setups-odte' } as Setup, 'B'), false);
 
   /* d. settlement: a path that does not answer does not stop the other calls' settlement (was: return) */

@@ -5,7 +5,8 @@
 import { isTradingDay, MONTHS as OPEN_MONTH } from '../core/calendar';
 import { now } from '../core/clock';
 import { nyMinutes, nyParts, nyWallTime, type At } from '../core/nyTime';
-import { GTH_ROOTS, isSessionDay, regularCloseMin, sessionAt, windowAt } from '../core/session';
+import { GTH_ROOTS, LATE_ETFS, REGULAR_CLOSE_MIN, isSessionDay, nyWall, regularCloseMin, sessionAt, windowAt } from '../core/session';
+import type { TapeClock } from './compassParams';
 import type { DeskSession } from './deskSession';
 import type { FlowPrint } from '../types/trace';
 
@@ -37,13 +38,15 @@ const EXT_STOCK = new Set([
 /** ETFs on the same list. Regular session already runs to 16:15. Pre-market 07:30. No curb. */
 const EXT_ETF = new Set(['GLD', 'IWM', 'QQQ', 'SPY']);
 
-/** ETFs whose options trade to 16:15 with no pre-market (each traded 16:00-16:15 and never 07:30-09:25 in the
-    sessions scripts/compass-hours-check.ts read). */
-const LATE_ETF = new Set(['DIA', 'EWZ', 'KWEB', 'SLV', 'SMH', 'SOXL', 'SOXX', 'TLT', 'UNG', 'UVIX', 'UVXY', 'VOO', 'VXX', 'XLE', 'XLF']);
+/** ETFs whose options trade to 16:15: the one list, shared/marketSession.mjs LATE_ETFS (it holds the EXT_ETF names
+    too, which open earlier; the rest have no pre-market). This file kept its own list, which disagreed with it. */
+const LATE_ETF: ReadonlySet<string> = LATE_ETFS;
 
 /** Index roots with the overnight session (20:15-09:25 ET) and the curb to 17:00. RUT has the overnight session and
     closes at 16:15; NDX has neither (no overnight trade, its curb ends at 16:15). */
 const GTH_INDEX = new Set(['SPX', 'SPXW', 'XSP', 'VIX']);
+/** The index curb's end, 17:00 (SPX, XSP and VIX) */
+const CURB_END = 17 * 60;
 const OVERNIGHT_INDEX = new Set(['SPX', 'SPXW', 'XSP', 'VIX', 'RUT', 'RUTW']);
 
 const WORD: Record<OptionPhase, string> = {
@@ -141,6 +144,22 @@ export const odteDoneMin = (ticker: string): number => {
   if (INDEX.has(ticker) || (!EXT_STOCK.has(ticker) && !EXT_ETF.has(ticker) && !LATE_ETF.has(ticker))) return 16 * 60;
   return 16 * 60 + 15;
 };
+
+/** Where this root's option tape ends, for the entry gate and the call's flat (compassParams TapeClock), at the mark
+    `at`: the curb ends at the root's own options close after a full day (17:00 for SPX, SPXW, XSP and VIX; 16:15 for
+    RUT, RUTW, NDX, NDXP and the 16:15 names; 16:00 for every other name, which has no curb), and an index root's
+    overnight session ends where the session module's Global Trading Hours window holding the mark ends (09:25, or
+    11:30 on a holiday morning). On a regular full day every gate answer is what it was, except a 16:00 or 16:15 root
+    after its own close (scripts/compass-gate-proof.ts). */
+export function tapeClockOf(ticker: string, at: At): TapeClock {
+  const root = ticker.toUpperCase();
+  const curbEnd = GTH_INDEX.has(root) ? CURB_END : INDEX.has(root) || EXT_STOCK.has(root) || EXT_ETF.has(root) || LATE_ETF.has(root) ? REGULAR_CLOSE_MIN + 15 : REGULAR_CLOSE_MIN;
+  const ms = msOf(at);
+  const w = OVERNIGHT_INDEX.has(root) ? windowAt(ms, 'indexOption') : null;
+  if (w?.kind === 'gth') return { curbEnd, gthEnd: nyWall(w.to).min };
+  /* a holiday or a weekend outside Global Trading Hours: no tape (the holiday afternoon was the regular session) */
+  return isSessionDay(nyWall(ms).iso) ? { curbEnd } : { curbEnd, shut: true };
+}
 
 const doneWhy = (ticker: string): string => {
   if (ticker === 'VIX') return 'No more 0DTE. VIX stops at the 09:30 open.';

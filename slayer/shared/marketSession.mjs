@@ -134,8 +134,12 @@ export function sessionDayAtOrBefore(iso) {
 
 /* ---- the windows -------------------------------------------------------------------------------------------- */
 
-/** The ETF classes whose options trade to 16:15 (Cboe: "ETF options that currently trade until 4:15 p.m.") */
-export const LATE_ETFS = new Set(['SPY', 'QQQ', 'IWM', 'DIA', 'MDY', 'EEM', 'EFA', 'GLD', 'SLV', 'TLT', 'XLE', 'XLF', 'XLK', 'SMH', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC', 'OEF', 'IVV', 'VOO']);
+/** The ETF classes whose options trade to 16:15: the one list (Compass's session clock reads it too). Each was seen
+    trading in 16:01–16:14 ET on the option tape (one-minute contract prints, sessions of 2026-10-29 to 11-04, the
+    most-traded contracts of each; Compass's ThetaData hours check of Oct 26–28 had DIA, EWZ, KWEB, SLV, SMH, SOXL,
+    SOXX, TLT, UNG, UVIX, UVXY, VOO, VXX, XLE and XLF). MDY, EFA, XLV, XLI, XLY, XLU, XLB, XLC, OEF and IVV were on the
+    older list from Cboe's notice but printed nothing after 16:00 in those sessions, so they close at 16:00 here. */
+export const LATE_ETFS = new Set(['SPY', 'QQQ', 'IWM', 'GLD', 'DIA', 'EEM', 'EWZ', 'KWEB', 'SLV', 'SMH', 'SOXL', 'SOXX', 'TLT', 'UNG', 'UVIX', 'UVXY', 'VOO', 'VXX', 'XLE', 'XLF', 'XLK', 'XLP', 'XLRE']);
 /** Single names whose options trade a 07:30–09:25 pre-market and a 16:00–16:15 curb (Compass's EXT_STOCK) */
 export const EXT_STOCK_OPTIONS = new Set([
   'AAPL', 'AMD', 'AMZN', 'AVGO', 'BABA', 'BAC', 'F', 'GOOG', 'GOOGL', 'HOOD', 'INTC', 'META', 'MRVL', 'MSFT', 'MU', 'NFLX', 'NVDA', 'ORCL', 'PFE', 'PLTR', 'TSLA', 'TSM',

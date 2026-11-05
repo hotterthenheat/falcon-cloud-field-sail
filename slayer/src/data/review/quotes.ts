@@ -6,6 +6,7 @@ import { sessionsBetween } from '../../core/calendar';
 import { blackScholesGreeks, blackScholesPrice, thetaPerSession } from '../../core/greeks';
 import { readGreek } from '../../core/readGreek';
 import { nyWallTime } from '../../core/nyTime';
+import { REGULAR_OPEN_MIN } from '../../core/session';
 import { CASH_INDEX_ROOTS, DAY_MIN, LAST_MIN, closePrintOf, dateOf, dayWords, lastTwoSidedAt, listingOf, midsUpTo, nbboAt, spotAt, tradesUpTo, underOf } from './history';
 
 export type Right = 'C' | 'P';
@@ -131,7 +132,7 @@ export { thetaPerSession };
 /** The end of bar `minute` on `iso`, New York. The option and the stock share this stamp, so they are one minute. */
 function minuteStamp(iso: string, minute: number): number {
   const [y, mo, da] = iso.split('-').map(Number);
-  const t = 9 * 60 + 30 + Math.max(0, minute) + 1;
+  const t = REGULAR_OPEN_MIN + Math.max(0, minute) + 1;
   return nyWallTime(y, mo, da, Math.floor(t / 60), t % 60);
 }
 

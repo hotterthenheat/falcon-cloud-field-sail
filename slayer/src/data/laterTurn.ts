@@ -7,6 +7,7 @@ import { bsStates, ivStates } from './compassFeatures';
 import { SESSION_MIN, YEAR_SESSIONS, weekdayDte } from './compassParams';
 import { fillableQuote } from './reviewLive';
 import { nyParts } from '../core/nyTime';
+import { REGULAR_OPEN_MIN } from '../core/session';
 
 export const LATER_ORDERS = false as const;
 const NAMES = new Set(['SPY', 'QQQ', 'IWM', 'SPXW', 'XSP']);
@@ -88,7 +89,7 @@ const word = (root: string, strike: number, right: 'C' | 'P') =>
 
 export function sessionMinute(at: number): number | null {
   const p = nyParts(at);
-  const m = p.hour * 60 + p.minute - 570;
+  const m = p.hour * 60 + p.minute - REGULAR_OPEN_MIN;
   return m >= 0 && m <= 389 ? m : null;
 }
 

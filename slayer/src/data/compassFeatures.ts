@@ -19,6 +19,7 @@ import {
   atmStrike,
 } from './compassParams';
 import type { OptionRight, Setup } from '../types/compass';
+import { nyWallTime } from '../core/nyTime';
 
 /** The upper normal tail beyond z > 3, by its continued fraction (evaluated from the 60th term back). */
 function upperTail(z: number): number {
@@ -138,6 +139,16 @@ export function span(arr: number[], from: number, to: number, max: boolean): num
   return y;
 }
 
+/** The bars as they stood at a mark (epoch ms): every bar that began strictly before the mark's minute, the same
+    bars a live score has then (minute t's bar is not published until the minute ends). A late mark is scored from
+    the session's bars as they stand when it is filled, hours later: an overnight or pre-market mark used to read the
+    09:30 open as its spot, and an evening mark the next session's high, low, open, opening range and VWAP. Bar.d is
+    the bar's New York date (YYYYMMDD) and Bar.m its minute of that day. */
+export function barsBefore(rows: readonly Bar[], markMs: number): Bar[] {
+  const cut = Math.floor(markMs / 60_000) * 60_000;
+  return rows.filter(b => /^\d{8}$/.test(b.d) && nyWallTime(Number(b.d.slice(0, 4)), Number(b.d.slice(4, 6)), Number(b.d.slice(6, 8)), Math.floor(b.m / 60), b.m % 60) < cut);
+}
+
 export function tapeOf(rows: Bar[], index: boolean, minute: number, spot = NaN): { tt: number; S: number; op: number; H: number; L: number; orh: number; orl: number; rv30: number; rvPrev: number; compress: number; vwapZ: number; cum: number; last5: number; at: (back: number) => number } {
   const tt = minute - (9 * 60 + 30);
   const o = Array<number>(392).fill(NaN);
@@ -159,8 +170,11 @@ export function tapeOf(rows: Bar[], index: boolean, minute: number, spot = NaN):
     if (tt > 390 && spot > 0) return spot;
     /* Live, minute t's bar is not published until the minute ends: the price read at the mark is its first print. */
     if (tt >= 0 && tt <= 390 && !(o[tt] > 0) && spot > 0) return spot;
-    const last = Math.min(Math.max(tt, 0), o.length - 1);
-    for (let i = last; i >= 0; i--) if (o[i] > 0) return o[i];
+    /* never a later bar: before 09:30 (t < 0) every session bar is after the mark (it read the 09:30 open) */
+    if (tt >= 0) {
+      const last = Math.min(tt, o.length - 1);
+      for (let i = last; i >= 0; i--) if (o[i] > 0) return o[i];
+    }
     return spot > 0 ? spot : NaN;
   })();
   const logs = (from: number, to: number) => {

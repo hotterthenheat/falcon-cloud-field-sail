@@ -34,7 +34,7 @@ import {
 import { recordPicks, setSessionClose, settleOpen } from './compassLedger';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import { nyYmd as ymd, sessionCloseMinOn } from '../core/calendar';
-import { REGULAR_OPEN_MIN } from '../core/session';
+import { REGULAR_OPEN_MIN, nextWindow } from '../core/session';
 import { emptyTail, type TailPublic } from './modelRisk';
 import { tailPass } from './modelRiskScan';
 
@@ -133,12 +133,23 @@ async function theta(path: string, jump = false): Promise<ThetaAnswer> {
   return got;
 }
 
+/** ThetaData's refusal of a day that has not happened yet (a 400: "Date range contains future date; end must be
+    before or equal to today"): asked again once the day has come, it answers. */
+export function futureDateRefusal(got: Pick<ThetaAnswer, 'status' | 'error'> & { data?: unknown }): boolean {
+  if (got.status < 400 || got.status >= 500) return false;
+  const text = `${got.error ?? ''} ${typeof got.data === 'string' ? got.data : ''}`;
+  return /future date/i.test(text);
+}
+
 /** The terminal answered for this name: rows, or its "no data" (472), or a refusal that asking again will not change
     (a 4xx). A busy terminal (429 after the retries), an empty 200, a 5xx or a lost terminal is not an answer: the name
-    stays pending and the late pass asks again (they used to read as "no quotes" and mark the name not scored). */
-export function terminalAnswered(got: Pick<ThetaAnswer, 'status' | 'error'>): boolean {
+    stays pending and the late pass asks again (they used to read as "no quotes" and mark the name not scored). Nor is
+    a 400 for a future date: asking again on that day changes it (the late Book C sweep asked at 20:00 for the next
+    day's 15:20, read the refusal as an answer, marked every name not scored and the sweep done). */
+export function terminalAnswered(got: Pick<ThetaAnswer, 'status' | 'error'> & { data?: unknown }): boolean {
   if (!got.error || got.error === 'no_data') return true;
   if (got.error === 'terminal_down' || got.error === 'busy' || got.error === 'empty') return false;
+  if (futureDateRefusal(got)) return false;
   return got.status >= 400 && got.status < 500 && got.status !== 408 && got.status !== 429;
 }
 
@@ -343,13 +354,13 @@ function build(drafts: Map<string, Draft[]>, expiry: string, sleeve: SleeveKey, 
 }
 
 /** One snapshot of one name: today's expiry (0DTE), one named expiry, or '*' for the nearest expiry 1 to 7 sessions
-    out (every expiry within 11 calendar days in one ask, the nearest kept). A same-day read reaches 16 strikes out;
-    any other expiry reaches Book B's band (WEEKLY_STRIKES, 17): at the old 4 a weekly Book B (8 or more strikes out)
-    could never be read. */
-async function once(symbol: string, now: number, only: string, jump = false, freshMs = FRESH_MS): Promise<Snap> {
+    out (every expiry within 11 calendar days in one ask, the nearest kept). Every read reaches Book B's band
+    (WEEKLY_STRIKES, 17): at the old 4 a weekly Book B (8 or more strikes out) could never be read, and at the old 16
+    a same-day Book B on a single name at the widest span (13 to 17 strikes out) missed its outer strike. */
+export async function once(symbol: string, now: number, only: string, jump = false, freshMs = FRESH_MS): Promise<Snap> {
   const today = sessionIso(now);
   const weekly = only === '*';
-  const range = only.slice(0, 10) === today ? 16 : WEEKLY_STRIKES;
+  const range = WEEKLY_STRIKES;
   const exp = weekly ? '*' : only.replace(/-/g, '');
   const got = await theta(`/option/snapshot/greeks/first_order?symbol=${symbol}&expiration=${exp}&right=both&strike_range=${range}${weekly ? '&max_dte=11' : ''}&format=json`, jump);
   if (got.error) return { setups: [], spot: 0, ok: terminalAnswered(got), rows: 0 };
@@ -662,18 +673,24 @@ async function lateName(row: MarkRow, symbol: string): Promise<void> {
 
 let lotteryDay = '';
 
-/** Book C's window on this session: 15:20–15:50 ET, or 40 to 10 minutes before an early close. */
+/** Book C's window on this session: 15:20–15:50 ET, or 40 to 10 minutes before an early close (compassParams
+    inLottery, the one window the scorer's gate reads too). */
 function lotteryWindow(mins: number, second: number): boolean {
-  if (closeMin != null && closeMin < 16 * 60) {
-    const s = mins * 60 + second;
-    return s >= (closeMin - 40) * 60 && s < (closeMin - 10) * 60;
-  }
-  return inLottery(mins, second);
+  return inLottery(mins, second, closeMin);
 }
+
+/** The New York calendar date of an instant (YYYY-MM-DD): the session `day` rolls at 20:00 (and over a weekend or a
+    holiday reads the next session), so a sweep of `day`'s Book C runs only on `day` itself. */
+const wallIso = (ms: number): string => {
+  const p = nyParts(ms);
+  return `${p.year}-${two(p.month)}-${two(p.day)}`;
+};
 
 export async function lotterySweep(now: number, late: boolean): Promise<boolean> {
   const at = late ? now : Date.now();
   const names = odteNames(at);
+  /* no same-day root is on (a weekend, a holiday): no sweep, and no empty mark row */
+  if (!names.length) return false;
   const row = markRow(minuteStart(at), 'lottery', names);
   const byName = new Map<string, Setup[]>();
   let answered = false;
@@ -839,12 +856,26 @@ export function regularOpen(iso: string): number {
   return nyWallTime(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), Number(iso.slice(8, 10)), 9, 30);
 }
 
-/** The first minute of a session date's book (YYYY-MM-DD): 20:15 ET the calendar day before, when the overnight
-    session opens (Sunday 20:15 for a Monday; the evening of a holiday for the day after it). The late fill starts
-    here, so overnight and pre-market marks the engine missed are filled too (it used to start at 09:30). */
+/** The first minute of a session date's book (YYYY-MM-DD): the opening of the first index-option window (core/session)
+    whose session day is that date, normally 20:15 ET the calendar day before (Sunday 20:15 for a Monday). After a
+    holiday with Global Trading Hours it is the evening before the holiday: Sunday 20:15 for the Tuesday after Martin
+    Luther King Day, whose GTH run to 11:30 on the Monday and belong to Tuesday's book (it was the holiday's own
+    evening, so those marks were never filled). The late fill starts here, so overnight and pre-market marks the engine
+    missed are filled too (it used to start at 09:30). */
 export function sessionOpenAt(iso: string): number {
   const prev = new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))) - 86_400_000);
-  return nyWallTime(prev.getUTCFullYear(), prev.getUTCMonth() + 1, prev.getUTCDate(), 20, 15);
+  const eve = nyWallTime(prev.getUTCFullYear(), prev.getUTCMonth() + 1, prev.getUTCDate(), 20, 15);
+  /* from a week before, the index-option windows in order: the first whose session day is `iso` */
+  let at = eve - 7 * 86_400_000;
+  for (let i = 0; i < 40; i++) {
+    const w = nextWindow(at, 'indexOption');
+    if (!w || w.from > eve + 86_400_000) break;
+    const of = sessionIso(w.from);
+    if (of === iso) return w.from;
+    if (of > iso) break;
+    at = w.from;
+  }
+  return eve;
 }
 
 const said = new Map<string, number>();
@@ -861,6 +892,23 @@ function fault(where: string, e: unknown): void {
 /** A background step: run, never left unhandled. */
 function bg(where: string, job: Promise<unknown>): void {
   job.catch(e => fault(where, e));
+}
+
+/** The instant the late Book C sweep reads (15:20:15 ET, or 40 minutes before an early close, of session `day`,
+    YYYY-MM-DD), or null while it is not due: only on `day`'s own calendar date, once its window has ended and before
+    20:15, and only for an instant already past. From 20:00 `day` is the next session's (and over a weekend or a
+    holiday the next session's all afternoon): the sweep used to run then for that session's 15:20, still to come,
+    which ThetaData refuses as a future date. */
+export function lateLotteryAt(day: string, now: number, close: number | null): number | null {
+  if (wallIso(now) !== day) return null;
+  const p = nyParts(now);
+  const mins = p.hour * 60 + p.minute;
+  const early = close != null && close < 16 * 60;
+  const end = early ? close - 10 : 15 * 60 + 50;
+  if (mins < end || mins >= 20 * 60 + 15) return null;
+  const start = early ? close - 40 : 15 * 60 + 20;
+  const at = nyWallTime(Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10)), Math.floor(start / 60), start % 60) + 15_000;
+  return at < now ? at : null;
 }
 
 function rollDay(now: number): void {
@@ -906,14 +954,8 @@ async function fillLate(now: number): Promise<void> {
       if (meta.theta === 'down') return;
     }
     /* Book C's window passed with no sweep: the 15:20 quotes recorded then */
-    const p = nyParts(now);
-    const mins = p.hour * 60 + p.minute;
-    const lotteryEnd = closeMin != null && closeMin < 16 * 60 ? closeMin - 10 : 15 * 60 + 50;
-    if (lotteryDay !== day && mins >= lotteryEnd && mins < 20 * 60 + 15 && sessionIso(now) === day) {
-      const start = closeMin != null && closeMin < 16 * 60 ? closeMin - 40 : 15 * 60 + 20;
-      const at = nyWallTime(Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10)), Math.floor(start / 60), start % 60) + 15_000;
-      if (at >= from && (await lotterySweep(at, true))) lotteryDay = day;
-    }
+    const sweepAt = lateLotteryAt(day, now, closeMin);
+    if (lotteryDay !== day && sweepAt != null && sweepAt >= from && (await lotterySweep(sweepAt, true))) lotteryDay = day;
   } finally {
     lateBusy = false;
   }
@@ -931,7 +973,7 @@ async function tick(): Promise<void> {
       const markAt = minuteStart(now);
       await Promise.all([liveMark(markAt, 'odte'), liveMark(markAt, 'weekly')]);
     }
-    if (lotteryDay !== day && lotteryWindow(mins, p.second) && sessionIso(now) === day) {
+    if (lotteryDay !== day && lotteryWindow(mins, p.second) && sessionIso(now) === day && wallIso(now) === day) {
       if (await lotterySweep(now, false)) lotteryDay = day;
     }
     bg('the card quotes', refreshHeld(Date.now()));

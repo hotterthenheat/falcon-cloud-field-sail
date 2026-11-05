@@ -11,6 +11,7 @@ import { whalesEcon, whalesPoliticians, uwCall, type UwCongress, type UwEcon, ty
 import { nyIsoDaysBack } from './nyDate';
 import { isTradingDay } from '../core/calendar';
 import { nyParts } from '../core/nyTime';
+import { REGULAR_OPEN_MIN } from '../core/session';
 import { peekRegularCloses } from './dayChange';
 import { loadCloses } from './stockFile';
 import { congressFromWhales, econFromWhales, foreignSuspects, insidersFromWhales, markForeignIssuers, newsFromWhales, readInsiders, storyLeadTicker } from './whalesMap';
@@ -87,7 +88,7 @@ function wireDay(rows: UwNews[]): string {
   const today = nyIsoDaysBack(0);
   if (isTradingIso(today)) {
     const { hour, minute } = nyParts();
-    const sessionOpen = hour * 60 + minute >= 9 * 60 + 30;
+    const sessionOpen = hour * 60 + minute >= REGULAR_OPEN_MIN;
     if (sessionOpen) {
       const midnight = nyMidnightOf(today);
       if (rows.length === 0 || rows.some(r => !(Date.parse(r.created_at) < midnight))) return today;

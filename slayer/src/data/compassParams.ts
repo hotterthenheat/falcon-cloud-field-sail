@@ -207,27 +207,48 @@ const HALT_AT = 9 * 60 + 25;
 const REGULAR_OPEN = 9 * 60 + 30;
 const CURB_CLOSE = 17 * 60;
 
+/** Where a root's own option tape ends, as minutes of the New York day (compassSession tapeClockOf reads them from
+    the session module): `curbEnd` is when its options stop after a full day's 16:00 close (17:00 for SPX, XSP and VIX;
+    16:15 for RUT, NDX and the names that trade to 16:15; 16:00, no curb, for every other name); `gthEnd` is when the
+    overnight index session holding the mark ends (09:25, or 11:30 on a holiday morning that has Global Trading Hours,
+    when no regular session follows that day); `shut` when nothing trades at the mark. Left out, the curb runs to 17:00
+    and the overnight session to 09:25. */
+export interface TapeClock {
+  curbEnd?: number;
+  gthEnd?: number;
+  /** No tape at all at the mark (a holiday or a weekend outside Global Trading Hours) */
+  shut?: boolean;
+}
+
 /** The session a New York minute of the day is in, for a root with the overnight index session (SPX, XSP, VIX, RUT:
     20:15 to 09:25) or without it (the equity options' pre-market from 07:30), with the minutes since that session
     opened and the minutes left to its flat (five minutes before it ends: 09:20 before the 09:25 halt, 15:55 or five
-    before an early close, 16:55 in the curb). Null in the halt, after the curb and outside a root's tape.
-    `closeMin` is the regular close (minute of the day), 16:00 when null. */
-export function tapeSession(minuteOfDay: number, overnightRoot: boolean, closeMin: number | null = null): { kind: TapeSession; since: number; left: number } | null {
+    before an early close, five before the root's own curb ends: 16:55, or 16:10 for a 16:15 name). Null in the halt,
+    after the curb and outside a root's tape. `closeMin` is the regular close (minute of the day), 16:00 when null;
+    `clock` the root's own tape ends (TapeClock). On a holiday morning with Global Trading Hours (`clock.gthEnd` past
+    09:25) the overnight session runs to that end and nothing else trades that day. */
+export function tapeSession(minuteOfDay: number, overnightRoot: boolean, closeMin: number | null = null, clock: TapeClock = {}): { kind: TapeSession; since: number; left: number } | null {
+  if (clock.shut) return null;
   const m = ((Math.round(minuteOfDay) % 1440) + 1440) % 1440;
   const close = closeMin != null && closeMin < 16 * 60 ? closeMin : 16 * 60;
-  const preFlat = HALT_AT - 5;
-  if (m >= OVERNIGHT_OPEN || m < HALT_AT) {
+  const gthEnd = clock.gthEnd != null && clock.gthEnd > HALT_AT ? clock.gthEnd : HALT_AT;
+  const curbEnd = clock.curbEnd ?? CURB_CLOSE;
+  const preFlat = gthEnd - 5;
+  if (m >= OVERNIGHT_OPEN || m < gthEnd) {
     if (overnightRoot) {
       const since = m >= OVERNIGHT_OPEN ? m - OVERNIGHT_OPEN : m + 1440 - OVERNIGHT_OPEN;
       return { kind: 'overnight', since, left: m >= OVERNIGHT_OPEN ? 1440 - m + preFlat : preFlat - m };
     }
-    if (m >= PRE_OPEN && m < HALT_AT) return { kind: 'pre', since: m - PRE_OPEN, left: preFlat - m };
+    if (gthEnd === HALT_AT && m >= PRE_OPEN && m < HALT_AT) return { kind: 'pre', since: m - PRE_OPEN, left: preFlat - m };
     return null;
   }
+  /* a holiday morning's Global Trading Hours end the day: no regular session, no curb */
+  if (gthEnd !== HALT_AT) return null;
   if (m < REGULAR_OPEN) return null;
   if (m < close) return { kind: 'regular', since: m - REGULAR_OPEN, left: close - 5 - m };
-  /* an early close has no curb: nothing trades after it until the overnight session */
-  if (close === 16 * 60 && m < CURB_CLOSE) return { kind: 'curb', since: m - close, left: CURB_CLOSE - 5 - m };
+  /* an early close has no curb: nothing trades after it until the overnight session. The curb ends where the root's
+     options stop (it used to run every root to 17:00, so a 16:15 name took entries to 16:54 with a 16:55 flat) */
+  if (close === 16 * 60 && m < curbEnd) return { kind: 'curb', since: m - close, left: curbEnd - 5 - m };
   return null;
 }
 
@@ -238,22 +259,23 @@ const minuteOfT = (t: number) => t + 9 * 60 + 30;
     until its flat. Regular session: 09:30 to 15:54 (12:54 on a 13:00 close). Overnight (the index roots): 20:15 to
     09:19. Pre-market (the equity options): 07:30 to 09:19. The curb: 16:00 to 16:54. The flat itself is not an entry.
     A mark outside the trees' trained minutes (t 15 to 330) may call; the call is marked "outside trained hours"
-    (inModelWindow). `flatT` is the regular flat as t (flatTOf). Same rule for 0DTE and 1–7 DTE. */
-export function entryTimeOk(t: number, flatT = FLAT_T, overnightRoot = true): boolean {
+    (inModelWindow). `flatT` is the regular flat as t (flatTOf); `clock` the root's own tape ends (TapeClock). Same
+    rule for 0DTE and 1–7 DTE. */
+export function entryTimeOk(t: number, flatT = FLAT_T, overnightRoot = true, clock: TapeClock = {}): boolean {
   if (!Number.isFinite(t)) return false;
-  const w = tapeSession(minuteOfT(t), overnightRoot, flatT + 5 + 9 * 60 + 30);
+  const w = tapeSession(minuteOfT(t), overnightRoot, minuteOfT(flatT + 5), clock);
   return !!w && w.left > 0;
 }
 
 /** Minutes from the mark to its session's flat (NaN outside a session): the theta burn and the call's own flat. */
-export function minutesToFlat(t: number, flatT = FLAT_T, overnightRoot = true): number {
-  const w = tapeSession(minuteOfT(t), overnightRoot, flatT + 5 + 9 * 60 + 30);
+export function minutesToFlat(t: number, flatT = FLAT_T, overnightRoot = true, clock: TapeClock = {}): number {
+  const w = tapeSession(minuteOfT(t), overnightRoot, minuteOfT(flatT + 5), clock);
   return w ? w.left : NaN;
 }
 
 /** The session a mark belongs to, for the record and the track record. */
-export function sessionKindOf(t: number, flatT = FLAT_T, overnightRoot = true): TapeSession | null {
-  return tapeSession(minuteOfT(t), overnightRoot, flatT + 5 + 9 * 60 + 30)?.kind ?? null;
+export function sessionKindOf(t: number, flatT = FLAT_T, overnightRoot = true, clock: TapeClock = {}): TapeSession | null {
+  return tapeSession(minuteOfT(t), overnightRoot, minuteOfT(flatT + 5), clock)?.kind ?? null;
 }
 
 /** The roots with the overnight index session. */
@@ -401,19 +423,19 @@ export function bookBRange(span: number): { inner: number; outer: number } {
 /** How far from the money the weekly read reaches: Book B's outer strike at the widest span (12 → 13 to 17). */
 export const WEEKLY_STRIKES = bookBRange(12).outer;
 
-export function bookAPass(t: number, dist: number, span: number, dte: number, bid: number, ask: number, p1: number, flatT = FLAT_T, overnightRoot = true): boolean {
+export function bookAPass(t: number, dist: number, span: number, dte: number, bid: number, ask: number, p1: number, flatT = FLAT_T, overnightRoot = true, clock: TapeClock = {}): boolean {
   return onScanGrid(t)
-    && entryTimeOk(t, flatT, overnightRoot)
+    && entryTimeOk(t, flatT, overnightRoot, clock)
     && dist <= span
     && dte >= DTE_MIN && dte <= DTE_MAX
     && spreadPass(bid, ask)
     && p1 >= P1_MIN;
 }
 
-export function bookBPass(t: number, dist: number, span: number, dte: number, bid: number, ask: number, priorBid: number, priorAsk: number, p1: number, flatT = FLAT_T, overnightRoot = true): boolean {
+export function bookBPass(t: number, dist: number, span: number, dte: number, bid: number, ask: number, priorBid: number, priorAsk: number, p1: number, flatT = FLAT_T, overnightRoot = true, clock: TapeClock = {}): boolean {
   const band = bookBRange(span);
   return onScanGrid(t)
-    && entryTimeOk(t, flatT, overnightRoot)
+    && entryTimeOk(t, flatT, overnightRoot, clock)
     && dte >= DTE_MIN && dte <= DTE_MAX
     && dist >= band.inner && dist <= band.outer
     && ask <= BOOK_B_ASK
@@ -477,9 +499,13 @@ export function lotteryEntry(bid: number, ask: number): boolean {
   return bid > BID_MIN && ask > 0 && ask <= LOTTERY_ASK_MAX && ask >= bid && spreadPass(bid, ask);
 }
 
-/** Book C. 15:20:00 through 15:49:59 ET. */
-export function inLottery(minuteOfDay: number, second: number): boolean {
+/** Book C. 15:20:00 through 15:49:59 ET: 40 to 10 minutes before the close, so 12:20:00 through 12:49:59 on a 13:00
+    early close (`closeMin`, the session's close as a minute of the day; null or 16:00 on a full day). The scan's sweep
+    and the scorer's gate read this one window (the gate used to stay at 15:20 on an early close, so the 12:20 sweep
+    was marked done and called nothing). */
+export function inLottery(minuteOfDay: number, second: number, closeMin: number | null = null): boolean {
   const s = minuteOfDay * 60 + second;
+  if (closeMin != null && closeMin < 16 * 60) return s >= (closeMin - 40) * 60 && s < (closeMin - 10) * 60;
   return s >= (15 * 60 + 20) * 60 && s < (15 * 60 + 50) * 60;
 }
 
