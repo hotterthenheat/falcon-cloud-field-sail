@@ -57,13 +57,26 @@ def uw_get(path, params=None, retries=5):
     raise RuntimeError(f'UW failed {path}: {last}')
 
 
+class _xproc_lock:
+    """cross-process lock: all EDGE-B processes together keep 1 terminal request in flight"""
+    def __enter__(self):
+        import fcntl
+        self.f = open(os.path.join(DATA, '.theta.lock'), 'w')
+        fcntl.flock(self.f, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *a):
+        import fcntl
+        fcntl.flock(self.f, fcntl.LOCK_UN); self.f.close()
+
+
 def theta_csv(path, params, retries=4, timeout=300):
     import pandas as pd
     q = dict(params); q.setdefault('format', 'csv')
     url = f'{THETA}{path}?{urllib.parse.urlencode(q)}'
     last = None
     for a in range(retries):
-        with _theta_slot:
+        with _theta_slot, _xproc_lock():
             try:
                 with urllib.request.urlopen(url, timeout=timeout) as r:
                     body = r.read()
