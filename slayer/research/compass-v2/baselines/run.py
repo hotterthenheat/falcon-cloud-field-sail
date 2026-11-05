@@ -106,7 +106,7 @@ def main():
 
     L = ['# Baselines: what "no edge" looks like after real costs', '',
          f'Pre-registered in the ledger (FOUNDATION, compass-v2/baselines/strategies.py @ 6e280f9). {len(days)} DEV sessions '
-         f'({days[0]}..{days[-1]}), roots SPXW/SPY/QQQ, 0DTE only (a root with no same-day expiry that session is skipped). '
+         f'({min(days)}..{max(days)}), roots SPXW/SPY/QQQ, 0DTE only (a root with no same-day expiry that session is skipped). '
          'Execution: decision -> +2 s latency -> ask in force (capped at displayed size); exits at the bid in force 2 s after '
          'the trigger; fee $0.65/contract/side. Trial count for the deflated Sharpe: '
          f'{N} (ledger).', '',

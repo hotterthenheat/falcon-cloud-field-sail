@@ -92,6 +92,11 @@ with the same latency. The session flat (`flat_ms`, 15:55) closes leftovers. Mul
 
 External events (UW): `Engine(s, strat, cfg, ext_events=feeds.build(s, ['uw_alerts:SPY', 'uw_gex:SPX']))`.
 
+Speed: exits whose components all have `scan()` (every built-in except `SignalDecay`/`FnExit`) are tested on whole
+runs of quote changes with numpy (`tests/test_vector.py` proves the decisions, fills and MAE/MFE are identical to the
+change-by-change path); a one-trade-per-root session runs in well under a second once loaded (~2–5 s to load a
+session's quotes). Custom exits work everywhere, just change by change.
+
 Exits (`sim/exits.py`): `VolBracket` (TP/SL = entry ± k × expected package move from realized vol and delta),
 `TrailingVol` (peak − k × current vol-scaled move), `TimeStop` (hold or clock), `SignalDecay(fn, threshold)`,
 `FnExit(fn)` (anything), `AnyOf(...)`, and `FixedBracket` (comparison only — not allowed as the sole exit).
@@ -132,4 +137,22 @@ commit (refuses if the working copy differs), lints it, runs every stored sessio
 
 ## 5. Validation and baselines
 `python3 -m validation.compass_replay --fetch` -> `validation/COMPASS_REPLAY.md`;
-`python3 -m baselines.run` -> `baselines/BASELINES.md`. `python3 -m tests.run` -> all tests.
+`python3 -m baselines.run` -> `baselines/BASELINES.md`. `python3 -m tests.run` -> all tests (29).
+
+- Replay of 39 recorded Compass calls (2026-10-29 live record, 2026-11-04 replay): recorded fill bid/ask = the store's
+  NBBO in force at the fill instant 39/39; recorded exits = the bid in force 35/39, the other 4 are take-profits
+  booked at their resting 1.50x limit with the bid at/through it; the engine reproduces 35/39 exactly (the 4 again).
+  A 2-second order at the mark pays a median +0.96% more than Compass's paper fill (range −19% to +29%).
+- Baselines (20 DEV sessions, net of costs): B1 random side −15.9%/trade, B2 open straddle +10.6% [−9, +30] (event-
+  rich sample), B3 first-15-min side +1.0%; 245 null runs, 0 pass the bar. Details in `baselines/BASELINES.md`.
+
+## 6. Data available (measured: `data/DEPTH.md`, `data/SIZES.md`)
+- Option NBBO tick + OPRA trades: SPY/QQQ from 2012-06, SPXW from 2014 (none in 2012). 1-minute greeks: QQQ from
+  2012, SPXW ~2018, SPY ~2020 (compute your own before). Stock NBBO/trades: QQQ 2012-06, SPY 2017-01. SPX index 2017.
+  Daily same-day expiries: SPXW from 2022 (M/W/F before), SPY/QQQ late 2022 — the store's "0DTE" is the first
+  expiry on/after the session (`s.expirations(root)` says which).
+- UW: flow alerts and per-minute spot GEX from 2023-12-06 (so only DEV 2023-12..2024-12 has them); daily greek
+  exposure: last ~250 days only; headlines: no date paging (from 2026-08-06, all LOCKED). No SPX/SPXW alerts under
+  those tickers.
+- Store: 20 sessions = 1.84 GB, mean 92 MB/session (median 86, max 195 on 2022-01-24), ~7 min a session to fetch at
+  2 requests in flight; same-day option quotes are ~25 MB of it. Full tick NBBO would be ~10x the quote bytes.
