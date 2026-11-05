@@ -68,3 +68,9 @@ R4 62% (21).
 
 R4's calls won 75% (n 40) and its puts 37% (n 30): October drifted up, so most of R4's edge here is "buy calls on an
 opening dip in an up-trending month". Not shown to be an edge; R1-R3 add nothing over a random pick.
+
+### To finish the blotter (once the terminal serves Nov 4 again; still 472 at 06:12 UTC Nov 5)
+No call fired before 09:45 in the full run, so the regular session alone gives the same seats:
+`REPLAY_OUT=<abs>/research/nov4/replay REPLAY_CONC=3 REPLAY_FROM=09:30 npx tsx scripts/compass-replay.ts 2026-11-04`
+(~70 min). Check its calls up to 10:20 equal the partial file's 32, then read the 10:25-15:05 calls and the Late sweep.
+By 10:20 the partial run held 19 of 29 0DTE seats and 13 of 20 weekly seats; 29 of the 32 calls were calls (C).
