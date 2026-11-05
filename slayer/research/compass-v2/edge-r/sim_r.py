@@ -91,6 +91,8 @@ def _bid_from(p, t, t_end):
     """bid in force at t, or the first later second with bid > 0 up to t_end; (bid, second)."""
     t = max(t, p['s0'])
     t_end = min(t_end, p['s1'])
+    if t > t_end:                      # the sale second is past the window end (contract close): last quote
+        return M.q_at(p, t_end, 'bid'), int(t_end)
     for u in range(int(t), int(t_end) + 1):
         b = M.q_at(p, u, 'bid')
         if b > 0:
@@ -305,9 +307,9 @@ def run(k, n, max_minutes=1e9, fetch=True):
     print('done', done, term.STATS, Q.hits, flush=True)
 
 
-def bars_all():
+def bars_all(syms=('SPY', 'QQQ')):
     months = sorted({d[:7] for d in M.dev_days()} | {M.next_session(d)[:7] for d in M.dev_days()})
-    for sym in ('SPY', 'QQQ'):
+    for sym in syms:
         for mo in months:
             print(sym, mo, M.fetch_month_bars(sym, mo), flush=True)
 
@@ -318,4 +320,4 @@ if __name__ == '__main__':
         mm = float(sys.argv[4]) if len(sys.argv) > 4 and not sys.argv[4].startswith('--') else 1e9
         run(k, n, mm, fetch='--nofetch' not in sys.argv)
     elif sys.argv[1] == 'bars':
-        bars_all()
+        bars_all(tuple(sys.argv[2:]) or ('SPY', 'QQQ'))

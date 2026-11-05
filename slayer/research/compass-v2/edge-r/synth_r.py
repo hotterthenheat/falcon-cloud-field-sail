@@ -235,6 +235,9 @@ def main(runs=100):
         x = tr[tr.variant == v]
         halfg[v] = (x.groupby(['tk', 'book']).leg_spr0.median() / 2).to_dict()
     ivd = tr[tr.variant == 'R0'].groupby(['day', 'tk', 'book']).iv.median().to_dict()
+    if os.environ.get('EDGE_R_SYN_NOCOST') == '1':        # calibration: no spread, no fee -> mean should be ~0
+        halfg = {v: {k: 0.0 for k in halfg[v]} for v in VARS}
+        M.FEE = 0.0
     real = {}
     for r in infos:
         real[r['day']] = {tk: M.day_closes(tk, r['day'])[0] for tk in M.TICKERS}

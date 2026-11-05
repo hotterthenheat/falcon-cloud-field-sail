@@ -173,16 +173,17 @@ def _month_bars(kind, sym, month):
 
 
 def fetch_month_bars(sym, month):
-    """SPY/QQQ stock bars 04:00-20:00 for a month (the code's equity span)."""
+    """SPY/QQQ stock bars 04:00-20:00, SPX index bars 00:00-23:59, for a month (the code's spans)."""
     f = os.path.join(OUT, 'bars', sym, f'{month}.parquet')
     if os.path.exists(f):
         return 'have'
-    if F.is_locked(month + '-01') and F.is_locked(month + '-28'):
-        return 'locked'
+    if any(F.is_locked(f'{month}-{d:02d}') for d in range(1, 32)):
+        return 'locked'      # a month holding any LOCKED day is never requested
     y, m = int(month[:4]), int(month[5:7])
     end = (pd.Timestamp(y, m, 1) + pd.offsets.MonthEnd(0))
-    t = term.get(f'/stock/history/ohlc?symbol={sym}&start_date={y}{m:02d}01&end_date={end:%Y%m%d}&interval=1m'
-                 f'&start_time=04:00:00&end_time=20:00:00&format=csv')
+    kind, span = ('index', 'start_time=00:00:00&end_time=23:59:59') if sym == 'SPX' else ('stock', 'start_time=04:00:00&end_time=20:00:00')
+    t = term.get(f'/{kind}/history/ohlc?symbol={sym}&start_date={y}{m:02d}01&end_date={end:%Y%m%d}&interval=1m'
+                 f'&{span}&format=csv')
     if t is None:
         return 'fail'
     os.makedirs(os.path.dirname(f), exist_ok=True)

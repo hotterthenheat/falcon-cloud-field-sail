@@ -80,7 +80,7 @@ def forming_trigger(D, s):
 def main(n=60):
     files = sorted(glob.glob(os.path.join(S.RES, '*.json')))[:n]
     Q = M.Quotes(fetch=False)
-    cnt = {'entry': [0, 0], 'exit': [0, 0], 'price': [0, 0], 'canary_forming': [0, 0], 'canary_peek': [0, 0]}
+    cnt = {'entry': [0, 0], 'exit': [0, 0], 'price': [0, 0], 'canary_forming': [0, 0], 'canary_peek': [0, 0], 'canary_peek8': [0, 0]}
     M.board_at = board_noisy
     S.M.board_at = board_noisy
     for f in files:
@@ -127,12 +127,19 @@ def main(n=60):
                 if p_clean is not None:
                     cnt['canary_peek'][0] += abs(M.q_at(p_clean, es + 60, 'bid') - M.q_at(p_noisy, es + 60, 'bid')) > 1e-9
                     cnt['canary_peek'][1] += 1
+                # canary: peek 8 s after the sale (inside every priced window)
+                p_c8 = Q.path(root, day, t['exp'], t['leg_k'], t['side'], es, es + 8)
+                p_n8 = D4.Q.path(root, day, t['exp'], t['leg_k'], t['side'], es, es + 8)
+                if p_c8 is not None:
+                    cnt['canary_peek8'][0] += abs(M.q_at(p_c8, es + 8, 'bid') - M.q_at(p_n8, es + 8, 'bid')) > 1e-9
+                    cnt['canary_peek8'][1] += 1
     lines = [f'EDGE-R look-ahead test on {len(files)} cached sessions (R0 tickets)',
              f"entry identical with later bars+boards noised: {cnt['entry'][0]}/{cnt['entry'][1]}",
              f"exit decision identical with bars after the exit bar noised: {cnt['exit'][0]}/{cnt['exit'][1]}",
              f"fill+exit price identical with quotes after the sale noised: {cnt['price'][0]}/{cnt['price'][1]}",
              f"CANARY forming-bar trigger changed by the noise (caught): {cnt['canary_forming'][0]}/{cnt['canary_forming'][1]}",
-             f"CANARY exit priced 60 s after the sale changed by the noise (caught): {cnt['canary_peek'][0]}/{cnt['canary_peek'][1]}"]
+             f"CANARY exit priced 60 s after the sale changed by the noise (caught): {cnt['canary_peek'][0]}/{cnt['canary_peek'][1]} (only where a cached window reaches +60 s)",
+             f"CANARY exit priced 8 s after the sale changed by the noise (caught): {cnt['canary_peek8'][0]}/{cnt['canary_peek8'][1]}"]
     open(os.path.join(HERE, 'results', 'lookahead.txt'), 'w').write('\n'.join(lines) + '\n')
     print('\n'.join(lines))
 
