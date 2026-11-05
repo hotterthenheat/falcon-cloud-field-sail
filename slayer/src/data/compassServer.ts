@@ -18,15 +18,15 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { takeWire, writeWire } from '../../shared/jsonWire.mjs';
 import { setCompassHost, type EconRow, type ThetaAnswer } from './compassHost';
-import { demoteLate, exportModelState, importModelState, lockReason, modelDay, onLockReason, onModelChange, onScoredRow, rollModelDay, type ModelPack } from './compassModel';
+import { demoteLate, exportModelState, importModelState, lockReason, modelDay, onLockReason, onModelChange, onScoredRow, rollModelDay, type ModelPack, type ScoredRow } from './compassModel';
 import { importSignals, importWould, onSignalsChange, setSessionClose, signals, wouldSignals, type Signal } from './compassLedger';
 import { exportMarks, importMarks, lotterySwept, onMarks, onScanMeta, scanMeta, sessionClose, setLotteryDay, setScanMeta, startScan, stopScan, type MarkRow, type ScanMeta } from './compassScan';
 import { importTail } from './modelRiskScan';
 import { emptyTail } from './modelRisk';
 import { sessionIso } from './compassSession';
-import { buildSession, builtCurrent, reviewFile, studyFile } from './compassReview';
+import { buildSession, builtCurrent, builtOpenCalls, openCalls, reviewFile, studyFile } from './compassReview';
 import { startReviewScan, stopReviewScan } from './reviewLive';
-import { poolStudies, type Label, type PooledStudy, type StudyDay, type StudyResult } from './compassStudy';
+import { poolStudies, type Label, type PooledStudy, type ScoredLine, type StudyDay, type StudyResult } from './compassStudy';
 import { nyParts } from '../core/nyTime';
 import type { Setup } from '../types/compass';
 
@@ -244,6 +244,56 @@ function takeLock(dir: string): { ok: true } | { ok: false; pid: number } {
 /** Session the signal belongs to (its file): an overnight call after 20:15 ET is the next session's. */
 const sessionOf = (s: Signal) => sessionIso(s.firedAt);
 
+const unsettled = (s: Signal) => !s.outcome || s.outcome.status === 'open' || s.outcome.status === 'waiting';
+
+/** A session's review and study may be built now: today's once nothing is open or pending; an earlier day's once its
+    calls are settled, or when none of them is still being settled in memory (`held`: the record the engine settles,
+    today's and the four sessions before it). An earlier day used to be built with its calls open and frozen so. */
+/** A session's file with the settlements held in memory for its calls and would-calls written in. Each row keeps the
+    list it was written in (a late call stays in calls; reading the file moves it), and the rest of the file is kept. */
+export function mergeSettled(raw: DayFile, held: readonly Signal[], at = Date.now()): DayFile {
+  const now = new Map(held.map(s => [s.key, s]));
+  const calls = raw.calls.map(c => {
+    const got = now.get(c.key);
+    if (!got) return c;
+    const { would: _would, ...row } = got;
+    return { ...c, ...row, how: c.how };
+  });
+  const would = (raw.would ?? []).map(c => now.get(c.key) ?? c);
+  return { ...raw, calls, would, savedAt: at };
+}
+
+const g9 = (v: number) => (Number.isFinite(v) ? Number(v.toPrecision(9)) : null);
+
+/** One scored row as the engine logs it (<dir>/rows/YYYY-MM-DD.jsonl, data/compassStudy ScoredLine), under its session
+    date `day`. */
+export function scoredLine(r: ScoredRow, day: string): ScoredLine {
+  return {
+    t: r.minute,
+    d: day,
+    /* the mark itself: an overnight mark before midnight is logged under the next session's date, and its minute of
+       the day alone put it a day late in the study */
+    m: r.mark,
+    k: r.setup.contract,
+    e: r.setup.expiryDate,
+    b: r.setup.bid,
+    a: r.setup.ask,
+    q: r.setup.quotedAt ?? 0,
+    s: r.setup.spot ?? null,
+    late: r.late || undefined,
+    x: r.x.map(g9),
+    p1: g9(r.p1) ?? NaN,
+    p2: r.prun == null ? null : g9(r.prun),
+  };
+}
+
+export function buildReady(d: string, today: string, f: Pick<DayFile, 'calls' | 'would' | 'marks'>, held: readonly Signal[]): boolean {
+  const open = openCalls(f) > 0;
+  const pending = f.marks.some(m => Object.values(m.names).includes('pending'));
+  if (d === today) return !open && !pending;
+  return !open || !held.some(s => sessionOf(s) === d && unsettled(s));
+}
+
 export interface Engine {
   state: (rev?: number) => CompassState | null;
   record: (day: string) => DayFile | null;
@@ -377,6 +427,37 @@ export function startCompassEngine(o: EngineOptions): Engine {
     };
   };
 
+  /* What the record of each earlier session in memory last held (its calls' and would-calls' settlements): the
+     four sessions before today are settled in memory with today's, and a change is written back to their own file
+     (it was never written, so a call open at the session roll stayed open on disk, and its study froze it so). */
+  const pastSeen = new Map<string, string>();
+  const settledOf = (list: readonly Signal[]) => JSON.stringify(list.map(s => [s.key, s.outcome, s.spark]));
+  const notePast = () => {
+    pastSeen.clear();
+    for (const s of [...signals(), ...wouldSignals()]) {
+      const d = sessionOf(s);
+      if (d !== day) pastSeen.set(d, '');
+    }
+    for (const d of pastSeen.keys()) pastSeen.set(d, settledOf([...signals(), ...wouldSignals()].filter(s => sessionOf(s) === d)));
+  };
+  const writePast = () => {
+    const mine = [...signals(), ...wouldSignals()];
+    const days = [...new Set(mine.map(sessionOf))].filter(d => d !== day);
+    for (const d of days) {
+      const list = mine.filter(s => sessionOf(s) === d);
+      const seen = settledOf(list);
+      if (pastSeen.get(d) === seen) continue;
+      try {
+        const raw = JSON.parse(fs.readFileSync(dayFile(o.dir, d), 'utf8')) as DayFile;
+        if (!raw || raw.format !== RECORD_FORMAT || raw.day !== d) continue;
+        writeAtomic(dayFile(o.dir, d), JSON.stringify(mergeSettled(raw, list)));
+        pastSeen.set(d, seen);
+      } catch (e) {
+        log(`[compass] the record of ${d} could not be written back: ${(e as Error).message}`);
+      }
+    }
+  };
+
   const save = () => {
     if (readOnly || !dirty) return;
     dirty = false;
@@ -385,6 +466,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
     } catch (e) {
       log(`[compass] the record could not be written: ${(e as Error).message}`);
     }
+    writePast();
   };
 
   const changed = () => {
@@ -399,6 +481,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
   };
 
   load(day);
+  notePast();
   const offs = [onModelChange(changed), onSignalsChange(changed), onMarks(changed), onScanMeta(changed)];
 
   /* the model lock's reason, logged when it changes (a hash miss used to close scoring without a line in the log) */
@@ -414,22 +497,8 @@ export function startCompassEngine(o: EngineOptions): Engine {
   /* every scored row, as the trees read it, for the input check (scripts/compass-validate.ts): one line each in
      <dir>/rows/YYYY-MM-DD.jsonl */
   let rowBuf: string[] = [];
-  const g = (v: number) => (Number.isFinite(v) ? Number(v.toPrecision(9)) : null);
-  const logRow = (r: Parameters<Parameters<typeof onScoredRow>[0]>[0]) => {
-    rowBuf.push(JSON.stringify({
-      t: r.minute,
-      d: day,
-      k: r.setup.contract,
-      e: r.setup.expiryDate,
-      b: r.setup.bid,
-      a: r.setup.ask,
-      q: r.setup.quotedAt ?? 0,
-      s: r.setup.spot ?? null,
-      late: r.late || undefined,
-      x: r.x.map(g),
-      p1: g(r.p1),
-      p2: r.prun == null ? null : g(r.prun),
-    }));
+  const logRow = (r: ScoredRow) => {
+    rowBuf.push(JSON.stringify(scoredLine(r, day)));
   };
   const flushRows = () => {
     if (!rowBuf.length) return;
@@ -451,17 +520,33 @@ export function startCompassEngine(o: EngineOptions): Engine {
     if (building) return;
     const p = nyParts(Date.now());
     const mins = p.hour * 60 + p.minute;
-    const stale = (d: string) => !builtCurrent(studyFile(o.dir, d));
+    /* a study built while calls were open is built again once they have settled */
+    const settledSince = (d: string) => {
+      if (!builtOpenCalls(studyFile(o.dir, d))) return false;
+      const f = d === day ? null : readDay(o.dir, d);
+      return !!f && !openCalls(f);
+    };
+    const stale = (d: string) => !builtCurrent(studyFile(o.dir, d)) || settledSince(d);
     const days = recordDays(o.dir).filter(stale);
     const due = days.filter(d => d < day || (d === day && mins >= 16 * 60 + 20)).sort();
-    /* A past day goes first. Building today while it is the newest used to leave the day before it unbuilt. */
-    const todo = due.find(d => d < day) ?? due.find(d => d === day);
-    if (!todo) return;
-    const f = todo === day ? snapshotFile() : readDay(o.dir, todo);
-    if (!f) return;
-    const open = [...f.calls, ...(f.would ?? [])].some(c => !c.outcome || c.outcome.status === 'open' || c.outcome.status === 'waiting');
-    const pending = f.marks.some(m => Object.values(m.names).includes('pending'));
-    if ((open || pending) && todo === day) return;
+    /* A past day goes first. Building today while it is the newest used to leave the day before it unbuilt. A day
+       with calls still open is not built while they are being settled in memory (a past day used to be built open,
+       and frozen so; its settlements are now written back to its file): the next day due is taken instead. A past day
+       older than the ones in memory is built as it stands, and again once it settles. */
+    const ready = (d: string): DayFile | null => {
+      const f = d === day ? snapshotFile() : readDay(o.dir, d);
+      return f && buildReady(d, day, f, [...signals(), ...wouldSignals()]) ? f : null;
+    };
+    let todo = '';
+    let f: DayFile | null = null;
+    for (const d of [...due.filter(x => x < day), ...due.filter(x => x === day)]) {
+      f = ready(d);
+      if (f) {
+        todo = d;
+        break;
+      }
+    }
+    if (!todo || !f) return;
     building = true;
     void buildSession(o.dir, todo, f, log)
       .catch(e => log(`[compass] the review of ${todo} did not build: ${(e as Error).message}`))
@@ -529,6 +614,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
       /* the file the previous scanner left is the state to resume from */
       day = sessionIso(Date.now());
       load(day);
+      notePast();
     }
     rowOff = onScoredRow(logRow);
     rowTimer = setInterval(flushRows, 2_000);
@@ -549,6 +635,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
         importModelState(exportModelState(), earlierOf(next));
         importSignals(recentCalls(next));
         importWould(recentWould(next));
+        notePast();
         importMarks([]);
         changed();
         log(`[compass] session ${next}`);

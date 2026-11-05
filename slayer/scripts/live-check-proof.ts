@@ -249,7 +249,8 @@ setDayRates([{ day: '2026-11-03', r: 0.0395 }]);
   const closed = signals().find(s => s.ticker === 'PEAK');
   check(`tail peak is the middle bid 2.40, not entry 1.00 or exit 1.10 (${closed?.outcome?.peak})`, closed?.outcome?.status === 'closed' && closed.outcome.peak === 2.4 && closed.outcome.exit?.px === 1.1);
   check('the blotter sentence is earned: the stored high is above the exit', (closed?.outcome?.peak ?? 0) > (closed?.outcome?.exit?.px ?? Infinity));
-  check('P&L stays (exitBid − entryAsk) × 100', closed?.outcome?.pnl === (1.1 - 1.2) * 100);
+  /* to the cent, as every book's P&L (was the raw float, (1.1 - 1.2) x 100 = -9.999999999999998) */
+  check('P&L stays (exitBid − entryAsk) × 100, to the cent', closed?.outcome?.pnl === -10);
 }
 
 /* ---- a dark print under the name's floor, over $250,000, is rotation and out of the posture ---- */

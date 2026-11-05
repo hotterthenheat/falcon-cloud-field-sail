@@ -17,7 +17,7 @@ import TraceBox, { Fact } from '../components/trace/traceFrame';
 import ContractLabel from '../components/ui/ContractLabel';
 import SessionSpark from '../components/compass/SessionSpark';
 import { usd2 as money } from '../core/format';
-import { RIDING_WORD, modelOfBook } from '../data/compassParams';
+import { RIDING_WORD, modelOfBook, takeProfitPx, targetPx } from '../data/compassParams';
 import { useContractLive } from '../data/thetaBook';
 import { chainRoot } from '../../shared/optionChain.mjs';
 
@@ -58,7 +58,7 @@ const SignalCard = ({ s, tracked, onOpen }: { s: Signal; tracked: boolean; onOpe
   const pnl = closed ? o?.pnl ?? null : paid > 0 && now != null ? (now - paid) * 100 : null;
   const ret = closed ? o?.ret ?? null : paid > 0 && now != null ? ((now - paid) / paid) * 100 : o?.ret ?? null;
   const standing = paid > 0 && o && !lottery && !tail ? activeStop(paid, o.peak, runner) : null;
-  const target = tail ? 0 : paid > 0 ? (lottery ? paid * 2 : runner ? 0 : paid * 1.5) : 0;
+  const target = tail ? 0 : paid > 0 ? (lottery ? targetPx(paid, 2) : runner ? 0 : takeProfitPx(paid)) : 0;
   const away = (px: number) => (now != null && now > 0 && px > 0 && !closed ? `${px >= now ? '+' : '−'}${Math.abs((px / now - 1) * 100).toFixed(0)}% from the bid` : undefined);
   const hold = tail ? 'Back through, or 30m' : lottery ? '3× or 2×' : s.book === 'A' && s.runner ? 'Model 2 rides' : runner ? 'Ratchet' : 'Out at 1.50×';
   return (

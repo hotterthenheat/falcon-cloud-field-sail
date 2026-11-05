@@ -445,13 +445,26 @@ export function stopAfter(entryAsk: number, peak: number, runner: boolean): numb
   return stop;
 }
 
+/** A target as a price: the ask times its multiple, rounded up to the cent, so a target is never under its multiple
+    (an ask of 0.33 takes profit at 0.50, +51.5%; toFixed read 0.495 as 0.49, +48.5%). The epsilon keeps an exact cent
+    (1.00 × 1.50 = 1.50) from rounding up on the float's last bit. */
+export function targetPx(entryAsk: number, multiple: number): number {
+  return Number((Math.ceil(entryAsk * multiple * 100 - 1e-6) / 100).toFixed(2));
+}
+
+/** The 1.50× take-profit price of a fill: every place that shows or settles it reads this one. */
+export function takeProfitPx(entryAsk: number): number {
+  return targetPx(entryAsk, TP1_BID);
+}
+
 /** Each minute, in order. Stop first, then a non-runner at 1.50 × the ask. There is no sale because a clock hit 55
     minutes. */
 export function treeExit(entryAsk: number, bid: number, peak: number, runner: boolean): { why: string; px: number } | null {
   if (!(entryAsk > 0) || !(bid >= 0) || !Number.isFinite(bid)) return null;
   const stop = stopAfter(entryAsk, peak, runner);
   if (bid <= stop) return { why: 'stop', px: bid };
-  if (!runner && bid >= entryAsk * TP1_BID) return { why: 'tp1', px: Number((entryAsk * TP1_BID).toFixed(2)) };
+  const tp = takeProfitPx(entryAsk);
+  if (!runner && bid >= tp) return { why: 'tp1', px: tp };
   return null;
 }
 
@@ -468,8 +481,8 @@ export function reversalLine(entryAsk: number, bid: number, side: 'C' | 'P', ret
 /** One-second lottery. No stop. A bid of 0 is held. 3× inside 120s is checked before 2× inside 30s. The caller flats at 15:50, including a bid of 0. */
 export function lotteryExit(entryAsk: number, bid: number, seconds: number): { why: string; px: number } | null {
   if (!(entryAsk > 0) || !Number.isFinite(bid)) return null;
-  if (seconds >= 0 && seconds <= LOTTERY_X3_SEC && bid >= LOTTERY_X3 * entryAsk) return { why: '3×', px: Number((LOTTERY_X3 * entryAsk).toFixed(2)) };
-  if (seconds >= 0 && seconds <= LOTTERY_X2_SEC && bid >= LOTTERY_X2 * entryAsk) return { why: '2×', px: Number((LOTTERY_X2 * entryAsk).toFixed(2)) };
+  if (seconds >= 0 && seconds <= LOTTERY_X3_SEC && bid >= LOTTERY_X3 * entryAsk) return { why: '3×', px: targetPx(entryAsk, LOTTERY_X3) };
+  if (seconds >= 0 && seconds <= LOTTERY_X2_SEC && bid >= LOTTERY_X2 * entryAsk) return { why: '2×', px: targetPx(entryAsk, LOTTERY_X2) };
   return null;
 }
 

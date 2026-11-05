@@ -1,8 +1,10 @@
-/* A fired signal's outcome, read off the contract's own one-minute NBBO after the call. One rule for every book:
-   the fill is the ask of the first quote stamped a full minute after the call (none within three minutes, or an
-   invalid one, and the fill is unavailable); then each later quote in order, stop first, then the take-profit, then
-   the 0.40% reversal on the underlying's own one-minute closes, then the flat. Book C checks 3× and 2× on its
-   second quotes. Nothing is filled from a quote that was not printed. */
+/* A fired signal's outcome, read off the contract's own NBBO after the call: its one-minute quotes, and the 1-second
+   quotes of the minutes that decide an exit (Books A and B: fineWindows; Book C: the two minutes after its fill). One
+   rule for every book: the fill is the ask of the first quote stamped at or after the start of the minute after the
+   call's own minute (none within three minutes of the call, or an invalid one, and the fill is unavailable); then each
+   later quote in order, stop first, then the take-profit, then the 0.40% reversal on the underlying's own one-minute
+   closes, then the flat. Book C checks 3× and 2× on its second quotes. Nothing is filled from a quote that was not
+   printed. */
 
 import { nyParts } from '../core/nyTime';
 import { lotteryExit, reversalLine, stopAfter, treeExit } from './compassParams';
@@ -184,31 +186,46 @@ export function settleSignal(sig: SignalCore, quotes: readonly PathQuote[], unde
   };
 }
 
-/** The most 1-second windows read for one call's exits. */
+/** The most 1-second windows one settlement pass reads for one call (the rest wait for the next pass, the call open). */
 export const FINE_MAX = 12;
 
+/** The last instant a Date holds (Number.MAX_SAFE_INTEGER is past it, and reading it as a New York day throws). */
+const LAST_INSTANT = 8.64e15;
+
 /**
- * The minutes whose 1-second quotes decide a Book A or B exit: each minute after the fill (up to the exit the minute
- * quotes give) whose range, from the bid that ended the minute before to the bid that ends it, crosses the stop
- * standing then, the 1.50× target of a non-runner, or a ratchet rung (1.25×, and a runner's 1.50×, 2×, 3×, 4×). One
- * quote a minute cannot tell when inside the minute the stop or target was touched, or at what bid; the seconds can.
- * Returned as [after, through] epoch ms, the exit's own minute first, at most FINE_MAX. Book C reads its seconds
- * already (compassLedger contractPath).
+ * The minutes whose 1-second quotes decide a Book A or B exit: each minute after the fill, up to the exit, whose range,
+ * from the bid that ended the minute before to the bid that ends it, crosses the stop standing then, the 1.50× target
+ * of a non-runner, or a ratchet rung (1.25×, and a runner's 1.50×, 2×, 3×, 4×). One quote a minute cannot tell when
+ * inside the minute the stop or target was touched, or at what bid; the seconds can.
+ *
+ * `quotes` is the path as read so far: the minute quotes and any 1-second quotes already read. The exit, the peak and
+ * so the stop standing at each minute are taken from all of it, so a peak the seconds found (a raised trail stop) is
+ * the stop the later minutes are judged against; the caller reads the new windows and asks again until none appears.
+ * Returned as [after, through] epoch ms, oldest first (a window read can only move the exit earlier, so the earliest
+ * is read first). Book C reads its seconds already (compassLedger contractPath).
  */
-export function fineWindows(sig: SignalCore, quotes: readonly PathQuote[], now = Number.MAX_SAFE_INTEGER): [number, number][] {
+export function fineWindows(sig: SignalCore, quotes: readonly PathQuote[], now = LAST_INSTANT): [number, number][] {
   if (sig.book === 'C') return [];
-  const minute = quotes.filter(q => q.t % 60_000 === 0);
-  const out = settleSignal(sig, minute, [], now);
+  const path = quotes.filter(q => Number.isFinite(q.t)).slice().sort((a, b) => a.t - b.t);
+  const out = settleSignal(sig, path, [], now);
   if (!out.fill) return [];
-  const paid = out.fill.ask;
+  const fill = out.fill;
+  const paid = fill.ask;
   const runner = sig.book === 'B' || sig.runner;
   const end = out.exit?.at ?? Infinity;
-  const rows = minute.filter(q => q.t > out.fill!.at && q.t <= end && validQuote(q)).sort((a, b) => a.t - b.t);
   const rungs = runner ? [1.25, 1.5, 2, 3, 4] : [1.25, 1.5];
   const found: [number, number][] = [];
-  let prev: PathQuote = { t: out.fill.at, bid: out.fill.bid, ask: out.fill.ask };
+  let prev: PathQuote = { t: fill.at, bid: fill.bid, ask: fill.ask };
   let peak = 0;
-  for (const q of rows) {
+  for (const q of path) {
+    if (q.t <= fill.at || !validQuote(q)) continue;
+    if (q.t % 60_000 !== 0) {
+      /* a second already read: it moves the peak (and the stop) for the minutes after it, not a window's ends */
+      if (q.t <= end) peak = Math.max(peak, q.bid);
+      continue;
+    }
+    /* the window holding the exit is the last one: it starts before the exit */
+    if (prev.t >= end) break;
     const lo = Math.min(prev.bid, q.bid);
     const hi = Math.max(prev.bid, q.bid);
     const levels = [stopAfter(paid, peak, runner), ...rungs.map(r => paid * r)];
@@ -216,9 +233,7 @@ export function fineWindows(sig: SignalCore, quotes: readonly PathQuote[], now =
     peak = Math.max(peak, q.bid);
     prev = q;
   }
-  if (found.length <= FINE_MAX) return found;
-  const last = found[found.length - 1];
-  return [last, ...found.slice(0, FINE_MAX - 1)];
+  return found;
 }
 
 export interface DaySummary {
@@ -240,7 +255,7 @@ export interface DaySummary {
   openMark: number;
 }
 
-/** The day in one line: calls, won, lost, open, and the net per contract after the round-trip cost. */
+/** The day in one line: calls, won, lost, open, and the net per contract: (exit - fill ask) x 100, no fees. */
 export function daySummary(rows: readonly { outcome: Outcome | null }[]): DaySummary {
   const out: DaySummary = { calls: rows.length, won: 0, lost: 0, open: 0, waiting: 0, unavailable: 0, net: 0, openMark: 0 };
   for (const { outcome: o } of rows) {

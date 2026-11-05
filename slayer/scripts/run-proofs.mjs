@@ -25,6 +25,7 @@ const PROOFS = [
   'bar-pass-proof',
   'contract-quote-proof',
   'compass-return-proof',
+  'compass-record-proof',
   'fixture-proof',
   'higher-proof',
   'paper-proof',

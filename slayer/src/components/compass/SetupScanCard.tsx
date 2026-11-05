@@ -10,7 +10,7 @@ import { MODELS_VALIDATED, UNVALIDATED_LINE, UNVALIDATED_WORD } from '../../data
 import { activeStop, signalOf } from '../../data/compassLedger';
 import { pctWord, returnInk } from '../../data/compassReturn';
 import { useContractLive } from '../../data/thetaBook';
-import { P1_MIN } from '../../data/compassParams';
+import { P1_MIN, takeProfitPx, targetPx } from '../../data/compassParams';
 import { STOP_KEEP } from '../../data/contractQuote';
 import { Tip } from '../ui/Tooltip';
 import { usd2 as money } from '../../core/format';
@@ -89,7 +89,7 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
   const standing = paid > 0 && outcome ? activeStop(paid, outcome.peak, runner) : null;
   const stopPx = priced && setup.band !== 'lottery' && entry > 0 ? Number((standing ? standing.stop : entry * STOP_KEEP).toFixed(2)) : 0;
   /* a non-runner Book A leaves at 1.50 × the fill; a runner and Book B ride the ratchet; Book C sells 3× or 2× */
-  const target = !priced || !(entry > 0) ? 0 : setup.band === 'lottery' ? Number((entry * 2).toFixed(2)) : runner ? 0 : Number((entry * 1.5).toFixed(2));
+  const target = !priced || !(entry > 0) ? 0 : setup.band === 'lottery' ? targetPx(entry, 2) : runner ? 0 : takeProfitPx(entry);
   const away = (px: number) => (Number.isFinite(liveBid) && liveBid > 0 && px > 0 ? `${px >= liveBid ? '+' : '−'}${Math.abs((px / liveBid - 1) * 100).toFixed(0)}%` : '');
   const closedOutPnl = closedOut?.exit && entry > 0 ? ((closedOut.exit.px - entry) / entry) * 100 : NaN;
   const livePnl = !closedOut && paid > 0 && Number.isFinite(liveBid) ? ((liveBid - paid) / paid) * 100 : NaN;
