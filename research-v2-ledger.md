@@ -51,3 +51,104 @@ One line per hypothesis/variant/look: date | worker | id | set | n | result | no
 2026-11-05 | EDGE-D | PREREG amendment A1 (SPXW GTH quotes absent 2018-12..2021-12 — chain rows all zero; 2018 pre-open spreads 16-45% of mid; sample = 2022+; PPI added to the 08:30 event set, retail sales dropped) | spec | - | registered after a 2018 smoke run (D1: 20 days, 1 executable straddle, -12%; D2: 0 picks) and before any 2022+ outcome | edge-d/specs/PREREG.md @ e5051fb
 2026-11-05 | EDGE-D | PREREG amendment A2 (controls carry NO 08:30 release: Mon/Tue/Wed/Fri, +-1 day from CPI/NFP/PPI/FOMC excluded, day-of-month 13-19 and 24-31 excluded; 57 controls 2022+; drift legs fetched by BS |delta| nearest 0.30 +-1 strike instead of a +-3-strike band) | spec | - | registered after the pipeline audit, before any control-day run and before any 2022+ DEV outcome | edge-d/specs/PREREG.md @ fd809d1
 2026-11-05 | EDGE-D | PREREG amendment A3 D3 EARNINGS-STRADDLE (UW postmarket reports, 15 liquid names, ATM straddle on first expiry after the report bought 15:55 at ask; exits Y1 09:35 / Y2 10:00 / Y3 15:55 next session; expected NEGATIVE; null = same name 14 days earlier; D3b not run, 0 trials) | spec | - | registered before any D3 data was fetched | edge-d/specs/PREREG.md @ 997f8ce
+2026-11-05 | EDGE-D | D1 X1 EVENT | DEV | 89 tr / 108 sess | net -5.6% [-9.2,-1.5] (gross -5.5%), win 25% [+15.7,+33.7], payoff 1.37, by year {2018: n1 -13.3%, 2022: n22 +3.3%, 2023: n33 -10.0%, 2024: n33 -6.9%} | FAIL
+2026-11-05 | EDGE-D | D1 X1 CONTROL | DEV | 44 tr / 44 sess | net -2.6% [-3.5,-1.7] (gross -2.5%), win 14% [+4.5,+25.0], payoff 0.79, by year {2022: n10 -3.7%, 2023: n17 -1.9%, 2024: n17 -2.8%} | FAIL
+2026-11-05 | EDGE-D | D1 X2 EVENT | DEV | 89 tr / 108 sess | net -4.8% [-9.1,-0.0] (gross -4.8%), win 28% [+19.1,+38.2], payoff 1.41, by year {2018: n1 -13.7%, 2022: n22 +4.3%, 2023: n33 -7.9%, 2024: n33 -7.5%} | FAIL
+2026-11-05 | EDGE-D | D1 X2 CONTROL | DEV | 44 tr / 44 sess | net -3.1% [-4.3,-1.6] (gross -3.0%), win 11% [+2.3,+20.5], payoff 1.37, by year {2022: n10 -5.5%, 2023: n17 -2.1%, 2024: n17 -2.6%} | FAIL
+2026-11-05 | EDGE-D | D1 X3 EVENT | DEV | 89 tr / 108 sess | net -7.4% [-12.0,-2.2] (gross -7.3%), win 26% [+16.9,+34.8], payoff 1.26, by year {2018: n1 -12.4%, 2022: n22 +2.2%, 2023: n33 -11.0%, 2024: n33 -10.0%} | FAIL
+2026-11-05 | EDGE-D | D1 X3 CONTROL | DEV | 44 tr / 44 sess | net -4.7% [-6.9,-2.3] (gross -4.6%), win 14% [+4.5,+25.0], payoff 1.12, by year {2022: n10 -6.1%, 2023: n17 -5.9%, 2024: n17 -2.7%} | FAIL
+2026-11-05 | EDGE-D | D1 X4 EVENT | DEV | 89 tr / 108 sess | net -22.9% [-27.1,-19.3] (gross -22.8%), win 1% [+0.0,+3.4], payoff 0.06, by year {2018: n1 -8.5%, 2022: n22 -20.4%, 2023: n33 -24.1%, 2024: n33 -23.7%} | FAIL
+2026-11-05 | EDGE-D | D1 X4 CONTROL | DEV | 44 tr / 44 sess | net -4.9% [-6.9,-3.1] (gross -4.8%), win 11% [+2.3,+20.5], payoff 0.42, by year {2022: n10 -3.6%, 2023: n17 -5.3%, 2024: n17 -5.2%} | FAIL
+2026-11-05 | EDGE-D | D1 X5 EVENT | DEV | 89 tr / 108 sess | net -7.8% [-12.3,-2.9] (gross -7.7%), win 26% [+16.9,+34.8], payoff 1.17, by year {2018: n1 -12.4%, 2022: n22 +1.1%, 2023: n33 -10.9%, 2024: n33 -10.5%} | FAIL
+2026-11-05 | EDGE-D | D1 X5 CONTROL | DEV | 44 tr / 44 sess | net -4.7% [-6.9,-2.3] (gross -4.6%), win 14% [+4.5,+25.0], payoff 1.12, by year {2022: n10 -6.1%, 2023: n17 -5.9%, 2024: n17 -2.7%} | FAIL
+2026-11-05 | EDGE-D | D1 synthetic_null_X3_real | DEV-null | 8 | mean +45.3%, p95 +61.9%, candidate beats 0.0, CI-pass rate n/a | null calibration
+2026-11-05 | EDGE-D | D1 synthetic_null_X3_rv | DEV-null | 8 | mean +34.8%, p95 +47.2%, candidate beats 0.0, CI-pass rate n/a | null calibration
+2026-11-05 | EDGE-D | D1 X1 EVENT | VALIDATION | 23 tr / 23 sess | net -8.3% [-13.6,-2.8] (gross -8.3%), win 17% [+4.3,+34.8], payoff 0.82, by year {2025: n23 -8.3%} | FAIL
+2026-11-05 | EDGE-D | D1 X1 CONTROL | VALIDATION | 12 tr / 12 sess | net -2.1% [-3.5,-0.5] (gross -2.0%), win 17% [+0.0,+41.7], payoff 1.06, by year {2025: n12 -2.1%} | FAIL
+2026-11-05 | EDGE-D | D1 X2 EVENT | VALIDATION | 23 tr / 23 sess | net -9.2% [-14.5,-3.5] (gross -9.1%), win 17% [+4.3,+34.8], payoff 0.66, by year {2025: n23 -9.2%} | FAIL
+2026-11-05 | EDGE-D | D1 X2 CONTROL | VALIDATION | 12 tr / 12 sess | net -0.9% [-3.4,+2.1] (gross -0.9%), win 25% [+0.0,+50.0], payoff 1.87, by year {2025: n12 -0.9%} | FAIL
+2026-11-05 | EDGE-D | D1 X3 EVENT | VALIDATION | 23 tr / 23 sess | net -9.2% [-15.1,-2.8] (gross -9.2%), win 22% [+4.3,+39.1], payoff 0.67, by year {2025: n23 -9.2%} | FAIL
+2026-11-05 | EDGE-D | D1 X3 CONTROL | VALIDATION | 12 tr / 12 sess | net -2.4% [-4.5,-0.1] (gross -2.3%), win 17% [+0.0,+41.7], payoff 1.13, by year {2025: n12 -2.4%} | FAIL
+2026-11-05 | EDGE-D | D1 X4 EVENT | VALIDATION | 23 tr / 23 sess | net -23.1% [-32.0,-15.6] (gross -23.0%), win 4% [+0.0,+13.0], payoff 0.02, by year {2025: n23 -23.1%} | FAIL
+2026-11-05 | EDGE-D | D1 X4 CONTROL | VALIDATION | 12 tr / 12 sess | net -2.0% [-3.7,+0.0] (gross -1.9%), win 17% [+0.0,+41.7], payoff 1.28, by year {2025: n12 -2.0%} | FAIL
+2026-11-05 | EDGE-D | D1 X5 EVENT | VALIDATION | 23 tr / 23 sess | net -9.6% [-15.3,-3.7] (gross -9.6%), win 22% [+4.3,+39.1], payoff 0.54, by year {2025: n23 -9.6%} | FAIL
+2026-11-05 | EDGE-D | D1 X5 CONTROL | VALIDATION | 12 tr / 12 sess | net -2.4% [-4.5,-0.1] (gross -2.3%), win 17% [+0.0,+41.7], payoff 1.13, by year {2025: n12 -2.4%} | FAIL
+2026-11-05 | EDGE-D | D1 synthetic_null_X3_real | VALIDATION-null | 8 | mean +11.1%, p95 +22.2%, candidate beats 0.0, CI-pass rate n/a | null calibration
+2026-11-05 | EDGE-D | D1 synthetic_null_X3_rv | VALIDATION-null | 8 | mean +26.7%, p95 +44.2%, candidate beats 0.0, CI-pass rate n/a | null calibration
+2026-11-05 | EDGE-D | D1b X1 EVENT | DEV | 28 tr / 28 sess | net -0.1% [-8.5,+11.0] (gross +0.0%), win 36% [+17.9,+53.6], payoff 1.79, by year {2021: n8 -1.5%, 2022: n5 -9.4%, 2023: n8 +0.2%, 2024: n7 +7.9%} | FAIL
+2026-11-05 | EDGE-D | D1b X1 CONTROL | DEV | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D1b X2 EVENT | DEV | 28 tr / 28 sess | net +0.3% [-13.4,+16.7] (gross +0.4%), win 29% [+14.2,+46.4], payoff 2.55, by year {2021: n8 +6.1%, 2022: n5 -20.4%, 2023: n8 -3.2%, 2024: n7 +12.4%} | FAIL
+2026-11-05 | EDGE-D | D1b X2 CONTROL | DEV | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D1b X3 EVENT | DEV | 28 tr / 28 sess | net +19.1% [-14.6,+69.0] (gross +19.2%), win 54% [+35.7,+71.4], payoff 1.67, by year {2021: n8 +9.4%, 2022: n5 +8.5%, 2023: n8 -9.0%, 2024: n7 +69.9%} | FAIL
+2026-11-05 | EDGE-D | D1b X3 CONTROL | DEV | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D1b X4 EVENT | DEV | 28 tr / 28 sess | net -18.7% [-25.5,-11.9] (gross -18.6%), win 4% [+0.0,+10.7], payoff 0.86, by year {2021: n8 -33.7%, 2022: n5 -8.6%, 2023: n8 -14.9%, 2024: n7 -13.2%} | FAIL
+2026-11-05 | EDGE-D | D1b X4 CONTROL | DEV | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D1b X5 EVENT | DEV | 28 tr / 28 sess | net +4.9% [-12.3,+23.7] (gross +5.0%), win 50% [+32.1,+67.9], payoff 1.31, by year {2021: n8 +6.1%, 2022: n5 +24.8%, 2023: n8 -0.3%, 2024: n7 -4.6%} | FAIL
+2026-11-05 | EDGE-D | D1b X5 CONTROL | DEV | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D1b synthetic_null_X3_real | DEV-null | 8 | mean +16.1%, p95 +33.8%, candidate beats 0.75, CI-pass rate n/a | null calibration
+2026-11-05 | EDGE-D | D1b synthetic_null_X3_rv | DEV-null | 8 | mean +116.2%, p95 +183.2%, candidate beats 0.0, CI-pass rate n/a | null calibration
+2026-11-05 | EDGE-D | D1b X1 EVENT | VALIDATION | 6 tr / 6 sess | net -12.8% [-17.7,-7.2] (gross -12.7%), win 0% [+0.0,+0.0], payoff 0.00, by year {2025: n6 -12.8%} | FAIL
+2026-11-05 | EDGE-D | D1b X1 CONTROL | VALIDATION | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D1b X2 EVENT | VALIDATION | 6 tr / 6 sess | net -11.7% [-28.5,+18.0] (gross -11.7%), win 17% [+0.0,+50.0], payoff 2.30, by year {2025: n6 -11.7%} | FAIL
+2026-11-05 | EDGE-D | D1b X2 CONTROL | VALIDATION | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D1b X3 EVENT | VALIDATION | 6 tr / 6 sess | net -4.9% [-40.3,+34.5] (gross -4.8%), win 33% [+0.0,+66.7], payoff 1.57, by year {2025: n6 -4.9%} | FAIL
+2026-11-05 | EDGE-D | D1b X3 CONTROL | VALIDATION | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D1b X4 EVENT | VALIDATION | 6 tr / 6 sess | net -22.7% [-35.1,-13.0] (gross -22.6%), win 0% [+0.0,+0.0], payoff 0.00, by year {2025: n6 -22.7%} | FAIL
+2026-11-05 | EDGE-D | D1b X4 CONTROL | VALIDATION | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D1b X5 EVENT | VALIDATION | 6 tr / 6 sess | net -15.8% [-41.3,+10.9] (gross -15.8%), win 33% [+0.0,+66.7], payoff 0.67, by year {2025: n6 -15.8%} | FAIL
+2026-11-05 | EDGE-D | D1b X5 CONTROL | VALIDATION | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D1b synthetic_null_X3_real | VALIDATION-null | 8 | mean +11.1%, p95 +47.5%, candidate beats 0.25, CI-pass rate n/a | null calibration
+2026-11-05 | EDGE-D | D1b synthetic_null_X3_rv | VALIDATION-null | 8 | mean +93.0%, p95 +200.0%, candidate beats 0.125, CI-pass rate n/a | null calibration
+2026-11-05 | EDGE-D | D2 E1 EVENT | DEV | 64 tr / 108 sess | net -19.3% [-33.6,-3.4] (gross -19.2%), win 25% [+14.1,+35.9], payoff 1.35, by year {2022: n18 -24.4%, 2023: n22 -25.7%, 2024: n24 -9.6%} | FAIL
+2026-11-05 | EDGE-D | D2 E1 CONTROL | DEV | 6 tr / 44 sess | net -12.9% [-29.8,+10.9] (gross -12.7%), win 17% [+0.0,+50.0], payoff 1.85, by year {2022: n2 +3.1%, 2023: n2 -23.4%, 2024: n2 -18.3%} | FAIL
+2026-11-05 | EDGE-D | D2 E1 CONTRAST_EVENT | DEV | 66 tr / 108 sess | net +1.2% [-14.5,+18.5] (gross +1.4%), win 39% [+28.8,+51.5], payoff 1.61, by year {2022: n17 +2.1%, 2023: n23 +6.6%, 2024: n26 -4.1%} | FAIL
+2026-11-05 | EDGE-D | D2 E2 EVENT | DEV | 64 tr / 108 sess | net -8.9% [-22.4,+5.2] (gross -8.7%), win 42% [+29.7,+54.7], payoff 0.94, by year {2022: n18 -17.5%, 2023: n22 -8.1%, 2024: n24 -3.1%} | FAIL
+2026-11-05 | EDGE-D | D2 E2 CONTROL | DEV | 6 tr / 44 sess | net -10.3% [-29.8,+18.5] (gross -10.2%), win 17% [+0.0,+50.0], payoff 2.47, by year {2022: n2 +10.7%, 2023: n2 -23.4%, 2024: n2 -18.3%} | FAIL
+2026-11-05 | EDGE-D | D2 E2 CONTRAST_EVENT | DEV | 66 tr / 108 sess | net -6.4% [-17.3,+4.7] (gross -6.2%), win 45% [+34.8,+57.6], payoff 0.87, by year {2022: n17 -5.0%, 2023: n23 -7.0%, 2024: n26 -6.8%} | FAIL
+2026-11-05 | EDGE-D | D2 E3 EVENT | DEV | 64 tr / 108 sess | net -4.7% [-18.7,+9.7] (gross -4.5%), win 58% [+45.3,+70.3], payoff 0.60, by year {2022: n18 -12.7%, 2023: n22 -9.9%, 2024: n24 +6.1%} | FAIL
+2026-11-05 | EDGE-D | D2 E3 CONTROL | DEV | 6 tr / 44 sess | net -22.9% [-65.5,+25.1] (gross -22.8%), win 33% [+0.0,+66.7], payoff 0.85, by year {2022: n2 +4.7%, 2023: n2 -47.1%, 2024: n2 -26.3%} | FAIL
+2026-11-05 | EDGE-D | D2 E3 CONTRAST_EVENT | DEV | 66 tr / 108 sess | net -3.7% [-15.5,+7.8] (gross -3.5%), win 59% [+47.0,+71.2], payoff 0.58, by year {2022: n17 -5.2%, 2023: n23 -3.8%, 2024: n26 -2.5%} | FAIL
+2026-11-05 | EDGE-D | D2 E4 EVENT | DEV | 64 tr / 108 sess | net -3.6% [-15.9,+9.8] (gross -3.4%), win 41% [+28.1,+53.1], payoff 1.24, by year {2022: n18 -13.6%, 2023: n22 +3.6%, 2024: n24 -2.6%} | FAIL
+2026-11-05 | EDGE-D | D2 E4 CONTROL | DEV | 6 tr / 44 sess | net -5.8% [-26.8,+23.3] (gross -5.6%), win 33% [+0.0,+66.7], payoff 1.32, by year {2022: n2 +14.5%, 2023: n2 -26.9%, 2024: n2 -4.9%} | FAIL
+2026-11-05 | EDGE-D | D2 shuffled_null_E1 | DEV-null | 50 | mean -9.8%, p95 +2.8%, candidate beats 0.06, CI-pass rate 0.0 | null calibration
+2026-11-05 | EDGE-D | D2 synthetic_null_E1_real | DEV-null |  | mean +10.5%, p95 +33.1%, candidate beats 0.0, CI-pass rate n/a | null calibration
+2026-11-05 | EDGE-D | D2 E1 EVENT | VALIDATION | 20 tr / 23 sess | net -18.4% [-35.7,-0.2] (gross -18.3%), win 20% [+5.0,+40.0], payoff 1.33, by year {2025: n20 -18.4%} | FAIL
+2026-11-05 | EDGE-D | D2 E1 CONTROL | VALIDATION | 1 tr / 12 sess | net -19.9% [-19.9,-19.9] (gross -19.8%), win 0% [+0.0,+0.0], payoff 0.00, by year {2025: n1 -19.9%} | FAIL
+2026-11-05 | EDGE-D | D2 E1 CONTRAST_EVENT | VALIDATION | 22 tr / 23 sess | net +0.1% [-18.6,+24.9] (gross +0.3%), win 32% [+13.6,+54.5], payoff 2.16, by year {2025: n22 +0.1%} | FAIL
+2026-11-05 | EDGE-D | D2 E2 EVENT | VALIDATION | 20 tr / 23 sess | net -18.8% [-35.3,-2.2] (gross -18.6%), win 25% [+5.0,+45.0], payoff 0.94, by year {2025: n20 -18.8%} | FAIL
+2026-11-05 | EDGE-D | D2 E2 CONTROL | VALIDATION | 1 tr / 12 sess | net -19.9% [-19.9,-19.9] (gross -19.8%), win 0% [+0.0,+0.0], payoff 0.00, by year {2025: n1 -19.9%} | FAIL
+2026-11-05 | EDGE-D | D2 E2 CONTRAST_EVENT | VALIDATION | 22 tr / 23 sess | net -3.6% [-16.4,+10.2] (gross -3.5%), win 41% [+22.7,+63.6], payoff 1.11, by year {2025: n22 -3.6%} | FAIL
+2026-11-05 | EDGE-D | D2 E3 EVENT | VALIDATION | 20 tr / 23 sess | net -14.0% [-43.4,+19.5] (gross -13.8%), win 40% [+20.0,+60.0], payoff 0.97, by year {2025: n20 -14.0%} | FAIL
+2026-11-05 | EDGE-D | D2 E3 CONTROL | VALIDATION | 1 tr / 12 sess | net +3.0% [+3.0,+3.0] (gross +3.1%), win 100% [+100.0,+100.0], payoff inf, by year {2025: n1 +3.0%} | FAIL
+2026-11-05 | EDGE-D | D2 E3 CONTRAST_EVENT | VALIDATION | 22 tr / 23 sess | net -1.5% [-22.4,+18.8] (gross -1.3%), win 68% [+50.0,+86.4], payoff 0.43, by year {2025: n22 -1.5%} | FAIL
+2026-11-05 | EDGE-D | D2 E4 EVENT | VALIDATION | 20 tr / 23 sess | net -10.0% [-28.6,+10.7] (gross -9.8%), win 40% [+20.0,+60.0], payoff 0.89, by year {2025: n20 -10.0%} | FAIL
+2026-11-05 | EDGE-D | D2 E4 CONTROL | VALIDATION | 1 tr / 12 sess | net +28.9% [+28.9,+28.9] (gross +29.0%), win 100% [+100.0,+100.0], payoff inf, by year {2025: n1 +28.9%} | FAIL
+2026-11-05 | EDGE-D | D2 shuffled_null_E1 | VALIDATION-null | 50 | mean -5.4%, p95 +13.6%, candidate beats 0.12, CI-pass rate 0.02 | null calibration
+2026-11-05 | EDGE-D | D2 synthetic_null_E1_real | VALIDATION-null |  | mean +11.1%, p95 +76.2%, candidate beats 0.25, CI-pass rate n/a | null calibration
+2026-11-05 | EDGE-D | D2b E1 EVENT | DEV | 15 tr / 28 sess | net +36.3% [-34.7,+114.6] (gross +36.5%), win 47% [+20.0,+73.3], payoff 1.97, by year {2021: n1 +246.8%, 2022: n4 -30.3%, 2023: n5 +8.0%, 2024: n5 +75.7%} | FAIL
+2026-11-05 | EDGE-D | D2b E1 CONTROL | DEV | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D2b E1 CONTRAST_EVENT | DEV | 18 tr / 28 sess | net -31.6% [-79.4,+27.3] (gross -31.5%), win 22% [+5.6,+44.4], payoff 1.94, by year {2021: n3 -99.1%, 2022: n5 +71.4%, 2023: n5 -42.8%, 2024: n5 -82.9%} | FAIL
+2026-11-05 | EDGE-D | D2b E2 EVENT | DEV | 15 tr / 28 sess | net +42.5% [-16.5,+108.5] (gross +42.7%), win 47% [+20.0,+73.3], payoff 3.01, by year {2021: n1 +337.0%, 2022: n4 +32.9%, 2023: n5 +26.2%, 2024: n5 +7.5%} | FAIL
+2026-11-05 | EDGE-D | D2b E2 CONTROL | DEV | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D2b E2 CONTRAST_EVENT | DEV | 18 tr / 28 sess | net -16.3% [-48.9,+18.1] (gross -16.2%), win 50% [+27.8,+72.2], payoff 0.55, by year {2021: n3 -62.9%, 2022: n5 -19.4%, 2023: n5 +30.3%, 2024: n5 -32.0%} | FAIL
+2026-11-05 | EDGE-D | D2b E3 EVENT | DEV | 15 tr / 28 sess | net +23.6% [-25.7,+80.7] (gross +23.8%), win 53% [+26.7,+80.0], payoff 1.65, by year {2021: n1 +288.4%, 2022: n4 +9.6%, 2023: n5 +18.2%, 2024: n5 -12.7%} | FAIL
+2026-11-05 | EDGE-D | D2b E3 CONTROL | DEV | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D2b E3 CONTRAST_EVENT | DEV | 18 tr / 28 sess | net -18.1% [-42.7,+5.7] (gross -18.0%), win 50% [+27.8,+72.2], payoff 0.39, by year {2021: n3 -29.4%, 2022: n5 -5.8%, 2023: n5 -11.3%, 2024: n5 -30.4%} | FAIL
+2026-11-05 | EDGE-D | D2b E4 EVENT | DEV | 15 tr / 28 sess | net +7.7% [-19.5,+39.9] (gross +7.8%), win 47% [+20.0,+73.3], payoff 1.64, by year {2021: n1 -47.4%, 2022: n4 +23.4%, 2023: n5 -23.3%, 2024: n5 +37.0%} | FAIL
+2026-11-05 | EDGE-D | D2b E4 CONTROL | DEV | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D2b shuffled_null_E1 | DEV-null | 50 | mean +6.6%, p95 +50.4%, candidate beats 0.82, CI-pass rate 0.02 | null calibration
+2026-11-05 | EDGE-D | D2b synthetic_null_E1_real | DEV-null |  | mean -9.8%, p95 +74.4%, candidate beats 0.75, CI-pass rate n/a | null calibration
+2026-11-05 | EDGE-D | D2b E1 EVENT | VALIDATION | 3 tr / 6 sess | net -23.6% [-100.1,+127.6] (gross -23.4%), win 33% [+0.0,+100.0], payoff 1.29, by year {2025: n3 -23.6%} | FAIL
+2026-11-05 | EDGE-D | D2b E1 CONTROL | VALIDATION | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D2b E1 CONTRAST_EVENT | VALIDATION | 3 tr / 6 sess | net -4.0% [-100.1,+169.2] (gross -3.9%), win 33% [+0.0,+100.0], payoff 1.87, by year {2025: n3 -4.0%} | FAIL
+2026-11-05 | EDGE-D | D2b E2 EVENT | VALIDATION | 3 tr / 6 sess | net -64.5% [-100.1,+4.9] (gross -64.3%), win 33% [+0.0,+100.0], payoff 0.05, by year {2025: n3 -64.5%} | FAIL
+2026-11-05 | EDGE-D | D2b E2 CONTROL | VALIDATION | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D2b E2 CONTRAST_EVENT | VALIDATION | 3 tr / 6 sess | net -8.4% [-81.2,+80.4] (gross -8.3%), win 33% [+0.0,+100.0], payoff 1.52, by year {2025: n3 -8.4%} | FAIL
+2026-11-05 | EDGE-D | D2b E3 EVENT | VALIDATION | 3 tr / 6 sess | net -36.8% [-100.1,+11.2] (gross -36.7%), win 33% [+0.0,+100.0], payoff 0.18, by year {2025: n3 -36.8%} | FAIL
+2026-11-05 | EDGE-D | D2b E3 CONTROL | VALIDATION | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D2b E3 CONTRAST_EVENT | VALIDATION | 3 tr / 6 sess | net -1.0% [-100.1,+104.4] (gross -0.8%), win 33% [+0.0,+100.0], payoff 1.95, by year {2025: n3 -1.0%} | FAIL
+2026-11-05 | EDGE-D | D2b E4 EVENT | VALIDATION | 3 tr / 6 sess | net -31.3% [-41.9,-10.3] (gross -31.1%), win 0% [+0.0,+0.0], payoff 0.00, by year {2025: n3 -31.3%} | FAIL
+2026-11-05 | EDGE-D | D2b E4 CONTROL | VALIDATION | 0 | no executable trades | FAIL
+2026-11-05 | EDGE-D | D2b shuffled_null_E1 | VALIDATION-null | 50 | mean -17.0%, p95 +66.2%, candidate beats 0.34, CI-pass rate 0.0 | null calibration
+2026-11-05 | EDGE-D | D2b synthetic_null_E1_real | VALIDATION-null |  | mean -36.8%, p95 +8.7%, candidate beats 0.375, CI-pass rate n/a | null calibration
+2026-11-05 | EDGE-D | PIPELINE NOTE synthetic zero-drift null for STRADDLES (D1/D1b) | null | 8 seeds x 2 modes | MIS-SPECIFIED: the path carries the event jump variance after entry while options are priced at the window-average (rv) or median (real) IV, so a no-edge straddle shows +11..+116%; its pass rate is NOT an FDR estimate; it can only make real results look worse (no false pass). D1 verdicts rest on the control-morning null; directional D2/D2b shuffled-side nulls are calibrated (CI-pass 0-2%) | edge-d/run.py synthetic_preopen
