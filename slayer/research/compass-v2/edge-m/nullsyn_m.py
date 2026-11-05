@@ -133,8 +133,8 @@ def run_one(H, v, rng, info, spr):
     return {'ret': xb / fill - 1, 'ret_fee': (xb * 100 - sim.FEE) / (fill * 100 + sim.FEE) - 1}
 
 
-def null_dist(v, reps=100, seed=0):
-    have = A.load()
+def null_dist(v, reps=100, seed=0, f=None):
+    have = A.load(f)
     H = mdte.HOF[v]
     inf, ratio = infos(have, v)
     tr_real = A.trades(have, v)
@@ -158,9 +158,10 @@ def null_dist(v, reps=100, seed=0):
 
 
 if __name__ == '__main__':
+    mdte.NOFETCH = True
     v = sys.argv[1]
     reps = int(sys.argv[2]) if len(sys.argv) > 2 else 100
-    z = null_dist(v, reps)
+    z = null_dist(v, reps, f=sys.argv[3] if len(sys.argv) > 3 else None)
     os.makedirs(os.path.join(mdte.MROOT, 'nulls'), exist_ok=True)
     json.dump(z, open(os.path.join(mdte.MROOT, 'nulls', f'{v}.json'), 'w'))
     print(json.dumps({k: x for k, x in z.items() if k != 'exps'}))

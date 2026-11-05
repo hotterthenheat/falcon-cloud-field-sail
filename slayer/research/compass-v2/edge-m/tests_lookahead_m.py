@@ -93,7 +93,9 @@ def exit_test(have, limit=300, canary=False):
                     if len(k) and bb[k[0]] < bb[j] and ss[j] > tr['t'] + 5:
                         return int(ss[j])
                 return -1
-            diff += run(q) != run(cut)
+            e = run(q)  # the same truncation test: cut the path at the canary's own exit fill (decision + 2 s)
+            cc = {x: q[x][q['s'] <= e + sim.LAT] for x in q}
+            diff += e != run(cc)
         else:
             r1 = sim.run_trade(cut, tr['t'], tr['t_end'], rules, None, None)
             diff += r1 is None or abs(r1['ret'] - r0['ret']) > 1e-12 or r1['exit_s'] != r0['exit_s']
@@ -103,7 +105,7 @@ def exit_test(have, limit=300, canary=False):
 
 if __name__ == '__main__':
     mdte.NOFETCH = True
-    have = A.load()
+    have = A.load(sys.argv[1] if len(sys.argv) > 1 else None)
     print('triggers: no look-ahead on', trig_test(have), 'recorded triggers')
     n, d = sel_test(have)
     assert d == 0, f'selection differs on {d}/{n}'

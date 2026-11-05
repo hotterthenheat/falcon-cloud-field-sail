@@ -11,10 +11,11 @@ sys.path.insert(0, HERE)
 import sim
 import mdte
 
-N_TRIALS = 306
-BUCKET = {'M1': '0', 'M2': '1', 'M3': '23', 'M4': '23', 'M5': '1', 'M6': '23'}
+N_TRIALS = 308
+BUCKET = {'M1': '0', 'M2': '1', 'M3': '23', 'M4': '23', 'M5': '1', 'M6': '23', 'M7': '23', 'M8': '23'}
 DESC = {'M1': 'E1 0DTE X2s (control)', 'M2': 'E1 1DTE X2s', 'M3': 'E1 2-3DTE X2s', 'M4': 'E1 2-3DTE overnight->09:45',
-        'M5': 'E2 1DTE Y2s', 'M6': 'E2 2-3DTE Y2s'}
+        'M5': 'E2 1DTE Y2s', 'M6': 'E2 2-3DTE Y2s',
+        'M7': 'E2 2-3DTE Y2s + quote guard (A1)', 'M8': 'E1 2-3DTE X2s + quote guard (A1)'}
 
 
 def load(f=None):
@@ -160,7 +161,7 @@ def main():
         if z:
             print(f"| {v} | {z['n']} | {100 * z['real']:+.1f}% | {100 * z['null_mean']:+.1f}% | {100 * z['null_p95']:+.1f}% | "
                   f"{100 * z['beats']:.0f}% | {100 * z['fdr']:.1f}% |")
-    hv = ['M2', 'M3', 'M4', 'M5', 'M6']
+    hv = ['M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8']
     days = sorted(set(t['day'] for v in hv for t in rows[v][1]))
     di = {d: i for i, d in enumerate(days)}
     M = np.full((len(days), len(hv)), np.nan)
@@ -170,10 +171,10 @@ def main():
             by.setdefault(t['day'], []).append(t['ret_fee'])
         for d, x in by.items():
             M[di[d], j] = np.mean(x)
-    print(f'\nPBO (CSCV, 16 blocks, M2-M6): {sim.pbo(M):.2f}')
+    print(f'\nPBO (CSCV, 16 blocks, M2-M8): {sim.pbo(M):.2f}')
     shs = [rows[v][0].get('sharpe', np.nan) for v in hv if rows[v][0].get('n', 0) > 3]
     var = max(float(np.nanvar(shs)) if len(shs) > 1 else 0.01, 0.002)
-    print(f'DSR at N = {N_TRIALS} (Sharpe variance {var:.4f} across M2-M6):')
+    print(f'DSR at N = {N_TRIALS} (Sharpe variance {var:.4f} across M2-M8):')
     for v in mdte.ALL:
         s = rows[v][0]
         if s.get('n', 0) > 3:
