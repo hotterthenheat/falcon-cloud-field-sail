@@ -177,7 +177,11 @@ refreshed_at = {}
 def one_minute(tag, start):
     deadline = start + BUDGET_S
     done = []
-    with ThreadPoolExecutor(max_workers=2) as ex:
+    # courtesy to the live Compass engine: it scans the universe on 5-minute marks (09:30, 09:35, ...). On those
+    # minutes we read tier A only, one request at a time, and leave the terminal to the engine.
+    mark = int(tag[2:]) % 5 == 0
+    if mark: deadline = start
+    with ThreadPoolExecutor(max_workers=1 if mark else 2) as ex:
         stocks_f = ex.submit(fetch_stocks)
         idx = fetch_index()
         res = list(ex.map(fetch_chain, TIER_A))
@@ -210,7 +214,7 @@ def one_minute(tag, start):
             w.writerow([tag, r['symbol'], r.get('timestamp'), '', '', '', r.get('price'), '', ''])
     json.dump(EXPS, open(EXP_FILE + '.tmp', 'w')); os.replace(EXP_FILE + '.tmp', EXP_FILE)
     json.dump({'ptr': ptr['b'], 'last_cand': LAST_CAND}, open(STATE + '.tmp', 'w')); os.replace(STATE + '.tmp', STATE)
-    cov = {'names_with_cand': sum(1 for v in LAST_CAND.values() if v > 0), 'names_seen': len(LAST_CAND), 'tierA': len(TIER_A), 'tierB_this_min': len(done), 'tierB_ptr': ptr['b'],
+    cov = {'engine_mark_minute': int(mark), 'names_with_cand': sum(1 for v in LAST_CAND.values() if v > 0), 'names_seen': len(LAST_CAND), 'tierA': len(TIER_A), 'tierB_this_min': len(done), 'tierB_ptr': ptr['b'],
            'cycle_min_est': round(len(TIER_B) / max(1, len(done)), 1)}
     with open(f'{OUT}/coverage.jsonl', 'a') as f:
         f.write(json.dumps({'minute': tag, 'rows': n, 'secs': round(time.time() - start, 1), **cov,

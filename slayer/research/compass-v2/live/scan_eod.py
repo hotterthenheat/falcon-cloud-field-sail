@@ -67,6 +67,18 @@ def label(df):
             nxt = np.clip(first + 1, 0, n - 1)
             conf = anyh & (first + 1 < n) & (bids[nxt] >= k * asks[idx])
             rec[f'hit{k}'] = anyh; rec[f'hit{k}_mod'] = fm; rec[f'conf{k}'] = conf
+            if k == 1.5:
+                # adverse excursion before the first hit (or over the rest of the day when it never hit)
+                before = later & (np.arange(n)[None, :] < np.where(anyh, first, n)[:, None])
+                mae = np.nanmin(np.where(before, mult, np.inf), axis=1)
+                mae[~np.isfinite(mae)] = np.nan
+                rec['mae_before_15'] = mae
+                # how many consecutive snapshots the bid held >= 1.5x after the first hit
+                held = np.zeros(len(idx), dtype=int)
+                for j in np.where(anyh)[0]:
+                    t = first[j]
+                    while t < n and bids[t] >= k * asks[idx[j]]: held[j] += 1; t += 1
+                rec['held_snaps_15'] = held
         out.append(pd.DataFrame(rec))
     lab = pd.concat(out, ignore_index=True).set_index('row')
     return df.loc[lab.index].join(lab)
@@ -81,6 +93,23 @@ def load_ctx():
     c = pd.concat(parts, ignore_index=True)
     c['mod'] = c['minute'].map(mod)
     return c.drop(columns=['minute'])
+
+ENGINE_ROWS = f'/home/user/falcon-cloud-field-sail/slayer/.cache/compass/rows/{DAY}.jsonl'
+
+def engine_scores():
+    """the live Compass engine's own score (p1) of each contract it scored at a 5-minute mark (its rows log)"""
+    out = []
+    if not os.path.exists(ENGINE_ROWS): return pd.DataFrame()
+    for l in open(ENGINE_ROWS):
+        try:
+            r = json.loads(l)
+            root, rest = r['k'].split()
+            out.append({'sym': root, 'exp': r['e'].replace('-', ''), 'strike_f': float(rest[:-1]), 'right': rest[-1],
+                        'mod': int(r['t']) - 570, 'engine_p1': r.get('p1'), 'engine_bid': r.get('b'), 'engine_ask': r.get('a')})
+        except Exception:
+            pass
+    e = pd.DataFrame(out)
+    return e.drop_duplicates(['sym', 'exp', 'strike_f', 'right', 'mod'], keep='last') if len(e) else e
 
 def add_features(x):
     s = np.where(x['right'] == 'C', 1.0, -1.0)
@@ -147,7 +176,8 @@ def move_type(ev, ctx_idx, news_by):
     if spy_shock: return 'vol_shock'
     c = ctx_idx.get((sym, e), {})
     r15 = c.get('ret15')
-    if r15 is None or (isinstance(r15, float) and math.isnan(r15)): return 'unknown'
+    if r15 is None or (isinstance(r15, float) and math.isnan(r15)): r15 = c.get('ret5')
+    if r15 is None or (isinstance(r15, float) and math.isnan(r15)): return 'unknown (first minutes)'
     return 'trend_continuation' if s * r15 > 0 else 'reversal'
 
 def bucket_delta(d):
@@ -178,6 +208,10 @@ def main():
     x = add_features(x)
     for k in K:
         x[f'hit{k}'] = x[f'hit{k}'].astype(bool)
+    eng = engine_scores()
+    if len(eng):
+        x = x.merge(eng, on=['sym', 'exp', 'strike_f', 'right', 'mod'], how='left')
+    x = x.copy()
     x['tod'] = bucket_tod(x['mod']); x['dbucket'] = bucket_delta(x['abs_delta'])
     x.to_parquet(f'{OUT}/labels.parquet', compression='zstd')
     ev = [json.loads(l) for l in open(f'{OUT}/movers.jsonl')] if os.path.exists(f'{OUT}/movers.jsonl') else []
@@ -193,7 +227,9 @@ def main():
         evd['dbucket'] = bucket_delta(evd['entry_delta'].abs()); evd['tod'] = bucket_tod(evd['entry_minute'].map(mod))
         evd['minutes_held'] = evd['exit_minute'].map(mod) - evd['entry_minute'].map(mod)
     feats = [c for c in x.columns if c not in ('minute', 'kind', 'sym', 'exp', 'strike', 'right', 'g_ts', 'q_ts', 'under_ts',
-             'key', 'tod', 'dbucket', 'max_mult', 'n_later', 'last_mod_seen', 'engine_ok', 'strike_f', 'chain_refreshed')
+             'key', 'tod', 'dbucket', 'max_mult', 'n_later', 'last_mod_seen', 'engine_ok', 'strike_f', 'chain_refreshed',
+             'price', 'under', 'mod', 'mae_before_15', 'held_snaps_15', 'news15_all', 'theta', 'vega', 'ask_x_size',
+             'engine_bid', 'engine_ask')
              and not c.startswith('hit') and not c.startswith('conf') and x[c].dtype.kind in 'fiub']
     L = []
     n_all = len(x); n_names = x['sym'].nunique()
@@ -259,6 +295,16 @@ def main():
         ep = e15.groupby(['sym', 'right', 'win']).size()
         L.append(f'\nIndependent-ish episodes behind the 1.5x movers (underlying x side x 15-min entry window): '
                  f'{len(ep)} (vs {e15["contract"].nunique()} contracts).\n')
+    L.append('\n## Could it be grabbed? (rows that reached 1.5x)\n')
+    h = x[x['hit1.5']]
+    if len(h):
+        tt = (h['hit1.5_mod'] - h['mod'])
+        L.append(f'- minutes from entry to first 1.5x bid: median {tt.median():.0f}, p25 {tt.quantile(.25):.0f}, p75 {tt.quantile(.75):.0f}\n'
+                 f'- worst bid before the hit, as a multiple of the entry ask (adverse excursion): median {h["mae_before_15"].median():.2f}, '
+                 f'p10 {h["mae_before_15"].quantile(.1):.2f} (non-movers over the rest of the day: median {x.loc[~x["hit1.5"], "mae_before_15"].median():.2f})\n'
+                 f'- snapshots the bid stayed >= 1.5x after the first touch: median {h["held_snaps_15"].median():.0f}; share held only one snapshot: {(h["held_snaps_15"] == 1).mean():.2f}\n'
+                 f'- entry spread % of mid: movers median {h["spread_pct"].median():.1f} vs all {x["spread_pct"].median():.1f}; tier-A displayed ask size at entry: movers median {h["ask_size"].median():.0f} vs all {x["ask_size"].median():.0f}\n'
+                 f'- entry ask: movers median {h["ask"].median():.2f} vs all {x["ask"].median():.2f}\n')
     L.append('\n## Movers vs ALL buyable contract-minutes: context at entry\n')
     L.append('Label = the contract-minute later reached 1.5x (hit1.5). `auc` = probability a random mover row has a higher '
              'value than a random non-mover row (0.5 = no difference); `auc_within_name` computes it inside each '
@@ -269,6 +315,14 @@ def main():
         L.append(f'\n### {name}: {len(g)} rows, {int(g["hit1.5"].sum())} reached 1.5x\n')
         L.append(md_table(cmp.drop(columns=['strength']).head(40)) + '\n')
         cmp.to_csv(f'{OUT}/compare-{"all" if "all" in name else "tierA"}.csv', index=False)
+    if 'engine_p1' in x and x['engine_p1'].notna().sum() > 50:
+        g = x[x['engine_p1'].notna()]
+        L.append(f'\n### The Compass engine\'s own score at its 5-minute marks (rows it scored: {len(g)}, reached 1.5x: {int(g["hit1.5"].sum())})\n')
+        q = pd.qcut(g['engine_p1'].rank(method='first'), 5, labels=['q1 (low)', 'q2', 'q3', 'q4', 'q5 (high)'])
+        t = g.groupby(q, observed=True).agg(rows=('hit1.5', 'size'), p1_mean=('engine_p1', 'mean'), reached_15=('hit1.5', 'mean'),
+                                            reached_2=('hit2.0', 'mean'), median_max_mult=('max_mult', 'median')).reset_index()
+        L.append(md_table(t) + f'\n\nAUC of engine p1 for reaching 1.5x: {auc(g.loc[g["hit1.5"], "engine_p1"].to_numpy(float), g.loc[~g["hit1.5"], "engine_p1"].to_numpy(float)):.3f} '
+                 '(the engine is built for a different target; this only says whether its score also ranks today\'s movers).\n')
     # held out within the day? no: report a simple time split as a stability check (not validation)
     early, late = x[x['mod'] < 195], x[x['mod'] >= 195]
     if len(early) > 100 and len(late) > 100:
