@@ -306,7 +306,7 @@ def synthetic_null(tr: pd.DataFrame, nights: dict, reps=200, seed=0):
             z = rng.normal(-0.5 * s1[i] ** 2, s1[i], n)
             S = x['S'] * np.exp(np.cumsum(z))
             tt = x['t'] + 1 + np.arange(n)
-            T = np.array([C.years_to_expiry(x['exp'], x['session'], t) for t in tt])
+            T = C.years_to_expiry(x['exp'], x['session'], x['t'] + 1) - np.arange(n) / (365.0 * 1440)
             mid = np.maximum(C.bs_price(S, x['k'], T, x['iv'], x['call']), 0.0)
             ask = mid * (1 + x['spr'] / 2)
             bid = mid * (1 - x['spr'] / 2)
@@ -363,7 +363,17 @@ def protocol(tr: pd.DataFrame) -> pd.DataFrame:
         if evening:
             parts.append(C.fetch_1s(r.root, r.session, r.exp, r.k, bool(r.call), start='20:15:00', end='00:00:00'))
             parts[-1] = parts[-1].assign(ms=parts[-1].ms - DAY) if len(parts[-1]) and parts[-1].ms.min() >= 0 else parts[-1]
-        parts.append(C.fetch_1s(r.root, r.session, r.exp, r.k, bool(r.call), start='00:00:00', end='09:30:00'))
+        # the morning window: the whole 00:00-09:30 if cached, else [mark, minute-path exit + 90 min] (the 1-second path
+        # with a near-identical fill cannot trigger later than the minute path; a forced exit at the data's end is flagged)
+        full = os.path.join(C.DATA, 'q1s', r.root, f'{r.session}_{r.exp}_{r.k:g}{"C" if r.call else "P"}_0000-0930.parquet')
+        if not evening or r.t_exit >= 0:
+            if os.path.exists(full):
+                parts.append(pd.read_parquet(full))
+            else:
+                t_end = min(int(r.t_exit) + 90, 9 * 60 + 30)
+                t_start = max(int(r.t) - 1, 0)
+                parts.append(C.fetch_1s(r.root, r.session, r.exp, r.k, bool(r.call),
+                                        start=f'{t_start // 60:02d}:{t_start % 60:02d}:00', end=f'{t_end // 60:02d}:{t_end % 60:02d}:00'))
         q = pd.concat(parts, ignore_index=True).sort_values('ms')
         if len(q):
             v = q[['bid', 'ask', 'bs', 'as']].to_numpy()
