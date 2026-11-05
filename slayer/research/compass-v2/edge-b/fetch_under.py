@@ -20,8 +20,12 @@ def hms(s):
     return f'{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}'
 
 
+STK = os.environ.get('EDGEB_STK', 'stk')
+
+
 def fetch_one(t, session, lo, hi):
-    out = f'{DATA}/theta/stk/{session}/{t}.parquet'
+    sub = 'stk' if t == 'SPY' and lo == OPEN and hi == CLOSE else STK
+    out = f'{DATA}/theta/{sub}/{session}/{t}.parquet'
     if os.path.exists(out):
         return 'have'
     os.makedirs(os.path.dirname(out), exist_ok=True)

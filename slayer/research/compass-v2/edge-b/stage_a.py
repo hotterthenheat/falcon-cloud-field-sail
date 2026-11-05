@@ -16,13 +16,16 @@ from common import DATA  # noqa: E402
 from stats import cluster_ci  # noqa: E402
 
 H = [5, 15, 30, 60]
+STK = os.environ.get('EDGEB_STK', 'stk')
 _cache = {}
 
 
 def load(t, s):
     k = (t, s)
     if k not in _cache:
-        p = f'{DATA}/theta/stk/{s}/{t}.parquet'
+        p = f'{DATA}/theta/{STK}/{s}/{t}.parquet'
+        if t == 'SPY' and os.path.exists(f'{DATA}/theta/stk/{s}/SPY.parquet'):
+            p = f'{DATA}/theta/stk/{s}/SPY.parquet'   # SPY full days (hedge leg and SPY events)
         if not os.path.exists(p):
             _cache[k] = None
         else:

@@ -27,6 +27,9 @@ from stage_a import load as load_stk  # noqa: E402
 
 SEED = 20261105
 CAP_B = 1200
+# global trial count for the deflated Sharpe: 155 (compass-model4) + v2 ledger variants (EDGE 17 + EDGE-B 20 Stage-A
+# looks + 27 exits per Stage-B family) -- rounded up
+N_TRIALS = 260
 CLOSE_CAP = 15 * 3600 + 55 * 60
 L = 3700
 META = f'{DATA}/theta/meta'
@@ -258,12 +261,15 @@ def returns_matrix(tr, tag, fee=True):
     return ret(X, A, fee)
 
 
-def synthetic(tr, rng):
-    """zero-drift replicate: driftless walk at sigma_1s, option = BS at entry IV, entry dollar spread held."""
+def synthetic(tr, rng, mode='rv'):
+    """zero-drift replicate: option = BS at entry IV, entry dollar spread held; path a driftless walk at
+    mode 'rv': the realized 1-second vol (PREREG; inflated by quote bounce -> favours long options),
+    mode 'iv': the option's own IV per calendar second (pricing-consistent: the true no-edge case)."""
     out = np.empty((len(tr), len(GRID)))
     for i, r in enumerate(tr.itertuples()):
         n = L + 1
-        steps = rng.normal(0, r.sig1, n - 1)
+        sd = r.sig1 if mode == 'rv' else r.sig_iv / math.sqrt(365 * 86400)
+        steps = rng.normal(0, sd, n - 1)
         u = r.S * np.exp(np.concatenate([[0], np.cumsum(steps)]))
         call = r.dir == 1
         tau = r.sig_tau - np.arange(n) / (365 * 86400)
@@ -329,7 +335,8 @@ def do_run(variant, split, frozen=None, n_perm=300, n_syn=60):
     res['synthetic_mean_of_best'] = float(np.mean(sm))
     if frozen is None and len(tr) > 40:
         res['pbo'] = pbo_cscv(Ms, sess, 16)
-    res['dsr_trials_global_est'] = None
+    res['dsr_trials'] = N_TRIALS
+    res['dsr'] = dsr(Ms[:, j], N_TRIALS)
     passed = bool(mu > 0 and lo > 0 and res['shuffle_beats'] >= 0.95)
     res['pass'] = passed
     json.dump(res, open(f'{DATA}/stageB_{variant}_{split}.json', 'w'), indent=1, default=float)
@@ -338,9 +345,23 @@ def do_run(variant, split, frozen=None, n_perm=300, n_syn=60):
     return res
 
 
+def do_synth(variant, split, mode, n_syn=60):
+    tr = pd.read_pickle(f'{DATA}/stageB_{variant}_{split}.pkl')
+    sess = tr['session'].to_numpy()
+    sp = 0; sm = []
+    for i in range(n_syn):
+        Mz = synthetic(tr, np.random.default_rng(900 + i), mode)
+        jz = int(np.argmax(Mz.mean(0)))
+        m_, l_, _ = cluster_ci(Mz[:, jz], sess, B=400, seed=i)
+        sm.append(m_); sp += (m_ > 0) & (l_ > 0)
+    print(variant, split, mode, 'synthetic best-exit mean', round(float(np.mean(sm)), 5), 'CI-pass rate', sp / n_syn)
+
+
 if __name__ == '__main__':
     cmd, v, s = sys.argv[1:4]
-    if cmd == 'fetch':
+    if cmd == 'synth':
+        do_synth(v, s, sys.argv[4])
+    elif cmd == 'fetch':
         do_fetch(v, s)
     else:
         do_run(v, s, sys.argv[4] if len(sys.argv) > 4 else None)
