@@ -117,6 +117,65 @@ def dump(obj, path):
     os.replace(tmp, path)
 
 
+def drift_targets(ch, strikes, atm, Fd, D, exp, t_entry):
+    """Strikes whose Black-Scholes |delta| on the drift forward Fd is nearest 0.30 (band 0.25-0.40), +-1 strike, both
+    rights. Vol = ATM straddle mid at t_entry / (0.8 * F * sqrt(tau)) (rows stamped <= t_entry only)."""
+    import datetime as dt
+    from scipy.stats import norm
+    rows = ch[ch.ms <= t_entry]
+    last = rows.sort_values('ms').groupby(['strike', 'right']).tail(1)
+    c = last[(last.strike == atm) & (last.right == 1)]; p = last[(last.strike == atm) & (last.right == -1)]
+    if c.empty or p.empty:
+        return set()
+    strad = (c.bid.iloc[0] + c.ask.iloc[0] + p.bid.iloc[0] + p.ask.iloc[0]) / 200
+    d0 = dt.date(int(D[:4]), int(D[4:6]), int(D[6:])); d1 = dt.date(int(exp[:4]), int(exp[4:6]), int(exp[6:]))
+    tau = max((d1 - d0).days * 86400 + (16 * 3600 - 8.6 * 3600), 1800) / (365 * 86400)
+    vol = max(strad / (0.8 * Fd * math.sqrt(tau)), 0.03)
+    out = set()
+    ks = np.array(strikes) / 1000
+    d1v = (np.log(Fd / ks) + 0.5 * vol * vol * tau) / (vol * math.sqrt(tau))
+    for right in (1, -1):
+        dl = norm.cdf(d1v) if right == 1 else 1 - norm.cdf(d1v)
+        ok = np.where((dl >= 0.22) & (dl <= 0.43))[0]
+        i = int(ok[np.argmin(np.abs(dl[ok] - 0.30))]) if len(ok) else int(np.argmin(np.abs(dl - 0.30)))
+        for j in (i - 1, i, i + 1):
+            if 0 <= j < len(strikes):
+                out.add((int(strikes[j]), right))
+    return out
+
+
+def topup(min_day='20220101'):
+    """Add the delta-chosen drift legs to days fetched with the old +-band rule (missing legs only)."""
+    for D in sorted(os.listdir(OUT)):
+        mp = os.path.join(OUT, D, 'meta.json')
+        if D < min_day or not os.path.isfile(mp):
+            continue
+        m = json.load(open(mp))
+        if m.get('status') != 'ok' or m.get('F_drift') is None or m.get('topup'):
+            continue
+        T = clock(m['release_et']); exp = m['exp']
+        ch = pd.read_parquet(os.path.join(OUT, D, 'chain1m.parquet'))
+        strikes = sorted(ch.strike.unique())
+        want = drift_targets(ch, strikes, int(m['atm_entry']), m['F_drift'], D, exp, T - 5 * 60000)
+        have = {tuple(x) for x in m['legs']}
+        need = sorted(want - have)
+        flat = min(T + 120 * 60000, clock('15:55'))
+        legs = []
+        for k, r in need:
+            q = csv('/option/history/quote', {'symbol': 'SPXW', 'expiration': exp, 'strike': f'{k / 1000:g}',
+                                              'right': 'call' if r == 1 else 'put', 'date': D, 'interval': '1s',
+                                              'start_time': fmt(T - 10 * 60000), 'end_time': fmt(flat + 60000)})
+            if q is not None:
+                legs.append(norm_quotes(q, exp))
+        if legs:
+            old = pd.read_parquet(os.path.join(OUT, D, 'legs1s.parquet'))
+            write(pd.concat([old] + legs, ignore_index=True).sort_values(['strike', 'right', 'ms'], kind='stable'),
+                  os.path.join(OUT, D, 'legs1s.parquet'))
+        m['legs'] = sorted([list(x) for x in have | set(need)]); m['topup'] = True; m['n_leg_files'] = m.get('n_leg_files', 0) + len(legs)
+        dump(m, mp)
+        print(D, 'topup', len(need), 'legs', flush=True)
+
+
 def write(df, path):
     pq.write_table(pa.Table.from_pandas(df, preserve_index=False), path, compression='zstd', compression_level=9)
 
@@ -150,11 +209,7 @@ def fetch_day(D, event, T_str, kind, band=3):
     strikes = sorted(ch.strike.unique())
     want = {(atm, 1), (atm, -1)}
     if fd is not None:
-        Fd, atmd, _ = fd
-        i = int(np.argmin(np.abs(np.array(strikes) / 1000 - Fd)))
-        for j in range(i - band, i + band + 1):
-            if 0 <= j < len(strikes):
-                want.add((strikes[j], 1)); want.add((strikes[j], -1))
+        want |= drift_targets(ch, strikes, atm, fd[0], D, exp, t_entry)
     legs = []
     for k, r in sorted(want):
         q = csv('/option/history/quote', {'symbol': 'SPXW', 'expiration': exp, 'strike': f'{k / 1000:g}',
@@ -175,8 +230,12 @@ def fetch_day(D, event, T_str, kind, band=3):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--plan', required=True)
+    ap.add_argument('--plan')
+    ap.add_argument('--topup', action='store_true')
     a = ap.parse_args()
+    if a.topup:
+        topup()
+        return
     plan = pd.read_csv(a.plan, dtype=str)
     os.makedirs(OUT, exist_ok=True)
     for r in plan.itertuples():

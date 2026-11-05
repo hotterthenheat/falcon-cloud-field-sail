@@ -1,0 +1,60 @@
+{
+ "family": "D2",
+ "split": "DEV",
+ "events": [
+  "CPI",
+  "NFP"
+ ],
+ "n_event_days": 20,
+ "n_control_days": 0,
+ "n_trials_ledger": 286,
+ "variants": {
+  "E1": {
+   "event": {
+    "n": 0
+   },
+   "control": {
+    "n": 0
+   },
+   "contrast_event": {
+    "n": 0
+   }
+  },
+  "E2": {
+   "event": {
+    "n": 0
+   },
+   "control": {
+    "n": 0
+   },
+   "contrast_event": {
+    "n": 0
+   }
+  },
+  "E3": {
+   "event": {
+    "n": 0
+   },
+   "control": {
+    "n": 0
+   },
+   "contrast_event": {
+    "n": 0
+   }
+  },
+  "E4": {
+   "event": {
+    "n": 0
+   },
+   "control": {
+    "n": 0
+   }
+  }
+ },
+ "synthetic_null_E1_real": {
+  "mean": -0.3079084049260119,
+  "p95": -0.3079084049260119,
+  "candidate_beats_share": 0.0
+ },
+ "pbo_cscv": 1.0
+}

@@ -1,0 +1,291 @@
+{
+ "family": "D1",
+ "split": "DEV",
+ "events": [
+  "CPI",
+  "NFP"
+ ],
+ "n_event_days": 20,
+ "n_control_days": 0,
+ "n_trials_ledger": 286,
+ "variants": {
+  "X1": {
+   "event": {
+    "n": 1,
+    "n_sessions": 20,
+    "expectancy": -0.13315901793782334,
+    "median": -0.13315901793782334,
+    "win_rate": 0.0,
+    "payoff": 0.0,
+    "ci_expectancy": [
+     -0.13315901793782334,
+     -0.13315901793782334
+    ],
+    "ci_win_rate": [
+     0.0,
+     0.0
+    ],
+    "pnl_net_per_trade": -692.6000000000006,
+    "sharpe_trade": NaN,
+    "sharpe_day": -0.223606797749979,
+    "max_dd_dollars": -692.6000000000006,
+    "dsr_dsr": NaN,
+    "hold_s_median": 1200.0,
+    "gross_expectancy": -0.13269230769230778,
+    "ci_gross": [
+     -0.13269230769230778,
+     -0.13269230769230778
+    ],
+    "by_year": {
+     "2018": {
+      "n": 1,
+      "exp": -0.13315901793782334,
+      "win": 0.0
+     }
+    },
+    "bar": {
+     "expectancy_ci_above_0": false,
+     "win_or_payoff": false,
+     "dsr_ge_0.95": false,
+     "pbo_lt_0.3": true,
+     "n_ge_150": false,
+     "regimes_ge_2_positive": false,
+     "pass": false
+    }
+   },
+   "control": {
+    "n": 0
+   }
+  },
+  "X2": {
+   "event": {
+    "n": 1,
+    "n_sessions": 20,
+    "expectancy": -0.1370042104858401,
+    "median": -0.1370042104858401,
+    "win_rate": 0.0,
+    "payoff": 0.0,
+    "ci_expectancy": [
+     -0.1370042104858401,
+     -0.1370042104858401
+    ],
+    "ci_win_rate": [
+     0.0,
+     0.0
+    ],
+    "pnl_net_per_trade": -712.6000000000001,
+    "sharpe_trade": NaN,
+    "sharpe_day": -0.22360679774997894,
+    "max_dd_dollars": -712.6000000000001,
+    "dsr_dsr": NaN,
+    "hold_s_median": 2100.0,
+    "gross_expectancy": -0.1365384615384616,
+    "ci_gross": [
+     -0.1365384615384616,
+     -0.1365384615384616
+    ],
+    "by_year": {
+     "2018": {
+      "n": 1,
+      "exp": -0.1370042104858401,
+      "win": 0.0
+     }
+    },
+    "bar": {
+     "expectancy_ci_above_0": false,
+     "win_or_payoff": false,
+     "dsr_ge_0.95": false,
+     "pbo_lt_0.3": true,
+     "n_ge_150": false,
+     "regimes_ge_2_positive": false,
+     "pass": false
+    }
+   },
+   "control": {
+    "n": 0
+   }
+  },
+  "X3": {
+   "event": {
+    "n": 1,
+    "n_sessions": 20,
+    "expectancy": -0.12354603656778124,
+    "median": -0.12354603656778124,
+    "win_rate": 0.0,
+    "payoff": 0.0,
+    "ci_expectancy": [
+     -0.12354603656778124,
+     -0.12354603656778124
+    ],
+    "ci_win_rate": [
+     0.0,
+     0.0
+    ],
+    "pnl_net_per_trade": -642.6000000000006,
+    "sharpe_trade": NaN,
+    "sharpe_day": -0.223606797749979,
+    "max_dd_dollars": -642.6000000000006,
+    "dsr_dsr": NaN,
+    "hold_s_median": 3300.0,
+    "gross_expectancy": -0.1230769230769232,
+    "ci_gross": [
+     -0.1230769230769232,
+     -0.1230769230769232
+    ],
+    "by_year": {
+     "2018": {
+      "n": 1,
+      "exp": -0.12354603656778124,
+      "win": 0.0
+     }
+    },
+    "bar": {
+     "expectancy_ci_above_0": false,
+     "win_or_payoff": false,
+     "dsr_ge_0.95": false,
+     "pbo_lt_0.3": true,
+     "n_ge_150": false,
+     "regimes_ge_2_positive": false,
+     "pass": false
+    }
+   },
+   "control": {
+    "n": 0
+   }
+  },
+  "X4": {
+   "event": {
+    "n": 1,
+    "n_sessions": 20,
+    "expectancy": -0.0850941110876127,
+    "median": -0.0850941110876127,
+    "win_rate": 0.0,
+    "payoff": 0.0,
+    "ci_expectancy": [
+     -0.0850941110876127,
+     -0.0850941110876127
+    ],
+    "ci_win_rate": [
+     0.0,
+     0.0
+    ],
+    "pnl_net_per_trade": -442.5999999999999,
+    "sharpe_trade": NaN,
+    "sharpe_day": -0.22360679774997894,
+    "max_dd_dollars": -442.5999999999999,
+    "dsr_dsr": NaN,
+    "hold_s_median": 121.0,
+    "gross_expectancy": -0.08461538461538454,
+    "ci_gross": [
+     -0.08461538461538454,
+     -0.08461538461538454
+    ],
+    "by_year": {
+     "2018": {
+      "n": 1,
+      "exp": -0.0850941110876127,
+      "win": 0.0
+     }
+    },
+    "bar": {
+     "expectancy_ci_above_0": false,
+     "win_or_payoff": false,
+     "dsr_ge_0.95": false,
+     "pbo_lt_0.3": true,
+     "n_ge_150": false,
+     "regimes_ge_2_positive": false,
+     "pass": false
+    }
+   },
+   "control": {
+    "n": 0
+   }
+  },
+  "X5": {
+   "event": {
+    "n": 1,
+    "n_sessions": 20,
+    "expectancy": -0.12354603656778124,
+    "median": -0.12354603656778124,
+    "win_rate": 0.0,
+    "payoff": 0.0,
+    "ci_expectancy": [
+     -0.12354603656778124,
+     -0.12354603656778124
+    ],
+    "ci_win_rate": [
+     0.0,
+     0.0
+    ],
+    "pnl_net_per_trade": -642.6000000000006,
+    "sharpe_trade": NaN,
+    "sharpe_day": -0.223606797749979,
+    "max_dd_dollars": -642.6000000000006,
+    "dsr_dsr": NaN,
+    "hold_s_median": 3300.0,
+    "gross_expectancy": -0.1230769230769232,
+    "ci_gross": [
+     -0.1230769230769232,
+     -0.1230769230769232
+    ],
+    "by_year": {
+     "2018": {
+      "n": 1,
+      "exp": -0.12354603656778124,
+      "win": 0.0
+     }
+    },
+    "bar": {
+     "expectancy_ci_above_0": false,
+     "win_or_payoff": false,
+     "dsr_ge_0.95": false,
+     "pbo_lt_0.3": true,
+     "n_ge_150": false,
+     "regimes_ge_2_positive": false,
+     "pass": false
+    }
+   },
+   "control": {
+    "n": 0
+   }
+  }
+ },
+ "realized_vs_implied_event": {
+  "r15": {
+   "median": 0.16721828817733728,
+   "mean": 0.2756107936783943,
+   "share_gt1": 0.05
+  },
+  "r30": {
+   "median": 0.17158821278222874,
+   "mean": 0.2974989708598261,
+   "share_gt1": 0.1
+  },
+  "r50": {
+   "median": 0.22419681254743035,
+   "mean": 0.31089910276178295,
+   "share_gt1": 0.1
+  },
+  "r120": {
+   "median": 0.39319708309344537,
+   "mean": 0.5209843256780348,
+   "share_gt1": 0.15
+  }
+ },
+ "realized_vs_implied_control": {},
+ "implied_pct_event_median": 0.006130277657750061,
+ "implied_pct_control_median": null,
+ "spread_frac_0825_event_median": 0.16049092395381911,
+ "share_event_days_spread_le_8pct": 0.05,
+ "synthetic_null_X3_real": {
+  "mean": -0.028964724049377857,
+  "p95": 0.002134845816758574,
+  "candidate_beats_share": 0.0
+ },
+ "synthetic_null_X3_rv": {
+  "mean": NaN,
+  "p95": NaN,
+  "candidate_beats_share": 0.0
+ },
+ "pbo_cscv": 1.0
+}

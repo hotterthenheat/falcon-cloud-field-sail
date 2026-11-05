@@ -54,3 +54,10 @@ late 2021); 2018 pre-open spreads are 16-45% of mid (unexecutable under rule 4).
 2022-01..2024-12 (DEV, ex locked Jun-Sep 2022 and Aug 2024) and 2025-04..12 (VALIDATION). To reach a usable count,
 PPI (BLS archive, 08:30) is ADDED to the 08:30 event set with the same rules; retail sales dropped (Census schedule
 archive not reachable). Controls: weekday-matched non-event days 2022+ (1 per 2 events). Variants unchanged.
+
+## Amendment A2 (2026-11-05, after the pipeline auditor, before any control day was run)
+Control-day rule tightened so controls carry NO 08:30 release: Mon/Tue/Wed/Fri only (Thursdays carry jobless claims,
+GDP, Philly Fed), not within +-1 day of any CPI/NFP/PPI/FOMC date, day-of-month outside 13-19 (retail sales, housing
+starts, Empire/import prices) and outside 24-31 (durable goods, GDP, personal income/PCE). 57 controls 2022+,
+weekday-matched where possible (specs/controls.txt). Drift legs: fetched by Black-Scholes |delta| nearest 0.30 on the
+08:36 forward (+-1 strike, both rights) instead of a fixed +-3-strike band, which did not reach 0.25-0.40 on high-IV days.
