@@ -1,0 +1,2 @@
+{'triggers': 738, 'mismatch': 0, 'canary_triggers': 727, 'canary_caught': 727}
+OK: triggers use only closed bars; canary caught on 727 of 727
