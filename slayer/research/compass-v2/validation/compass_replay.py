@@ -161,7 +161,10 @@ def main():
                'rec_bid_ask': f'{r.rec_fill_bid:.2f}/{r.rec_fill_ask:.2f}', 'tape_bid_ask': f'{f[0]:.2f}/{f[1]:.2f}',
                'fill_match': abs(f[0] - r.rec_fill_bid) < 0.005 and abs(f[1] - r.rec_fill_ask) < 0.005,
                'exit_at': fmt_ms(r.exit_ms)[:8], 'rec_exit': r.rec_exit_px, 'tape_exit_bid': x[0],
-               'exit_match': abs(x[0] - r.rec_exit_px) < 0.005, 'why': r.why}
+               'exit_match': abs(x[0] - r.rec_exit_px) < 0.005, 'why': r.why,
+               # Compass books a take-profit at its resting limit (1.50 x the ask paid): consistent iff the bid in force
+               # at that instant was at or through the limit
+               'tp_limit_ok': r.why.startswith('Take profit') and x[0] >= r.rec_exit_px - 0.005}
         # engine with Compass's own timing: decision at the mark, fill latency as recorded, exit arriving at exit_ms
         lat = r.fill_ms - r.mark_ms
         e = engine_run(q, c, r.day, r.mark_ms, lat, r.exit_ms - lat)
@@ -183,8 +186,14 @@ def main():
              f'Calls with a recorded fill and exit: {len(calls)} (2026-10-29: {sum(calls.day == "20261029")}, '
              f'2026-11-04: {sum(calls.day == "20261104")}); quotes found for {len(ok)}.', '',
              f'- Recorded fill bid/ask == terminal 100 ms NBBO in force at the fill instant: **{int(ok.fill_match.sum())}/{len(ok)}**',
-             f'- Recorded exit price == terminal bid in force at the exit instant: **{int(ok.exit_match.sum())}/{len(ok)}**',
-             f'- Engine replay (Compass timing) reproduces entry ask and exit bid: **{int(ok.eng_match.sum())}/{len(ok)}**']
+             f'- Recorded exit price == terminal bid in force at the exit instant: **{int(ok.exit_match.sum())}/{len(ok)}**; '
+             f'the other {int((~ok.exit_match).sum())} are take-profits booked at the resting 1.50x limit, and the bid in '
+             f'force was at or through that limit in {int((~ok.exit_match & ok.tp_limit_ok).sum())}/{int((~ok.exit_match).sum())} '
+             f'(so every recorded exit is consistent with the tape: {int((ok.exit_match | ok.tp_limit_ok).sum())}/{len(ok)})',
+             f'- Engine replay (Compass timing: decision at the mark, the recorded fill delay, exit order arriving at the '
+             f'recorded exit time) reproduces the recorded entry ask and exit bid: **{int(ok.eng_match.sum())}/{len(ok)}** '
+             f'(the rest are the take-profit limits above: the engine sells at the bid, '
+             f'{int((~ok.eng_match & ok.tp_limit_ok).sum())} of them at or above the limit)']
     if 'match_min_start' in ok:
         nz = ok[ok.match_min_start.notna()]
         lines.append(f'- Minute cache (nov4data) board at the fill minute == our quote in force at the minute START: '

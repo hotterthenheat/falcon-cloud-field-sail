@@ -140,6 +140,7 @@ class Strategy:
     trade_roots: tuple = ()              # deliver every option print of these roots as 'trade' events
     und_syms: tuple = ()                 # deliver every underlying update of these symbols as 'und' events
     start_at: str | None = None          # first timer at this clock (default: config.start_ms)
+    wake_ms: tuple = ()                  # extra 'wake' events at these clock ms (cheap alternative to a timer)
 
     def on_start(self, ctx):
         pass
@@ -303,8 +304,12 @@ class Engine:
         self._ids = itertools.count(1)
         self._seq = itertools.count()
         self._heap: list = []
-        self._grids: dict = {}
-        self._gk: dict = {}
+        # per-session caches shared by every Engine run on the same session object (pure functions of the data)
+        if not hasattr(session, '_v2_cache'):
+            session._v2_cache = {'grids': {}, 'gk': {}}
+        self._grids = session._v2_cache['grids'] if self.cfg.start_ms == SimConfig.start_ms and \
+            self.cfg.end_ms == SimConfig.end_ms else {}
+        self._gk = session._v2_cache['gk']
         self.ctx = StrategyContext(self)
 
     # ------------------------------------------------------------------ data (as-of)
@@ -534,6 +539,9 @@ class Engine:
             t0 = clock(s.start_at) if s.start_at else cfg.start_ms
             t = np.arange(t0, cfg.flat_ms + 1, s.timer_ms, dtype=np.int64)
             ms_parts.append(t); kinds.append(np.full(len(t), 0)); refs.append(np.arange(len(t)))
+        if s.wake_ms:
+            w = np.array(sorted(s.wake_ms), dtype=np.int64)
+            ms_parts.append(w); kinds.append(np.full(len(w), 1)); refs.append(np.arange(len(w)))
         self._trade_frames = {}
         for k, root in enumerate(s.trade_roots):
             tr = self.session.trades(root)
@@ -563,6 +571,8 @@ class Engine:
     def _make_event(self, t, kd, rf) -> Event:
         if kd == 0:
             return Event(t, 'timer')
+        if kd == 1:
+            return Event(t, 'wake')
         if 10 <= kd < 100:
             root = self.strat.trade_roots[kd - 10]
             r = self._trade_frames[root].iloc[rf]
@@ -611,7 +621,7 @@ class Engine:
             self._advance(t)
             self.now = t
             ev = self._make_event(t, k, r)
-            if ev.kind not in ('timer', 'trade', 'und'):
+            if ev.kind not in ('timer', 'wake', 'trade', 'und'):
                 self.ext_seen.append(ev)
             self.strat.on_event(self.ctx, ev)
             self._check_all_exits()

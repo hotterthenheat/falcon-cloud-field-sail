@@ -23,7 +23,7 @@ from scipy.stats import norm
 
 from data.store import Contract, UND_OF
 from eval.metrics import passes_bar, summarize
-from sim.engine import Engine, SimConfig, Strategy, clock
+from sim.engine import Engine, SimConfig, Strategy, clock, fmt_ms
 from sim.memsession import MemSession
 
 OPEN, CLOSE = clock('09:30'), clock('16:00')
@@ -32,11 +32,13 @@ OPEN, CLOSE = clock('09:30'), clock('16:00')
 # ----------------------------------------------------------------------------- (a) shuffled signal
 class ShuffledSignal(Strategy):
     """entries: list of (decision_ms, root, exp_index, target_abs_delta) for THIS session (the candidate's own trades,
-    or resampled ones). Side is random; contract = ctx.pick(root, exp_index, side, target delta)."""
-    timer_ms = 1000
+    or resampled ones). Side is random; contract = ctx.pick(root, exp_index, side, target delta). Driven by 'wake'
+    events at the entry times only (exits run on the held contracts' quote changes), so a run costs milliseconds."""
+    timer_ms = None
 
     def __init__(self, entries, exit_factory, seed, pick_kw=None):
         self.entries = sorted(entries)
+        self.wake_ms = tuple(sorted({int(e[0]) for e in entries}))
         self.exit_factory = exit_factory
         self.rng = np.random.default_rng(seed)
         self.pick_kw = pick_kw or {}
@@ -170,26 +172,57 @@ def run_on(sessions, make_strategy, cfg=None) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def null_pass_rate(run_null, n_runs: int, session_days, n_trials: int, candidate_expectancy: float | None = None,
-                   ret: str = 'ret_net', seed0: int = 1000) -> dict:
-    """run_null(seed) -> trade DataFrame. Each run is scored like a candidate; returns the share passing the bar
-    (with and without the count/regime tests), the null expectancy distribution, and the candidate's percentile."""
-    exps, full, stat, ci = [], 0, 0, 0
-    for k in range(n_runs):
-        tr = run_null(seed0 + k)
-        rep = summarize(tr, session_days, ret=ret, n_trials=n_trials, n_boot=1000)
-        if rep.get('n'):
-            exps.append(rep['expectancy'])
-            full += passes_bar(rep)['pass']
-            stat += passes_bar(rep, require_count=False)['pass']
-            ci += rep['ci_expectancy'][0] > 0          # the bare statistical test alone
-        else:
+def shuffled_runs(load_session, days, entries: dict, exit_factory, seeds, mode='keep_times', cfg=None, pick_kw=None) -> dict:
+    """{seed: trades} for the shuffled-signal null. Sessions are the OUTER loop (each loaded once, all seeds run on it,
+    then released) so 20+ sessions fit in memory. mode: 'keep_times' | 'resample_times'."""
+    per_seed = {k: [] for k in seeds}
+    plans = {k: (entries if mode == 'keep_times' else resample_entries(entries, days, k)) for k in seeds}
+    for d in days:
+        s = None
+        for k in seeds:
+            ent = plans[k].get(str(d), [])
+            if not ent:
+                continue
+            s = s or load_session(d)
+            st = ShuffledSignal(ent, exit_factory, seed=k * 100_003 + int(d) % 100_000, pick_kw=pick_kw)
+            per_seed[k] += Engine(s, st, cfg or SimConfig()).run()
+        del s
+    return {k: pd.DataFrame(v) for k, v in per_seed.items()}
+
+
+def synthetic_runs(load_session, days, strategies: dict, seeds, iv_mode='rv', cfg=None) -> dict:
+    """{(name, seed): trades} for every strategy factory on synthetic zero-drift copies of each session."""
+    out = {(n, k): [] for n in strategies for k in seeds}
+    for d in days:
+        real = load_session(d)
+        for k in seeds:
+            syn = synthetic_session(real, seed=k * 7919 + int(d) % 100_000, iv_mode=iv_mode)
+            for n, f in strategies.items():
+                out[(n, k)] += Engine(syn, f(), cfg or SimConfig()).run()
+        del real
+    return {key: pd.DataFrame(v) for key, v in out.items()}
+
+
+def pass_rates(runs: dict, session_days, n_trials: int, candidate_expectancy: float | None = None,
+               ret: str = 'ret_net') -> dict:
+    """Score every null run like a candidate. Returns the share that pass the protocol bar (full; and without the
+    count/regime tests), the share whose expectancy CI alone excludes 0 (one-sided 2.5% expected), the null
+    expectancy distribution, and the candidate's percentile among the nulls. valid_pipeline: the stat-bar share <= 5%."""
+    exps, full, stat, ci, n = [], 0, 0, 0, 0
+    for key, tr in runs.items():
+        n += 1
+        if len(tr) == 0:
             exps.append(float('nan'))
-    exps = np.array(exps)
-    out = {'n_runs': n_runs, 'pass_rate_full_bar': full / n_runs, 'pass_rate_stat_bar': stat / n_runs,
-           'pass_rate_ci_only': ci / n_runs,
-           'null_expectancy_mean': float(np.nanmean(exps)), 'null_expectancy_p95': float(np.nanpercentile(exps, 95)),
-           'null_expectancies': exps.tolist(), 'valid_pipeline': max(stat, full) / n_runs <= 0.05}
+            continue
+        rep = summarize(tr, session_days, ret=ret, n_trials=n_trials, n_boot=1000)
+        exps.append(rep['expectancy'])
+        full += passes_bar(rep)['pass']
+        stat += passes_bar(rep, require_count=False)['pass']
+        ci += rep['ci_expectancy'][0] > 0
+    exps = np.array(exps, float)
+    out = {'n_runs': n, 'pass_rate_full_bar': full / n, 'pass_rate_stat_bar': stat / n, 'pass_rate_ci_only': ci / n,
+           'null_expectancy_mean': float(np.nanmean(exps)), 'null_expectancy_p5': float(np.nanpercentile(exps, 5)),
+           'null_expectancy_p95': float(np.nanpercentile(exps, 95)), 'valid_pipeline': max(full, stat) / n <= 0.05}
     if candidate_expectancy is not None:
         out['candidate_beats_share'] = float(np.mean(candidate_expectancy > exps[np.isfinite(exps)]))
         out['candidate_counts'] = out['candidate_beats_share'] >= 0.95

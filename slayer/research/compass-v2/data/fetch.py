@@ -317,12 +317,24 @@ def recompress(D: str):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--recompress', action='store_true')
+    ap.add_argument('--uw-only', action='store_true', help='refetch only the UW files of fetched sessions')
     ap.add_argument('--sessions', required=True, help='comma list YYYYMMDD, or @file')
     ap.add_argument('--roots', default='SPXW,SPY,QQQ')
     ap.add_argument('--no-uw', action='store_true')
     ap.add_argument('--force', action='store_true')
     a = ap.parse_args()
     ss = open(a.sessions[1:]).read().split() if a.sessions.startswith('@') else a.sessions.split(',')
+    if a.uw_only:
+        for D in ss:
+            out = os.path.join(V2DATA, 'sessions', D.strip())
+            mp = os.path.join(out, '_manifest.json')
+            man = json.load(open(mp))
+            fetch_uw(D.strip(), out, man)
+            man['bytes_total'] = sum(os.path.getsize(os.path.join(out, f)) for f in os.listdir(out) if f.endswith('.parquet'))
+            json.dump(man, open(mp + '.tmp', 'w'), indent=1)
+            os.replace(mp + '.tmp', mp)
+            print(D, man['uw'])
+        return
     if a.recompress:
         for D in ss:
             recompress(D.strip())
