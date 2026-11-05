@@ -31,3 +31,6 @@ One line per hypothesis/variant/look: date | worker | id | set | n | result | no
 2026-11-05 | EDGE | E2 OPEN-REV a0.35-Y2 | DEV | 125 | win 50% [40,61], exp -5.9% [-12.6,+1.0] net | FAIL
 2026-11-05 | EDGE | E2 OPEN-REV a0.6-Y1 | DEV | 19 | win 63%, exp -0.2% [-20.8,+16.6] | FAIL (n)
 2026-11-05 | EDGE | E2 OPEN-REV a0.6-Y2 | DEV | 19 | win 74%, exp +8.8% [-7.5,+21.0] | FAIL (n=19; shuffled null beats 96%)
+2026-11-05 | EDGE-B | F3-D1 Stage A (dark-pool print >= $5M at/through NBBO, 24 names) | DEV | 2500 ev (of 3970) / 247 sess | h5 -0.0bp; h15 +1.3 [-0.5,+3.0] p .12; h30 +0.4bp [-1.8,+2.6] p .38; h60 -0.2 | gate FAIL; nulls CI-pass 2-5.5%
+2026-11-05 | EDGE-B | F3-D2 Stage A (>= $20M) | DEV | 635 ev / 228 sess | h5 +2.2bp [+0.6,+3.8] p .007 (secondary horizon, 2bp cannot pay an option spread); h30 +1.1bp [-2.1,+4.1] p .29 | gate FAIL; no Stage B, no VAL look
+2026-11-05 | EDGE-B | SUMMARY | - | - | 59 looks + 1 pipeline check; F1 fails (DEV Stage B, VAL drift), F3 fails gate, F2 untestable; NOTHING FROZEN | edge-b/RESULTS.md @ 8a09354
