@@ -75,11 +75,15 @@ def main(n=150):
             t, up, S = x['t'], x['up'], x['S']
             if not x['real'].get('sel'):
                 continue
-            ch = sim.chain(root, day)
-            orig = ch.copy()
-            bad = ch.m > (t - 60) // 60
-            ch.loc[bad, 'bid'] = ch.loc[bad, 'bid'] * RNG.uniform(0.3, 3, bad.sum())
-            ch.loc[bad, 'ask'] = ch.loc[bad, 'bid'] * 1.05 + 0.01
+            orig = sim.chain(root, day)
+            ch = orig.copy()
+            bad = (ch.m > (t - 60) // 60).values
+            nb = ch.bid.values.copy()
+            nb[bad] = nb[bad] * RNG.uniform(0.3, 3, bad.sum()).astype(np.float32)
+            na = ch.ask.values.copy()
+            na[bad] = nb[bad] * np.float32(1.05) + np.float32(0.01)
+            ch['bid'], ch['ask'] = nb, na
+            sim._CH[(root, day)] = ch
             sel = ht.select(root, day, t, up, float(v.split('-d')[1]), S)
             res['sel'][0] += 1
             res['sel'][1] += (sel is not None and sel['k'] == x['real']['sel']['k'])

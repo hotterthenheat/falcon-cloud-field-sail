@@ -1,0 +1,8 @@
+EDGE-T look-ahead test on 150 root-sessions (cache only)
+h1_trig            150/150 identical
+h1_canary_diff     43/43 canary CAUGHT (differs)
+h2_trig            88/88 identical
+sel                100/100 identical
+sel_canary_diff    100/100 canary CAUGHT (differs)
+exit               306/306 identical
+exit_canary_diff   306/306 canary CAUGHT (differs)

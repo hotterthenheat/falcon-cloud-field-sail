@@ -281,3 +281,16 @@ One line per hypothesis/variant/look: date | worker | id | set | n | result | no
 2026-11-05 | EDGE-T | PREREG H1 OPENING DRIVE (first 1-5 min |S/O-1| >= k x prior-session RV, k 0.30/0.60; 0DTE d0.20/0.35; RULES.md exits) | spec | - | registered, 4 variants | edge-t/specs/PREREG.md
 2026-11-05 | EDGE-T | PREREG H2 TREND DAY (live RULES.md exactly; Compass top score replaced by fixed delta 0.35/0.20) | spec | - | registered, 2 variants | edge-t/specs/PREREG.md
 2026-11-05 | EDGE-T | PREREG H3 EXIT RULES (TP1.5 vs trail x 5-min reversal x raw vs sane stops, on H1-k0.30-d0.35 entries; base cell = H1 variant) | spec | - | registered, 7 variants | edge-t/specs/PREREG.md
+2026-11-05 | EDGE-T | H1 OPENING DRIVE k0.30-d0.20 (first 1-5 min |S/O-1| >= 0.30 x prior-session RV, 0DTE 0.20d, RULES.md exits) | DEV-T (430 of 656 DEV sessions, seeded random order, cut on time) | 271 | win 34%, exp -7.4% [-15.5,+2.3] net (-5.5% gross), payoff 1.39 | FAIL; shuffle beats 85%, synthetic flat 49% / 5-min profile 6% (FDR 1%)
+2026-11-05 | EDGE-T | H1 OPENING DRIVE k0.30-d0.35 | DEV-T | 269 | win 36%, exp -6.6% [-13.6,+1.1] net (-5.6% gross), payoff 1.28 | FAIL; shuffle 64%, synthetic 39% / 8%; range days -14.9%, failed-15-min days -18.3%, held days +0.4%
+2026-11-05 | EDGE-T | H1 OPENING DRIVE k0.60-d0.20 | DEV-T | 32 | win 44%, exp +2.0% [-16.5,+23.7] net | FAIL (n<150, CI spans 0); shuffle 62%, synthetic profile 65%
+2026-11-05 | EDGE-T | H1 OPENING DRIVE k0.60-d0.35 | DEV-T | 31 | win 42%, exp -2.2% [-20.8,+17.6] net | FAIL; shuffle 63%, synthetic profile 44%; PBO(H1) 0.72
+2026-11-05 | EDGE-T | H2 TREND DAY d0.35 (live RULES.md, Compass top score -> fixed 0.35d) | DEV-T | 427 tr / 46 sess | win 33%, exp -10.1% [-16.7,-3.2] net (-8.9% gross); 12/46 trigger days positive; >1.5% days -4.7% | FAIL; shuffle 96%, synthetic flat 6% / profile 42% (FDR 0%)
+2026-11-05 | EDGE-T | H2 TREND DAY d0.20 | DEV-T | 520 tr / 46 sess | win 29%, exp -13.2% [-19.6,-6.0] net | FAIL; shuffle 94%, synthetic 3% / 39%; PBO(H2) 1.00
+2026-11-05 | EDGE-T | H3-TR-off-raw (raw-bid stops vs sane; on H1-k0.30-d0.35 entries) | DEV-T | 269 | exp -6.3% [-13.4,+1.4]; vs base +0.28% [+0.03,+0.58] | FAIL
+2026-11-05 | EDGE-T | H3-TR-rev-sane (+ 5-min 0.40% reversal exit) | DEV-T | 269 | exp -6.6% [-13.5,+1.3]; vs base +0.00% (7 reversal exits) | FAIL
+2026-11-05 | EDGE-T | H3-TR-rev-raw | DEV-T | 269 | exp -6.3% [-13.3,+1.5] | FAIL
+2026-11-05 | EDGE-T | H3-TP-off-sane (fixed 1.5x resting TP instead of trail) | DEV-T | 269 | exp -5.2% [-11.3,+1.1]; vs base +1.43% [-2.70,+5.06] | FAIL
+2026-11-05 | EDGE-T | H3-TP-off-raw | DEV-T | 269 | exp -4.9% [-11.0,+1.3] | FAIL
+2026-11-05 | EDGE-T | H3-TP-rev-sane | DEV-T | 269 | exp -5.3% [-11.4,+0.9] | FAIL
+2026-11-05 | EDGE-T | H3-TP-rev-raw | DEV-T | 269 | exp -5.1% [-11.1,+1.1] | FAIL; PBO(H3) 0.81, DSR <= 0.19 at N=608 for all 13 variants; H3b (E3 entries) not run (0 trials); nothing to VALIDATION, nothing frozen | edge-t/LOG.md
