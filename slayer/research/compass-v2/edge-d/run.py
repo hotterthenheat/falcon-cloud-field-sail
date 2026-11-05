@@ -57,8 +57,6 @@ _cache = {}
 
 def load(d):
     if d not in _cache:
-        if len(_cache) > 40:
-            _cache.clear()
         _cache[d] = build_session(d)
     return _cache[d]
 
@@ -133,7 +131,8 @@ def synthetic_preopen(real, seed, T, iv_mode='real'):
         bs_med, as_med = int(np.median(rq['bs'][ok])), int(np.median(rq['as'][ok]))
         gi = g[(g.strike == c.strike) & (g.right == c.right)]
         iv = float(np.nanmedian(gi.iv)) if (iv_mode == 'real' and len(gi) and np.nanmedian(gi.iv) > 0) else ann
-        tau = np.array([build._tau(int(x), real.day, c.exp) for x in t])
+        ndays = (pd.Timestamp(str(c.exp)) - pd.Timestamp(real.day)).days
+        tau = np.maximum(ndays * 86400 + (57600000 - t) / 1000, 60) / (365 * 86400)
         sq = iv * np.sqrt(tau)
         d1 = (np.log(S / c.k) + 0.5 * sq * sq) / sq
         d2 = d1 - sq
@@ -168,6 +167,11 @@ def rep(trades, days, n_trials):
                       for y, x in trades.groupby(trades.session.str[:4])}
     out['bar'] = passes_bar(r)
     return out
+
+
+def dump(res, a):
+    json.dump(res, open(os.path.join(RES, f'{a.family}_{a.split}.json'), 'w'), indent=1,
+              default=lambda o: float(o) if isinstance(o, (np.floating, np.integer)) else str(o))
 
 
 def main():
@@ -209,21 +213,19 @@ def main():
             print(v, 'EVENT', {k: res['variants'][v]['event'].get(k) for k in ('n', 'expectancy', 'ci_expectancy', 'win_rate', 'gross_expectancy')},
                   'CONTROL', {k: res['variants'][v]['control'].get(k) for k in ('n', 'expectancy', 'ci_expectancy', 'win_rate')}, flush=True)
         # synthetic zero-drift null at the real IV (keeps the premium) and at realized vol (fair)
+        dump(res, a)
         for mode in ('real', 'rv'):
-            exps = []
-            for k in range(a.synth_seeds):
-                rows = []
-                for d in ev:
-                    s = load(d)
-                    if s is None:
-                        continue
+            per = {k: [] for k in range(a.synth_seeds)}
+            for d in ev:
+                s = load(d)
+                if s is None:
+                    continue
+                m = s.edge_meta
+                for k in range(a.synth_seeds):
                     syn = synthetic_preopen(s, seed=k * 7919 + int(d) % 100000, T=T, iv_mode=mode)
-                    m = s.edge_meta
-                    rows += Engine(syn, EventStraddle(int(m['exp']), int(m['atm_entry']), T - 5 * 60000, variants['X3']), cfg).run()
-                tr = pd.DataFrame(rows)
-                exps.append(float(tr.ret_net.mean()) if len(tr) else float('nan'))
-            exps = np.array(exps)
-            res[f'synthetic_null_X3_{mode}'] = {'mean': float(np.nanmean(exps)), 'p95': float(np.nanpercentile(exps, 95)),
+                    per[k] += Engine(syn, EventStraddle(int(m['exp']), int(m['atm_entry']), T - 5 * 60000, variants['X3']), cfg).run()
+            exps = np.array([float(pd.DataFrame(v).ret_net.mean()) if v else float('nan') for v in per.values()])
+            res[f'synthetic_null_X3_{mode}'] = {'n_runs': len(exps), 'mean': float(np.nanmean(exps)), 'p95': float(np.nanpercentile(exps, 95)),
                                                 'candidate_beats_share': float(np.mean(res['variants']['X3']['event'].get('expectancy', -9) > exps))}
             print('synthetic', mode, res[f'synthetic_null_X3_{mode}'], flush=True)
         all_tr = pd.concat([t.assign(set='event') for t in te.values()] + [t.assign(set='control') for t in tc.values()], ignore_index=True)
@@ -239,21 +241,23 @@ def main():
             print(v, 'EVENT', {k: res['variants'][v]['event'].get(k) for k in ('n', 'expectancy', 'ci_expectancy', 'win_rate')},
                   'CONTROL', {k: res['variants'][v]['control'].get(k) for k in ('n', 'expectancy', 'ci_expectancy', 'win_rate')},
                   'CONTRAST', {k: res['variants'][v].get('contrast_event', {}).get(k) for k in ('n', 'expectancy', 'ci_expectancy')}, flush=True)
+        dump(res, a)
         # shuffled-side null on the best registered continuation variant by DEV expectancy is NOT allowed to pick; use E1 (first registered)
         base = te['E1']
         if len(base):
             ent = entries_from_trades(base, default_delta=0.30)
+            per = {k: [] for k in range(a.shuffle_seeds)}
+            for d in ev:
+                e = ent.get(str(d), [])
+                if not e:
+                    continue
+                s = load(d)
+                for k in range(a.shuffle_seeds):
+                    per[k] += Engine(s, ShuffledSignal(e, variants['E1'], seed=k * 100003 + int(d) % 100000,
+                                                       pick_kw={'band': (0.25, 0.40), 'max_spread_frac': 0.08}), cfg).run()
             exps, ci_pass = [], 0
-            for k in range(a.shuffle_seeds):
-                rows = []
-                for d in ev:
-                    e = ent.get(str(d), [])
-                    if not e:
-                        continue
-                    s = load(d)
-                    rows += Engine(s, ShuffledSignal(e, variants['E1'], seed=k * 100003 + int(d) % 100000,
-                                                     pick_kw={'band': (0.25, 0.40), 'max_spread_frac': 0.08}), cfg).run()
-                tr = pd.DataFrame(rows)
+            for v in per.values():
+                tr = pd.DataFrame(v)
                 if len(tr):
                     exps.append(float(tr.ret_net.mean()))
                     ci_pass += cluster_ci_mean(tr.ret_net.to_numpy(float), tr.session.astype(str).to_numpy(), 500)[0] > 0
@@ -263,17 +267,15 @@ def main():
                                        'candidate_beats_share': float(np.mean(res['variants']['E1']['event']['expectancy'] > exps))}
             print('shuffled E1', res['shuffled_null_E1'], flush=True)
         # synthetic zero-drift (real IV) with the E1 rule
-        exps = []
-        for k in range(a.synth_seeds):
-            rows = []
-            for d in ev:
-                s = load(d)
-                if s is None:
-                    continue
+        per = {k: [] for k in range(a.synth_seeds)}
+        for d in ev:
+            s = load(d)
+            if s is None:
+                continue
+            for k in range(a.synth_seeds):
                 syn = synthetic_preopen(s, seed=k * 7919 + int(d) % 100000, T=T, iv_mode='real')
-                rows += Engine(syn, PostEventDrift(T - 1000, T + 5 * 60000, T + 6 * 60000, variants['E1']), cfg).run()
-            tr = pd.DataFrame(rows)
-            exps.append(float(tr.ret_net.mean()) if len(tr) else float('nan'))
+                per[k] += Engine(syn, PostEventDrift(T - 1000, T + 5 * 60000, T + 6 * 60000, variants['E1']), cfg).run()
+        exps = [float(pd.DataFrame(v).ret_net.mean()) if v else float('nan') for v in per.values()]
         exps = np.array(exps)
         res['synthetic_null_E1_real'] = {'mean': float(np.nanmean(exps)), 'p95': float(np.nanpercentile(exps, 95)),
                                          'candidate_beats_share': float(np.mean(res['variants']['E1']['event'].get('expectancy', -9) > exps))}
@@ -288,7 +290,7 @@ def main():
         res['pbo_cscv'] = f'err {e!r}'
     if len(all_tr):
         all_tr.to_parquet(os.path.join(RES, f'{a.family}_{a.split}_trades.parquet'))
-    json.dump(res, open(os.path.join(RES, f'{a.family}_{a.split}.json'), 'w'), indent=1, default=lambda o: float(o) if isinstance(o, (np.floating, np.integer)) else str(o))
+    dump(res, a)
     print('PBO', res['pbo_cscv'])
 
 
