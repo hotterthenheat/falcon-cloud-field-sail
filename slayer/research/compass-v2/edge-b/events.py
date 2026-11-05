@@ -88,7 +88,9 @@ def build_f3():
     for c in ['price', 'premium', 'nbbo_bid', 'nbbo_ask']:
         a[c] = pd.to_numeric(a[c], errors='coerce')
     clean = ((a['canceled'] != True) & a['sale_cond_codes'].isna() & a['ext_hour_sold_codes'].isna()  # noqa: E712
-             & a['trade_settlement'].isna() & a['trade_code'].isna() & (a['nbbo_bid'] < a['nbbo_ask']))
+             & (a['trade_settlement'].isna() | (a['trade_settlement'] == 'regular'))
+             & (a['trade_code'].isna() | (a['trade_code'] == 'intermarket_sweep'))
+             & (a['nbbo_bid'] < a['nbbo_ask']))  # PREREG amendment A1
     a = a[clean].copy()
     a['dir'] = np.where(a['price'] >= a['nbbo_ask'], 1, np.where(a['price'] <= a['nbbo_bid'], -1, 0))
     print('F3 raw prints', len(rows), 'clean', len(a), 'signed', int((a['dir'] != 0).sum()))

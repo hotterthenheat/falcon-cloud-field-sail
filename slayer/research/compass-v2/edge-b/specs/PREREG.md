@@ -90,3 +90,10 @@ Variants (k = 2): F3-D1 premium >= $5M (primary); F3-D2 premium >= $20M.
 
 ## Trial count added by EDGE-B registration
 Stage A: F1 3 variants x 4 horizons = 12 looks; F3 2 x 4 = 8 looks. Stage B (only for gate passers): 27 exits each.
+
+## Amendment A1 to F3 (2026-11-05, before any F3 outcome was computed)
+Found while counting events (no returns computed): UW's `trade_settlement` is the string `regular` on normal prints
+(null on ~30%), and `trade_code` carries `intermarket_sweep` (ISO) on ordinary aggressive prints. "All null" therefore
+dropped the normal prints. Amended trigger: trade_settlement in {null, regular}; trade_code in {null,
+intermarket_sweep}; sale_cond_codes null (still excludes average_price, contingent, prior_reference_price);
+ext_hour_sold_codes null; not canceled. Everything else in F3 unchanged.
