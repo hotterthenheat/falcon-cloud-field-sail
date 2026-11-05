@@ -152,18 +152,20 @@ def compare(x, lab='hit1.5', feats=None):
         p = v[x[lab]].to_numpy(dtype=float); n = v[~x[lab]].to_numpy(dtype=float)
         pm, nm = np.nanmean(p), np.nanmean(n)
         sd = np.nanstd(v.to_numpy(dtype=float))
-        # stratified AUC: within each underlying, weighted by its candidate rows (removes "which name" confounding)
-        sa, sw = 0.0, 0.0
-        for sym, g in x.groupby('sym'):
-            gv = pd.to_numeric(g[f], errors='coerce').to_numpy(dtype=float)
-            a = auc(gv[g[lab].to_numpy()], gv[~g[lab].to_numpy()])
-            if np.isfinite(a): sa += a * len(g); sw += len(g)
+        # stratified AUC: within each stratum, weighted by its rows (removes "which name / which side was moving today")
+        def strat(keys):
+            sa, sw = 0.0, 0.0
+            for _, g in x.groupby(keys):
+                gv = pd.to_numeric(g[f], errors='coerce').to_numpy(dtype=float)
+                a = auc(gv[g[lab].to_numpy()], gv[~g[lab].to_numpy()])
+                if np.isfinite(a): sa += a * len(g); sw += len(g)
+            return sa / sw if sw else np.nan
         rows.append({'feature': f, 'n_obs': int(v.notna().sum()), 'mover_mean': pm, 'all_mean': np.nanmean(v),
                      'nonmover_mean': nm, 'mover_median': np.nanmedian(p), 'all_median': np.nanmedian(v),
                      'cohen_d': (pm - nm) / sd if sd > 0 else np.nan, 'auc': auc(p, n),
-                     'auc_within_name': sa / sw if sw else np.nan})
+                     'auc_within_name': strat(['sym']), 'auc_within_name_side': strat(['sym', 'right'])})
     r = pd.DataFrame(rows)
-    r['strength'] = (r['auc_within_name'] - 0.5).abs()
+    r['strength'] = (r['auc_within_name_side'] - 0.5).abs()
     return r.sort_values('strength', ascending=False)
 
 def move_type(ev, ctx_idx, news_by):
@@ -309,7 +311,8 @@ def main():
     L.append('Label = the contract-minute later reached 1.5x (hit1.5). `auc` = probability a random mover row has a higher '
              'value than a random non-mover row (0.5 = no difference); `auc_within_name` computes it inside each '
              'underlying and averages (weights = rows), which removes the "which name was moving today" confound. '
-             'cohen_d = mean difference / pooled sd. Sorted by |auc_within_name - 0.5|.\n')
+             '`auc_within_name_side` does the same inside each underlying x call/put, which also removes "puts won today because '
+             'the market fell". cohen_d = mean difference / pooled sd. Sorted by |auc_within_name_side - 0.5|.\n')
     for name, g in [('all buyable contract-minutes', x), ('tier A only (minute-sampled)', x[x.tierA == 1])]:
         cmp = compare(g, 'hit1.5', feats)
         L.append(f'\n### {name}: {len(g)} rows, {int(g["hit1.5"].sum())} reached 1.5x\n')
@@ -327,9 +330,9 @@ def main():
     early, late = x[x['mod'] < 195], x[x['mod'] >= 195]
     if len(early) > 100 and len(late) > 100:
         ce = compare(early, 'hit1.5', feats).set_index('feature'); cl = compare(late, 'hit1.5', feats).set_index('feature')
-        j = ce[['auc_within_name']].join(cl[['auc_within_name']], lsuffix='_am', rsuffix='_pm').dropna()
-        j['same_side'] = np.sign(j['auc_within_name_am'] - 0.5) == np.sign(j['auc_within_name_pm'] - 0.5)
-        j['strength'] = (j[['auc_within_name_am', 'auc_within_name_pm']] - 0.5).abs().min(axis=1)
+        j = ce[['auc_within_name_side']].join(cl[['auc_within_name_side']], lsuffix='_am', rsuffix='_pm').dropna()
+        j['same_side'] = np.sign(j['auc_within_name_side_am'] - 0.5) == np.sign(j['auc_within_name_side_pm'] - 0.5)
+        j['strength'] = (j[['auc_within_name_side_am', 'auc_within_name_side_pm']] - 0.5).abs().min(axis=1)
         j = j.sort_values('strength', ascending=False).head(20).drop(columns=['strength']).reset_index()
         L.append('\n### Stability check: morning (09:30-12:45) vs afternoon entries (same day, NOT validation)\n')
         L.append(md_table(j) + '\n')

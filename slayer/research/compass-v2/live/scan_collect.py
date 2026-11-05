@@ -99,7 +99,8 @@ FULL_HDR = ['minute', 'kind', 'sym', 'exp', 'strike', 'right', 'g_ts', 'bid', 'a
             'delta', 'gamma_bs', 'theta', 'vega', 'iv', 'under', 'under_ts']
 
 LAST_CAND = {}   # name -> candidate rows at its last refresh
-SKIPS = defaultdict(int)
+LAST_REF = {}    # name -> minute of day of its last refresh
+TIER_B_MAX = int(os.environ.get('TIER_B_MAX', '110'))
 WITH_QUOTE = set(TIER_A)  # tier B: greeks/first_order only (it carries bid/ask); the quote call (sizes) is tier A only
 
 def fetch_chain(sym):
@@ -170,6 +171,7 @@ STATE = f'{OUT}/collector-state.json'
 if os.path.exists(STATE):
     try:
         st = json.load(open(STATE)); ptr['b'] = st['ptr']; LAST_CAND.update(st['last_cand'])
+        LAST_REF.update(st.get('last_ref', {}))
     except Exception:
         pass
 refreshed_at = {}
@@ -186,18 +188,27 @@ def one_minute(tag, start):
         idx = fetch_index()
         res = list(ex.map(fetch_chain, TIER_A))
         stocks = stocks_f.result()
-        # tier B: rolling pointer, pairs of names while time remains
-        while time.time() < deadline - 3:
-            batch = []
-            guard = 0
-            while len(batch) < 2 and guard < len(TIER_B):
-                nm = TIER_B[ptr['b'] % len(TIER_B)]; ptr['b'] += 1; guard += 1
-                # a name whose last chain had no candidate is visited every 3rd pass only
-                if LAST_CAND.get(nm, 1) == 0 and SKIPS[nm] < 2:
-                    SKIPS[nm] += 1; continue
-                SKIPS[nm] = 0; batch.append(nm)
+        # tier B: rolling pointer; each name at most once per minute and not again before its minimum interval
+        # (4 min when its last chain had rows we keep, 12 min when it had none); at most TIER_B_MAX names a minute
+        now_m = int(tag[:2]) * 60 + int(tag[2:])
+        picks = []
+        for _ in range(len(TIER_B)):
+            if len(picks) >= TIER_B_MAX: break
+            nm = TIER_B[ptr['b'] % len(TIER_B)]
+            gap = 4 if LAST_CAND.get(nm, 1) > 0 else 12
+            if now_m - LAST_REF.get(nm, -999) < gap:
+                ptr['b'] += 1; continue
+            picks.append((nm, ptr['b'])); ptr['b'] += 1
+        for j in range(0, len(picks), 2):
+            if time.time() >= deadline - 3:
+                ptr['b'] = picks[j][1]  # not reached: first next minute
+                break
+            batch = [nm for nm, _ in picks[j:j + 2]]
             res += list(ex.map(fetch_chain, batch))
             done += batch
+            for nm in batch: LAST_REF[nm] = now_m
+    seen_now = set()
+    res = [(sym, rr) for sym, rr in res if not (sym in seen_now or seen_now.add(sym))]
     n = 0
     with gzip.open(f'{OUT}/chain-{tag}.csv.gz', 'wt') as f:
         w = csv.writer(f); w.writerow(FULL_HDR)
@@ -213,7 +224,7 @@ def one_minute(tag, start):
         for r in idx:
             w.writerow([tag, r['symbol'], r.get('timestamp'), '', '', '', r.get('price'), '', ''])
     json.dump(EXPS, open(EXP_FILE + '.tmp', 'w')); os.replace(EXP_FILE + '.tmp', EXP_FILE)
-    json.dump({'ptr': ptr['b'], 'last_cand': LAST_CAND}, open(STATE + '.tmp', 'w')); os.replace(STATE + '.tmp', STATE)
+    json.dump({'ptr': ptr['b'], 'last_cand': LAST_CAND, 'last_ref': LAST_REF}, open(STATE + '.tmp', 'w')); os.replace(STATE + '.tmp', STATE)
     cov = {'engine_mark_minute': int(mark), 'names_with_cand': sum(1 for v in LAST_CAND.values() if v > 0), 'names_seen': len(LAST_CAND), 'tierA': len(TIER_A), 'tierB_this_min': len(done), 'tierB_ptr': ptr['b'],
            'cycle_min_est': round(len(TIER_B) / max(1, len(done)), 1)}
     with open(f'{OUT}/coverage.jsonl', 'a') as f:
