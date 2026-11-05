@@ -455,7 +455,9 @@ async function verify(list: string[]): Promise<void> {
             const stop = stopOf(peak);
             const m = nyMin(x.t);
             if (x.bid <= stop) { mine = { at: x.t, px: x.bid, why: 'Stop' }; break; }
-            if (!runner && x.bid >= paid * 1.5) { mine = { at: x.t, px: Number((paid * 1.5).toFixed(2)), why: 'Take profit 1.50×' }; break; }
+            /* the target rounded up to the cent, never under 1.50× (compassParams takeProfitPx) */
+            const tp = Number((Math.ceil(paid * 150 - 1e-6) / 100).toFixed(2));
+            if (!runner && x.bid >= tp) { mine = { at: x.t, px: tp, why: 'Take profit 1.50×' }; break; }
             if (x.t % 60_000 === 0 && /reversed/.test(o.exit.why) && x.t === o.exit.at) { mine = { at: x.t, px: x.bid, why: o.exit.why }; break; }
             if (m >= flatMin) { mine = { at: x.t, px: x.bid, why: `${two(Math.floor(flatMin / 60))}:${two(flatMin % 60)} flat` }; break; }
             peak = Math.max(peak, x.bid);

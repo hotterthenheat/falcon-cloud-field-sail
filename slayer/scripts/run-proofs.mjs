@@ -27,6 +27,7 @@ const PROOFS = [
   'compass-return-proof',
   'compass-gate-proof',
   'compass-late-proof',
+  'compass-record-proof',
   'fixture-proof',
   'higher-proof',
   'paper-proof',

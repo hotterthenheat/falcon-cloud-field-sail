@@ -508,8 +508,9 @@ async function pinOf(ticker: string, expiry: string, spot: number, strict = fals
   return book;
 }
 
-/** One scored row: the contract, the minute, the 56 inputs as the trees read them, and both models' answers. */
-export interface ScoredRow { setup: Setup; minute: number; x: number[]; p1: number; prun: number | null; late: boolean }
+/** One scored row: the contract, the minute of the day and the mark it was scored at (epoch ms of its minute), the 56
+    inputs as the trees read them, and both models' answers. */
+export interface ScoredRow { setup: Setup; minute: number; mark: number; x: number[]; p1: number; prun: number | null; late: boolean }
 const rowFns = new Set<(row: ScoredRow) => void>();
 
 /** Every row the scan scores (the server's input check, scripts/compass-validate.ts). */
@@ -1328,7 +1329,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       }
       const p1 = scored.p1;
       const prun = scored.prun;
-      for (const fn of rowFns) fn({ setup: s, minute, x, p1, prun, late });
+      for (const fn of rowFns) fn({ setup: s, minute, mark, x, p1, prun, late });
       report.scored += 1;
       if (p1 > report.best) {
         report.best = p1;

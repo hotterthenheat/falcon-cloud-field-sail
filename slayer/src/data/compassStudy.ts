@@ -17,12 +17,14 @@
 
 import { compassHost } from './compassHost';
 import { bsStates, ivStates } from './compassFeatures';
-import { FLAT_T, P1_MIN, SPAN_INDEX, STOP_KEEP, WEEKLY_STRIKES, spreadPass, strikeDistance, strikeSpan, thetaBurns, weekdayDte } from './compassParams';
-import { grossPnl, settleSignal, type PathBar, type PathQuote } from './compassOutcome';
-import { readQuotes, type Signal } from './compassLedger';
+import { FLAT_T, OVERNIGHT_ROOTS, P1_MIN, SPAN_INDEX, STOP_KEEP, WEEKLY_STRIKES, flatTOf, minutesToFlat, spreadPass, strikeDistance, strikeSpan, takeProfitPx, targetPx, thetaBurns, weekdayDte } from './compassParams';
+import { fineWindows, grossPnl, settleSignal, type Outcome, type PathBar, type PathQuote, type SignalCore } from './compassOutcome';
+import { readFineWindow, readQuotes, type Signal } from './compassLedger';
 import { underCloses } from './compassModel';
+import { sessionIso } from './compassSession';
 import { explain, sigmoid, type ExplainTree } from './lgbmExplain';
-import { nyParts, nyWallTime } from '../core/nyTime';
+import { nyIsoDate, nyParts, nyWallTime } from '../core/nyTime';
+import { REGULAR_CLOSE_MIN, REGULAR_OPEN_MIN } from '../core/session';
 import type { MarkRow } from './compassScan';
 
 /** One scored row as the server logged it (data/compassServer.ts). */
@@ -43,6 +45,8 @@ export interface ScoredLine {
   p1: number;
   /** null when Model 2 was not scored (an input it never saw missing was missing) */
   p2: number | null;
+  /** the mark, epoch ms (absent on rows logged before it: rowMark derives it from d and t) */
+  m?: number;
 }
 
 /** The 56 inputs' names, in the trees' column order (compassFeatures.ts). */
@@ -50,7 +54,6 @@ import { INPUT_NAMES } from './compassFeatures';
 
 export { INPUT_NAMES };
 
-const FLAT_MIN = 15 * 60 + 55;
 const two = (n: number) => String(n).padStart(2, '0');
 const clockOf = (m: number) => `${two(Math.floor(m / 60))}:${two(m % 60)}`;
 const minuteOf = (ms: number) => {
@@ -59,6 +62,152 @@ const minuteOf = (ms: number) => {
 };
 const ymd = (iso: string) => iso.replace(/-/g, '');
 const markMs = (day: string, minute: number) => nyWallTime(Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10)), Math.floor(minute / 60), minute % 60);
+/** The regular flat of a session date: five minutes before its close (the early close when there is one). */
+const regularFlat = (day: string, close: number | null | undefined) => markMs(day, (close != null && close < REGULAR_CLOSE_MIN ? close : REGULAR_CLOSE_MIN) - 5);
+
+/** A scored row's mark, epoch ms. A row logged with its mark carries it (m). An older row has only its session date d
+    and its minute of the day t, and an overnight mark before midnight belongs to the next session's date while it fell
+    on an earlier calendar day: that day is the latest date before d at whose t the session is d (was: d at t, a full
+    day after the mark, so the study read the next evening for a 21:00 call). */
+export function rowMark(r: Pick<ScoredLine, 't' | 'd' | 'm'>): number {
+  if (r.m && r.m > 0) return r.m;
+  const same = markMs(r.d, r.t);
+  if (sessionIso(same) === r.d) return same;
+  for (let back = 1; back <= 4; back++) {
+    const day = new Date(Date.parse(`${r.d}T12:00:00Z`) - back * 86_400_000).toISOString().slice(0, 10);
+    const at = markMs(day, r.t);
+    if (sessionIso(at) === r.d) return at;
+  }
+  return same;
+}
+
+/** When a call made at `at` flats: its own session's flat, as the live scan stamps it (compassParams minutesToFlat):
+    09:20 for an overnight or pre-market mark, 16:55 in the curb, five minutes before the close in the regular session
+    (an early close moves it). Outside every session, the session date's regular flat. */
+export function flatOfMark(ticker: string, at: number, day: string, close: number | null | undefined): number {
+  const left = minutesToFlat(minuteOf(at) - REGULAR_OPEN_MIN, flatTOf(close ?? null), OVERNIGHT_ROOTS.includes(ticker));
+  return Number.isFinite(left) ? Math.floor(at / 60_000) * 60_000 + left * 60_000 : regularFlat(day, close);
+}
+
+/** One option contract, as a quote read names it. */
+export interface FineContract {
+  ticker: string;
+  expiry: string;
+  strike: number;
+  right: 'C' | 'P';
+}
+
+const contractId = (c: FineContract) => `${c.ticker}|${c.expiry}|${c.strike}|${c.right}`;
+
+/** Nearby windows of one contract read together: windows on one date, each starting within this of the span's end,
+    and a span no longer than SPAN_MAX_MS (an hour of 1-second quotes is 3,600 rows at most). */
+const SPAN_GAP_MS = 15 * 60_000;
+const SPAN_MAX_MS = 60 * 60_000;
+
+/** Read every contract's windows into the cache in as few reads as their nearness allows (one read a span), each
+    window keeping the quotes inside it. A span that does not answer is left out of the cache: its windows are asked
+    one by one later (fineLabelPath), until the reads stop answering. */
+export async function prefetchFine(want: readonly { c: FineContract; windows: readonly [number, number][] }[], cache: Map<string, PathQuote[] | null>, down: { fails: number }): Promise<number> {
+  const by = new Map<string, { c: FineContract; windows: Map<string, [number, number]> }>();
+  for (const { c, windows } of want) {
+    const id = contractId(c);
+    const slot = by.get(id) ?? { c, windows: new Map<string, [number, number]>() };
+    for (const w of windows) if (!cache.has(`${id}|${w[0]}|${w[1]}`)) slot.windows.set(`${w[0]}|${w[1]}`, w);
+    by.set(id, slot);
+  }
+  let reads = 0;
+  for (const [id, { c, windows }] of by) {
+    const list = [...windows.values()].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const spans: { from: number; to: number; ws: [number, number][] }[] = [];
+    for (const w of list) {
+      const day = nyIsoDate(w[1]);
+      const last = spans[spans.length - 1];
+      if (last && nyIsoDate(w[0] + 1_000) === day && nyIsoDate(last.from + 1_000) === day && w[0] - last.to <= SPAN_GAP_MS && Math.max(last.to, w[1]) - last.from <= SPAN_MAX_MS) {
+        last.to = Math.max(last.to, w[1]);
+        last.ws.push(w);
+      } else spans.push({ from: w[0], to: w[1], ws: [w] });
+    }
+    for (const span of spans) {
+      if (down.fails >= 3) return reads;
+      reads += 1;
+      const got = await readFineWindow(c, [span.from, span.to]);
+      down.fails = got ? 0 : down.fails + 1;
+      if (!got) continue;
+      for (const w of span.ws) cache.set(`${id}|${w[0]}|${w[1]}`, got.filter(q => q.t > w[0] && q.t <= w[1]));
+    }
+  }
+  return reads;
+}
+
+/** A label's path with the 1-second quotes of its exit windows (compassOutcome fineWindows), found again on the path
+    as read until none is new, the same windows the ledger reads for a call. `cache` holds every window read this
+    study, by contract and window (many rows share a contract's minutes), null for one that did not answer; once
+    `down` says the reads stopped answering, no more are asked. `unread` is what was not read: a label closed after
+    its first unread window is not resolved (on the minute quotes alone, a minute that touched both the stop and the
+    target was settled in the row's favour). */
+export async function fineLabelPath(
+  c: FineContract,
+  sig: SignalCore,
+  quotes: readonly PathQuote[],
+  cache: Map<string, PathQuote[] | null>,
+  down: { fails: number },
+): Promise<{ path: PathQuote[]; unread: [number, number][] }> {
+  const id = contractId(c);
+  const have = new Set<string>();
+  const extra: PathQuote[] = [];
+  let path = quotes.slice();
+  for (let pass = 0; pass < 12; pass++) {
+    const due = fineWindows(sig, path, sig.firedAt + 86_400_000).filter(w => !have.has(`${w[0]}|${w[1]}`));
+    if (!due.length) return { path, unread: [] };
+    for (const w of due) {
+      const key = `${id}|${w[0]}|${w[1]}`;
+      if (!cache.has(key)) {
+        if (down.fails >= 3) return { path, unread: due.slice(due.indexOf(w)) };
+        const got = await readFineWindow(c, w);
+        cache.set(key, got);
+        down.fails = got ? 0 : down.fails + 1;
+      }
+      const got = cache.get(key);
+      if (!got) return { path, unread: due.slice(due.indexOf(w)) };
+      have.add(`${w[0]}|${w[1]}`);
+      extra.push(...got);
+    }
+    path = [...quotes, ...extra].sort((a, b) => a.t - b.t);
+  }
+  return { path, unread: fineWindows(sig, path, sig.firedAt + 86_400_000).filter(w => !have.has(`${w[0]}|${w[1]}`)) };
+}
+
+/** A settled label is resolved when no 1-second window before its exit is unread. */
+const resolved = (out: Outcome, unread: readonly [number, number][]) => !unread.length || (out.status === 'closed' && !!out.exit && Math.min(...unread.map(w => w[0])) >= out.exit.at);
+
+/** What the books would have done from a scored row's mark: by its own book's exit rules (was: Book A's non-runner
+    rules for every row), to its own session's flat (`sig.flatAt`, an early close's `closeMin`), its stop and target
+    minutes judged on their 1-second quotes as the ledger judges a call's (were the minute quotes alone). A row filled
+    whose exit hangs on a window that did not answer is unresolved: no exit, no win. `quotes` are the contract's
+    minute quotes, `under` the underlying's minute closes. */
+export async function settleLabel(
+  c: FineContract,
+  sig: SignalCore & { flatAt: number },
+  quotes: readonly PathQuote[],
+  under: readonly PathBar[],
+  cache: Map<string, PathQuote[] | null> = new Map(),
+  down: { fails: number } = { fails: 0 },
+): Promise<Pick<Label, 'fill' | 'exit' | 'why' | 'ret' | 'tp1' | 'hit50' | 'best' | 'unresolved'>> {
+  const none = { fill: null, exit: null, why: null, ret: null, tp1: null, hit50: null, best: null };
+  const fine = await fineLabelPath(c, sig, quotes, cache, down);
+  const out = settleSignal(sig, fine.path, under, sig.firedAt + 86_400_000);
+  if (!out.fill) return none;
+  /* a window before its exit did not answer: not a win, not a loss, left out of the rates */
+  if (!resolved(out, fine.unread)) return { ...none, fill: out.fill.ask, why: 'unresolved: a 1-second window before the exit was not read', unresolved: true };
+  const fillAt = out.fill.at;
+  const best = quotes.filter(q => q.t > fillAt && q.t <= sig.flatAt).reduce((mx, q) => Math.max(mx, q.bid), 0);
+  const exitAt = out.exit?.at ?? sig.flatAt;
+  const tp = takeProfitPx(out.fill.ask);
+  const runner = sig.book === 'B' || sig.runner;
+  const tp1 = runner ? fine.path.some(q => q.t > fillAt && q.t <= exitAt && q.bid >= tp) : out.exit?.why === 'Take profit 1.50×';
+  return { fill: out.fill.ask, exit: out.exit?.px ?? null, why: out.exit?.why ?? null, ret: out.ret, tp1, hit50: best >= out.fill.ask * 1.5, best: best > 0 ? Number((best / out.fill.ask).toFixed(3)) : null };
+}
+
 const r4 = (v: number) => (Number.isFinite(v) ? Number(v.toFixed(4)) : null);
 const r2 = (v: number) => (Number.isFinite(v) ? Number(v.toFixed(2)) : null);
 const xs = (row: ScoredLine) => row.x.map(v => (v == null ? NaN : v));
@@ -218,6 +367,9 @@ export interface ReviewDeps {
   runner: readonly ExplainTree[] | null;
   /** chains already read, by "ticker|expiry" (the study shares them) */
   chains?: Map<string, Chain | null>;
+  /** the session's early close (minute of the day) from its record, null or absent on a full day: the flats move with
+      it (the study used 15:55 on every day) */
+  close?: number | null;
 }
 
 /** One trade, reviewed. */
@@ -290,10 +442,11 @@ export async function reviewTrade(sig: Signal, deps: ReviewDeps): Promise<TradeR
   }
   const spreadIn = (fill.ask - mid0) * 100;
   const spreadOut = Number.isFinite(mid1) ? (mid1 - exit.px) * 100 : NaN;
-  const flatAt = markMs(sig.day, FLAT_MIN);
+  /* the call's own flat (its session's, as the ledger settled it), else the session date's: five before an early close */
+  const flatAt = sig.flatAt ?? regularFlat(sig.day, deps.close ?? sig.closeMin);
   const afterFill = quotes.filter(q => q.t > fill.at && q.t <= flatAt);
   const bestBid = afterFill.reduce((m, q) => Math.max(m, q.bid), 0);
-  const target = sig.book === 'R' ? 0 : sig.book === 'C' ? fill.ask * 2 : fill.ask * 1.5;
+  const target = sig.book === 'R' ? 0 : sig.book === 'C' ? targetPx(fill.ask, 2) : takeProfitPx(fill.ask);
   const targetLater = target > 0 && quotes.some(q => q.t > exit.at && q.t <= flatAt && q.bid >= target);
   const mids = quotes.filter(q => q.t >= fill.at && q.t <= exit.at && q.t % 60_000 === 0).map(q => Number(((q.bid + q.ask) / 2).toFixed(3)));
   base.after = {
@@ -410,7 +563,8 @@ export interface Label {
   book?: 'A' | 'B' | null;
   /** the exit rode the ratchet: Book B always, Book A when Model 2 cleared 0.50 */
   runner?: boolean;
-  /** the books' fill (the ask a full minute after the mark) and the exit by the row's own book's rules */
+  /** the books' fill (the ask of the first quote from the minute after the mark's) and the exit by the row's own
+      book's rules */
   fill: number | null;
   exit: number | null;
   why: string | null;
@@ -418,6 +572,8 @@ export interface Label {
   /** the 1.50× target reached before the exit: a non-runner's take-profit; a runner's bid at 1.50× the fill at or
       before its ratchet exit */
   tp1: boolean | null;
+  /** filled, but a 1-second window before the exit was not read: no exit, no win (tp1 null) */
+  unresolved?: true;
   /** any bid at 1.50× the fill before the flat */
   hit50: boolean | null;
   /** best bid before the flat against the fill */
@@ -523,9 +679,11 @@ export async function runStudy(deps: StudyDeps): Promise<StudyResult> {
         const state = m.names[name];
         if (!state) continue;
         const minute = minuteOf(m.at);
-        if (minute >= FLAT_MIN) continue;
-        const at = markMs(day, minute);
-        const flatAt = markMs(day, FLAT_MIN);
+        /* the mark's own instant (was the session date at its minute: an overnight mark before midnight read a day
+           late), and the session's flat on an early close (was 15:55 on every day) */
+        const at = Math.floor(m.at / 60_000) * 60_000;
+        const flatAt = regularFlat(day, deps.close);
+        if (at >= flatAt) continue;
         for (const [ckey, quotes] of chain) {
           const i0 = quotes.findIndex(q => q.t === at);
           const entry = i0 >= 0 ? quotes[i0] : null;
@@ -608,7 +766,11 @@ export async function runStudy(deps: StudyDeps): Promise<StudyResult> {
 
   /* every scored row, labelled with what the books would have done from its mark */
   const labels: Label[] = [];
+  const fineCache = new Map<string, PathQuote[] | null>();
+  const fineDown = { fails: 0 };
+  let unresolvedN = 0;
   const barsOf = new Map<string, PathBar[]>();
+  const items: { label: Label; c: FineContract; sig: SignalCore & { flatAt: number }; quotes: PathQuote[] | null; under: PathBar[] }[] = [];
   for (const r of deps.rows) {
     if (r.d !== day) continue;
     const name = tickerOf(r.k);
@@ -617,26 +779,29 @@ export async function runStudy(deps: StudyDeps): Promise<StudyResult> {
     const quotes = chains.get(ck)?.get(keyOf(r.k)) ?? null;
     if (!barsOf.has(name)) barsOf.set(name, await closesOf(name, day));
     const right = r.k.trim().slice(-1) === 'C' ? 'C' : 'P';
-    const firedAt = markMs(day, r.t);
+    /* the mark's own instant (an overnight row before midnight is logged under the next session's date) and its own
+       session's flat, the early close's on a short day (were the session date at t and 15:55 on every day) */
+    const firedAt = rowMark(r);
+    const flatAt = flatOfMark(name, firedAt, day, deps.close);
     const book = bookOfRow(r, rowsAt.get(`${r.t}|${name}|${r.e}`) ?? [r], name);
     const runner = book === 'B' || (book === 'A' && r.p2 != null && r.p2 >= 0.5);
-    let label: Label = { t: r.t, k: r.k, e: r.e, ...(r.late ? { late: true } : {}), p1: r.p1, p2: r.p2, book, runner, fill: null, exit: null, why: null, ret: null, tp1: null, hit50: null, best: null };
-    if (quotes?.length) {
-      /* each row by its own book's exit rules (was: Book A's non-runner rules for every row) */
-      const out = settleSignal({ book: book ?? 'A', right, runner, firedAt }, quotes, barsOf.get(name) ?? [], firedAt + 86_400_000);
-      if (out.fill) {
-        const flatAt = markMs(day, FLAT_MIN);
-        const best = quotes.filter(q => q.t > out.fill!.at && q.t <= flatAt).reduce((mx, q) => Math.max(mx, q.bid), 0);
-        const exitAt = out.exit?.at ?? flatAt;
-        const tp1 = runner
-          ? quotes.some(q => q.t > out.fill!.at && q.t <= exitAt && q.bid >= out.fill!.ask * 1.5)
-          : out.exit?.why === 'Take profit 1.50×';
-        label = { ...label, fill: out.fill.ask, exit: out.exit?.px ?? null, why: out.exit?.why ?? null, ret: out.ret, tp1, hit50: best >= out.fill.ask * 1.5, best: best > 0 ? Number((best / out.fill.ask).toFixed(3)) : null };
-      }
+    const label: Label = { t: r.t, k: r.k, e: r.e, ...(r.late ? { late: true } : {}), p1: r.p1, p2: r.p2, book, runner, fill: null, exit: null, why: null, ret: null, tp1: null, hit50: null, best: null };
+    const strike = Number((r.k.split(' ')[1] ?? '').slice(0, -1));
+    items.push({ label, c: { ticker: name, expiry: r.e, strike, right }, sig: { book: book ?? 'A', right, runner, firedAt, flatAt, ...(deps.close != null ? { closeMin: deps.close } : {}) }, quotes: quotes?.length ? quotes : null, under: barsOf.get(name) ?? [] });
+  }
+  /* every label's exit windows on its minute quotes, read a contract's nearby windows at a time (one read for many
+     rows' windows; the windows the seconds then add are read one by one) */
+  await prefetchFine(items.filter(it => it.quotes).map(it => ({ c: it.c, windows: fineWindows(it.sig, it.quotes!, it.sig.firedAt + 86_400_000) })), fineCache, fineDown);
+  for (const it of items) {
+    let label = it.label;
+    if (it.quotes) {
+      label = { ...label, ...(await settleLabel(it.c, it.sig, it.quotes, it.under, fineCache, fineDown)) };
+      if (label.unresolved) unresolvedN += 1;
     }
     labels.push(label);
     deps.onLabel?.(label);
   }
+  if (unresolvedN) notes.push(`${unresolvedN} of ${labels.length} labels unresolved: a 1-second window before the exit did not answer; they are left out of the rates.`);
   const done = labels.filter(l => l.tp1 != null);
   const calibration = BUCKETS.map(([lo, hi]) => {
     const inB = done.filter(l => l.p1 >= lo && l.p1 < hi);

@@ -25,31 +25,50 @@ export interface SessionReview {
   trades: TradeReview[];
 }
 
-/** The rules a review and a study are built under. 2: no fees anywhere (a trade's P&L is (exit - fill) x 100). A file
-    stamped lower, or not at all, was built under older rules (fees taken from its P&L) and is built again. */
-export const REVIEW_VERSION = 2;
+/** The rules a review and a study are built under. 2: no fees anywhere (a trade's P&L is (exit - fill) x 100). 3: the
+    labels' stop and target minutes judged on their 1-second quotes (unresolved when one is not read), each row from
+    its own mark's instant to its own session's flat, an early close's flats. A file stamped lower, or not at all, was
+    built under older rules and is built again. */
+export const REVIEW_VERSION = 3;
 
-const builtMemo = new Map<string, { mtime: number; ok: boolean }>();
+const builtMemo = new Map<string, { mtime: number; ok: boolean; open: number }>();
 
-/** The review or study file exists and was built under today's rules. */
-export function builtCurrent(file: string): boolean {
+/** Calls of a record not settled yet (open, waiting, or never read). */
+export const openCalls = (record: { calls: readonly Signal[]; would?: readonly Signal[] }): number =>
+  [...record.calls, ...(record.would ?? [])].filter(c => !c.outcome || c.outcome.status === 'open' || c.outcome.status === 'waiting').length;
+
+function builtStamp(file: string): { ok: boolean; open: number } {
   let mtime = 0;
   try {
     mtime = fs.statSync(file).mtimeMs;
   } catch {
-    return false;
+    return { ok: false, open: 0 };
   }
   const hit = builtMemo.get(file);
-  if (hit && hit.mtime === mtime) return hit.ok;
+  if (hit && hit.mtime === mtime) return hit;
   let ok = false;
+  let open = 0;
   try {
-    const got = JSON.parse(fs.readFileSync(file, 'utf8')) as { version?: unknown };
+    const got = JSON.parse(fs.readFileSync(file, 'utf8')) as { version?: unknown; openCalls?: unknown };
     ok = typeof got.version === 'number' && got.version >= REVIEW_VERSION;
+    open = typeof got.openCalls === 'number' ? got.openCalls : 0;
   } catch {
     ok = false;
   }
-  builtMemo.set(file, { mtime, ok });
-  return ok;
+  const stamp = { mtime, ok, open };
+  builtMemo.set(file, stamp);
+  return stamp;
+}
+
+/** How many of the record's calls were still open when this study was built (0 for a file from before the count). A
+    study built while calls were open is built again once they settle. */
+export function builtOpenCalls(file: string): number {
+  return builtStamp(file).open;
+}
+
+/** The review or study file exists and was built under today's rules. */
+export function builtCurrent(file: string): boolean {
+  return builtStamp(file).ok;
 }
 
 async function trees(file: string): Promise<ExplainTree[] | null> {
@@ -68,7 +87,7 @@ export const reviewFile = (dir: string, day: string) => path.join(dir, 'review',
 export const studyFile = (dir: string, day: string) => path.join(dir, 'study', `${day}.json`);
 
 /** Review every trade and study the session. `record` is the day's file as the engine wrote it. */
-export async function buildSession(dir: string, day: string, record: { calls: Signal[]; would?: Signal[]; marks: MarkRow[] }, log: (line: string) => void = () => {}): Promise<{ review: SessionReview; study: StudyResult }> {
+export async function buildSession(dir: string, day: string, record: { calls: Signal[]; would?: Signal[]; marks: MarkRow[]; close?: number | null }, log: (line: string) => void = () => {}): Promise<{ review: SessionReview; study: StudyResult }> {
   const rowsFile = path.join(dir, 'rows', `${day}.jsonl`);
   const rows: ScoredLine[] = fs.existsSync(rowsFile)
     ? fs.readFileSync(rowsFile, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l) as ScoredLine).filter(r => r.d === day)
@@ -76,7 +95,8 @@ export async function buildSession(dir: string, day: string, record: { calls: Si
   const entry = await trees('/models/model_entry_all6months.txt');
   const runner = await trees('/models/model_runner_all6months.txt');
   const chains = new Map();
-  const deps = { day, rows, entry, runner, chains };
+  /* the session's early close moves the flats of its reviews and labels */
+  const deps = { day, rows, entry, runner, chains, close: record.close ?? null };
   const calls = record.calls;
   const would = record.would ?? [];
   const trades: TradeReview[] = [];
@@ -88,7 +108,7 @@ export async function buildSession(dir: string, day: string, record: { calls: Si
   const labels: Label[] = [];
   const study = await runStudy({ ...deps, marks: record.marks, calls, would, reviews: trades, onLabel: l => labels.push(l) });
   writeAtomic(path.join(dir, 'labels', `${day}.jsonl`), labels.map(l => JSON.stringify(l)).join('\n') + '\n');
-  writeAtomic(studyFile(dir, day), JSON.stringify({ ...study, trades, version: REVIEW_VERSION }));
+  writeAtomic(studyFile(dir, day), JSON.stringify({ ...study, trades, version: REVIEW_VERSION, openCalls: openCalls(record) }));
   log(`[compass] study ${day}: ${trades.length} trades, ${study.movers.length} movers, ${study.labels} labels`);
   return { review, study: { ...study, trades } };
 }
