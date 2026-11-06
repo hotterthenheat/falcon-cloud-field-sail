@@ -12,6 +12,8 @@
 
 import { MismatchDirection, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import type { KeptLevel } from './nodeStrikes';
+import { CALL_WALL, FLIP, PUT_WALL } from './palette';
+import { groundToken, isLightGround, type Rgb } from './groundTokens';
 
 interface BitmapScope {
   context: CanvasRenderingContext2D;
@@ -56,8 +58,6 @@ export interface ThreadSource {
   keptLevels: KeptLevel[];
 }
 
-type Rgb = readonly [number, number, number];
-
 /* ---------- inks ---------- */
 
 interface Inks {
@@ -74,40 +74,59 @@ interface Inks {
   /** the mark's foil (tokens.css --foil-1..5; the galaxy ink on paper) */
   foil: readonly Rgb[];
 }
-/* palette.ts CALL_WALL / PUT_WALL / FLIP on the black tape; tokens.css's light --glacier / --ember / --flip on paper */
-const DARK = {
-  call: [158, 212, 234] as Rgb,
-  put: [245, 197, 66] as Rgb,
-  flip: [228, 231, 238] as Rgb,
-  text: [226, 228, 233] as Rgb,
-  dim: [128, 132, 140] as Rgb,
-  foil: [[238, 241, 248], [194, 214, 240], [228, 216, 244], [255, 255, 255], [200, 216, 236]] as Rgb[],
-};
-const LIGHT = {
-  call: [3, 105, 161] as Rgb,
-  put: [146, 86, 4] as Rgb,
-  flip: [75, 85, 99] as Rgb,
-  text: [24, 26, 30] as Rgb,
-  dim: [96, 100, 108] as Rgb,
-  foil: [[43, 45, 56], [102, 113, 143], [35, 35, 44], [103, 93, 126], [43, 45, 56]] as Rgb[],
+/* The black tape wears palette.ts's canvas hexes for the walls and the flip (heavier than the DOM tokens, so a 1px core
+   holds contrast); everything else, and every ink on paper, is the app's own token for that ground (tokens.css, read in
+   the ground's own data-theme scope: groundTokens.ts). The fallbacks are those tokens' values, for a page that cannot
+   answer. */
+const hexRgb = (hex: string): Rgb => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+const FOIL = ['--foil-1', '--foil-2', '--foil-3', '--foil-4', '--foil-5'] as const;
+interface Fallback {
+  glacier: Rgb;
+  ember: Rgb;
+  flip: Rgb;
+  text: Rgb;
+  dim: Rgb;
+  foil: readonly Rgb[];
+}
+const FALLBACK: Record<'dark' | 'light', Fallback> = {
+  dark: { glacier: [122, 189, 215], ember: [245, 197, 66], flip: [156, 163, 175], text: [237, 237, 237], dim: [125, 125, 125], foil: [[238, 241, 248], [194, 214, 240], [228, 216, 244], [255, 255, 255], [200, 216, 236]] },
+  light: { glacier: [3, 105, 161], ember: [146, 86, 4], flip: [75, 85, 99], text: [14, 15, 17], dim: [64, 67, 74], foil: [[43, 45, 56], [102, 113, 143], [35, 35, 44], [103, 93, 126], [43, 45, 56]] },
 };
 const mix = (a: Rgb, b: Rgb, t: number): Rgb => [Math.round(a[0] + (b[0] - a[0]) * t), Math.round(a[1] + (b[1] - a[1]) * t), Math.round(a[2] + (b[2] - a[2]) * t)];
-function inksFor(ground: Rgb): Inks {
-  const light = (0.299 * ground[0] + 0.587 * ground[1] + 0.114 * ground[2]) / 255 > 0.55;
-  const k = light ? LIGHT : DARK;
-  /* muted: the wall ink pulled toward a neutral grey, so the walls stay the loudest thing on the chart */
-  const grey: Rgb = light ? [112, 112, 116] : [146, 146, 150];
-  return { light, ground, ...k, long: mix(k.call, grey, 0.36), short: mix(k.put, grey, 0.36) };
+/** The look's inks on a ground (light or dark), from the app's tokens */
+function inksOn(light: boolean): Omit<Inks, 'ground'> {
+  const f = light ? FALLBACK.light : FALLBACK.dark;
+  const tok = (name: string, fb: Rgb) => groundToken(name, light, fb);
+  const call = light ? tok('--glacier', f.glacier) : hexRgb(CALL_WALL);
+  const put = light ? tok('--ember', f.ember) : hexRgb(PUT_WALL);
+  const flip = light ? tok('--flip', f.flip) : hexRgb(FLIP);
+  /* muted: the wall ink pulled toward the ground's muted text, so the walls stay the loudest thing on the chart */
+  const dim = tok('--text-muted', f.dim);
+  return {
+    light,
+    call,
+    put,
+    flip,
+    text: tok('--text-primary', f.text),
+    dim,
+    foil: FOIL.map((n, i) => tok(n, f.foil[i])),
+    long: mix(call, dim, 0.36),
+    short: mix(put, dim, 0.36),
+  };
 }
-/** The key's swatches in this look (FieldKey): quiet to full, short gamma (the ember side) and long gamma (glacier) */
-export const THREAD_RAMP_CSS = (() => {
-  const ink = inksFor([10, 10, 10]);
+function inksFor(ground: Rgb): Inks {
+  return { ...inksOn(isLightGround(ground)), ground };
+}
+/** The key's swatches in this look (FieldKey), on the chart's ground: quiet to full, short gamma (the ember side) and
+    long gamma (glacier) */
+export function threadRampCss(light: boolean): { neg: string; pos: string } {
+  const ink = inksOn(light);
   const css = (c: Rgb, a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
   return {
     neg: `linear-gradient(90deg, ${css(ink.short, 0.2)}, ${css(ink.put, 1)})`,
     pos: `linear-gradient(90deg, ${css(ink.long, 0.2)}, ${css(ink.call, 1)})`,
-  } as const;
-})();
+  };
+}
 const rgba = (c: Rgb, a: number): string => `rgba(${c[0]},${c[1]},${c[2]},${Math.max(0, Math.min(1, a)).toFixed(3)})`;
 
 /* ---------- the frame ---------- */

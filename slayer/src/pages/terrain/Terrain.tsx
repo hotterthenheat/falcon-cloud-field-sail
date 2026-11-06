@@ -1579,6 +1579,7 @@ const Pane = ({
                       scale={fieldScale}
                       oiNet={fieldOiNet}
                       compact={isPhone || (paneCount > 1 && !expanded)}
+                      light={ground === 'light'}
                     />
                   </div>
                 )}

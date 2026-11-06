@@ -70,6 +70,7 @@ import { windInputsFor } from '../../data/windInputs';
 import { carryFor } from '../../core/carry';
 import { coneMissed, coneTerm, ensureCone, useConeRev } from '../../data/coneFeed';
 import { coneFrame, coneMarks, forwardCone, runwaySlots, todayOpenOf, tradingMinutesPerBar } from '../../data/terrainCone';
+import { bookCone, bookConeSigma } from '../../data/nodeCone';
 import { EXTRA_INK, coneRungs } from './levelExtras';
 import { KeyLevelsPrimitive, KEY_LEVEL_KEYS, KEY_LEVEL_WORDS, type KeyLevelKey, type KeyLevelRung } from './keyLevelsPrimitive';
 import { LADDER_HIT_W, nearRule } from './ladderPaint';
@@ -3970,7 +3971,11 @@ const StrikeChart = ({
     const now = Date.now();
     const clock = coneFrame(mins, now);
     const step = Math.max(1, Math.round(clock.next / 80));
-    const fc = term && spot > 0 ? forwardCone(term.rows, spot, now, todayOpenOf(bars), step, clock) : null;
+    /* the nodes view (dev-only ?nodes=heat|threads) draws the cone off the book's own 1σ (data/nodeCone.ts, book/move.ts):
+       the expected move its nodes, Pinpoint and the tape's corridor read; today's look keeps the cone's vols */
+    const book = nodeConcept() !== 'current' && !tapeRef.current?.premium && spot > 0 ? bookConeSigma(ticker, now) : null;
+    const bookFc = book ? bookCone(spot, clock, book, now, step, todayOpenOf(bars)) : null;
+    const fc = bookFc ?? (term && spot > 0 ? forwardCone(term.rows, spot, now, todayOpenOf(bars), step, clock) : null);
     /* the cone stands on the last bar the chart DRAWS: a chart opens on its recent window (sliceFor), so the tape's
        full length put the anchor hundreds of bars past the edge and the cone off screen */
     const shown = barCountRef.current;
@@ -3987,7 +3992,7 @@ const StrikeChart = ({
             anchor: withNight(drawn.map(b => b.time)).length - 1,
             oddsName: clock.label,
             iv: fc.ivNext,
-            source: term?.source === 'theta' ? 'at-the-money implied vol' : 'term structure',
+            source: bookFc ? "the book's expected move" : term?.source === 'theta' ? 'at-the-money implied vol' : 'term structure',
           }
         : null,
     );
@@ -3996,7 +4001,7 @@ const StrikeChart = ({
     ladderRef.current?.setExtras('cone', coneEdgeRef.current);
     trailsRef.current?.requestUpdate?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, timeframe, revision, overlays.cone, overlays.levels, replay, mainNonce, altSpec, session, tapeRev, volsRev, fullNonce, nightRev]);
+  }, [ticker, timeframe, revision, overlays.cone, overlays.levels, replay, mainNonce, altSpec, session, tapeRev, volsRev, fullNonce, nightRev, bookRev]);
 
   /* THE WIND FIELD — a model forecast of the rest of today's session (core/windField.ts, data/windInputs.ts). Its σ is
      the cone's own (the at-the-money implied vol to today's close on the trading clock), its book the chain the nodes
@@ -5532,7 +5537,7 @@ const StrikeChart = ({
     }
     if (!clock && overlays.wind && windWhy) push(windWhy);
     else if (!clock && overlays.wind && tfMinutes(timeframe) >= 1440) push('Wind — needs intraday bars');
-    if (!clock && overlays.cone && !coneTerm(ticker)) push(coneMissed(ticker) ? 'Expected move — no implied vol on this name' : 'Expected move — waiting on implied vol');
+    if (!clock && overlays.cone && !coneTerm(ticker) && !(nodeConcept() !== 'current' && bookConeSigma(ticker))) push(coneMissed(ticker) ? 'Expected move — no implied vol on this name' : 'Expected move — waiting on implied vol');
     if (overlays.levels && ![levels.callWall, levels.putWall, levels.flip, levels.supreme].some(v => Number.isFinite(v) && v > 0)) {
       /* the book did not come back at all: that, not "not named yet" */
       push(bookStatus(ticker) === 'error' ? 'Book — the feed did not answer' : 'Key levels — the book has not named a wall yet');

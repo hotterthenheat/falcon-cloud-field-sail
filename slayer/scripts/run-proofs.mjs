@@ -79,6 +79,7 @@ const PROOFS = [
   'oi-change-proof.mjs',
   'skew-proof',
   'expected-move-proof',
+  'node-cone-proof',
   'charm-drift-proof',
   'overnight-proof',
   'wind-proof',

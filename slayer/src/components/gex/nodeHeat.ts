@@ -9,8 +9,30 @@
 import type { KeptLevel } from './nodeStrikes';
 import { HEAT_MODE, heatRampColorFor, ladderRampT, type HeatMode } from './heatmap';
 import { PHONE_ROW_PX, fitEdgeLabels } from './edgeLabelFit';
+import { CALL_WALL, FLIP, PUT_WALL, SUPREME } from './palette';
+import { groundToken, type Rgb } from './groundTokens';
 
-export type Rgb = readonly [number, number, number];
+export type { Rgb };
+
+/* ---------- the inks the field does not take from the palette: the app's tokens, on the chart's ground ---------- */
+
+const hexRgb = (hex: string): Rgb => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+/** The mark's foil (tokens.css --foil-1..5) on a ground; the fallbacks are those tokens' values */
+export function foilOn(light: boolean): Rgb[] {
+  const fb: Rgb[] = light
+    ? [[43, 45, 56], [102, 113, 143], [35, 35, 44], [103, 93, 126], [43, 45, 56]]
+    : [[238, 241, 248], [194, 214, 240], [228, 216, 244], [255, 255, 255], [200, 216, 236]];
+  return fb.map((f, i) => groundToken(`--foil-${i + 1}`, light, f));
+}
+/** The labels' inks: palette.ts's canvas hexes for the walls, the flip and the pin on the black tape (heavier than the
+    DOM tokens, so a 10px word holds); on paper the tokens' own cuts (--glacier, --ember, --flip, --supreme); the text
+    is --text-primary on either */
+function wallInks(light: boolean): { call: Rgb; put: Rgb; flip: Rgb; text: Rgb; pin: Rgb } {
+  const tok = (name: string, fb: Rgb) => groundToken(name, light, fb);
+  return light
+    ? { call: tok('--glacier', [3, 105, 161]), put: tok('--ember', [146, 86, 4]), flip: tok('--flip', [75, 85, 99]), text: tok('--text-primary', [14, 15, 17]), pin: tok('--supreme', [163, 0, 179]) }
+    : { call: hexRgb(CALL_WALL), put: hexRgb(PUT_WALL), flip: hexRgb(FLIP), text: tok('--text-primary', [237, 237, 237]), pin: hexRgb(SUPREME) };
+}
 
 /** Colour steps per side */
 export const HEAT_STEPS = 32;
@@ -81,14 +103,15 @@ export function heatInks(light: boolean): HeatInks {
       solid[side].push(`rgb(${c[0]},${c[1]},${c[2]})`);
     }
   }
+  const foil = foilOn(light);
   const inks: HeatInks = {
     light,
     lit,
     quiet,
     solid,
-    /* tokens.css --foil-1 on the black tape; the galaxy ink's deep cut (--foil-2 on paper) */
-    crown: light ? [62, 70, 96] : [238, 241, 248],
-    bloom: light ? [102, 113, 143] : [194, 214, 240],
+    /* the mark's foil on the chart's ground: --foil-1 for the king's edge, --foil-2 for its bloom */
+    crown: foil[0],
+    bloom: foil[1],
   };
   cache.set(key, inks);
   return inks;
@@ -167,8 +190,6 @@ function signedShort(v: number): string {
   return `${sign}${n >= 100 ? n.toFixed(0) : n.toFixed(1)}${u}`;
 }
 
-/* the labels' inks: palette.ts CALL_WALL / PUT_WALL / FLIP on the tape, tokens.css's light cuts on paper */
-const WALL = { dark: { call: [158, 212, 234] as Rgb, put: [245, 197, 66] as Rgb, flip: [228, 231, 238] as Rgb, text: [226, 228, 233] as Rgb, long: [150, 196, 216] as Rgb, short: [228, 170, 96] as Rgb, pin: [255, 90, 241] as Rgb }, light: { call: [3, 105, 161] as Rgb, put: [146, 86, 4] as Rgb, flip: [75, 85, 99] as Rgb, text: [20, 22, 26] as Rgb, long: [26, 98, 146] as Rgb, short: [150, 84, 8] as Rgb, pin: [163, 0, 179] as Rgb } };
 
 /** A level the host names at the edge beside the nodes (the key levels' rungs, the cone's 1σ ends): drawn in the same
     column, fitted with the nodes' own labels */
@@ -205,7 +226,7 @@ export function layoutHeatLabels(
   light: boolean,
   extras: readonly HeatExtra[] = [],
 ): HeatLabel[] {
-  const ink = light ? WALL.light : WALL.dark;
+  const ink = wallInks(light);
   const mode = modeOf(palette);
   const px = labelPx();
   const font = `500 ${px}px ${FACE}`;
@@ -291,9 +312,7 @@ export function paintHeatLabels(scope: BitmapScope, labels: readonly HeatLabel[]
   const vr = scope.verticalPixelRatio;
   const px = labelPx();
   const h = Math.round((px + 6) * vr);
-  const foil: Rgb[] = light
-    ? [[43, 45, 56], [102, 113, 143], [35, 35, 44], [103, 93, 126], [43, 45, 56]]
-    : [[238, 241, 248], [194, 214, 240], [228, 216, 244], [255, 255, 255], [200, 216, 236]];
+  const foil = foilOn(light);
   const rgba = (c: Rgb, a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
   ctx.save();
   for (const l of labels) {
@@ -341,7 +360,7 @@ export function paintHeatLabels(scope: BitmapScope, labels: readonly HeatLabel[]
     ctx.fillText(l.role, l.roleRight * hr, yt);
   }
   ctx.font = `500 ${Math.round(px * vr)}px ${FACE}`;
-  const text: Rgb = light ? [20, 22, 26] : [226, 228, 233];
+  const text = wallInks(light).text;
   for (const l of labels) {
     const yt = Math.round(l.ty * vr) + 0.5 * vr;
     ctx.fillStyle = rgba(text, 0.94);
