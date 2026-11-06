@@ -32,8 +32,8 @@ def rth_minutes(sym: str, days) -> pd.DataFrame:
         b = und_bars(sym, D)
         if not len(b):
             continue
-        b = b[(b.mod >= M0) & (b.mod < 16 * 60)].copy()
-        b['m'] = b.mod - M0
+        b = b[(b['mod'] >= M0) & (b['mod'] < 16 * 60)].copy()
+        b['m'] = b['mod'] - M0
         b['session'] = int(D)
         rows.append(b)
     if not rows:
@@ -114,7 +114,7 @@ class Underlying:
         for D in self.days:
             x = self.m1[self.m1.session == int(D)]
             pre = und_bars(self.sym if self.sym != 'SPX' else 'SPY', D)
-            pre = pre[(pre.mod >= 4 * 60) & (pre.mod < M0)] if len(pre) else pre
+            pre = pre[(pre['mod'] >= 4 * 60) & (pre['mod'] < M0)] if len(pre) else pre
             r = {'session': int(D)}
             if prev is not None and len(prev):
                 r.update({'pdh': prev.h.max(), 'pdl': prev.l.min(), 'pdc': prev.c.iloc[-1]})
@@ -123,7 +123,7 @@ class Underlying:
                 if self.sym == 'SPX':
                     # SPX prints no premarket: SPY's premarket x (prior SPX close / prior SPY close)
                     sp = und_bars('SPY', prev_D) if prev_D else pd.DataFrame()
-                    sp = sp[(sp.mod >= M0) & (sp.mod < 16 * 60)] if len(sp) else sp
+                    sp = sp[(sp['mod'] >= M0) & (sp['mod'] < 16 * 60)] if len(sp) else sp
                     ratio = r['pdc'] / (sp.c.iloc[-1] / PX) if len(sp) and 'pdc' in r else np.nan
                     pmh, pml = pmh * ratio, pml * ratio
                 r.update({'pmh': pmh, 'pml': pml})

@@ -61,10 +61,27 @@ def dte(day: str, exp: str) -> int:
     return (pd.Timestamp(exp) - pd.Timestamp(day)).days
 
 
-def csv(path: str, params: dict, **kw) -> pd.DataFrame:
-    b = theta_get(path, params, **kw)
+def csv(path: str, params: dict, patience_s: float = 1800, **kw) -> pd.DataFrame:
+    """theta_get with patience for a busy shared terminal: a 429 ('too many requests', other workers' load) or a
+    transport failure is retried with backoff (up to patience_s); 472 = NoData is an answer and is not retried."""
+    import time
+    t0, wait = time.time(), 5.0
+    while True:
+        try:
+            b = theta_get(path, params, **kw)
+            break
+        except NoData:
+            raise
+        except RuntimeError as e:
+            msg = str(e)
+            if ('429' not in msg and 'failed after' not in msg) or time.time() - t0 > patience_s:
+                raise
+            time.sleep(wait)
+            wait = min(wait * 1.6, 120.0)
     if not b.strip():
         raise NoData(path)
+    if b.lstrip()[:6].lower() in (b'<html>', b'<!doct'):
+        raise RuntimeError(f'{path}: HTML answer (terminal error page)')
     return pd.read_csv(io.BytesIO(b))
 
 

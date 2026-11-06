@@ -255,7 +255,7 @@ def fetch_und(sym, kind, D):
                        'h': np.round(o.high.values * 10000).astype('int64'), 'l': np.round(o.low.values * 10000).astype('int64'),
                        'c': np.round(o.close.values * 10000).astype('int64'),
                        'v': o.volume.astype('int64') if 'volume' in o else 0, 'n': o['count'].astype('int64') if 'count' in o else 0})
-    df = df[df.mod < 16 * 60]
+    df = df[df['mod'] < 16 * 60]
     write_parquet(df, p)
 
 
