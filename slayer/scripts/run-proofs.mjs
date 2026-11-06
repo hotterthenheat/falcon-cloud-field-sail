@@ -90,6 +90,7 @@ const PROOFS = [
   'volume-at-price-proof',
   'tv-levels-proof',
   'indicators-al-proof',
+  'day-iv-proof',
 ];
 
 const goldens = () =>

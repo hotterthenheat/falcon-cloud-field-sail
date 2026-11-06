@@ -203,23 +203,78 @@ export function peekMoveToClose(ticker: string, date: string | null | undefined,
   return day == null ? null : sigmaOverMinutes(day, minutesLeft);
 }
 
-/** The interpolated 1-day implied vol (days = 1), annualised fraction — null when the rows carry none */
-export function dayIvOf(rows: UwInterp[]): number | null {
+/* ONE 1-DAY ROW (audit 2026-11-06). An index with an AM-settled monthly root and a PM weekly root (SPX/SPXW, NDX/NDXP,
+   RUT/RUTW) gets TWO blocks of tenors for the same date: one interpolated over the monthly root alone — its short end is
+   an extrapolation from the first monthly, 15 days out (SPX 2026-11-05: 1-day 0.226, the Nov 20 AM vol 0.23; RUT's
+   1-day −0.003) — and one over the weeklies, whose 1-day IS the next session's contracts (SPX 0.359: the Nov 6 SPXW
+   at-the-money vol, and SPY's own 1-day 0.366). dayIvOf took the first, the monthly one. The vendor's figures in a real
+   interpolation agree with each other: its implied move is k·σ·√(days/365) with the one k it prints at 30 days
+   (0.67–0.68); the extrapolated 1-day breaks that by 2–3× (SPX A: k 1.52 against 0.675; B: 0.64 against 0.684; NDX A
+   1.89 against 0.674, B 0.66 against 0.676). So the 1-day row is, of each block's valid one, the one whose 1-day k is
+   nearest its own 30-day k — order-free, and the same row for the vol and the move. A single block is read as before. */
+const LN_365 = 365;
+/** Split the rows into blocks: a block runs while `days` rises (the vendor prints each block 1 … 365) */
+function interpBlocks(rows: readonly UwInterp[]): UwInterp[][] {
+  const out: UwInterp[][] = [];
+  let cur: UwInterp[] = [];
+  let last = -Infinity;
+  for (const r of rows) {
+    const d = num(r.days);
+    if (cur.length && !(d > last)) {
+      out.push(cur);
+      cur = [];
+    }
+    cur.push(r);
+    last = d;
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+const moveFrac = (r: UwInterp | undefined): number => {
+  let f = num(r?.implied_move_perc);
+  if (f > 1) f /= 100;
+  return f;
+};
+/** The vendor's k on one row: implied move ÷ (σ·√(days/365)); NaN when the row cannot carry one */
+const kOf = (r: UwInterp | undefined): number => {
+  const v = num(r?.volatility);
+  const d = num(r?.days);
+  const f = moveFrac(r);
+  return v > 0 && d > 0 && f > 0 ? f / (v * Math.sqrt(d / LN_365)) : NaN;
+};
+/** The one 1-day row (latest date; between same-date blocks, the block whose 1-day agrees with its own 30-day) */
+export function dayRowOf(rows: readonly UwInterp[]): UwInterp | null {
   if (!Array.isArray(rows)) return null;
-  const ones = rows.filter(r => num(r.days) === 1 && num(r.volatility) > 0);
-  if (!ones.length) return null;
-  const row = ones.reduce((best, r) => (String(r.date ?? '') > String(best.date ?? '') ? r : best));
-  const v = num(row.volatility);
+  const valid = (r: UwInterp) => num(r.days) === 1 && num(r.volatility) > 0 && num(r.volatility) < 5;
+  let latest = '';
+  for (const r of rows) if (valid(r) && String(r.date ?? '') > latest) latest = String(r.date ?? '');
+  const cands: { row: UwInterp; off: number; at: number }[] = [];
+  interpBlocks(rows).forEach((b, at) => {
+    const one = b.find(r => valid(r) && String(r.date ?? '') === latest);
+    if (!one) return;
+    const k1 = kOf(one);
+    const k30 = kOf(b.find(r => num(r.days) === 30));
+    const off = Number.isFinite(k1) && Number.isFinite(k30) && k30 > 0 ? Math.abs(Math.log(k1 / k30)) : Infinity;
+    cands.push({ row: one, off, at });
+  });
+  if (!cands.length) {
+    /* no block structure to read (a bare 1-day row): the latest date's first */
+    const ones = rows.filter(r => valid(r) && String(r.date ?? '') === latest);
+    return ones[0] ?? null;
+  }
+  cands.sort((a, b) => a.off - b.off || a.at - b.at);
+  return cands[0].row;
+}
+
+/** The interpolated 1-day implied vol (days = 1), annualised fraction — null when the rows carry none (dayRowOf) */
+export function dayIvOf(rows: UwInterp[]): number | null {
+  const row = dayRowOf(rows);
+  const v = num(row?.volatility);
   return v > 0 && v < 5 ? v : null;
 }
 
-/** The 1-day tenor, as a fraction of spot. The vendor prints a fraction (0.004 = 0.4%). */
+/** The 1-day tenor, as a fraction of spot — the same row as dayIvOf. The vendor prints a fraction (0.004 = 0.4%). */
 export function dayFracOf(rows: UwInterp[]): number {
-  if (!Array.isArray(rows)) return 0;
-  const ones = rows.filter(r => num(r.days) === 1 && num(r.implied_move_perc) > 0);
-  if (!ones.length) return 0;
-  const row = ones.reduce((best, r) => (String(r.date ?? '') > String(best.date ?? '') ? r : best));
-  let frac = num(row.implied_move_perc);
-  if (frac > 1) frac /= 100;
+  const frac = moveFrac(dayRowOf(rows) ?? undefined);
   return frac > 0 && frac < 0.2 ? frac : 0;
 }

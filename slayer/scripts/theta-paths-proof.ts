@@ -41,7 +41,12 @@ const note = (path: string, file: string) => {
 };
 for (const f of files) {
   const text = readFileSync(f, 'utf8');
-  for (const m of text.matchAll(LITERAL)) note(m[0], f);
+  for (const m of text.matchAll(LITERAL)) {
+    /* the parent of a templated leaf (Python's f'/stock/list/dates/{kind}', a JS `/…/${x}`) is not an endpoint itself */
+    const next = text.slice(m.index! + m[0].length, m.index! + m[0].length + 3);
+    if (/^\/\$?\{/.test(next)) continue;
+    note(m[0], f);
+  }
   for (const m of text.matchAll(TEMPLATED)) {
     const leaf = m[2] === '${what}' ? 'ohlc' : m[2];
     for (const root of ['stock', 'index']) note(`/${root}/${m[1]}/${leaf}`, f);
@@ -57,8 +62,17 @@ const NAMED_ONLY = /\/flat_file\//;
 const called = paths.filter(p => !NAMED_ONLY.test(p));
 console.log(`     ${called.length} ThetaData endpoints written in ${files.length} files:`);
 for (const p of called) console.log(`       ${thetaAllowed(`${p}?symbol=SPY&format=json`) ? 'pass' : 'DENY'}  ${p}  (${[...used.get(p)!].slice(0, 3).join(', ')}${used.get(p)!.size > 3 ? ', …' : ''})`);
-const denied = called.filter(p => !thetaAllowed(`${p}?symbol=SPY&format=json`) || !thetaAllowed(p));
-check(`every endpoint the app calls passes the allowlist (${called.length - denied.length}/${called.length})${denied.length ? `: denied ${denied.join(', ')}` : ''}`, denied.length === 0 && called.length >= 30);
+/* engine/ and research/ ask the terminal itself (127.0.0.1:25503, research/compass-v2/data/clients.py THETA_BASE,
+   engine/slayer_core/theta.py BASE), never the browser proxy or the relay: a path only they write is listed, not held
+   to the proxy's allowlist (2026-11-05: research/compass-v2's /index/history/price, its one-second SPX prints) */
+const DIRECT = /^(engine|research)\//;
+const direct = (p: string) => [...used.get(p)!].every(f => DIRECT.test(f.replace(/\\/g, '/')));
+const denied = called.filter(p => !direct(p) && (!thetaAllowed(`${p}?symbol=SPY&format=json`) || !thetaAllowed(p)));
+const directOnly = called.filter(p => direct(p) && !thetaAllowed(`${p}?symbol=SPY&format=json`));
+if (directOnly.length) console.log(`     straight to the terminal, not through the proxy (not on its list): ${directOnly.join(', ')}`);
+check(`every endpoint the app calls passes the allowlist (${called.length - directOnly.length - denied.length}/${called.length - directOnly.length})${denied.length ? `: denied ${denied.join(', ')}` : ''}`, denied.length === 0 && called.length >= 30);
+/* research's templated list read, as it writes it (f'/stock/list/dates/{kind}', kind quote and trade) */
+check('the stock date lists research walks pass (/stock/list/dates/quote, /trade)', ['/stock/list/dates/quote?symbol=SPY&format=json', '/stock/list/dates/trade?symbol=SPY&format=json'].every(p => thetaAllowed(p)));
 
 /* Terrain's Regime tab (server/regimeApi.mjs), as it writes them */
 const REGIME_READS = [
