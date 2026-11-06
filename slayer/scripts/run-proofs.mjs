@@ -52,6 +52,7 @@ const PROOFS = [
   'opening-lean-proof',
   'tape-cache-proof',
   'walls-flip-proof',
+  'levels-gate-proof',
   'theta-wait-proof',
   'book-mode-proof',
   'carry-proof',
