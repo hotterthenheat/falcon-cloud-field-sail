@@ -31,7 +31,7 @@ export const ToggleGroup = React.forwardRef<
 ToggleGroup.displayName = 'ToggleGroup';
 
 export interface ToggleGroupItemProps extends React.ComponentPropsWithoutRef<typeof ToggleGroupPrimitive.Item>, VariantProps<typeof toggleItemVariants> {
-  /** Leave the foil pill out (a host that draws its own, gliding — FilterTabs) */
+  /** The children as given, with no pill and no word wrapper (a host that draws its own pill, gliding — FilterTabs) */
   bare?: boolean;
 }
 
@@ -40,8 +40,14 @@ export const ToggleGroupItem = React.forwardRef<React.ElementRef<typeof ToggleGr
     const ctx = React.useContext(SizeContext);
     return (
       <ToggleGroupPrimitive.Item ref={ref} className={cn(toggleItemVariants({ size: size ?? ctx.size }), className)} {...props}>
-        {!bare && <span aria-hidden className="pointer-events-none absolute inset-0 hidden rounded-md shadow-sm shadow-black/40 foil-glide foil-pill group-data-[state=on]:block" />}
-        <span className="relative z-10 group-data-[state=on]:font-semibold group-data-[state=on]:text-primary-foreground">{children}</span>
+        {bare ? (
+          children
+        ) : (
+          <>
+            <span aria-hidden className="pointer-events-none absolute inset-0 hidden rounded-md shadow-sm shadow-black/40 foil-glide foil-pill group-data-[state=on]:block" />
+            <span className="relative z-10 group-data-[state=on]:font-semibold group-data-[state=on]:text-primary-foreground">{children}</span>
+          </>
+        )}
       </ToggleGroupPrimitive.Item>
     );
   },

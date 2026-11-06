@@ -13,7 +13,7 @@
      phase, before them, so a dialog would close under a menu that should have taken the key. `useLayeredEscape` listens
      where the old overlays did (the document, bubbling), skips a key already taken and takes its own. */
 
-import { useCallback, useEffect, useRef, useState, type Ref, type RefCallback } from 'react';
+import { useCallback, useEffect, useRef, type Ref, type RefCallback } from 'react';
 
 /** The one ref a component hands out, made of several */
 export function composeRefs<T>(...refs: (Ref<T> | undefined)[]): RefCallback<T> {
@@ -71,23 +71,25 @@ export function useOpener(open: boolean) {
 }
 
 /**
- * The same for content that mounts as it opens (Radix Dialog, Sheet, AlertDialog content): the element focused at mount
- * is the opener, and gets focus back on close. Where nothing was focused (a Safari click), Radix's own Trigger takes it.
+ * The same for a Radix Dialog, Sheet or AlertDialog content, by its focus events: as it opens (onOpenAutoFocus, before
+ * Radix moves focus in) the focused element is the opener; as it closes (onCloseAutoFocus) it gets focus back. Where
+ * nothing was focused (a Safari click), Radix's own Trigger takes it.
  */
-export function useMountOpener(): (e: Event) => void {
-  const [opener] = useState<HTMLElement | null>(() => {
-    const a = typeof document === 'undefined' ? null : document.activeElement;
-    return a instanceof HTMLElement && a !== document.body ? a : null;
-  });
-  return useCallback(
-    (e: Event) => {
-      if (opener && opener.isConnected) {
-        e.preventDefault();
-        opener.focus({ preventScroll: true });
-      }
-    },
-    [opener],
-  );
+export function useFocusReturn(): { onOpenAutoFocus: (e: Event) => void; onCloseAutoFocus: (e: Event) => void } {
+  const opener = useRef<HTMLElement | null>(null);
+  const onOpenAutoFocus = useCallback(() => {
+    const a = document.activeElement;
+    opener.current = a instanceof HTMLElement && a !== document.body ? a : null;
+  }, []);
+  const onCloseAutoFocus = useCallback((e: Event) => {
+    const el = opener.current;
+    opener.current = null;
+    if (el && el.isConnected) {
+      e.preventDefault();
+      el.focus({ preventScroll: true });
+    }
+  }, []);
+  return { onOpenAutoFocus, onCloseAutoFocus };
 }
 
 /**

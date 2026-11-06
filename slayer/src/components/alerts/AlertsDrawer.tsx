@@ -3,7 +3,8 @@
 
 import { nyClock } from '../../core/nyTime';
 import { useEffect, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { Sheet, SheetContent } from '../shadcn/sheet';
+import { useLayeredEscape } from '../shadcn/layer';
 import { useNavigate } from 'react-router-dom';
 import {
   Activity, ArrowUpRight, Bell, BellOff, Code2, Crosshair, Crown, Droplets, Gauge, Layers, MoveHorizontal, Newspaper, Pin, Repeat, RotateCcw, X,
@@ -172,25 +173,7 @@ const AlertsDrawer = () => {
   }, [open, names]);
 
   /* Esc — after any layer inside it (a menu) had its say, before the takeovers behind */
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
-      e.preventDefault();
-      closeAlertsDrawer();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open]);
-
-  /* THE GLIDE: the drawer slides in from the right over 0.5s and slides back out over 0.36s on the standard curve
-     — framer-motion's AnimatePresence keeps it mounted for the way out. Reduced motion: it appears and goes. */
-  const reduce = useReducedMotion();
-  /* the standard curve, not the house expo — the expo is home by 120ms on a
-     400px panel and reads as a snap (measured x37 · x4 · x1 · 0) */
-  const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1];
-  const glideIn = { x: 0, opacity: 1, transition: { duration: reduce ? 0 : 0.5, ease: EASE } };
-  const glideOut = { x: 48, opacity: 0, transition: { duration: reduce ? 0 : 0.36, ease: EASE } };
+  const onEscapeKeyDown = useLayeredEscape(open, closeAlertsDrawer);
 
   const pick = name !== ALL && names.some(n => n.ticker === name) ? name : ALL;
   const shown = pick === ALL ? names : names.filter(n => n.ticker === pick);
@@ -227,19 +210,12 @@ const AlertsDrawer = () => {
   };
 
   return (
-    <AnimatePresence>
-      {open && <div key="scrim" className="fixed inset-0 z-[87]" onClick={closeAlertsDrawer} aria-hidden data-alerts-scrim />}
-      {/* TRANSLUCENT — the draw rail's glass: the page shows through, blurred */}
-      {open && (
-      <motion.aside
-        key="drawer"
-        initial={{ x: 48, opacity: 0 }}
-        animate={glideIn}
-        exit={glideOut}
-        className="fixed top-0 right-0 bottom-0 z-[88] w-[400px] max-w-[92vw] border-l border-borderMuted bg-panel/75 backdrop-blur-md backdrop-saturate-150 flex flex-col shadow-[-16px_0_48px_rgba(0,0,0,0.45)]"
-        aria-label="Alerts"
-        data-alerts-drawer
-      >
+    /* THE SHEET (shadcn, 2026-11-01): a modal dialog from the right — focus moves in and stays, Escape or a press on the
+       clear scrim closes it, focus goes back to the bell. TRANSLUCENT, the draw rail's glass: the page shows through,
+       blurred. THE GLIDE: in from the right over 0.5s, back out over 0.36s on the standard curve (the house expo is home
+       by 120ms on a 400px panel and reads as a snap); under reduced motion it appears and goes. */
+    <Sheet open={open} onOpenChange={next => !next && closeAlertsDrawer()}>
+      <SheetContent aria-label="Alerts" aria-describedby={undefined} onEscapeKeyDown={onEscapeKeyDown} data-alerts-drawer>
         {/* THE HEAD — the house head: the icon in its 24px chip, the name, the facts */}
         <div className="h-12 shrink-0 flex items-center gap-2.5 px-3.5 border-b border-borderSubtle/70">
           <span className="w-6 h-6 rounded-md border border-borderSubtle bg-ink/[0.03] flex items-center justify-center shrink-0" aria-hidden>
@@ -333,9 +309,8 @@ const AlertsDrawer = () => {
         <p className="shrink-0 px-3.5 py-2 border-t border-borderSubtle/70 font-mono text-t9 leading-snug text-textMuted">
           Runs while this tab is open. Nothing is sent anywhere.
         </p>
-      </motion.aside>
-      )}
-    </AnimatePresence>
+      </SheetContent>
+    </Sheet>
   );
 };
 

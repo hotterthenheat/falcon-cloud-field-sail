@@ -12,6 +12,8 @@ import { armDrawTool, canArmDrawTool, searchDrawTools } from '../gex/drawTools';
 import { ensureListed, roomOf, searchRoom, useListedRev } from '../../data/listedNames';
 import { askCompanyNames, companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
 import { sendDeskCmd } from '../../data/terrainCmd';
+import { Dialog, DialogContent } from '../shadcn/dialog';
+import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '../shadcn/command';
 
 type TickerModule = typeof import('../../data/tickers');
 
@@ -37,7 +39,6 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
   const onTerrain = location.pathname === '/terrain' || location.pathname.startsWith('/terrain/');
   const { changeTicker, activeTicker } = useTicker();
   const [query, setQuery] = useState('');
-  const [highlight, setHighlight] = useState(0);
   const [tickMod, setTickMod] = useState<TickerModule | null>(null);
   const listedRev = useListedRev();
   const nameRev = useSyncExternalStore(subscribeCompanyNames, companyNamesRev, () => 0);
@@ -189,20 +190,10 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
     ];
   }, [actions, tickerActions, drawActions, chartActions, query]);
 
+  /* a fresh search each time it opens; the dialog moves focus to the search box itself */
   useEffect(() => {
-    if (open) {
-      setQuery('');
-      setHighlight(0);
-      // Focus after the overlay paints
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }
+    if (open) setQuery('');
   }, [open]);
-
-  useEffect(() => {
-    setHighlight(0);
-  }, [query]);
-
-  if (!open) return null;
 
   const runAction = (action: PaletteAction | undefined) => {
     if (!action) return;
@@ -210,77 +201,58 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
     onClose();
   };
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setHighlight(h => Math.min(h + 1, filtered.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setHighlight(h => Math.max(h - 1, 0));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      runAction(filtered[highlight]);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      onClose();
-    }
-  };
+  /* the rows in their order, cut where the group changes — one heading per run, as before */
+  const runs: { group: PaletteAction['group']; rows: PaletteAction[] }[] = [];
+  for (const a of filtered) {
+    const last = runs[runs.length - 1];
+    if (last && last.group === a.group) last.rows.push(a);
+    else runs.push({ group: a.group, rows: [a] });
+  }
 
-  let lastGroup: string | null = null;
-
+  /* THE PALETTE (shadcn Command in the house Dialog, 2026-11-01): the search box is a combobox naming the row the arrows
+     are on, the rows are options; focus is held inside, Escape closes, focus goes back to whatever opened it. The rows
+     are ranked here (the ticker directory, the actions), so cmdk is told not to filter. */
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[18vh] px-4" onKeyDown={onKeyDown}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative w-full max-w-lg border border-borderMuted bg-panel rounded-lg shadow-2xl shadow-black overflow-hidden animate-slide-in">
-        <div className="relative">
-          <input
+    <Dialog open={open} onOpenChange={next => !next && onClose()}>
+      <DialogContent place="top" showClose={false} aria-label="Command palette" aria-describedby={undefined} className="max-w-lg shadow-black" data-command-palette>
+        <Command shouldFilter={false} loop label="Type a command or destination">
+          <CommandInput
             ref={inputRef}
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onValueChange={setQuery}
+            icon={false}
+            rowClassName="px-0"
+            className="pl-4 pr-10 py-3"
             placeholder="Type a command or destination…"
-            className="w-full bg-transparent pl-4 pr-10 py-3 text-sm text-textPrimary placeholder:text-textMuted focus:outline-none border-b border-borderSubtle"
+            trailing={
+              /* the names arrive as their own chunk on the first open; typed before they land, the search says it is on its way (ui/Working.tsx) */
+              <Working active={open && !tickMod && query.trim().length > 0} className="absolute right-3.5 top-1/2 -translate-y-1/2" />
+            }
           />
-          {/* the names arrive as their own chunk on the first open; typed before they land, the search says it is on its way (ui/Working.tsx) */}
-          <Working active={open && !tickMod && query.trim().length > 0} className="absolute right-3.5 top-1/2 -translate-y-1/2" />
-        </div>
-        <div className="max-h-72 overflow-y-auto py-1.5">
-          {filtered.length === 0 && (
-            <div className="px-4 py-6 text-center font-mono text-[11px] text-textMuted">No matches</div>
-          )}
-          {filtered.map((action, i) => {
-            const showGroup = action.group !== lastGroup;
-            lastGroup = action.group;
-            return (
-              <div key={action.id}>
-                {showGroup && (
-                  <div className="px-4 pt-2 pb-1 font-mono text-t10 uppercase tracking-widest text-textMuted select-none">
-                    {action.group}
-                  </div>
-                )}
-                <button
-                  onClick={() => runAction(action)}
-                  onMouseEnter={() => setHighlight(i)}
-                  className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors ${
-                    i === highlight ? 'bg-ink/[0.05]' : ''
-                  }`}
-                >
-                  <span className={i === highlight ? 'text-select' : 'text-textMuted'}>{action.icon}</span>
-                  <span className="text-[13px] text-textPrimary">{action.label}</span>
-                  <span className="ml-auto text-t10 font-mono text-textMuted truncate max-w-[45%]">{action.hint}</span>
-                </button>
-              </div>
-            );
-          })}
-        </div>
-        <div className="flex items-center gap-4 px-4 py-2 border-t border-borderSubtle font-mono text-t10 text-textMuted select-none">
+          <CommandList className="py-1.5">
+            {filtered.length === 0 && <div className="px-4 py-6 text-center font-mono text-[11px] text-textMuted">No matches</div>}
+            {runs.map((run, ri) => (
+              <CommandGroup key={`${run.group}-${ri}`} heading={run.group}>
+                {run.rows.map(action => (
+                  <CommandItem key={action.id} value={action.id} onSelect={() => runAction(action)}>
+                    <span className="text-textMuted group-data-[selected=true]:text-select">{action.icon}</span>
+                    <span className="text-[13px] text-textPrimary">{action.label}</span>
+                    <span className="ml-auto text-t10 font-mono text-textMuted truncate max-w-[45%]">{action.hint}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ))}
+          </CommandList>
+        </Command>
+        <div className="flex items-center gap-4 px-4 py-2 border-t border-borderSubtle font-mono text-t10 text-textMuted select-none" aria-hidden>
           <span>↑↓ navigate</span>
           <span className="flex items-center gap-1">
             <CornerDownLeft className="w-3 h-3" /> select
           </span>
           <span className="ml-auto">esc close</span>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

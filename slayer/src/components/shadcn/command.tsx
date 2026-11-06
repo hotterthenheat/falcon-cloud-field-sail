@@ -11,7 +11,8 @@ import { cn } from './utils';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './dialog';
 
 export const Command = React.forwardRef<React.ElementRef<typeof CommandPrimitive>, React.ComponentPropsWithoutRef<typeof CommandPrimitive>>(
-  ({ className, ...props }, ref) => <CommandPrimitive ref={ref} className={cn('flex h-full w-full flex-col overflow-hidden text-textPrimary', className)} {...props} />,
+  /* vimBindings off: Ctrl+K is the palette's key and Ctrl+N/P/J are the browser's, never a row step */
+  ({ className, vimBindings = false, ...props }, ref) => <CommandPrimitive ref={ref} vimBindings={vimBindings} className={cn('flex h-full w-full flex-col overflow-hidden text-textPrimary', className)} {...props} />,
 );
 Command.displayName = 'Command';
 
@@ -37,8 +38,8 @@ export const CommandDialog = ({ label, description, className, commandProps, chi
 );
 
 export interface CommandInputProps extends React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input> {
-  /** The magnifier before the words (on by default) */
-  icon?: boolean;
+  /** The magnifier before the words: on by default, 'sm' the 12px one of a card's search row */
+  icon?: boolean | 'sm';
   /** Classes for the search row around the input */
   rowClassName?: string;
   /** Something at the row's end (a working mark) */
@@ -48,7 +49,7 @@ export interface CommandInputProps extends React.ComponentPropsWithoutRef<typeof
 export const CommandInput = React.forwardRef<React.ElementRef<typeof CommandPrimitive.Input>, CommandInputProps>(
   ({ className, icon = true, rowClassName, trailing, ...props }, ref) => (
     <div className={cn('relative flex items-center gap-2 border-b border-borderSubtle px-3', rowClassName)} cmdk-input-wrapper="">
-      {icon && <Search className="h-3.5 w-3.5 shrink-0 text-textMuted" aria-hidden="true" />}
+      {icon && <Search className={cn('shrink-0 text-textMuted', icon === 'sm' ? 'h-3 w-3' : 'h-3.5 w-3.5')} aria-hidden="true" />}
       <CommandPrimitive.Input
         ref={ref}
         className={cn('w-full bg-transparent py-2.5 text-sm text-textPrimary placeholder:text-textMuted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50', className)}

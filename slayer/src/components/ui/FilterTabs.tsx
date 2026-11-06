@@ -1,6 +1,7 @@
 import { useId } from 'react';
 import { LayoutGroup, motion } from 'framer-motion';
 import { useResolvedTheme } from '../../theme/theme';
+import { ToggleGroup, ToggleGroupItem } from '../shadcn/toggle-group';
 
 interface FilterTabsProps<V extends string> {
   /** THE GROUND THE RAIL STANDS ON (2026-10-17): a rail inside chart chrome wears the CHART's ground, not the page's —
@@ -32,18 +33,24 @@ const FilterTabs = <V extends string>({ options, value, onChange, ariaLabel, pap
   const pagePaper = useResolvedTheme() === 'light';
   const paper = paperProp ?? pagePaper;
 
+  /* THE STRIP IS A RADIO SET (shadcn ToggleGroup, 2026-11-01): one tab stop; the arrows walk the options, Space or Enter
+     chooses (role radio, aria-checked). A press on the chosen one keeps it — the strip always holds a choice. */
   return (
     <LayoutGroup id={scope}>
-      <div role="group" aria-label={ariaLabel} className="inline-flex items-center gap-0.5 rounded-lg bg-ink/[0.04] p-0.5">
+      <ToggleGroup
+        type="single"
+        value={value}
+        onValueChange={v => {
+          if (v && v !== value) onChange(v as V);
+        }}
+        aria-label={ariaLabel}
+        className="inline-flex items-center gap-0.5 rounded-lg bg-ink/[0.04] p-0.5"
+        data-filter-tabs
+      >
         {options.map(opt => {
           const active = opt.value === value;
           return (
-            <button
-              key={opt.value}
-              aria-pressed={active}
-              onClick={() => onChange(opt.value)}
-              className={`relative ${size === 'sm' ? 'px-2' : 'px-3'} py-1 rounded-md text-xs font-medium transition-colors`}
-            >
+            <ToggleGroupItem key={opt.value} value={opt.value} bare size={size === 'sm' ? 'sm' : 'md'} className="text-textPrimary hover:text-textPrimary">
               {active && (
                 /* THE GLIDE RUNS ONLY WHEN THE CHOICE CHANGES (Noah, 2026-10-15, dragging Terrain's panel: "the button
                    active looks delayed and doesnt drag with the button"): a shared-layout pill animates EVERY layout
@@ -61,10 +68,10 @@ const FilterTabs = <V extends string>({ options, value, onChange, ariaLabel, pap
               <span className={`relative z-10 whitespace-nowrap ${active ? `font-semibold ${paper ? 'text-panel' : 'text-onfoil'}` : 'text-textSecondary hover:text-textPrimary'}`}>
                 {opt.label}
               </span>
-            </button>
+            </ToggleGroupItem>
           );
         })}
-      </div>
+      </ToggleGroup>
     </LayoutGroup>
   );
 };

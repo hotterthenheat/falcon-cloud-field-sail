@@ -9,7 +9,7 @@ import * as SheetPrimitive from '@radix-ui/react-dialog';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { X } from 'lucide-react';
 import { cn } from './utils';
-import { composeRefs, themeScopeRef, useMountOpener } from './layer';
+import { composeRefs, themeScopeRef, useFocusReturn } from './layer';
 
 export const Sheet = SheetPrimitive.Root;
 export const SheetTrigger = SheetPrimitive.Trigger;
@@ -41,16 +41,21 @@ export interface SheetContentProps extends React.ComponentPropsWithoutRef<typeof
 }
 
 export const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Content>, SheetContentProps>(
-  ({ side = 'right', className, children, showClose = false, onCloseAutoFocus, ...props }, ref) => {
-    const giveBack = useMountOpener();
+  ({ side = 'right', className, children, showClose = false, onOpenAutoFocus, onCloseAutoFocus, ...props }, ref) => {
+    const giveBack = useFocusReturn();
     return (
       <SheetPortal>
         <SheetOverlay />
         <SheetPrimitive.Content
           ref={composeRefs(ref, themeScopeRef)}
+          aria-modal
+          onOpenAutoFocus={e => {
+            giveBack.onOpenAutoFocus(e);
+            onOpenAutoFocus?.(e);
+          }}
           onCloseAutoFocus={e => {
             onCloseAutoFocus?.(e);
-            if (!e.defaultPrevented) giveBack(e);
+            if (!e.defaultPrevented) giveBack.onCloseAutoFocus(e);
           }}
           className={cn(sheetVariants({ side }), className)}
           {...props}

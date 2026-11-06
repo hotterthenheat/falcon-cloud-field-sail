@@ -6,7 +6,7 @@ import * as React from 'react';
 import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog';
 import { cn } from './utils';
 import { buttonVariants } from './button';
-import { composeRefs, themeScopeRef, useMountOpener } from './layer';
+import { composeRefs, themeScopeRef, useFocusReturn } from './layer';
 
 export const AlertDialog = AlertDialogPrimitive.Root;
 export const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
@@ -24,17 +24,22 @@ export const AlertDialogOverlay = React.forwardRef<React.ElementRef<typeof Alert
 AlertDialogOverlay.displayName = 'AlertDialogOverlay';
 
 export const AlertDialogContent = React.forwardRef<React.ElementRef<typeof AlertDialogPrimitive.Content>, React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>>(
-  ({ className, onCloseAutoFocus, ...props }, ref) => {
-    const giveBack = useMountOpener();
+  ({ className, onOpenAutoFocus, onCloseAutoFocus, ...props }, ref) => {
+    const giveBack = useFocusReturn();
     return (
       <AlertDialogPortal>
         <AlertDialogOverlay />
         <div className="pointer-events-none fixed inset-0 z-[90] flex items-center justify-center p-4">
           <AlertDialogPrimitive.Content
             ref={composeRefs(ref, themeScopeRef)}
+            aria-modal
+            onOpenAutoFocus={e => {
+              giveBack.onOpenAutoFocus(e);
+              onOpenAutoFocus?.(e);
+            }}
             onCloseAutoFocus={e => {
               onCloseAutoFocus?.(e);
-              if (!e.defaultPrevented) giveBack(e);
+              if (!e.defaultPrevented) giveBack.onCloseAutoFocus(e);
             }}
             className={cn(
               'slayer-motion pointer-events-auto flex w-full max-w-[460px] flex-col gap-4 rounded-lg border border-borderMuted bg-panel p-4 text-textPrimary shadow-2xl shadow-black/70 focus:outline-none data-[state=open]:animate-ovl-card-in data-[state=closed]:animate-ovl-card-out',

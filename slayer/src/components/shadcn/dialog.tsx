@@ -3,14 +3,14 @@
    modal-backdrop, index.css; off under reduced motion). Centred by a flex frame rather than a translate, so the card's
    own entrance transform never fights its position. z-[90], the overlays' step.
    Beside Radix (focus moves in and stays, Escape, outside press, aria-modal, the page inert and still):
-   - focus goes back to whatever opened it, trigger or not (layer.ts useMountOpener);
+   - focus goes back to whatever opened it, trigger or not (layer.ts useFocusReturn);
    - the card wears the theme of the box it was opened from (layer.ts scopeTheme). */
 
 import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { cn } from './utils';
-import { composeRefs, themeScopeRef, useMountOpener } from './layer';
+import { composeRefs, themeScopeRef, useFocusReturn } from './layer';
 
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
@@ -40,17 +40,22 @@ export interface DialogContentProps extends React.ComponentPropsWithoutRef<typeo
 }
 
 export const DialogContent = React.forwardRef<React.ElementRef<typeof DialogPrimitive.Content>, DialogContentProps>(
-  ({ className, children, showClose = true, place = 'center', frameClassName, bare = false, onCloseAutoFocus, ...props }, ref) => {
-    const giveBack = useMountOpener();
+  ({ className, children, showClose = true, place = 'center', frameClassName, bare = false, onOpenAutoFocus, onCloseAutoFocus, ...props }, ref) => {
+    const giveBack = useFocusReturn();
     return (
       <DialogPortal>
         {!bare && <DialogOverlay />}
         <div className={cn('pointer-events-none fixed inset-0 z-[90] flex justify-center p-4', place === 'top' ? 'items-start pt-[18vh]' : 'items-center', frameClassName)}>
           <DialogPrimitive.Content
             ref={composeRefs(ref, themeScopeRef)}
+            aria-modal
+            onOpenAutoFocus={e => {
+              giveBack.onOpenAutoFocus(e);
+              onOpenAutoFocus?.(e);
+            }}
             onCloseAutoFocus={e => {
               onCloseAutoFocus?.(e);
-              if (!e.defaultPrevented) giveBack(e);
+              if (!e.defaultPrevented) giveBack.onCloseAutoFocus(e);
             }}
             className={cn(
               'pointer-events-auto relative flex w-full max-w-lg max-h-[86vh] flex-col overflow-hidden rounded-lg border border-borderMuted bg-panel text-textPrimary shadow-2xl shadow-black/70 focus:outline-none',

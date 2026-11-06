@@ -74,8 +74,8 @@ DropdownMenuCheckboxItem.displayName = 'DropdownMenuCheckboxItem';
 /** One of a set: a silver check beside the chosen row */
 export const DropdownMenuRadioItem = React.forwardRef<React.ElementRef<typeof DropdownMenuPrimitive.RadioItem>, React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.RadioItem> & { mark?: 'check' | 'dot' }>(
   ({ className, children, mark = 'check', ...props }, ref) => (
-    <DropdownMenuPrimitive.RadioItem ref={ref} className={cn(POPUP_ROW, 'data-[state=checked]:text-textPrimary', className)} {...props}>
-      <span className="flex h-3 w-3 shrink-0 items-center justify-center">
+    <DropdownMenuPrimitive.RadioItem ref={ref} className={cn(POPUP_ROW, 'items-start data-[state=checked]:text-textPrimary', className)} {...props}>
+      <span className="mt-[2px] flex h-3 w-3 shrink-0 items-center justify-center">
         <DropdownMenuPrimitive.ItemIndicator>
           {mark === 'dot' ? <Circle className="h-1.5 w-1.5 fill-current text-silver" /> : <Check className="h-3 w-3 text-silver" />}
         </DropdownMenuPrimitive.ItemIndicator>

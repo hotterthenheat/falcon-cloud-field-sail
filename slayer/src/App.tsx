@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { MotionConfig } from 'framer-motion';
+import { TooltipProvider } from './components/shadcn/tooltip';
 import { MarketDataProvider } from './context/MarketDataContext';
 import { TrackerProvider } from './context/TrackerContext';
 import { WatchProvider } from './context/WatchContext';
@@ -190,6 +191,8 @@ if (typeof document !== 'undefined') {
 const App = () => {
   return (
     <MotionConfig reducedMotion="user">
+      {/* one tip provider for the app (shadcn/tooltip.tsx): moving from tip to tip skips the delay */}
+      <TooltipProvider>
       <MarketDataProvider>
         <FocusProvider>
         <TrackerProvider>
@@ -344,6 +347,7 @@ const App = () => {
         </TrackerProvider>
         </FocusProvider>
       </MarketDataProvider>
+      </TooltipProvider>
     </MotionConfig>
   );
 };
