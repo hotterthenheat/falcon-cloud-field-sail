@@ -137,6 +137,7 @@ def study(D):
 def dev():
     real = load_rows('dev')
     flip = load_rows('dev_flip')
+    flip = flip[flip.sideset == 'flip'] if len(flip) else flip
     synf = os.path.join(RN.OUT, 'syn', 'summary.json')
     syn = json.load(open(synf)) if os.path.exists(synf) else None
     n_trials = ledger_trials(LEDGER) + EDGE_G_TRIALS
@@ -170,7 +171,10 @@ def dev():
     L.append('\n## Skip reasons\n')
     sk = real[real.ret_net.isna()].groupby(['variant', 'skip']).size().unstack(fill_value=0) if 'skip' in real else None
     if sk is not None and len(sk):
-        L.append(sk.to_markdown())
+        L.append('| variant | ' + ' | '.join(sk.columns) + ' |')
+        L.append('|---|' + '---:|' * len(sk.columns))
+        for v, row in sk.iterrows():
+            L.append(f'| {v} | ' + ' | '.join(str(int(x)) for x in row.values) + ' |')
     txt = '\n'.join(L) + '\n'
     open(os.path.join(RES, 'DEV.md'), 'w').write(txt)
     json.dump({'stats': st, 'pbo': pb, 'n_trials': n_trials}, open(os.path.join(RES, 'dev_summary.json'), 'w'), default=float, indent=1)
