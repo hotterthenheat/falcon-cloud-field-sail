@@ -39,6 +39,16 @@ function useHeldPrice(ticker: string): { held: Held<ThetaPrice> | null; status: 
   return { held: peekThetaPrice(ticker), status: thetaStatus() };
 }
 
+/** The words a kept price carries. "Offline" only once the terminal has been heard down, or answered and since gone
+    quiet; while this page's first ask is still out (status 'unknown') a kept price is the last print, stamped — the
+    terminal is not known to be down (SITECHECK 2026-11-06: Pinpoint read "OFFLINE · 10:26" for its first seconds). */
+export function keptWords(status: ThetaStatus, login: boolean, compact: boolean, read: number): string {
+  const stamp = nyStamp(read, { zone: true });
+  if (compact) return stamp;
+  if (status === 'unknown') return `as of ${stamp}`;
+  return `${login ? 'login failed' : 'offline'} · ${stamp}`;
+}
+
 const pctWords = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}%`;
 
 export function LivePrice({ ticker, levelsAt, compact = false }: { ticker: string; levelsAt?: number | null; compact?: boolean }) {
@@ -60,11 +70,11 @@ export function LivePrice({ ticker, levelsAt, compact = false }: { ticker: strin
   }
   const p = held.value;
   return (
-    <span className="inline-flex items-baseline gap-1.5 font-mono tnum whitespace-nowrap" title={[held.live ? `${move && move.regDate ? `Last trade${move.ext != null ? `, ${move.extWord}` : ''}` : 'Live quote'} · printed ${nyStamp(p.at, { seconds: true, zone: true })}` : `${downLine}. Last print kept at ${nyStamp(p.read, { zone: true })}.`, levelsTitle].filter(Boolean).join(' ')} data-live-price={!held.live ? 'kept' : move && move.regDate ? 'last' : 'live'}>
+    <span className="inline-flex items-baseline gap-1.5 font-mono tnum whitespace-nowrap" title={[held.live ? `${move && move.regDate ? `Last trade${move.ext != null ? `, ${move.extWord}` : ''}` : 'Live quote'} · printed ${nyStamp(p.at, { seconds: true, zone: true })}` : `${status === 'unknown' ? 'Reading the price…' : `${downLine}.`} Last print kept at ${nyStamp(p.read, { zone: true })}.`, levelsTitle].filter(Boolean).join(' ')} data-live-price={!held.live ? 'kept' : move && move.regDate ? 'last' : 'live'}>
       <span className="text-textPrimary">{p.price.toFixed(2)}</span>
       {move && move.pct != null && <span style={{ color: changeInk(move.pct) }} title={closeMoveTitle(move)} data-live-change>{pctWords(move.pct)}</span>}
       {move && move.ext != null && !compact && <span className="text-t10 text-textMuted" title={closeMoveTitle(move)} data-live-ext>{extTag(move.extWord)} {pctWords(move.ext)}</span>}
-      {!held.live && <span className="text-t9 uppercase tracking-widest text-warn">{compact ? nyStamp(p.read, { zone: true }) : `${login ? 'login failed' : 'offline'} · ${nyStamp(p.read, { zone: true })}`}</span>}
+      {!held.live && <span className="text-t9 uppercase tracking-widest text-warn">{keptWords(status, login, compact, p.read)}</span>}
     </span>
   );
 }
