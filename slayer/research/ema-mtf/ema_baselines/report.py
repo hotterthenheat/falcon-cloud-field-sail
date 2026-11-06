@@ -19,7 +19,8 @@ NAMES = {'BL1': 'BL1 buy-and-hold grid', 'BL2': 'BL2 random entries', 'BL3': 'BL
 
 
 def load():
-    fs = sorted(glob.glob(os.path.join(HERE, 'results', 'baselines_*.parquet')))
+    from edata.common import EMA_DATA
+    fs = sorted(glob.glob(os.path.join(EMA_DATA, 'results', 'baselines_*.parquet')))
     return pd.concat([pd.read_parquet(f) for f in fs], ignore_index=True) if fs else pd.DataFrame()
 
 
@@ -107,7 +108,7 @@ def main():
           f'{100 * x.fee_frac.median():.2f}% | {int(rej.get((rt, b), 0))} |')
     w('\n## Latency: net expectancy by fill model (pooled; L0 = bar-end NBBO, no latency, optimistic; L0c = L0 + measured '
       '2 s drift, the screening model; L60 = NBBO 60 s after the bar end; L2 = exact 1-second NBBO 2 s after, where run)\n')
-    lats = [x for x in ('L0', 'L0c', 'L2', 'L60') if x in set(fall.latency)]
+    lats = [x for x in ('L0', 'L0c', 'L60') if x in set(fall.latency)]
     w('| baseline | exit | ' + ' | '.join(lats) + ' |')
     w('|---|---|' + '---|' * len(lats))
     for bl in NAMES:
@@ -117,6 +118,26 @@ def main():
                 t = fall[(fall.baseline == bl) & (fall.exit == xname) & (fall.latency == L)]
                 cells.append(f'{pct(t.ret_net.mean())} (n={len(t)})' if len(t) else '-')
             w(f'| {bl} | {xname} | ' + ' | '.join(cells) + ' |')
+    l2 = fall[fall.latency == 'L2']
+    if len(l2):
+        roots2 = sorted(l2.root.unique())
+        w(f'\n### Exact L2 vs L0c on the same decisions (roots {roots2}; paired by session, decision, contract, exit)\n')
+        w('| baseline | exit | n pairs | L0c | L2 | L2 − L0c (95% CI, session bootstrap) |')
+        w('|---|---|---|---|---|---|')
+        key = ['session', 'root', 'bucket', 'decision_m', 'exp', 'strike', 'right', 'baseline', 'exit']
+        for bl in NAMES:
+            for xname in ('XT30', 'X3S'):
+                a = fall[(fall.latency == 'L0c') & (fall.baseline == bl) & (fall.exit == xname) & fall.root.isin(roots2)]
+                b = l2[(l2.baseline == bl) & (l2.exit == xname)]
+                if not len(b):
+                    continue
+                j = a[key + ['ret_net']].merge(b[key + ['ret_net']], on=key, suffixes=('_c', '_2'))
+                if not len(j):
+                    continue
+                d = (j.ret_net_2 - j.ret_net_c).to_numpy()
+                lo, hi = cluster_ci_mean(d, j.session.to_numpy(), 2000)
+                w(f'| {bl} | {xname} | {len(j)} | {pct(j.ret_net_c.mean())} | {pct(j.ret_net_2.mean())} | '
+                  f'{100 * d.mean():+.2f}pt [{100 * lo:+.2f}, {100 * hi:+.2f}] |')
     w('\n## Exit reasons (L0c)\n')
     w(f.groupby(['baseline', 'exit']).exit_reason.value_counts().unstack(fill_value=0).to_string().replace('\n', '\n    ').join(['    ', '']))
     w('\n## Median minutes held (L0c)\n')

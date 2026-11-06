@@ -200,6 +200,8 @@ equal to the 100 ms store at bar end + 2 s). Rules, replacing "2 s latency" wher
 * **Promotion** (§7 bar) and VALIDATION are evaluated at exact **L2** (1-second NBBO 2 s after each decision) on
   every trade of the candidate; a candidate must pass at L2 — L0c is never the result of record.
 * This changes no feature, model, parameter or pass threshold, adds no variant, and is logged in the ledger.
+* Housekeeping: per-trade logs are kept with the data (`v2data/ema/results/`, too large for git); every result's
+  markdown report, its code and its ledger line stay in the repo (§8 "failed experiments preserved" is met by those).
 
 ## 10. Final verdict mapping (fixed now)
 

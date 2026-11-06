@@ -1,6 +1,6 @@
 """The six pre-registered baselines (STRATEGY_SPEC section 14) on the DEV panel, executable simulator.
 
-    python3 -m ema_baselines.run --block A [--roots SPY,QQQ,IWM,SPXW]   -> results/baselines_<block>.parquet
+    python3 -m ema_baselines.run --block A [--roots SPY,QQQ,IWM,SPXW]   -> v2data/ema/results/baselines_<block>_<root>_<lat>.parquet
     python3 -m ema_baselines.report                                      -> reports/BASELINES.md
 
 BL1 buy-and-hold grid, BL2 random entries, BL3 underlying-only EMA cross, BL4 option-only EMA cross (own 5m MID chart),
@@ -29,7 +29,7 @@ from engine.ema import ema_table, resample  # noqa: E402
 from engine.execution import ExecConfig, Simulator, Trade  # noqa: E402
 from engine.underlying import rth_minutes  # noqa: E402
 
-OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'results')
+OUT = os.path.join(EMA_DATA, 'results')     # trade logs live with the data (v2data/ema/results), not in git
 UND_SYM = {'SPY': 'SPY', 'QQQ': 'QQQ', 'IWM': 'IWM', 'SPXW': 'SPX'}
 BUCKETS = ('0', '1-7', '8-30', '31-90', '91-200')
 M_FIRST, M_LAST = 14, 329          # decision closes 09:45 .. 15:00
