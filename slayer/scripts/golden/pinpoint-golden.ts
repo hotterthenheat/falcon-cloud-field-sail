@@ -75,18 +75,21 @@ const SQRT_PI_2 = Math.sqrt(Math.PI / 2);
 const GOLD = {
   SPY: {
     front: '2026-10-29',
-    today: { net: 107_689_622.85, flip: 771.1081929770314, call: 775, put: 758, supreme: 758 },
+    today: { net: 107_689_622.85, flip: 771.1067718454171, call: 775, put: 758, supreme: 758 },
     /* the "all" flips moved by 2e-6 and 5e-5 when the holiday list grew past 2027 (2028 LEAPS count 2028's holidays).
-       2026-11-06 (audit finding 2, every date on its own contracts' vols): NVDA All 209.013463 → 208.989522, nearer the
-       independent re-pricing below (208.998894: 0.0146 → 0.0094 off) — its dates read but under 0.5% of the gamma now
-       take their contracts' own vols, not the at-the-money vol. SPY's are unchanged. */
-    all: { net: -3_576_479_393.82, flip: 775.549780158155, call: 800, put: 750, supreme: 750 },
+       2026-11-06 (audit finding 2): every date on its own contracts' vols (NVDA's dates read but under 0.5% of the gamma
+       no longer at the at-the-money vol), and an in-the-money quote that pins no vol (half its spread over two vol points
+       of vega) on its strike's out-of-the-money vol, here and in the independent re-pricing (pinpointRaw contractVols).
+       SPY Today 771.108193 → 771.106772, SPY All 775.549780 → 775.546090, NVDA Today 209.499809 → 209.521859, NVDA All
+       209.013463 → 209.020164; each nearer the independent re-pricing than before (off by 0.0004 → 0.0004, 0.0024 →
+       0.0007, 0.0197 → 0.0043, 0.0146 → 0.0034). */
+    all: { net: -3_576_479_393.82, flip: 775.5460899118998, call: 800, put: 750, supreme: 750 },
     straddle: 5.09247441828498,
   },
   NVDA: {
     front: '2026-10-30',
-    today: { net: 280_962_174.09, flip: 209.49980850770302, call: 217.5, put: 210, supreme: 217.5 },
-    all: { net: 545_826_799.8, flip: 208.98952218276756, call: 220, put: 200, supreme: 220 },
+    today: { net: 280_962_174.09, flip: 209.52185904589717, call: 217.5, put: 210, supreme: 217.5 },
+    all: { net: 545_826_799.8, flip: 209.0201644276656, call: 220, put: 200, supreme: 220 },
     straddle: 4.72607032383704,
   },
 } as const;

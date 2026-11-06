@@ -441,9 +441,12 @@ for (const t of NAMES) {
   for (const x of e.expiries.map(y => y.date).filter(d => d >= floor)) {
     const bySym = new Map<string, Row>();
     const mine = (p: string) => p.startsWith(`/stock/${t}/option-contracts?limit=500&expiry=${x}&`);
-    /* a replay: every recorded answer of the date's contracts (the recording run's page read every date) */
-    for (const [p, d] of recordedAnswers()) if (mine(p) && Array.isArray(d)) for (const r of d as Row[]) bySym.set(String(r.option_symbol), r);
-    for (const [p, d] of raw) if (mine(p) && Array.isArray(d)) for (const r of d as Row[]) bySym.set(String(r.option_symbol), r);
+    /* a date of 500 contracts or more the page reads call and put apart (data/whales.ts optionContractsWalk) and its first
+       unsplit page is not what it solved: two answers a second apart quote SPX 2026-11-09 7725P 292.5/311.9 and
+       297.9/303.2, and in the money a session out that is 0.17 against 0.25 of vol */
+    const answers = [...recordedAnswers(), ...raw].filter(([p, d]) => mine(p) && Array.isArray(d));
+    const split = answers.some(([p]) => /&option_type=/.test(p));
+    for (const [p, d] of answers) if (!split || /&option_type=/.test(p)) for (const r of d as Row[]) bySym.set(String(r.option_symbol), r);
     if (bySym.size) {
       reused++;
       contracts.set(x, [...bySym.values()]);
@@ -505,44 +508,18 @@ for (const t of NAMES) {
 
   /* 3. the flip, every leg at its own contract's vol, each root on its own clock */
   const vols = new Map<string, number>();
-  /* PARITY SPOT. A cash index's rows carry its print at the row's minute, the quotes their own instant: for a chain under
-     seven calendar days the price the quotes stand at is their parity forward's, S* = F·e^(−rT), F the median of
-     K + e^(rT)·(C_mid − P_mid) over the four strikes nearest the money with both sides quoted (spread within 25% of the
-     mid) — the page's rule (core/parity.ts impliedBookSpot), written here again; within 2% of the print, else the print.
-     The SPX 0DTE solved at the print ran 8% under the vols its own quotes give (11:23 run). An equity stays on the print. */
-  const parityMemo = new Map<string, number>();
-  const INDEX = new Set(['SPX', 'NDX', 'RUT', 'XSP', 'VIX']);
-  function paritySpot(x: string, list: Row[], px: number, at: number): number {
-    const hit = parityMemo.get(x);
-    if (hit != null) return hit;
-    let out = px;
-    const tc = tCal(at, x, false);
-    if (INDEX.has(t) && tc < 7 / 365) {
-      const by = new Map<number, { C?: number; P?: number }>();
-      for (const r of list) {
-        const c = tail(String(r.option_symbol));
-        if (AM_ROOTS[t]?.includes(c.root)) continue;
-        const bid = n(r.nbbo_bid);
-        const ask = n(r.nbbo_ask);
-        const m = (bid + ask) / 2;
-        if (!(bid > 0) || !(ask >= bid) || (ask - bid) / m > 0.25) continue;
-        const cur = by.get(c.k) ?? {};
-        cur[c.right as 'C' | 'P'] = m;
-        by.set(c.k, cur);
-      }
-      const grow = Math.exp(R * tc);
-      const near = [...by].filter(([, v]) => v.C != null && v.P != null).sort((a, b) => Math.abs(a[0] - px * grow) - Math.abs(b[0] - px * grow) || a[0] - b[0]).slice(0, 4);
-      if (near.length >= 3) {
-        const fs = near.map(([k, v]) => k + grow * (v.C! - v.P!)).sort((a, b) => a - b);
-        const h = fs.length >> 1;
-        const F = fs.length % 2 ? fs[h] : (fs[h - 1] + fs[h]) / 2;
-        const sStar = F / grow;
-        if (sStar > 0 && Math.abs(sStar / px - 1) <= 0.02) out = sStar;
-      }
-    }
-    parityMemo.set(x, out);
-    return out;
-  }
+  /* THE PRICE A SHORT-DATED INDEX CHAIN IS SOLVED AT. A cash index's rows carry its print at the row's minute; for a
+     chain under seven calendar days the page solves the quotes at their own parity spot S* = F·e^(−rT) (core/parity.ts
+     impliedBookSpot), and marks it on the chain's nodes (bookPx). That price is an input here, like the carry: the vols
+     are solved at it here, independently. Solved at the print instead, the SPX 0DTE ran 8% under the vols its quotes give
+     (the 11:23 run), and a deep in-the-money leg — a vol that hangs on a cent — swung the whole book's flip 0.1%. */
+  const bookPxOf = (x: string): number | null => {
+    const nodes = snapRows.uwByDate?.[x] ?? [];
+    for (const nn of nodes) if (nn.bookPx != null && nn.bookPx > 0) return nn.bookPx;
+    return null;
+  };
+  /** Each PM contract's quote-solved vol, its quote, clock and the price it was solved at (the in-the-money rule below) */
+  const quotedPm = new Map<string, { v: number; bid: number; ask: number; tt: number; px: number }>();
   const ois = new Map<string, { am: number; pm: number; amIv: number; pmIv: number; amQ: boolean; pmQ: boolean }>();
   for (const [x, list] of contracts) {
     for (const r of list) {
@@ -560,10 +537,11 @@ for (const t of NAMES) {
       const mid = (bid + ask) / 2;
       const px0 = qc?.px ?? (n(rows.find(rr => String(rr.expiry) === x)?.price) || spot);
       /* an index's chain under seven calendar days is solved at its own parity spot (the quotes' own price) */
-      const px = am ? px0 : paritySpot(x, list, px0, rowAt);
+      const px = am ? px0 : bookPxOf(x) ?? px0;
       const solved = ask > 0 && bid > 0 && (ask - bid) / mid <= 0.4 ? solve(mid, c.right, px, c.k, tt) : null;
       /* the quote pins a vol: a cent of time value at least (a deep in-the-money leg's vol hangs on fractions of a cent) */
       const pins = solved != null && mid - Math.max(0, c.right === 'C' ? px - c.k : c.k - px) >= 0.01;
+      if (solved != null && !am && bid > 0) quotedPm.set(`${x}|${c.k}|${c.right}`, { v: solved, bid, ask, tt, px });
       const vend = n(r.implied_volatility);
       const iv = solved ?? (vend > 0 && vend < 10 ? vend * Math.sqrt(tCal(rowAt, x, am) / tt) : 0);
       const key = `${x}|${c.k}|${c.right}`;
@@ -580,6 +558,26 @@ for (const t of NAMES) {
       ois.set(key, cur);
       if (iv > 0 && !am) vols.set(key, iv);
     }
+  }
+  /* AN IN-THE-MONEY QUOTE THAT PINS NO VOL. Deep in the money a mid is intrinsic plus cents inside a spread dollars wide
+     (SPX 2026-11-09 7725P, 4% in the money a session out: 297.9 / 303.2 around an intrinsic of 300.47), so any vol from a
+     few points to 0.3 prices inside it — and walked to the flip that leg is at the money (it alone moved SPX's whole-book
+     re-price 0.1% of spot, on the page 0.254, solved here 0.171, off one mid). Where both legs of a strike are solved from
+     their quotes and the in-the-money one's half spread spans more than two vol points (÷ its vega at the other leg's
+     vol), it takes the out-of-the-money leg's vol: parity gives a strike's call and put one vol (exactly so on a European
+     index). The page's rule (book/scale.ts paintLegs), written here again. */
+  for (const [key, qd] of quotedPm) {
+    const [x, ks, right] = key.split('|');
+    const k = Number(ks);
+    const itm = right === 'C' ? k < qd.px : k > qd.px;
+    const other = quotedPm.get(`${x}|${ks}|${right === 'C' ? 'P' : 'C'}`);
+    if (!itm || !other) continue;
+    const d1 = (Math.log(qd.px / k) + (R - Q + (other.v * other.v) / 2) * qd.tt) / (other.v * Math.sqrt(qd.tt));
+    const vega = (qd.px * Math.exp(-Q * qd.tt) * Math.exp(-(d1 * d1) / 2) * Math.sqrt(qd.tt)) / Math.sqrt(2 * Math.PI);
+    if (vega > 0 && (qd.ask - qd.bid) / 2 / vega <= 0.02) continue;
+    const o = ois.get(key);
+    if (o) o.pmIv = other.v;
+    vols.set(key, other.v);
   }
   /* q: the leg's contract has a valid two-sided quote (bid and ask, spread within 40% of the mid) that pins a vol (a cent of
      time value), and its vol here is solved from it */
@@ -614,30 +612,6 @@ for (const t of NAMES) {
       const share = live ? o.am / (o.am + o.pm) : 0;
       if (o.pm > 0 || !live) legs.push({ x, k, g0: g0 * (1 - share), iv: o.pmIv || o.amIv, pageIv: pageVol(x, k, right, false), t: tPm(at, x), s0, oi: o.pm, side, q: o.pmIv ? o.pmQ : o.amQ });
       if (live) legs.push({ x, k, g0: g0 * share, iv: o.amIv || o.pmIv, pageIv: pageVol(x, k, right, true), t: amT!, s0, oi: o.am, side, q: o.amIv ? o.amQ : o.pmQ });
-    }
-  }
-  /* AN IN-THE-MONEY LEG TAKES ITS STRIKE'S OUT-OF-THE-MONEY VOL. Its quote is intrinsic plus a few cents: the vol it
-     solves to hangs on a cent and on the discounting (SPX 2026-11-09 7725P, 4% in the money a session out: 0.171 here,
-     0.254 on the page, off the same mid) — and walked to the flip the leg is at the money, so that guess moved the whole
-     book's flip 0.1% of spot. Parity says a strike's call and put carry one vol (exactly so on a European index), and the
-     out-of-the-money side's quote pins it: an in-the-money leg (a call under the price its rows were marked at, a put above)
-     takes the same strike's other leg's own vol, on the same clock, where that leg has one (book/flipLevel.ts legsOfDate,
-     the same rule). The page's own vol for the leg, read back for the checks below, is taken the same way. */
-  {
-    const byKey = new Map<string, Leg>();
-    for (const l of legs) byKey.set(`${l.x}|${l.k}|${l.t}|${l.side}`, l);
-    const own = new Map(legs.map(l => [l, { iv: l.iv, q: l.q, pageIv: l.pageIv }] as const));
-    for (const l of legs) {
-      const itm = l.side === 1 ? l.k < l.s0 : l.k > l.s0;
-      if (!itm) continue;
-      const other = byKey.get(`${l.x}|${l.k}|${l.t}|${-l.side}`);
-      const o = other ? own.get(other) : undefined;
-      if (o && o.iv > 0) {
-        l.iv = o.iv;
-        l.q = o.q;
-      }
-      /* …and the page's vol for it is the one the page holds for that other leg (its re-pricing reads it so) */
-      if (o && o.pageIv > 0) l.pageIv = o.pageIv;
     }
   }
   /* COVERAGE (audit 2026-11-06, finding 2): of the legs whose contract has a valid two-sided quote, the share the page

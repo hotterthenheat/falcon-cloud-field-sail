@@ -61,7 +61,9 @@ const raw = rawAnswers(SET);
 /* Hand values, read off spot-exposures/expiry-strike for 2026-10-29: the strike with the most call_gamma_oi (775), the
    most put_gamma_oi (758), the most |call + put| (758); the flip re-priced independently below. They equal
    pinpoint-golden's SPY Today read of the same Oct 28 close. */
-const GOLD = { front: '2026-10-29', call: 775, put: 758, supreme: 758, flip: 771.1081929770314 };
+/* the flip 771.108193 → 771.106772 on 2026-11-06 (audit finding 2: an in-the-money quote that pins no vol takes its strike's
+   out-of-the-money one — scripts/golden/pinpoint-golden.ts, whose independent re-pricing reads 771.107125) */
+const GOLD = { front: '2026-10-29', call: 775, put: 758, supreme: 758, flip: 771.1067718454171 };
 const house = levelsFor('SPY', '0DTE')!;
 const spot = book.peekSpot('SPY')!;
 const plotted = paneLevels(spot, house);

@@ -127,6 +127,8 @@ function solveVol(mid: number, S: number, K: number, t: number, right: string, r
     were marked at (a spread over 40% of the mid is no quote), else the vendor's calendar vol moved onto that clock */
 export function contractVols(raw: Map<string, unknown>, t: string, spot: number, rowDate: string): Map<string, number> {
   const m = new Map<string, number>();
+  /* each contract's quote-solved vol and spread, for the in-the-money rule below */
+  const quoted = new Map<string, { v: number; bid: number; ask: number; tt: number }>();
   for (const [p, d] of raw) {
     if (!p.startsWith(`/stock/${t}/option-contracts?`)) continue;
     for (const r of d as Row[]) {
@@ -143,7 +145,19 @@ export function contractVols(raw: Map<string, unknown>, t: string, spot: number,
       const tc = (Date.parse(`${exp}T00:00:00Z`) - Date.parse(`${rowDate}T00:00:00Z`)) / (365 * 86_400_000);
       const iv = solved != null && solved > 0.01 && solved < 5 ? solved : vendor > 0 && vendor < 10 ? vendor * Math.sqrt(tc / tt) : 0;
       if (iv > 0) m.set(`${exp}|${K}|${tail[6]}`, iv);
+      if (solved != null && solved > 0.01 && solved < 5 && bid > 0) quoted.set(`${exp}|${K}|${tail[6]}`, { v: solved, bid, ask, tt });
     }
+  }
+  /* an in-the-money quote whose half spread spans more than two vol points (÷ its vega at the other leg's vol) pins no vol:
+     where both legs of the strike are solved from quotes it takes the out-of-the-money leg's (parity: one vol a strike) */
+  for (const [key, q] of quoted) {
+    const [exp, ks, right] = key.split('|');
+    const K = Number(ks);
+    const itm = right === 'C' ? K < spot : K > spot;
+    const other = quoted.get(`${exp}|${ks}|${right === 'C' ? 'P' : 'C'}`);
+    if (!itm || !other) continue;
+    const vega = bsVega(spot, K, q.tt, other.v) * 100;
+    if (!(vega > 0) || (q.ask - q.bid) / 2 / vega > 0.02) m.set(key, other.v);
   }
   return m;
 }

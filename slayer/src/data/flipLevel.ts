@@ -116,26 +116,20 @@ export const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: nu
          (core/gammaFlip.ts) once price walks toward it */
       if (g || (oi > 0 && iv > 0)) out.push({ strike: n.strike, g0: g, iv, t: tLeg, s0: own0, oi: oi > 0 ? oi : undefined, side, ownIv });
     };
-    /* An in-the-money leg takes its strike's out-of-the-money vol (audit 2026-11-06, finding 2): its quote is intrinsic
-       plus a few cents, so the vol it solves to hangs on a cent and on the discounting (SPX 2026-11-09 7725P, 4% in the
-       money a session out: 0.254 here against 0.171 by hand off the same mid), and walked to the flip it is at the money
-       — that guess alone moved SPX's whole-book flip 0.1% of spot. Parity gives a strike's call and put one vol (exactly
-       on a European index); the out-of-the-money side's quote pins it. */
-    const pick = (itm: boolean, mine: number | undefined, other: number | undefined) => (itm && other && other > 0 ? other : mine);
     /* an index's live AM monthly at this strike (node.am, core/settle.ts) is its own leg: its share of the row's gamma,
        its open interest and vol, re-priced to ITS settlement (09:30 of the date — the previous session's close on the
        trading clock), not the weeklies' 16:00 */
     const am = n.am;
     const tAm = am ? amTradingYears(date, perRow && n.gexAt ? n.gexAt : now) : null;
     if (am && tAm != null) {
-      push(n.callGex * (1 - am.callShare), pick(n.strike < at, n.callIv, n.putIv), Math.max(0, n.callOI - am.callOI), n.strike < at, -1);
-      push(n.putGex * (1 - am.putShare), pick(n.strike > at, n.putIv, n.callIv), Math.max(0, n.putOI - am.putOI), n.strike > at, 1);
-      push(n.callGex * am.callShare, pick(n.strike < at, am.callIv || n.callIv, am.putIv || n.putIv), am.callOI, n.strike < at, -1, tAm);
-      push(n.putGex * am.putShare, pick(n.strike > at, am.putIv || n.putIv, am.callIv || n.callIv), am.putOI, n.strike > at, 1, tAm);
+      push(n.callGex * (1 - am.callShare), n.callIv, Math.max(0, n.callOI - am.callOI), n.strike < at, -1);
+      push(n.putGex * (1 - am.putShare), n.putIv, Math.max(0, n.putOI - am.putOI), n.strike > at, 1);
+      push(n.callGex * am.callShare, am.callIv || n.callIv, am.callOI, n.strike < at, -1, tAm);
+      push(n.putGex * am.putShare, am.putIv || n.putIv, am.putOI, n.strike > at, 1, tAm);
       continue;
     }
-    push(n.callGex, pick(n.strike < at, n.callIv, n.putIv), n.callOI, n.strike < at, -1);
-    push(n.putGex, pick(n.strike > at, n.putIv, n.callIv), n.putOI, n.strike > at, 1);
+    push(n.callGex, n.callIv, n.callOI, n.strike < at, -1);
+    push(n.putGex, n.putIv, n.putOI, n.strike > at, 1);
   }
   return out;
 };

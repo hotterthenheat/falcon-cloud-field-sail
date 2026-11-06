@@ -6,10 +6,10 @@ import { nyIsoDate } from '../../core/nyTime';
 import { nyInstant, regularCloseMin, sessionAt } from '../../core/session';
 import { keptLeg, keptVendorLeg, DEALER_SIDE, type Right } from '../../core/dealerSign';
 import { type StrikeNode } from '../../types/market';
-import { blackScholesGreeks } from '../../core/greeks';
+import { blackScholesGreeks, impliedVolFromPrice } from '../../core/greeks';
 import { tradingYears } from '../../core/tradingYear';
 import { carryFor, DEFAULT_R } from '../../core/carry';
-import { dealerInventory, flowFirm, flowImbalance, flowWindow, calendarYears, ivOnTradingClock, markGap, quotedVolPoint, quoteMaxAge, smoothSmile, unsignedShare } from '../../core/volClock';
+import { dealerInventory, flowFirm, flowImbalance, flowWindow, calendarYears, ivOnTradingClock, markGap, quotedVolPoint, quoteMaxAge, smoothSmile, unsignedShare, usableMid } from '../../core/volClock';
 import { impliedBookSpot, type ParityPair } from '../../core/parity';
 import { addHigher, amStrikeHigher, contractHigher } from '../liveHigher';
 import { noteClose, noteNodes, peakStrikes, type CloseRow } from '../nodeScore';
@@ -537,6 +537,22 @@ export function foldContracts(rows: UwContract[], expiry: string, now = Date.now
   return by;
 }
 
+/** The vol a two-sided quote solves to on the trading clock (core/volClock.ts ivOnTradingClock's own test), null without one */
+function quoteVol(bid: number, ask: number, s: number, k: number, t: number, right: 'C' | 'P', r?: number, q?: number): number | null {
+  const mid = usableMid(bid, ask);
+  if (!(mid > 0) || !(s > 0) || !(k > 0) || !(t > 0)) return null;
+  const v = impliedVolFromPrice(mid, s, k, t, right, r, q);
+  return v != null && v > 0.01 && v < 5 ? v : null;
+}
+/** A quote pins its own vol when half its spread spans no more than this much vol (÷ its vega) */
+export const QUOTE_PIN_VOL = 0.02;
+function quotePins(bid: number, ask: number, s: number, k: number, t: number, iv: number, r = DEFAULT_R, q = 0): boolean {
+  if (!(ask > bid) || !(s > 0) || !(t > 0) || !(iv > 0)) return true;
+  const d1 = (Math.log(s / k) + (r - q + (iv * iv) / 2) * t) / (iv * Math.sqrt(t));
+  const vega = (s * Math.exp(-q * t) * Math.exp(-(d1 * d1) / 2) * Math.sqrt(t)) / Math.sqrt(2 * Math.PI);
+  return vega > 0 && (ask - bid) / 2 / vega <= QUOTE_PIN_VOL;
+}
+
 /** A date's chain with its contracts' facts (vols, OI, delta, vanna, charm, vega) laid on — new nodes, never the old
     ones edited, so whatever is keyed on the old chain recomputes. Gamma stays the vendor's open-interest rows. */
 const loggedFlow = new Set<string>();
@@ -713,6 +729,22 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
       if (!leg) continue;
       if (leg.callIv > 0 || (leg.callBidPx > 0 && leg.callAskPx > 0)) n.callIv = ivOnTradingClock(leg.callBidPx, leg.callAskPx, leg.callIv, ivPx, n.strike, expiry, 'C', priced.at, carry?.r, carry?.q);
       if (leg.putIv > 0 || (leg.putBidPx > 0 && leg.putAskPx > 0)) n.putIv = ivOnTradingClock(leg.putBidPx, leg.putAskPx, leg.putIv, ivPx, n.strike, expiry, 'P', priced.at, carry?.r, carry?.q);
+      /* AN IN-THE-MONEY QUOTE THAT PINS NO VOL TAKES ITS STRIKE'S OUT-OF-THE-MONEY ONE (audit 2026-11-06, finding 2). Deep
+         in the money a mid is intrinsic plus cents and its spread is dollars wide (SPX 2026-11-09 7725P, 4% in the money a
+         session out: 297.9 / 303.2 around an intrinsic of 300.47), so any vol from a few points to 0.3 prices inside it —
+         and walked to the flip that leg is at the money: its guess alone moved SPX's whole-book flip 0.1% of spot. Where
+         both legs of a strike are solved from live quotes and the in-the-money one's half spread spans more than
+         QUOTE_PIN_VOL of vol (÷ its vega at the other leg's vol), it takes the out-of-the-money leg's vol — parity gives a
+         strike's call and put one vol (exactly so on a European index). A vendor vol (after the bell) is left as it is. */
+      if (n.strike !== ivPx) {
+        const tq = tradingYears(expiry, priced.at);
+        const cq = quoteVol(leg.callBidPx, leg.callAskPx, ivPx, n.strike, tq, 'C', carry?.r, carry?.q);
+        const pq = quoteVol(leg.putBidPx, leg.putAskPx, ivPx, n.strike, tq, 'P', carry?.r, carry?.q);
+        if (cq != null && pq != null) {
+          if (n.strike < ivPx && !quotePins(leg.callBidPx, leg.callAskPx, ivPx, n.strike, tq, pq, carry?.r, carry?.q)) n.callIv = pq;
+          else if (n.strike > ivPx && !quotePins(leg.putBidPx, leg.putAskPx, ivPx, n.strike, tq, cq, carry?.r, carry?.q)) n.putIv = cq;
+        }
+      }
       /* the AM contracts' vols on THEIR clock (to 09:30 of the date); a strike only the AM root lists takes it as its own */
       const am = leg.am;
       if (n.am && am) {
