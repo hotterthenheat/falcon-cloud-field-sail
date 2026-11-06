@@ -1,14 +1,14 @@
 /* One choice from a short list: a labelled trigger and a card with a check on the current choice and optional hints.
-   Radix DropdownMenu supplies keyboard, focus, dismissal, typeahead and placement. */
+   The shadcn DropdownMenu (Radix) supplies keyboard, focus, dismissal, typeahead and placement. */
 
 import { Fragment, type CSSProperties } from 'react';
-import { useMenuBounds } from './useMenuBounds';
 import { FLAT_DOOR, FLAT_OPEN } from './flatDoor';
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Check, ChevronDown, type LucideIcon } from 'lucide-react';
+import { useMenuBounds } from './useMenuBounds';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../shadcn/dropdown-menu';
+import { POPUP } from '../shadcn/surface';
+import { ChevronDown, type LucideIcon } from 'lucide-react';
 import { Tip } from './Tooltip';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token (deep steel on the light theme) */
 
 export interface DropdownOption<T extends string | number> {
   value: T;
@@ -65,8 +65,8 @@ interface DropdownSelectProps<T extends string | number> {
 
 const LABEL_FROM: Record<NonNullable<DropdownSelectProps<string>['labelFrom']>, string> = { sm: 'hidden sm:inline', md: 'hidden md:inline', lg: 'hidden lg:inline', xl: 'hidden xl:inline', '2xl': 'hidden 2xl:inline' };
 
-/** The card every dropdown on the terminal opens — one surface, one shadow, one radius */
-export const CARD = 'z-[90] rounded-lg border border-borderSubtle bg-chip shadow-[0_16px_48px_rgba(0,0,0,0.65)] animate-soft-in';
+/** The card every dropdown on the terminal opens — one surface, one shadow, one radius (shadcn/surface.ts) */
+export const CARD = POPUP;
 
 const DropdownSelect = <T extends string | number>({ label, value, options, onChange, title, align = 'start', icon: Icon, ink, testId, size = 'md', bare = false, labelFrom, flat = false }: DropdownSelectProps<T>) => {
   const current = options.find(o => o.value === value);
@@ -74,9 +74,9 @@ const DropdownSelect = <T extends string | number>({ label, value, options, onCh
   /* the menu stays inside the pane it opened from (useMenuBounds) */
   const { ref: triggerRef, bounds } = useMenuBounds<HTMLButtonElement>();
   return (
-    <DropdownMenu.Root modal={false}>
+    <DropdownMenu modal={false}>
       <Tip label={tip}>
-        <DropdownMenu.Trigger asChild>
+        <DropdownMenuTrigger asChild>
           <button
             ref={triggerRef}
             type="button"
@@ -104,48 +104,41 @@ const DropdownSelect = <T extends string | number>({ label, value, options, onCh
           </span>
           <ChevronDown className="w-3 h-3 shrink-0 text-textMuted" />
         </button>
-      </DropdownMenu.Trigger>
+      </DropdownMenuTrigger>
       </Tip>
-      <DropdownMenu.Portal>
-        {/* a long list scrolls inside the card rather than running off a short screen */}
-        <DropdownMenu.Content align={align} sideOffset={6} collisionPadding={12} collisionBoundary={bounds} className={`${CARD} min-w-[220px] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto p-1.5`} data-dropdown-card={testId ?? label}>
-          <DropdownMenu.Label className="px-2 pt-1 pb-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted">{title ?? label}</DropdownMenu.Label>
-          <DropdownMenu.RadioGroup
-            value={String(value)}
-            onValueChange={v => {
-              const hit = options.find(o => String(o.value) === v);
-              if (hit) onChange(hit.value);
-            }}
-          >
-            {options.map((o, i) => (
-              <Fragment key={String(o.value)}>
-                {o.group && o.group !== options[i - 1]?.group && (
-                  <DropdownMenu.Label className={`px-2 pt-2 pb-1 text-t11 font-semibold text-textSecondary ${i > 0 ? 'mt-1 border-t border-borderSubtle' : ''}`} data-dropdown-group={o.group}>
-                    {o.group}
-                  </DropdownMenu.Label>
-                )}
-              <DropdownMenu.RadioItem
+      {/* a long list scrolls inside the card rather than running off a short screen */}
+      <DropdownMenuContent align={align} collisionBoundary={bounds} className="min-w-[220px] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto" data-dropdown-card={testId ?? label}>
+        <DropdownMenuLabel>{title ?? label}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={String(value)}
+          onValueChange={v => {
+            const hit = options.find(o => String(o.value) === v);
+            if (hit) onChange(hit.value);
+          }}
+        >
+          {options.map((o, i) => (
+            <Fragment key={String(o.value)}>
+              {o.group && o.group !== options[i - 1]?.group && (
+                <DropdownMenuLabel className={`px-2 pt-2 pb-1 font-sans normal-case tracking-normal text-t11 font-semibold text-textSecondary ${i > 0 ? 'mt-1 border-t border-borderSubtle' : ''}`} data-dropdown-group={o.group}>
+                  {o.group}
+                </DropdownMenuLabel>
+              )}
+              <DropdownMenuRadioItem
                 value={String(o.value)}
                 disabled={o.disabled}
                 data-tone={o.tone}
-                className={`group flex items-start gap-2 rounded-md px-2 py-1.5 outline-none text-textSecondary ${o.indent ? 'pl-5' : ''} ${o.disabled ? 'cursor-default text-textMuted' : `cursor-pointer ${ROW_WASH[o.tone ?? 'plain']}`} data-[state=checked]:text-textPrimary transition-colors`}
+                className={`group font-sans ${o.indent ? 'pl-5' : ''} ${o.disabled ? 'cursor-default text-textMuted' : ROW_WASH[o.tone ?? 'plain']}`}
               >
-                <span className="mt-[2px] w-3 h-3 shrink-0 flex items-center justify-center">
-                  <DropdownMenu.ItemIndicator>
-                    <Check className="w-3 h-3" style={{ color: SILVER }} />
-                  </DropdownMenu.ItemIndicator>
-                </span>
                 <span className="flex flex-col gap-[1px] min-w-0">
                   <span className="font-mono text-t11 leading-snug group-data-[state=checked]:font-semibold">{o.label}</span>
                   {o.hint && <span className="font-mono text-t9 leading-snug text-textMuted">{o.hint}</span>}
                 </span>
-              </DropdownMenu.RadioItem>
-              </Fragment>
-            ))}
-          </DropdownMenu.RadioGroup>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+              </DropdownMenuRadioItem>
+            </Fragment>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };
 

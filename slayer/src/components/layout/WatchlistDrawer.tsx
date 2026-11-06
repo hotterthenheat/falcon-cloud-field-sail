@@ -2,7 +2,9 @@
    per row; a press makes it the terminal's name. Contract lists stay in their own rooms. Kept locally and carried by the account. */
 
 import { Suspense, lazy, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Sheet, SheetContent } from '../shadcn/sheet';
+import { useLayeredEscape } from '../shadcn/layer';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowDown, ArrowUp, Eye, Flag, FolderPlus, MoreHorizontal, Plus, X } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
@@ -292,16 +294,7 @@ const WatchlistDrawer = () => {
   }, [open]);
 
   /* Esc — after any layer inside it (a menu) had its say, before the takeovers behind (the alerts drawer's rule) */
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
-      e.preventDefault();
-      closeWatchlist();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open]);
+  const onEscapeKeyDown = useLayeredEscape(open, closeWatchlist);
 
   const symbols = list.sections.flatMap(s => s.names.map(n => n.symbol));
   /* the names' real-time prices while the drawer is open */
@@ -332,10 +325,6 @@ const WatchlistDrawer = () => {
     return out;
   };
 
-  const reduce = useReducedMotion();
-  const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1];
-  const glideIn = { x: 0, opacity: 1, transition: { duration: reduce ? 0 : 0.5, ease: EASE } };
-  const glideOut = { x: 48, opacity: 0, transition: { duration: reduce ? 0 : 0.36, ease: EASE } };
 
   const total = symbols.length;
   const flagged = list.sections.reduce((n, s) => n + s.names.filter(x => x.flagged).length, 0);
@@ -380,18 +369,10 @@ const WatchlistDrawer = () => {
   const sectionOptions: DropdownOption<string>[] = list.sections.map(s => ({ value: s.id, label: s.name }));
 
   return (
-    <AnimatePresence>
-      {open && <div key="scrim" className="fixed inset-0 z-[87]" onClick={closeWatchlist} aria-hidden data-watchlist-scrim />}
-      {open && (
-        <motion.aside
-          key="drawer"
-          initial={{ x: 48, opacity: 0 }}
-          animate={glideIn}
-          exit={glideOut}
-          className="fixed top-0 right-0 bottom-0 z-[88] w-[400px] max-w-[92vw] border-l border-borderMuted bg-panel/75 backdrop-blur-md backdrop-saturate-150 flex flex-col shadow-[-16px_0_48px_rgba(0,0,0,0.45)]"
-          aria-label="Watchlist"
-          data-watchlist-drawer
-        >
+    /* THE SHEET (shadcn, 2026-11-01), the alerts drawer's: a modal dialog from the right, the draw rail's glass, the
+       standard glide (shadcn/sheet.tsx); focus moves in and stays, and goes back to the sidebar's row */
+    <Sheet open={open} onOpenChange={next => !next && closeWatchlist()}>
+        <SheetContent aria-label="Watchlist" aria-describedby={undefined} onEscapeKeyDown={onEscapeKeyDown} data-watchlist-drawer>
           {/* THE HEAD — the house head: the icon in its 24px chip, the name, the facts */}
           <div className="h-12 shrink-0 flex items-center gap-2.5 px-3.5 border-b border-borderSubtle/70">
             <span className="w-6 h-6 rounded-md border border-borderSubtle bg-ink/[0.03] flex items-center justify-center shrink-0" aria-hidden>
@@ -514,9 +495,8 @@ const WatchlistDrawer = () => {
           <p className="shrink-0 px-3.5 py-2 border-t border-borderSubtle/70 font-mono text-t9 leading-snug text-textMuted">
             Names, not contracts — the Weigher keeps the contracts. Kept on this machine and carried by your account.
           </p>
-        </motion.aside>
-      )}
-    </AnimatePresence>
+        </SheetContent>
+    </Sheet>
   );
 };
 

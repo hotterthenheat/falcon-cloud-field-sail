@@ -6,7 +6,7 @@ import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import CardTabs from '../../components/ui/CardTabs';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, ChevronDown, CreditCard, Download, ExternalLink, FileText, Info, Keyboard, LayoutDashboard, LogOut, MonitorSmartphone, Palette, Plug, Trash2, Upload, UserRound, Users, Volume2, type LucideIcon } from 'lucide-react';
-import * as Switch from '@radix-ui/react-switch';
+import { Switch } from '../../components/shadcn/switch';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import Modal from '../../components/ui/Modal';
 import { MorphingInfinity, useBusy } from '../../components/ui/Working';
@@ -1293,15 +1293,7 @@ const Settings = () => {
               <Door onClick={chime} title="Hear the chime" testId="chime-try">
                 <Volume2 className="w-3 h-3" /> Try it
               </Door>
-              <Switch.Root
-                checked={desk.alertsSound}
-                onCheckedChange={v => setDeskPrefs({ alertsSound: v })}
-                aria-label="Alerts out loud"
-                className="relative shrink-0 w-8 h-[18px] rounded-full border border-borderSubtle bg-ink/[0.06] data-[state=checked]:bg-silver data-[state=checked]:border-silver transition-colors outline-none focus-visible:ring-2 focus-visible:ring-silver/60"
-                data-settings-switch="alerts-sound"
-              >
-                <Switch.Thumb className="block w-3 h-3 rounded-full bg-textPrimary translate-x-[2px] data-[state=checked]:translate-x-[16px] data-[state=checked]:bg-panel transition-transform" />
-              </Switch.Root>
+              <Switch checked={desk.alertsSound} onCheckedChange={v => setDeskPrefs({ alertsSound: v })} aria-label="Alerts out loud" data-settings-switch="alerts-sound" />
             </Row>
             <Row name="Clock" line="New York's time or your own on every chart's axis and crosshair" testId="clock">
               <DropdownSelect<ClockZone> label="Clock" value={desk.clock} options={CLOCK_OPTIONS} onChange={v => setDeskPrefs({ clock: v })} title="Whose clock the axes keep" testId="settings-clock" align="end" />

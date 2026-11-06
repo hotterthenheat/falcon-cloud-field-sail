@@ -2,7 +2,7 @@
    expires today; at the bell it says the day is over and how what was held settled. */
 
 import { useId } from 'react';
-import * as Switch from '@radix-ui/react-switch';
+import { Switch } from '../shadcn/switch';
 import { ArrowRight, BellRing, X } from 'lucide-react';
 import { usdSigned } from './words';
 
@@ -70,15 +70,7 @@ const RollSwitch = ({ on, onChange, disabled }: { on: boolean; onChange: (on: bo
   const id = useId();
   return (
     <label htmlFor={id} className={`tap-40 inline-flex items-center gap-2 font-mono text-t10 ${disabled ? 'text-textMuted' : 'text-textSecondary hover:text-textPrimary'} cursor-pointer select-none`} title="While the clock plays, the bell opens the next day by itself and keeps playing — what is held and what is good till cancelled carries; day orders still go at 16:00" data-review-roll={on ? 'on' : 'off'}>
-      <Switch.Root
-        id={id}
-        checked={on}
-        disabled={disabled}
-        onCheckedChange={onChange}
-        className="relative shrink-0 w-8 h-[18px] rounded-full border border-borderSubtle bg-ink/[0.06] data-[state=checked]:bg-silver data-[state=checked]:border-silver disabled:opacity-40 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-silver/60"
-      >
-        <Switch.Thumb className="block w-3 h-3 rounded-full bg-textPrimary translate-x-[2px] data-[state=checked]:translate-x-[16px] data-[state=checked]:bg-panel transition-transform" />
-      </Switch.Root>
+      <Switch id={id} checked={on} disabled={disabled} onCheckedChange={onChange} />
       Carry on into the next day automatically
     </label>
   );

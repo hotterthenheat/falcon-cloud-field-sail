@@ -1,7 +1,7 @@
 /* Pinpoint's structural alerts: one bell with the armed count, and a switch for each thing a dealer map can change
    (a wall or supreme reached, the flip crossed, sides changing, the supreme or a wall moving). It only sets; fired alerts live in the drawer. Store: alertStore.ts. */
 
-import * as Switch from '@radix-ui/react-switch';
+import { Switch } from '../shadcn/switch';
 import PopoverCard from '../ui/PopoverCard';
 import JingleBell from '../ui/JingleBell';
 import {
@@ -123,16 +123,7 @@ const WatchMenu = ({ ticker, spot, levels }: { ticker: string; spot?: number; le
                 <span className={`font-mono text-t11 leading-snug ${on ? 'font-semibold text-silver' : 'text-textPrimary'}`}>{w.words(levels)}</span>
                 <span className="font-mono text-t9 leading-snug text-textMuted">{blocked ? `${MAX_ALERTS} is the most for one name — turn one off first` : w.hint(levels, spot)}</span>
               </label>
-              <Switch.Root
-                id={id}
-                checked={on}
-                disabled={blocked}
-                onCheckedChange={v => set(w, v)}
-                aria-label={w.words(levels)}
-                className="relative shrink-0 w-8 h-[18px] rounded-full border border-borderSubtle bg-ink/[0.06] data-[state=checked]:bg-silver data-[state=checked]:border-silver disabled:opacity-40 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-silver/60"
-              >
-                <Switch.Thumb className="block w-3 h-3 rounded-full bg-textPrimary translate-x-[2px] data-[state=checked]:translate-x-[16px] data-[state=checked]:bg-panel transition-transform" />
-              </Switch.Root>
+              <Switch id={id} checked={on} disabled={blocked} onCheckedChange={v => set(w, v)} aria-label={w.words(levels)} />
             </li>
           );
         })}

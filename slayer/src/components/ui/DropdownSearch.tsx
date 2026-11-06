@@ -1,8 +1,9 @@
-/* DropdownSelect for long lists: a search box and matches (arrows and Enter pick). Radix Popover, because DropdownMenu's typeahead eats typed letters. */
+/* DropdownSelect for long lists: a search box and matches (arrows and Enter pick). A Popover with a Command (shadcn), because DropdownMenu's typeahead eats typed letters. */
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
-import * as Popover from '@radix-ui/react-popover';
-import { ChevronDown, Search, X, type LucideIcon } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { Popover, PopoverContent, PopoverTrigger } from '../shadcn/popover';
+import { Command, CommandInput, CommandItem, CommandList } from '../shadcn/command';
+import { ChevronDown, X, type LucideIcon } from 'lucide-react';
 import CompanyLogo from './CompanyLogo';
 import { CARD } from './DropdownSelect';
 import { askCompanyNames } from '../../data/tickers';
@@ -50,7 +51,6 @@ interface DropdownSearchProps<T extends string> {
 const DropdownSearch = <T extends string>({ label, value, options, onChange, title, placeholder = 'Search…', icon: Icon, ink, align = 'start', testId, defaultOpen = false, match, clearTo, onOpen, search }: DropdownSearchProps<T>) => {
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState('');
-  const [highlight, setHighlight] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -72,14 +72,14 @@ const DropdownSearch = <T extends string>({ label, value, options, onChange, tit
     return options.filter(o => o.label.toLowerCase().includes(q) || (o.keywords ?? '').toLowerCase().includes(q) || (o.hint ?? '').toLowerCase().includes(q));
   }, [options, query, match, search]);
 
-  /* A long book pins "all" above the scroller. The rest window so 456 logos do not mount at once. */
+  /* A long book pins "all" above the rest. Every row is in the list (the arrows walk them all), but in a long list only
+     the rows near the view draw their logo, so 456 logos do not load at once. */
   const pinned = clearTo != null ? (matches.find(o => o.value === clearTo) ?? null) : null;
   const rest = pinned ? matches.filter(o => o.value !== pinned.value) : matches;
-  const rows = pinned ? [pinned, ...rest] : rest;
-  const windowed = rest.length > 48;
+  const long = rest.length > 48;
   const ROW = 42;
-  const start = windowed ? Math.max(0, Math.floor(scrollTop / ROW) - 4) : 0;
-  const shown = windowed ? rest.slice(start, Math.min(rest.length, start + 16)) : rest;
+  const first = long ? Math.max(0, Math.floor(scrollTop / ROW) - 4) : 0;
+  const last = long ? first + 16 : rest.length;
 
   useEffect(() => {
     if (open) onOpen?.();
@@ -87,76 +87,52 @@ const DropdownSearch = <T extends string>({ label, value, options, onChange, tit
 
   useEffect(() => {
     if (!open) return;
-    const syms = shown.map(o => o.logo).filter((s): s is string => !!s && /^[A-Z0-9.]{1,6}$/.test(s));
+    const syms = rest.slice(first, last).map(o => o.logo).filter((s): s is string => !!s && /^[A-Z0-9.]{1,6}$/.test(s));
     if (syms.length) askCompanyNames(syms);
   }, [open, query, scrollTop, options]);
 
   useEffect(() => {
-    setHighlight(0);
     setScrollTop(0);
     listRef.current?.scrollTo({ top: 0 });
   }, [query]);
   useEffect(() => {
     if (!open) setQuery('');
   }, [open]);
-  useEffect(() => {
-    const el = listRef.current;
-    if (!el || !windowed) return;
-    const idx = pinned ? highlight - 1 : highlight;
-    if (idx < 0) return;
-    const top = idx * ROW;
-    const view = el.clientHeight;
-    if (top < el.scrollTop) el.scrollTop = top;
-    else if (top + ROW > el.scrollTop + view) el.scrollTop = top + ROW - view;
-  }, [highlight, windowed, pinned?.value]);
 
   const pick = (v: T) => {
     onChange(v);
     setOpen(false);
   };
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setHighlight(h => Math.min(h + 1, rows.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setHighlight(h => Math.max(h - 1, 0));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      const hit = rows[highlight];
-      if (hit) pick(hit.value);
-    }
-  };
 
-  const row = (o: SearchOption<T>, at: number, tall: boolean) => {
+  const row = (o: SearchOption<T>, tall: boolean, logo: boolean) => {
     const on = o.value === value;
     return (
-      <button
+      <CommandItem
         key={o.value}
-        type="button"
-        role="option"
-        aria-selected={on}
-        onClick={() => pick(o.value)}
-        onMouseEnter={() => setHighlight(at)}
+        value={o.value}
+        onSelect={() => pick(o.value)}
         data-search-option={o.value}
         style={tall ? { height: ROW } : undefined}
-        className={`w-full flex items-center gap-2 rounded-md px-2 text-left transition-colors ${tall ? '' : 'py-1.5'} ${at === highlight ? 'bg-ink/[0.06]' : ''}`}
+        className={`gap-2 rounded-md px-2 ${tall ? 'py-0' : 'py-1.5'} data-[selected=true]:bg-ink/[0.06]`}
       >
-        {o.logo ? <CompanyLogo ticker={o.logo} size={14} /> : <span className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
+        {o.logo && logo ? <CompanyLogo ticker={o.logo} size={14} /> : <span className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
         <span className="flex flex-col gap-[1px] min-w-0">
           <span className={`font-mono text-t11 leading-snug ${on ? 'font-semibold' : ''}`} style={on ? { color: SILVER } : undefined}>
             {o.label}
           </span>
           {o.hint && <span className="font-mono text-t9 leading-snug text-textMuted truncate">{o.hint}</span>}
         </span>
-      </button>
+      </CommandItem>
     );
   };
 
+  /* shadcn Popover + Command (2026-11-01): the card's search box is a combobox naming the row the arrows are on, the
+     rows are options; Escape or a press outside closes it and focus goes back to the trigger. The caller ranks the rows,
+     so cmdk does not filter. */
   return (
-    <Popover.Root open={open} onOpenChange={setOpen} modal={false}>
+    <Popover open={open} onOpenChange={setOpen}>
       <span className="inline-flex items-center gap-1">
-        <Popover.Trigger asChild>
+        <PopoverTrigger asChild>
           <button
             type="button"
             data-dropdown={testId ?? label}
@@ -176,7 +152,7 @@ const DropdownSearch = <T extends string>({ label, value, options, onChange, tit
             <span className="text-t11 font-semibold text-textPrimary">{current?.label ?? '—'}</span>
             <ChevronDown className="w-3 h-3 text-textMuted" />
           </button>
-        </Popover.Trigger>
+        </PopoverTrigger>
         {clearTo != null && value !== clearTo && (
           <button
             type="button"
@@ -189,42 +165,42 @@ const DropdownSearch = <T extends string>({ label, value, options, onChange, tit
           </button>
         )}
       </span>
-      <Popover.Portal>
-        <Popover.Content align={align} sideOffset={6} className={`${CARD} w-[272px] p-0 overflow-hidden`} data-dropdown-card={testId ?? label} onOpenAutoFocus={e => { e.preventDefault(); inputRef.current?.focus(); }}>
-          <div className="px-3.5 pt-2.5 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">{title ?? label}</div>
-          <div className="mx-1.5 flex items-center gap-1.5 px-2 rounded-md border border-borderSubtle bg-panel" onKeyDown={onKeyDown}>
-            <Search className="w-3 h-3 text-textMuted shrink-0" aria-hidden="true" />
-            <input
-              ref={inputRef}
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder={placeholder}
-              className="w-full bg-transparent py-1.5 font-mono text-t11 text-textPrimary placeholder:text-textMuted focus:outline-none"
-              data-dropdown-search-input
-            />
-          </div>
-          {pinned && <div className="px-1.5 pt-1 border-b border-borderSubtle">{row(pinned, 0, false)}</div>}
-          <div
-            ref={listRef}
-            className={`max-h-64 overflow-y-auto ${windowed ? '' : 'p-1.5'}`}
-            role="listbox"
-            onScroll={windowed ? e => setScrollTop(e.currentTarget.scrollTop) : undefined}
-          >
-            {rows.length === 0 ? (
-              <div className="px-2.5 py-4 text-center font-mono text-t10 text-textMuted">Nothing matches</div>
-            ) : windowed ? (
-              <div style={{ height: rest.length * ROW, position: 'relative' }}>
-                <div style={{ position: 'absolute', top: start * ROW, left: 0, right: 0 }}>
-                  {shown.map((o, i) => row(o, start + i + (pinned ? 1 : 0), true))}
-                </div>
-              </div>
-            ) : (
-              rest.map((o, i) => row(o, i + (pinned ? 1 : 0), false))
-            )}
-          </div>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+      <PopoverContent
+        align={align}
+        className={`${CARD} w-[272px] p-0 overflow-hidden`}
+        data-dropdown-card={testId ?? label}
+        onOpenAutoFocus={e => {
+          e.preventDefault();
+          inputRef.current?.focus();
+        }}
+      >
+        <Command shouldFilter={false} label={title ?? label}>
+          <div className="px-3.5 pt-2.5 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted" aria-hidden="true">{title ?? label}</div>
+          <CommandInput
+            ref={inputRef}
+            value={query}
+            onValueChange={setQuery}
+            placeholder={placeholder}
+            icon="sm"
+            rowClassName="mx-1.5 gap-1.5 px-2 rounded-md border border-borderSubtle bg-panel"
+            className="py-1.5 font-mono text-t11"
+            data-dropdown-search-input
+          />
+          {/* one listbox; the pinned "all" stands above the scroller (as before the move), so the scroller keeps its full
+              16rem for the rest */}
+          <CommandList className="max-h-none overflow-visible">
+            {pinned && <div className="px-1.5 pt-1 border-b border-borderSubtle">{row(pinned, false, true)}</div>}
+            <div ref={listRef} className={`max-h-64 overflow-y-auto ${long ? '' : 'p-1.5'}`} onScroll={long ? e => setScrollTop(e.currentTarget.scrollTop) : undefined}>
+              {matches.length === 0 ? (
+                <div className="px-2.5 py-4 text-center font-mono text-t10 text-textMuted">Nothing matches</div>
+              ) : (
+                rest.map((o, i) => row(o, long, i >= first && i < last))
+              )}
+            </div>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 };
 

@@ -2,9 +2,9 @@
 
 import { FLAT_DOOR, FLAT_OPEN } from './flatDoor';
 import { useMenuBounds } from './useMenuBounds';
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Check, ChevronDown } from 'lucide-react';
-import { CARD } from './DropdownSelect';
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '../shadcn/dropdown-menu';
+import { ChevronDown } from 'lucide-react';
+
 
 export interface MultiOption {
   value: string;
@@ -59,8 +59,8 @@ const DropdownMulti = ({ label, values, groups, onChange, title, emptyWord = 'Ev
   /* the menu stays inside the pane it opened from (useMenuBounds) */
   const { ref: triggerRef, bounds } = useMenuBounds<HTMLButtonElement>();
   return (
-    <DropdownMenu.Root modal={false}>
-      <DropdownMenu.Trigger asChild>
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
         <button
           ref={triggerRef}
           type="button"
@@ -74,21 +74,20 @@ const DropdownMulti = ({ label, values, groups, onChange, title, emptyWord = 'Ev
           <span className={`text-t11 font-semibold truncate ${values.length ? (tone === 'warn' ? 'text-warn' : tone === 'bull' ? 'text-bull' : tone === 'bear' ? 'text-bear' : 'text-textPrimary') : 'text-textSecondary'}`} data-tone={values.length && tone ? tone : undefined}>{summary}</span>
           <ChevronDown className="w-3 h-3 text-textMuted shrink-0" />
         </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content align={align} sideOffset={6} collisionPadding={12} collisionBoundary={bounds} className={`${CARD} p-1.5`} data-dropdown-card={testId ?? label}>
-          <DropdownMenu.Label className="px-2 pt-1 pb-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted">{title ?? label}</DropdownMenu.Label>
+      </DropdownMenuTrigger>
+        <DropdownMenuContent align={align} collisionBoundary={bounds} className="min-w-0" data-dropdown-card={testId ?? label}>
+          <DropdownMenuLabel className="px-2 pt-1 pb-1.5 font-mono text-t9 uppercase tracking-widest text-textMuted">{title ?? label}</DropdownMenuLabel>
           {shown.length === 0 ? (
             <div className="px-2 py-3 font-mono text-t10 text-textMuted">Nothing on the page to pick from</div>
           ) : (
             <div className="grid gap-x-2" style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(200px, 1fr))` }}>
               {shown.map(g => (
                 <div key={g.title} className="min-w-0 flex flex-col gap-0.5 max-h-[420px] overflow-y-auto" data-multi-group={g.title}>
-                  <DropdownMenu.Label className="px-2 pt-1 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">{g.title}</DropdownMenu.Label>
+                  <DropdownMenuLabel className="px-2 pt-1 pb-1 font-mono text-t9 uppercase tracking-widest text-textMuted">{g.title}</DropdownMenuLabel>
                   {g.options.map(o => {
                     const on = picked.has(o.value);
                     return (
-                      <DropdownMenu.CheckboxItem
+                      <DropdownMenuCheckboxItem
                         key={o.value}
                         checked={on}
                         onCheckedChange={() => toggle(o.value)}
@@ -96,10 +95,6 @@ const DropdownMulti = ({ label, values, groups, onChange, title, emptyWord = 'Ev
                         className="flex items-start gap-2.5 px-2 py-1.5 rounded outline-none cursor-pointer text-left transition-colors data-[highlighted]:bg-ink/[0.04]"
                         data-multi-option={o.value}
                       >
-                        {/* a tick means where-you-are: holo silver */}
-                        <span className={`mt-px inline-flex w-3.5 h-3.5 shrink-0 items-center justify-center rounded-[3px] border ${on ? 'bg-silverFill border-silverFill' : 'border-borderMuted'}`}>
-                          {on && <Check className="w-2.5 h-2.5 text-onfoil" />}
-                        </span>
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center gap-2">
                             <span className={`min-w-0 truncate font-mono text-t11 font-semibold ${on ? 'text-textPrimary' : 'text-textSecondary'}`}>{o.label}</span>
@@ -107,7 +102,7 @@ const DropdownMulti = ({ label, values, groups, onChange, title, emptyWord = 'Ev
                           </span>
                           {o.hint && <span className="block text-t10 text-textMuted leading-snug truncate">{o.hint}</span>}
                         </span>
-                      </DropdownMenu.CheckboxItem>
+                      </DropdownMenuCheckboxItem>
                     );
                   })}
                 </div>
@@ -116,19 +111,18 @@ const DropdownMulti = ({ label, values, groups, onChange, title, emptyWord = 'Ev
           )}
           {values.length > 0 && (
             <>
-              <DropdownMenu.Separator className="my-1 h-px bg-borderSubtle" />
-              <DropdownMenu.Item
+              <DropdownMenuSeparator className="my-1 h-px bg-borderSubtle" />
+              <DropdownMenuItem
                 onSelect={() => onChange([])}
                 className="px-2 py-1.5 rounded outline-none cursor-pointer font-mono text-t10 uppercase tracking-widest text-textSecondary data-[highlighted]:bg-ink/[0.04] data-[highlighted]:text-textPrimary"
                 data-multi-clear
               >
                 {clearWord}
-              </DropdownMenu.Item>
+              </DropdownMenuItem>
             </>
           )}
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+        </DropdownMenuContent>
+    </DropdownMenu>
   );
 };
 
