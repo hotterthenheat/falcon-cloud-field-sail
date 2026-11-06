@@ -211,6 +211,28 @@ def diag(w):
             w(f"| {r['feature']} @ {r['tf']}m | {pct(r['Y30']['delta'])} | {ci(r['Y30']['ci'])} | {pv(r['Y30']['p'])} | "
               f"{pv(r['holm'])} | {', '.join(k for k, v in r['rules'].items() if not v) or 'PASS'} |")
         w('')
+    p3 = os.path.join(OUT, 's1_diag_tod_synth.pkl')
+    p4 = os.path.join(OUT, 's1_diag_synthgen.pkl')
+    if os.path.exists(p3):
+        s3 = pickle.load(open(p3, 'rb'))
+        w(f"**S1A-T on the synthetic zero-drift seeds**: {sum(v['any_holm'] for v in s3.values())} of {len(s3)} seeds have a "
+          f"CI > 0 & Holm-passing feature (always the premium-level features S, L50, L200). That is a FAIL by the ≤ 5% rule. "
+          f"The generator explains it:")
+    if os.path.exists(p4):
+        g = pickle.load(open(p4, 'rb'))
+        hh = g['by_halfhour']
+        w(f"**3. The synthetic generator is not a martingale at the decision times.** Black–Scholes at one vol per session "
+          f"prices a premium whose underlying moves with the real U-shaped intraday vol profile, so the premium drifts. "
+          f"Mean synthetic mid-to-mid Y30 by half-hour ({g['n_parts']} cached synthetic parts): "
+          + ', '.join(f"{(570 + 30 * k) // 60}:{(570 + 30 * k) % 60:02d}– {v * 100:+.2f}%" for k, v in sorted(hh.items())) +
+          '. The drift scales with gamma and with the session\'s vol level, and premium-state features track both. '
+          'Unconditional mean Y30 mid by feature value: ' +
+          '; '.join(f"{F[2:]} =1 {g['by_feature'][(F, 1)] * 100:+.2f}% vs =0 {g['by_feature'][(F, 0)] * 100:+.2f}%"
+                    for F in ('f_L200_60', 'f_L50_15', 'f_S_15')) +
+          '. So the pre-registered synthetic null (a port of compass-v2\'s, which prices at fair value on the same one-vol '
+          'clock) cannot calibrate a screen of premium-state features: the generator itself puts mechanical information '
+          'into the premium. Fix for future work: price on a variance clock, where time to expiry is consumed in '
+          'proportion to the local variance, so the synthetic premium is an exact martingale.\n')
     w('**Reading.** A miscalibrated (anti-conservative) screen can only produce false *passes*. No real feature passed '
       'the pre-registered screen or the calibrated post-hoc one, so "no option-chart feature has incremental, '
       'executable value at h = 30" does not depend on the calibration failure. A future pre-registration should use the '

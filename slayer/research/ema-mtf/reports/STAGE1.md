@@ -117,7 +117,7 @@ Events by block × root × DTE bucket:
 
 * **Permutation null**: 200 runs, feature values permuted among warm events within session × root × bucket × right. Share of runs with any feature passing CI > 0 and Holm < 0.05 (family FWER): **100.0%** (must be ≤ 5% for the pipeline to count: **FAILED**); share passing all five rules: 100.0%. Median smallest Holm p per run: 0.010.
 * Observed δ percentile in its own permutation distribution (the 10 largest observed δ): 30m H 1.0%; 1m L50 0.0%; 60m D 34.5%; 15m B 0.0%; 1m L200 0.0%; 60m H 0.0%; 1m C 0.0%; 60m B 2.0%; 60m L200 8.0%; 30m A 0.0%.
-* Synthetic null: not run yet.
+* **Synthetic zero-drift null** (stage1/synth.py; the whole S1A pipeline on re-quoted panels): 9 seeds; share with any CI > 0 & Holm-passing feature: **67%** (6/9; must be ≤ 5%, i.e. ≤ 1 of 20: **FAILED**); all five rules: 67%. Mean synthetic Y30 -2.74%, mid-to-mid -0.20% (costs only, as designed).
 
 ### S1A by root, DTE bucket and right (δ Y30 in pp, 95% CI) — every feature
 
@@ -269,7 +269,7 @@ A feature carrying the outcome window's information is found at +5 to +17 pp, so
 
 **2. Pooling the blocks lets slow regime features confound δ.** A leak-free null permutes feature values across SESSIONS at the same root × bucket × right × decision close, so the time of day is kept and the day's path is broken. Under the pre-registered strata it still has FWER **95%** (19/20 runs). The biased features are L200 at 30m and 60m (null mean +0.16 and +0.36 pp, z ≈ +3 and +9). Their prevalence differs between the 2022 and 2024 regimes, and the strata do not separate the blocks (A2 item 3). Adding the half-hour alone does not fix it (s1_diag_tod_noblock.pkl: 15/20 runs).
 
-**S1A-T (post-hoc)**: the same statistic, rules and Holm, with the strata also split by block and by the half-hour of the decision close. Leak-free null: FWER **0.0%** over 10 runs (≤ 5% needed: OK). Real data: **0 of 40 pass**. Smallest p-values:
+**S1A-T (post-hoc)**: the same statistic, rules and Holm, with the strata also split by block and by the half-hour of the decision close. Leak-free null: FWER **0.9%** over 110 runs (≤ 5% needed: OK). Real data: **0 of 40 pass**. Smallest p-values:
 
 | feature @ tf | δ Y30 (pp) | 95% CI | p | Holm | rules failed |
 |---|---|---|---|---|---|
@@ -283,6 +283,9 @@ A feature carrying the outcome window's information is found at +5 to +17 pp, so
 | B @ 30m | +0.51 | [-0.54, +1.65] | 0.1832 | 1.0000 | ci_gt_0, holm_lt_0.05 |
 | C @ 1m | +0.50 | [-0.44, +1.42] | 0.1957 | 1.0000 | ci_gt_0, holm_lt_0.05, block_B_gt_0 |
 | S @ 1m | +0.34 | [-0.38, +1.02] | 0.2167 | 1.0000 | ci_gt_0, holm_lt_0.05 |
+
+**S1A-T on the synthetic zero-drift seeds**: 6 of 9 seeds have a CI > 0 & Holm-passing feature (always the premium-level features S, L50, L200). That is a FAIL by the ≤ 5% rule. The generator explains it:
+**3. The synthetic generator is not a martingale at the decision times.** Black–Scholes at one vol per session prices a premium whose underlying moves with the real U-shaped intraday vol profile, so the premium drifts. Mean synthetic mid-to-mid Y30 by half-hour (79 cached synthetic parts): 9:30– +0.87%, 10:00– +0.42%, 10:30– -0.01%, 11:00– -0.27%, 11:30– -0.48%, 12:00– -0.60%, 12:30– -0.62%, 13:00– -0.61%, 13:30– -0.22%, 14:00– +0.00%, 14:30– -0.06%, 15:00– -0.01%. The drift scales with gamma and with the session's vol level, and premium-state features track both. Unconditional mean Y30 mid by feature value: L200_60 =1 +0.03% vs =0 -0.08%; L50_15 =1 -0.01% vs =0 -0.27%; S_15 =1 -0.06% vs =0 -0.24%. So the pre-registered synthetic null (a port of compass-v2's, which prices at fair value on the same one-vol clock) cannot calibrate a screen of premium-state features: the generator itself puts mechanical information into the premium. Fix for future work: price on a variance clock, where time to expiry is consumed in proportion to the local variance, so the synthetic premium is an exact martingale.
 
 **Reading.** A miscalibrated (anti-conservative) screen can only produce false *passes*. No real feature passed the pre-registered screen or the calibrated post-hoc one, so "no option-chart feature has incremental, executable value at h = 30" does not depend on the calibration failure. A future pre-registration should use the S1A-T strata (block × time of day) and the leak-free cross-session null.
 
