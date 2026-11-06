@@ -1,32 +1,67 @@
-samples 25 (seed 7 of 104 triggers)
-book read at t identical with later bars/boards as noise: 25/25
-trigger features + all three cell picks identical: 25/25
-R1a: every masked read up to t equals the stored book (raw flip): 4/4
-canary forming bar caught: 25/25
-canary next chain stamp caught: 25/25
+samples 60 (seed 7 of 2908 triggers)
+book read at t identical with later bars/boards as noise: 60/60
+trigger features + all three cell picks identical: 60/60
+R1a: every masked read up to t equals the stored book (raw flip): 9/9
+canary forming bar caught: 60/60
+canary next chain stamp caught: 60/60
 
-BASE SPXW 2022-05-10 50400: read same, features+picks same
-R1A SPXW 2022-01-05 50760: read same, features+picks same
-BASE IWM 2022-01-14 50400: read same, features+picks same
-R1A QQQ 2022-01-26 46920: read same, features+picks same
-R1A SPXW 2022-04-08 40860: read same, features+picks same
-R1A IWM 2022-03-23 43500: read same, features+picks same
-BASE SPXW 2023-01-04 39600: read same, features+picks same
-BASE QQQ 2022-02-28 45000: read same, features+picks same
-R1B SPY 2022-03-25 45000: read same, features+picks same
-BASE SPY 2022-05-20 39600: read same, features+picks same
-R1B SPY 2020-03-04 45000: read same, features+picks same
-BASE SPXW 2023-01-17 39600: read same, features+picks same
-BASE QQQ 2022-01-12 39600: read same, features+picks same
-BASE SPXW 2022-02-11 50400: read same, features+picks same
-BASE SPY 2020-02-26 50400: read same, features+picks same
-BASE SPXW 2022-04-08 39600: read same, features+picks same
-BASE QQQ 2020-03-20 45000: read same, features+picks same
-BASE IWM 2020-02-21 50400: read same, features+picks same
-R1B QQQ 2022-01-26 39600: read same, features+picks same
-BASE IWM 2022-01-10 45000: read same, features+picks same
-R1B SPXW 2022-03-16 39600: read same, features+picks same
-BASE QQQ 2020-03-31 45000: read same, features+picks same
-R1B QQQ 2022-02-09 39600: read same, features+picks same
-BASE SPXW 2022-01-18 45000: read same, features+picks same
-R1B SPXW 2022-03-23 39600: read same, features+picks same
+R1A QQQ 2023-12-29 40620: read same, features+picks same
+R1A QQQ 2023-09-13 41520: read same, features+picks same
+BASE SPY 2023-06-01 45000: read same, features+picks same
+BASE QQQ 2024-09-26 39600: read same, features+picks same
+BASE SPXW 2024-09-05 50400: read same, features+picks same
+R1A SPY 2023-02-15 53880: read same, features+picks same
+R1B SPY 2024-05-23 39600: read same, features+picks same
+R1B SPY 2023-01-11 39600: read same, features+picks same
+BASE SPXW 2022-05-31 50400: read same, features+picks same
+BASE QQQ 2023-11-10 39600: read same, features+picks same
+BASE SPXW 2024-11-01 39600: read same, features+picks same
+BASE IWM 2024-05-22 45000: read same, features+picks same
+R1A SPXW 2024-04-09 35400: read same, features+picks same
+BASE QQQ 2023-09-01 39600: read same, features+picks same
+R1B SPY 2023-05-17 45000: read same, features+picks same
+BASE SPY 2024-01-25 39600: read same, features+picks same
+BASE IWM 2020-03-20 45000: read same, features+picks same
+BASE SPXW 2024-01-22 50400: read same, features+picks same
+R1B SPXW 2022-04-08 39600: read same, features+picks same
+BASE QQQ 2024-04-15 45000: read same, features+picks same
+R1B SPY 2023-08-23 39600: read same, features+picks same
+BASE SPXW 2023-04-26 39600: read same, features+picks same
+BASE SPY 2024-03-19 39600: read same, features+picks same
+BASE SPXW 2020-03-16 39600: read same, features+picks same
+BASE IWM 2024-07-17 45000: read same, features+picks same
+BASE SPY 2023-04-26 39600: read same, features+picks same
+BASE QQQ 2022-05-31 50400: read same, features+picks same
+R1A SPXW 2023-03-09 36720: read same, features+picks same
+BASE SPY 2024-10-15 45000: read same, features+picks same
+BASE QQQ 2023-04-18 45000: read same, features+picks same
+BASE QQQ 2022-01-07 39600: read same, features+picks same
+BASE QQQ 2024-07-25 39600: read same, features+picks same
+BASE SPXW 2023-11-28 45000: read same, features+picks same
+BASE QQQ 2022-01-21 39600: read same, features+picks same
+BASE QQQ 2024-10-23 45000: read same, features+picks same
+BASE SPY 2024-05-07 50400: read same, features+picks same
+R1B SPXW 2024-11-14 45000: read same, features+picks same
+BASE IWM 2023-09-27 45000: read same, features+picks same
+R1B IWM 2023-01-23 39600: read same, features+picks same
+BASE SPXW 2022-04-27 39600: read same, features+picks same
+R1B IWM 2023-11-06 39600: read same, features+picks same
+BASE SPY 2024-10-08 39600: read same, features+picks same
+R1A SPXW 2024-07-17 36060: read same, features+picks same
+R1B QQQ 2023-07-21 39600: read same, features+picks same
+R1A QQQ 2023-07-21 35340: read same, features+picks same
+BASE QQQ 2024-04-15 39600: read same, features+picks same
+BASE SPY 2023-07-06 45000: read same, features+picks same
+BASE SPXW 2023-10-05 39600: read same, features+picks same
+BASE SPXW 2024-01-24 50400: read same, features+picks same
+R1B IWM 2024-09-12 50400: read same, features+picks same
+R1A SPXW 2023-11-01 40380: read same, features+picks same
+R1A SPXW 2023-10-09 50340: read same, features+picks same
+BASE SPXW 2023-10-05 50400: read same, features+picks same
+BASE QQQ 2024-09-19 45000: read same, features+picks same
+BASE IWM 2024-04-29 45000: read same, features+picks same
+BASE SPXW 2024-10-04 39600: read same, features+picks same
+BASE SPXW 2022-01-24 45000: read same, features+picks same
+BASE IWM 2023-01-20 39600: read same, features+picks same
+R1B SPXW 2024-07-02 39600: read same, features+picks same
+BASE SPXW 2022-04-14 50400: read same, features+picks same
