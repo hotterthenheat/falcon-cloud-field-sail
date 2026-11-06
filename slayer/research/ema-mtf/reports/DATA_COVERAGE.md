@@ -200,7 +200,27 @@ underlying bars 04:00–16:00. SPY block A: 1.8–2.6 MB per eval session, 1.2�
 **Status at hand-off: block A is complete** — 126 sessions × 4 roots (64 eval + 62 warm-up), 0 failed root-sessions,
 577 MB; UW flow alerts for every eval session (SPY/QQQ/IWM; SPX/SPXW return none under those tickers), 9 MB; 1-second
 fill quotes for the ~6,800 contract-days the baselines traded, 469 MB (`v2data/ema/fills`, reusable by Phase 2). The
-whole EMA store is 1.1 GB of the 2.5 GB budget. **Block B (2022-03..05) is planned (STRATEGY_SPEC §15, PREREG §2) and
+whole EMA store is 1.1 GB of the 2.5 GB budget.
+
+**Phase 2 update (EMA-2, 2026-11-06).**
+* **Block B is complete**: eval 2022-03-01..05-31 (64 sessions), warm-up from 2021-11-30 (62 sessions), 4 roots,
+  504 root-sessions, 0 failed, 504 MB. It was fetched 03:54–06:52 ET at one request in flight under
+  `edata/windowed.py`, which stops the fetch before 09:15 ET and resumes it after 16:05 ET.
+* **Hist OI**: the morning OI reports for the 20 sessions before each block (`edata/oi_hist.py`) feed the S1C P/C OI
+  median.
+* **VALIDATION**: the pre-declared fallback window 2025-07-01..09-30 (PREREG §9b item 12: the full 2025-H2 would not
+  fit the budget) is being fetched with the same code by `edata/chain.py`, under the same window guard. No outcome is
+  computed from it before a candidate is frozen.
+  * Status at the 09:07 ET pause: SPY/QQQ/IWM have every eval session (64/64) plus the 6 sessions before; their
+    coarse warm-up is not yet fetched. SPXW has 16/64 eval sessions. The hist OI (20 sessions before 2025-07-01) is
+    complete.
+  * The guard resumes the chain at 16:06 ET. To restart it after a container restart:
+    `python3 -m edata.windowed -- python3 -m edata.chain`.
+  * The UW flow for the window is not fetched: no candidate reached VALIDATION (FINAL_ASSESSMENT verdict C), so it is
+    not needed.
+  * Store at hand-off: 2.1 GB of the 2.5 GB budget.
+
+Phase 1's original note: **Block B (2022-03..05) is planned (STRATEGY_SPEC §15, PREREG §2) and
 NOT fetched**: `cd slayer/research/ema-mtf && V2_THETA_SLOTS=1 python3 -m edata.panel --block B` (resumable, ≈3–4 h
 at one request in flight; respect the 09:15–16:05 ET one-in-flight window on live days). The machine's free disk
 moved between 3.3 and 8.1 GB during the session because of other workers; the fetcher stops itself below 3 GB.
