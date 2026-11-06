@@ -202,8 +202,8 @@ with the information the extra timeframes add (§PREREG 4.3). Five aligned timef
 
 ## 10. Exit methods 1–10
 
-`engine/signals.py` (X1, X3, X4, X7, X8 implemented and look-ahead-tested in Phase 1; X2, X5, X6, X9, X10 are
-implemented by Phase 2 against this text before any run). Every exit also has the universal stops: flat at 15:55
+`engine/signals.py` (all ten implemented; each is look-ahead-tested with noise after the exit and fires by its own
+rule in `etests/test_lookahead.py`). Every exit also has the universal stops: flat at 15:55
 (or overnight variant), expiry, data end. Triggers read the trigger-TF MID close at a 1-minute bar close (for a
 higher-TF exit, at the HTF bar's close); fills at the bid after the latency.
 

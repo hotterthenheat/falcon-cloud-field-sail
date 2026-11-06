@@ -173,10 +173,21 @@ def test_exits_identical_when_the_future_is_noise_and_canary_caught():
         def atr_at(s, t):
             i = int(np.searchsorted(atr_keys, int(s) * 100_000_000 + int(t), side='right')) - 1
             return atr_tab.atr.iloc[i] if i >= 0 else np.nan
-        return {'X1': S.X1NextEMA(at), 'X3': S.X3Hold9(at), 'X4': S.X4Cross920(at), 'X7': S.X7ATR(at, atr_at),
-                'X8': S.X8FixedRR(at)}[name]
+        from engine.underlying import structure
+        t1 = chart.tables[('mid', 1)]
+        t1 = structure(t1.assign(h=t1.c, l=t1.c))
+        k1 = t1.session.to_numpy(np.int64) * 100_000_000 + t1.known_ms.to_numpy(np.int64)
 
-    for name in ('X1', 'X3', 'X4', 'X7', 'X8'):
+        def at1(s, t):
+            i = int(np.searchsorted(k1, int(s) * 100_000_000 + int(t), side='right')) - 1
+            return t1.iloc[i].to_dict() if i >= 0 else None
+        htf = lambda s, t: chart.at('mid', 15, s, t)
+        return {'X1': S.X1NextEMA(at), 'X3': S.X3Hold9(at), 'X4': S.X4Cross920(at), 'X7': S.X7ATR(at, atr_at),
+                'X8': S.X8FixedRR(at), 'X2a': S.X2PartialUnit(at, 0), 'X2c': S.X2PartialUnit(at, 2),
+                'X5': S.X5Structure(at1, atr_at), 'X6': S.X6HTFLoss(htf), 'X9': S.X9Trail(at, atr_at),
+                'X10': S.X10Combo(at, atr_at, htf)}[name]
+
+    for name in ('X1', 'X3', 'X4', 'X7', 'X8', 'X2a', 'X2c', 'X5', 'X6', 'X9', 'X10'):
         chart = _chart(q0, q2, tb)
         sim = Simulator(FakePanel('SPY', q0, q2, tb), ExecConfig(max_spread_frac=1.0))
         r0 = sim.run(Trade('SPY', EXP, K, 1, int(D), 60), make(name, chart))
@@ -190,7 +201,8 @@ def test_exits_identical_when_the_future_is_noise_and_canary_caught():
         r1 = sim_n.run(Trade('SPY', EXP, K, 1, int(D), 60), make(name, chart_n))
         assert (r1['exit_m'], r1['exit_reason']) == (r0['exit_m'], r0['exit_reason']), name
         assert abs(r1['exit_px'] - r0['exit_px']) < 1e-12, name
-        exits[name] = r0['exit_reason']
+        exits[name] = r0["exit_reason"]
+    print("    exit reasons:", exits)
     # canary
     sim = Simulator(FakePanel('SPY', q0, q2, tb), ExecConfig(max_spread_frac=1.0))
     r0 = sim.run(Trade('SPY', EXP, K, 1, int(D), 60), PeekExit(q0))

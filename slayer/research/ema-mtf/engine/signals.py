@@ -257,3 +257,133 @@ class XTime(_Exit):
 
     def check(self, v):
         return 'time' if v['bars'] >= self.minutes else None
+
+
+class X2PartialUnit(_Exit):
+    """One of the three 1/3 units of exit 2: unit j (0, 1, 2) sells at the j-th frozen EMA level above the entry mid;
+    stop = the nearest EMA below entry (frozen; none: -30%), moved to the entry price once the FIRST level has been
+    reached. The three units run as three 1-contract sub-trades and are averaged (STRATEGY_SPEC section 10)."""
+    name = 'X2'
+    LEVELS = X1NextEMA.LEVELS
+
+    def __init__(self, chart_at, j: int):
+        super().__init__(chart_at)
+        self.j = j
+
+    def start(self, info):
+        super().start(info)
+        lv = sorted({x for x in ((self.e0 or {}).get(f'ema{n}') for n in self.LEVELS) if x is not None and x == x})
+        m0 = info['entry_mid']
+        up, dn = [x for x in lv if x > m0], [x for x in lv if x < m0]
+        self.levels = (up + [m0 * (1.5 + 0.25 * i) for i in range(3)])[:3]
+        self.sl = max(dn) if dn else m0 * 0.7
+        self.first_hit = False
+
+    def check(self, v):
+        x = v['mid']
+        if x != x:
+            return None
+        if x >= self.levels[0]:
+            self.first_hit = True
+        if x >= self.levels[self.j]:
+            return f'x2_target{self.j + 1}'
+        stop = self.entry['entry_mid'] if self.first_hit else self.sl
+        return 'x2_stop' if x <= stop else None
+
+
+class X5Structure(_Exit):
+    """Exit when a 1-minute MID close is below the last confirmed 1-minute swing low that appeared AFTER entry; before
+    one exists, a 1.5-ATR stop (exit 7's). chart1_at -> the 1m MID row with swing_low (engine/underlying.structure on
+    the close-only series, h = l = c); atr_at as X7."""
+    name = 'X5'
+
+    def __init__(self, chart1_at, atr_at, k_sl=1.5):
+        super().__init__(chart1_at)
+        self.atr_at, self.k_sl = atr_at, k_sl
+
+    def start(self, info):
+        super().start(info)
+        a = self.atr_at(info['session'], (9 * 60 + 30 + info['m'] + 1) * 60_000)
+        m0 = info['entry_mid']
+        self.sl = m0 - self.k_sl * (a if a and a == a else 0.1 * m0)
+        self.sw0 = (self.e0 or {}).get('swing_low')
+        self.level = None
+
+    def check(self, v):
+        b = self.bar(v)
+        if b is None:
+            return None
+        sw = b.get('swing_low')
+        if sw is not None and sw == sw and not (self.sw0 is not None and self.sw0 == self.sw0 and sw == self.sw0):
+            self.level = sw
+        if self.level is not None and b.get('c') < self.level:
+            return 'x5_structure'
+        x = v['mid']
+        return 'x5_stop' if x == x and x <= self.sl else None
+
+
+class X6HTFLoss(_Exit):
+    """Exit when the highest entry timeframe's state (c > E9 > E21 on its last completed bar) is no longer +1;
+    chart_at here returns that HTF table's row."""
+    name = 'X6'
+
+    def check(self, v):
+        b = self.bar(v)
+        if b is None:
+            return None
+        return None if b['c'] > b['ema9'] > b['ema21'] else 'x6_htf_loss'
+
+
+class X9Trail(_Exit):
+    """Stop = running peak MID since entry - k x current ATR (updated each bar)."""
+    name = 'X9'
+
+    def __init__(self, chart_at, atr_at, k=2.0):
+        super().__init__(chart_at)
+        self.atr_at, self.k = atr_at, k
+
+    def start(self, info):
+        super().start(info)
+        self.peak = info['entry_mid']
+
+    def check(self, v):
+        x = v['mid']
+        if x != x:
+            return None
+        self.peak = max(self.peak, x)
+        a = self.atr_at(v['session'], v['now_ms'])
+        a = a if a and a == a else 0.1 * self.entry['entry_mid']
+        return 'x9_trail' if x <= self.peak - self.k * a else None
+
+
+class X10Combo(_Exit):
+    """Initial stop entry - 1.5 ATR; once MID >= entry + 1 ATR (entry ATR), switch to exit 3 (close < E9 of the trigger
+    TF); exit 6 (HTF alignment loss) always active when htf_at is given."""
+    name = 'X10'
+
+    def __init__(self, chart_at, atr_at, htf_at=None):
+        super().__init__(chart_at)
+        self.atr_at, self.htf_at = atr_at, htf_at
+
+    def start(self, info):
+        super().start(info)
+        a = self.atr_at(info['session'], (9 * 60 + 30 + info['m'] + 1) * 60_000)
+        m0 = info['entry_mid']
+        self.a = a if a and a == a else 0.1 * m0
+        self.sl, self.arm = m0 - 1.5 * self.a, m0 + 1.0 * self.a
+        self.armed = False
+
+    def check(self, v):
+        x = v['mid']
+        if self.htf_at is not None:
+            h = self.htf_at(v['session'], v['now_ms'])
+            if h is not None and not (h['c'] > h['ema9'] > h['ema21']):
+                return 'x10_htf_loss'
+        if x == x and x >= self.arm:
+            self.armed = True
+        if self.armed:
+            b = self.bar(v)
+            if b and b['known_ms'] > self.e0['known_ms'] and b['c'] < b['ema9']:
+                return 'x10_below9'
+            return None
+        return 'x10_stop' if x == x and x <= self.sl else None
