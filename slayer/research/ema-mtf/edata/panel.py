@@ -264,14 +264,33 @@ def run_block(block, roots=ROOTS):
         plan = make_plan(root, block)
         print(root, block, 'plan:', len(plan['use']), 'expirations used,', len(plan['hist']), 'history +', len(plan['eval']),
               'eval sessions', flush=True)
-    for root in roots:
+    # pass 1: the sessions with 1-minute tiers (eval + the 6 sessions before), every root; pass 2: coarse warm-up
+    def fine_day(plan, D):
+        return any(t in ('use', 'full') for t in plan['tiers'][D].values())
+
+    order = []
+    for pas in (1, 2):
+        for root in roots:
+            plan = make_plan(root, block)
+            for D in plan['hist'] + plan['eval']:
+                if fine_day(plan, D) == (pas == 1):
+                    order.append((root, D))
+    und_done = set()
+    for root, D in order:
         plan = make_plan(root, block)
         kind, sym = UND[root]
-        for D in plan['hist'] + plan['eval']:
+        if root not in und_done:
+            # underlying bars of every session first (cheap; underlying EMAs and RVOL need the history)
+            und_done.add(root)
+            for d in plan['hist'] + plan['eval']:
+                try:
+                    fetch_und(sym, kind, d)
+                    if root == 'SPXW':
+                        fetch_und('SPY', 'stock', d)
+                except Exception as ex:  # noqa: BLE001
+                    print(root, d, 'UND FAILED', repr(ex)[:200], flush=True)
+        if True:
             try:
-                fetch_und(sym, kind, D)
-                if root == 'SPXW':
-                    fetch_und('SPY', 'stock', D)
                 man = fetch_root_day(root, D, plan, D in plan['eval'])
                 if man:
                     print(root, D, 'eval' if man['eval'] else 'hist', f"{man['bytes']/1e6:.2f} MB", man['rows'], f"{man['seconds']}s",

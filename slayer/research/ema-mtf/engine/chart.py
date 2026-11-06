@@ -81,6 +81,8 @@ class ContractChart:
         if not len(d):
             return pd.DataFrame(columns=['session', 'm', 'c'])
         if s == 'mid':
+            # the close of a tf bar is the snapshot at its END only (an invalid end quote -> no bar)
+            d = d[((d.m + 1) % tf == 0) | (d.m == 389)]
             x = d[['session', 'm', 'mid', 'res']].rename(columns={'mid': 'c'})
             x = x[x.res <= tf] if tf < 15 else x
             if tf < 15:
