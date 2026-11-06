@@ -1,12 +1,13 @@
 /*
   WHEN THE WHOLE BOOK'S FLIP IS FINAL (audit 2026-11-06, item 5) — data/flipLevel.ts legSet.
-  The book reads its first BOOK_LISTINGS (40) listings date by date; a name with more keeps the rest on the whole book's
-  rows, carried flat in the flip. The All flip waited on EVERY listing: SPX lists 54 (the Nov 5 close: 2026-11-06 …
+  The book reads its first BOOK_LISTINGS listings date by date (40 then; 64 since finding 2 of the same audit, so SPX's
+  54–55 are all read); a name with more keeps the rest on the whole book's rows, carried flat in the flip. The All flip waited on EVERY listing: SPX lists 54 (the Nov 5 close: 2026-11-06 …
   2031-12-19), so its All flip never went final and every page printed "…" for it (the live check, run on that book,
   did not settle in 15 minutes). Now it is final once every listing the book reads is in — and never before: one of
   those still loading keeps it provisional (no early stop). A listed date whose strikes came back empty is in.
 
-  A synthetic name with 45 listings, its first 40 loaded; one of them taken out; one of them listed empty.
+  A synthetic name with BOOK_LISTINGS + 5 listings, its first BOOK_LISTINGS loaded; one of them taken out; one of them
+  listed empty.
   Run: npx tsx scripts/flip-complete-proof.ts
 */
 import { cache, emptyDates, BOOK_LISTINGS } from '../src/data/book/store';
@@ -37,12 +38,13 @@ globalThis.Date = Pinned as DateConstructor;
 
 const T = 'ZZZ';
 const S = 100;
-/* 45 listings: dailies, then fridays, then far monthlies */
+/* BOOK_LISTINGS + 5 listings: dailies, then fridays */
+const L = BOOK_LISTINGS;
 const dates: string[] = [];
-for (let d = new RealDate(Date.UTC(2026, 10, 5)); dates.length < 45; d = new RealDate(d.getTime() + 86_400_000)) {
+for (let d = new RealDate(Date.UTC(2026, 10, 5)); dates.length < L + 5; d = new RealDate(d.getTime() + 86_400_000)) {
   const iso = d.toISOString().slice(0, 10);
   const wd = d.getUTCDay();
-  if (wd === 0 || wd === 6 || iso === '2026-11-26') continue;
+  if (wd === 0 || wd === 6 || iso === '2026-11-26' || iso === '2026-12-25' || iso === '2027-01-01') continue;
   if (dates.length > 25 && wd !== 5) continue;
   dates.push(iso);
 }
@@ -72,17 +74,17 @@ function book(loaded: (d: string, i: number) => boolean, empty: string[] = []) {
   return levelFlip(snap, all, at);
 }
 
-check(`the book reads ${BOOK_LISTINGS} listings; this name lists ${dates.length}`, BOOK_LISTINGS === 40 && dates.length === 45);
-const first40 = book((_, i) => i < 40);
-check(`the first 40 listings in, the last 5 on the whole book's rows: the All flip is final (it waited on all 45 — never) — flip ${first40.flip?.toFixed(3) ?? 'none'}`, first40.complete === true);
+check(`the book reads ${BOOK_LISTINGS} listings (every one of SPX's 55); this name lists ${dates.length}`, BOOK_LISTINGS === 64 && dates.length === L + 5);
+const first40 = book((_, i) => i < L);
+check(`the first ${L} listings in, the last 5 on the whole book's rows: the All flip is final (it waited on all ${L + 5} — never) — flip ${first40.flip?.toFixed(3) ?? 'none'}`, first40.complete === true);
 const allIn = book(() => true);
-check(`every listing in: final, and the flip within 0.1% of spot of the 40-listing one (${allIn.flip?.toFixed(3)}): the far listings carried flat move it little`, allIn.complete && first40.flip != null && allIn.flip != null && Math.abs(allIn.flip - first40.flip) < 0.001 * S);
-const gap = book((_, i) => i < 40 && i !== 17);
-check(`one of the first 40 still loading (${dates[17]}): provisional — no early stop`, gap.complete === false);
-const front = book((_, i) => i > 0 && i < 40);
+check(`every listing in: final, and the flip within 0.1% of spot of the ${L}-listing one (${allIn.flip?.toFixed(3)}): the far listings carried flat move it little`, allIn.complete && first40.flip != null && allIn.flip != null && Math.abs(allIn.flip - first40.flip) < 0.001 * S);
+const gap = book((_, i) => i < L && i !== 17);
+check(`one of the first ${L} still loading (${dates[17]}): provisional — no early stop`, gap.complete === false);
+const front = book((_, i) => i > 0 && i < L);
 check(`the front date still loading: provisional`, front.complete === false);
-const listedEmpty = book((_, i) => i < 40 && i !== 17, [dates[17]]);
-check(`one of the first 40 listed but empty (its strikes came back none): final`, listedEmpty.complete === true);
+const listedEmpty = book((_, i) => i < L && i !== 17, [dates[17]]);
+check(`one of the first ${L} listed but empty (its strikes came back none): final`, listedEmpty.complete === true);
 
 globalThis.Date = RealDate;
 if (fail) {

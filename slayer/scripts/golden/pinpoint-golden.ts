@@ -76,14 +76,17 @@ const GOLD = {
   SPY: {
     front: '2026-10-29',
     today: { net: 107_689_622.85, flip: 771.1081929770314, call: 775, put: 758, supreme: 758 },
-    /* the "all" flips moved by 2e-6 and 5e-5 when the holiday list grew past 2027 (2028 LEAPS count 2028's holidays) */
+    /* the "all" flips moved by 2e-6 and 5e-5 when the holiday list grew past 2027 (2028 LEAPS count 2028's holidays).
+       2026-11-06 (audit finding 2, every date on its own contracts' vols): NVDA All 209.013463 → 208.989522, nearer the
+       independent re-pricing below (208.998894: 0.0146 → 0.0094 off) — its dates read but under 0.5% of the gamma now
+       take their contracts' own vols, not the at-the-money vol. SPY's are unchanged. */
     all: { net: -3_576_479_393.82, flip: 775.549780158155, call: 800, put: 750, supreme: 750 },
     straddle: 5.09247441828498,
   },
   NVDA: {
     front: '2026-10-30',
     today: { net: 280_962_174.09, flip: 209.49980850770302, call: 217.5, put: 210, supreme: 217.5 },
-    all: { net: 545_826_799.8, flip: 209.01346307467432, call: 220, put: 200, supreme: 220 },
+    all: { net: 545_826_799.8, flip: 208.98952218276756, call: 220, put: 200, supreme: 220 },
     straddle: 4.72607032383704,
   },
 } as const;

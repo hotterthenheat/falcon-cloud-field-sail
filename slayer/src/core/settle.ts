@@ -16,7 +16,7 @@
 
 import { sessionBefore, isoDate } from './calendar';
 import { nyInstant } from './session';
-import { nyIsoDate, nyMinutes, SESSION_LENGTH_MIN, SESSION_OPEN_MIN } from './nyTime';
+import { nyIsoDate, nyMinutesExact, SESSION_LENGTH_MIN, SESSION_OPEN_MIN } from './nyTime';
 import { tradingMinutes, TRADING_DAYS } from './tradingYear';
 import { usableMid } from './volClock';
 import { impliedVolFromPrice } from './greeks';
@@ -76,11 +76,13 @@ export function amTradingYears(expiry: string, nowMs: number): number | null {
   return Math.max(FLOOR_MIN, left) / (SESSION_LENGTH_MIN * TRADING_DAYS);
 }
 
-/** Calendar years to an AM contract's 09:30 settlement (five minutes at the least) — the clock its calendar vol is on */
+/** Calendar years to an AM contract's 09:30 settlement (five minutes at the least) — the clock its calendar vol is on:
+    New York's wall clock (days × 1440 + the minutes of the day), continuous to the millisecond (core/volClock.ts
+    calendarYears) */
 export function amCalendarYears(expiry: string, nowMs: number): number {
   const today = nyIsoDate(nowMs);
   const days = Math.round((Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
-  const mins = days * 1440 + (SESSION_OPEN_MIN - nyMinutes(nowMs));
+  const mins = days * 1440 + (SESSION_OPEN_MIN - nyMinutesExact(nowMs));
   return Math.max(FLOOR_MIN, mins) / (365 * 24 * 60);
 }
 

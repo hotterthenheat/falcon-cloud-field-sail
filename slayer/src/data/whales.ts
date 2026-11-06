@@ -432,6 +432,11 @@ export interface UwContract {
   no_side_volume?: string | number;
   last_tape_time?: string;
   updated_at?: string;
+  /** When the NBBO above was taken (epoch ms): the instant the proxy's hub took the answer from the vendor, else when it
+      reached this page — set by whalesOptionContractsPaged. The vendor's nbbo_bid / nbbo_ask are its live NBBO at the
+      moment it answered (after the bell they read 0), not the quote at the last trade: `last_tape_time` is the last
+      TRADE, and a contract quoted two-sided that has not traded for twenty minutes still has a quote of this minute. */
+  quoted_at?: number;
 }
 
 const enc = (ticker: string) => encodeURIComponent(ticker);
@@ -503,10 +508,11 @@ export const whalesDailyLong = (ticker: string) => uw<UwDaily[]>(`/stock/${enc(t
 /* a walk in flight or finished within PAGED_REUSE_MS is shared (each caller gets its own copy); failures are not kept */
 const PAGED_REUSE_MS = 20_000;
 const pagedAsked = new Map<string, { at: number; p: Promise<UwContract[] | null> }>();
-export function whalesOptionContractsPaged(ticker: string, expiry?: string, priority = false, maxPages = 60): Promise<UwContract[] | null> {
+/* `low`: the browser's low lane (whales.ts takeSlot) — a read no row waits on runs only when no ordinary ask is waiting */
+export function whalesOptionContractsPaged(ticker: string, expiry?: string, priority = false, maxPages = 60, low = false): Promise<UwContract[] | null> {
   const key = `${ticker.toUpperCase()}|${expiry ?? ''}|${maxPages}`;
   const hit = pagedAsked.get(key);
-  const entry = hit && Date.now() - hit.at < PAGED_REUSE_MS ? hit : { at: Date.now(), p: optionContractsWalk(ticker, expiry, priority, maxPages) };
+  const entry = hit && Date.now() - hit.at < PAGED_REUSE_MS ? hit : { at: Date.now(), p: optionContractsWalk(ticker, expiry, priority, maxPages, low) };
   if (entry !== hit) {
     pagedAsked.set(key, entry);
     entry.p.then(
@@ -520,15 +526,20 @@ export function whalesOptionContractsPaged(ticker: string, expiry?: string, prio
   }
   return entry.p.then(rows => (Array.isArray(rows) ? rows.map(r => ({ ...r })) : rows));
 }
-async function optionContractsWalk(ticker: string, expiry?: string, priority = false, maxPages = 60): Promise<UwContract[] | null> {
+async function optionContractsWalk(ticker: string, expiry?: string, priority = false, maxPages = 60, low = false): Promise<UwContract[] | null> {
   const base = `/stock/${enc(ticker)}/option-contracts?limit=500${expiry ? `&expiry=${encodeURIComponent(expiry)}` : ''}`;
+  /* each row carries when its NBBO was taken (UwContract.quoted_at): the hub's instant, else its arrival here */
+  const stamped = (got: UwAnswer): UwContract[] => {
+    const at = got.at && got.at > 0 ? got.at : Date.now();
+    return (got.data as UwContract[]).map(r => (r && typeof r === 'object' ? { ...r, quoted_at: at } : r));
+  };
   /** One walk of `path`, every page until a short one; null on a failed page or at `maxPages` */
   const walk = async (path: string, from: UwContract[] = []): Promise<{ rows: UwContract[] } | null> => {
     const out: UwContract[] = [...from];
     for (let page = from.length ? 1 : 0; page < maxPages; page++) {
-      const got = await uwCall(`${path}&page=${page}`, priority);
+      const got = await uwCall(`${path}&page=${page}`, priority, low);
       if (got.error || !Array.isArray(got.data)) return null;
-      const rows = got.data as UwContract[];
+      const rows = stamped(got);
       out.push(...rows);
       if (rows.length < 500) return { rows: out };
     }
@@ -542,9 +553,13 @@ async function optionContractsWalk(ticker: string, expiry?: string, priority = f
     }
     return [...seen.values()];
   };
-  const first = await uwCall(`${base}&page=0`, priority);
+  const first = await uwCall(`${base}&page=0`, priority, low);
+  /* the vendor REFUSING the date (a 4xx other than the rate limit: it will not serve these contracts) is an answer — the
+     date is read with no contracts, so a flip waiting on every date's contracts (book/scale.ts ownIvDates) is not left
+     provisional for good; a failure (5xx, the network, a timeout) is asked again */
+  if (first.error && first.status >= 402 && first.status < 500 && first.status !== 429 && first.status !== 408) return [];
   if (first.error || !Array.isArray(first.data)) return null;
-  const head = first.data as UwContract[];
+  const head = stamped(first);
   if (head.length < 500) return byContract([head]);
   if (!expiry) {
     const all = await walk(base, head);

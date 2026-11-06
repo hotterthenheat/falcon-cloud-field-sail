@@ -7,7 +7,7 @@ import { bookToday, isoDate } from '../../core/calendar';
 import { type MarketPhase } from '../dayChange';
 import { type Candle, type GexSnapshot, type StrikeNode } from '../../types/market';
 import { uwCall } from '../whales';
-import { ownIvDates, type LiveGamma } from './scale';
+import { bigIvDates, ownIvDates, type LiveGamma } from './scale';
 import { sessionAt } from '../../core/session';
 import { keepBook } from './kept';
 
@@ -236,13 +236,22 @@ export function peekRecordAsked(ticker: string, date: string): boolean {
   return recordAsked.has(`${e.ticker}|${date}`) || !!e.byDate[date]?.length || !!(e.keptAt ? e.keptEmpty?.includes(date) : emptyDates.get(e.ticker)?.has(date)) || (e.status === 'live' && !!e.expiries.length && !e.expiries.some(x => x.date === date));
 }
 
-/** The own-vol dates (ownIvDates) whose contracts are not read yet */
+/** The own-vol dates (ownIvDates: every live date) whose contracts are not read yet — the big dates first (bigIvDates),
+    then the rest nearest first */
 export function horizonFactsMissing(entry: Entry): string[] {
   const facts = entry.factsDates ?? new Set<string>();
   const floor = isoDate(bookToday());
   const live = Object.keys(entry.byDate).filter(d => d >= floor && entry.byDate[d]?.length).sort();
-  const own = ownIvDates(entry.byDate, live, live[0]);
-  return live.filter(d => own.has(d) && !facts.has(d));
+  const own = ownIvDates(entry.byDate, live, live[0], !!entry.wantFull);
+  const big = bigIvDates(entry.byDate, live, live[0]);
+  const rest = live.filter(d => !big.includes(d));
+  return [...big, ...rest].filter(d => own.has(d) && !facts.has(d));
+}
+/** The dates whose contracts are read in the ordinary lane (every other date's wait in the low lane) */
+export function factsFirst(entry: Entry): Set<string> {
+  const floor = isoDate(bookToday());
+  const live = Object.keys(entry.byDate).filter(d => d >= floor && entry.byDate[d]?.length).sort();
+  return new Set(bigIvDates(entry.byDate, live, live[0]));
 }
 
 /** The session on record's date (data/bookWindow.ts recordDay, kept here without the import cycle): today's from the
@@ -254,11 +263,14 @@ export function recordIso(): string {
 
 /** Every live listed date carries its own strikes */
 /** How many listings, nearest first, a full book reads date by date (each its own chain): the rest of a name with more
-    (SPX lists 54) stays on the whole book's rows, carried flat in the flip (data/flipLevel.ts legSet) */
-export const BOOK_LISTINGS = 40;
+    stays on the whole book's rows, carried flat in the flip (data/flipLevel.ts legSet). It was 40, and SPX lists 54–55:
+    its last fifteen dates (2027 onward, $0.5–0.9B of gamma at the flip each) were carried flat (audit 2026-11-06,
+    finding 2). A far date's gamma comes off the one walk of every expiry the book already makes (liveGammaAll), so
+    reading every listing costs no request of its own; its contracts are read in the low lane (fillExpiryFacts). */
+export const BOOK_LISTINGS = 64;
 export function datesComplete(entry: Entry): boolean {
   const today = isoDate(bookToday());
-  /* the same forty listings the full book pulls (loadExpiries) — the day that just settled too, while the vendor still
+  /* the same BOOK_LISTINGS listings the full book pulls (loadExpiries) — the day that just settled too, while the vendor still
      lists it: its chain is what liveAll takes off the whole book's total, so without it a Board name's "All expiries"
      net carried the settled contracts (QQQ −$10.6B on the Board against −$9.3B on the Map after the bell) */
   const live = entry.expiries.slice(0, BOOK_LISTINGS);

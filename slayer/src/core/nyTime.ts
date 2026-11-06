@@ -60,6 +60,15 @@ export const nyMinutes = (at?: At): number => {
   return p.hour * 60 + p.minute;
 };
 
+/** The same, continuous: minutes since New York's midnight with the seconds (and milliseconds) as a fraction — 570.5 is
+    09:30:30. The clock every time to expiry runs on (core/tradingYear.ts, core/volClock.ts calendarYears, core/settle.ts):
+    New York's offset is whole hours, so the fraction of the UTC minute is New York's. */
+export const nyMinutesExact = (at?: At): number => {
+  const t = ms(at);
+  const p = nyParts(t);
+  return p.hour * 60 + p.minute + (t - Math.floor(t / 60_000) * 60_000) / 60_000;
+};
+
 /** New York's clock, 24-hour: "14:03", "14:03:42" with seconds, "14:03 ET" with the zone. */
 export function nyClock(at?: At, opts: { seconds?: boolean; zone?: boolean } = {}): string {
   const p = nyParts(at);

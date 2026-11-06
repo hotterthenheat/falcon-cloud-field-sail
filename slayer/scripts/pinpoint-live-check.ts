@@ -25,9 +25,16 @@
 
   It reads the vendor one request at a time (the key's 3 slots are shared). SPX's whole chain is ~60 reads of
   option-contracts and ~40 of spot-exposures: a few minutes. Exit code 0 when every check passes, 1 otherwise.
-  Nothing is written to disk (PINPOINT_CACHE_DIR=dir keeps the answers there, to run a check again on the same ones). ThetaData is not asked (Pinpoint's greeks are Unusual Whales'): the price comes from the
+  Nothing is written to disk (PINPOINT_CACHE_DIR=dir keeps the answers there, to run a check again on the same ones;
+  with PINPOINT_CACHE_MODE=record the run itself reads live and keeps each path's first answer and its start instant, and a
+  later run on that directory replays them with the clock pinned there).
+  The GEX hand sums take the very rows each of the page's chains was laid from (by each strike's own pricing stamp, out
+  of every answer the run saw), and the flip's own-vol re-pricing takes the page's own contract answers where it read
+  them — the same snapshot, never a later read (audit 2026-11-06, finding 3). It prints the quote coverage: of the legs
+  with a valid two-sided quote, the share the page prices at that quote's own vol (finding 2). ThetaData is not asked (Pinpoint's greeks are Unusual Whales'): the price comes from the
   vendor's own bars, as it does when the terminal is down.
 */
+import * as fs from 'node:fs';
 import { EARLY_CLOSE_DATES, HOLIDAY_DATES } from '../shared/marketCalendar.mjs';
 import { phiCdf } from './golden/pinpointRaw';
 
@@ -69,13 +76,84 @@ async function vendor(path: string): Promise<{ status: number; body: string }> {
   }
   return { status: 503, body: JSON.stringify({ error: 'vendor busy' }) };
 }
+/* Every spot-exposures/expiry-strike row any answer carried, by (expiry, strike, the minute the vendor priced it): the page
+   re-reads the rows every minute and lays each date's onto its chain when its walk lands, so the LAST answer of a path is
+   not the row a chain was laid from (SPY 09:40: the hand sums −0.0009B off). The hand sums take, for every strike of every
+   date the page holds, the row whose own stamp is the one the page's node carries (gexAt) — the same rows, the same
+   snapshot — and add them up here. */
+const rowsSeen = new Map<string, Row>();
+const rowKey = (expiry: string, strike: number, at: number) => `${expiry}|${strike}|${at}`;
+/* when each date's rows (their pricing minute and price) reached the page, and when each date's contracts did: a quote is
+   solved here at the price and minute of the rows the page held when that quote arrived — the clock the page solved it on
+   (book/scale.ts paintLegs pricedClockOf) — not at rows read minutes later (the 11:23 run: SPY's front date solved at a
+   price a few minutes on, and only 15% of the quoted gamma matched the page's vols) */
+const rowsArrived = new Map<string, { at: number; px: number; arrived: number }[]>();
+const contractsArrived = new Map<string, number>();
+function keepRows(data: unknown): void {
+  if (!Array.isArray(data)) return;
+  const arrived = Date.now();
+  const seen = new Set<string>();
+  for (const r of data as Row[]) {
+    const at = Date.parse(String(r.time ?? ''));
+    const k = parseFloat(String(r.strike ?? ''));
+    if (!Number.isFinite(at) || !(k > 0)) continue;
+    rowsSeen.set(rowKey(String(r.expiry), k, at), r);
+    const name = String(r.ticker ?? '').toUpperCase();
+    const tag = `${name}|${r.expiry}|${at}`;
+    if (seen.has(tag)) continue;
+    seen.add(tag);
+    const list = rowsArrived.get(`${name}|${r.expiry}`) ?? [];
+    list.push({ at, px: parseFloat(String(r.price ?? '')) || 0, arrived });
+    rowsArrived.set(`${name}|${r.expiry}`, list);
+  }
+}
+/** The stamp of the newest row on the page's chain for a date when its contracts landed */
+const quoteStamp = new Map<string, number>();
+/** The rows' minute and price a date's quotes are solved at: the newest row the page held when its contracts arrived (its
+    stamp read off the page's chain as they landed, its price off the vendor's own row of that minute); else the newest
+    row that had arrived by then */
+function quoteClock(ticker: string, date: string): { at: number; px: number } | null {
+  const expiry = `${ticker.toUpperCase()}|${date}`;
+  const q = contractsArrived.get(expiry);
+  const list = rowsArrived.get(expiry);
+  if (q == null || !list?.length) return null;
+  const stamp = quoteStamp.get(expiry);
+  const exact = stamp != null ? list.find(v => v.at === stamp) : undefined;
+  if (exact && exact.px > 0) return { at: exact.at, px: exact.px };
+  let best: { at: number; px: number; arrived: number } | null = null;
+  for (const v of list) if (v.arrived <= q && (!best || v.at > best.at)) best = v;
+  return best && best.px > 0 ? { at: best.at, px: best.px } : null;
+}
 /* PINPOINT_CACHE_DIR (optional, for re-running a check on the same answers): each answer kept under that directory */
 const CACHE = process.env.PINPOINT_CACHE_DIR;
+/* PINPOINT_CACHE_MODE=record: every answer is read live (the page's minute re-reads included) and each path's first answer
+   is kept, with the instant the run started (clock.txt); a later run on the same directory without it replays those
+   answers at that instant (the clock pinned there and running on), asking the vendor nothing it already holds */
+const RECORD = process.env.PINPOINT_CACHE_MODE === 'record';
+if (CACHE) {
+  const { existsSync, mkdirSync, readFileSync, writeFileSync } = await import('node:fs');
+  const clockFile = `${CACHE}/clock.txt`;
+  if (RECORD) {
+    mkdirSync(CACHE, { recursive: true });
+    if (!existsSync(clockFile)) writeFileSync(clockFile, new Date().toISOString());
+  } else if (existsSync(clockFile)) {
+    const { freezeClock } = await import('./golden/uwFixtures');
+    freezeClock(readFileSync(clockFile, 'utf8').trim());
+  }
+}
 async function cached(path: string): Promise<{ status: number; body: string }> {
   if (!CACHE) return vendor(path);
   const { createHash } = await import('node:crypto');
   const { existsSync, mkdirSync, readFileSync, writeFileSync } = await import('node:fs');
   const file = `${CACHE}/${createHash('sha1').update(path).digest('hex')}.json`;
+  if (RECORD) {
+    const got = await vendor(path);
+    if (got.status === 200 && !existsSync(file)) {
+      mkdirSync(CACHE, { recursive: true });
+      writeFileSync(file, JSON.stringify({ ...got, path }));
+    }
+    return got;
+  }
   if (existsSync(file)) return JSON.parse(readFileSync(file, 'utf8')) as { status: number; body: string };
   const got = await vendor(path);
   if (got.status === 200) {
@@ -83,6 +161,24 @@ async function cached(path: string): Promise<{ status: number; body: string }> {
     writeFileSync(file, JSON.stringify(got));
   }
   return got;
+}
+/** A replay's recorded answers by path (those recorded with their path), read once; empty outside a replay */
+let recorded: Map<string, unknown> | null = null;
+function recordedAnswers(): Map<string, unknown> {
+  if (recorded) return recorded;
+  recorded = new Map();
+  if (!CACHE || RECORD) return recorded;
+  if (!fs.existsSync(CACHE)) return recorded;
+  for (const f of fs.readdirSync(CACHE)) {
+    if (!f.endsWith('.json')) continue;
+    try {
+      const saved = JSON.parse(fs.readFileSync(`${CACHE}/${f}`, 'utf8')) as { status: number; body: string; path?: string };
+      if (saved.path && saved.status === 200 && /\/option-contracts\?/.test(saved.path)) recorded.set(saved.path, dataOf(saved.body));
+    } catch {
+      /* not an answer */
+    }
+  }
+  return recorded;
 }
 function queued(path: string): Promise<{ status: number; body: string }> {
   const run = chain.then(() => cached(path));
@@ -105,7 +201,25 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   inFlight++;
   try {
     const got = await queued(m[1]);
-    if (got.status === 200) raw.set(m[1], dataOf(got.body));
+    if (got.status === 200) {
+      const data = dataOf(got.body);
+      raw.set(m[1], data);
+      if (/\/spot-exposures\/expiry-strike\?/.test(m[1])) keepRows(data);
+      const cx = /^\/stock\/([^/]+)\/option-contracts\?.*expiry=(\d{4}-\d{2}-\d{2})/.exec(m[1]);
+      if (cx) {
+        const key = `${decodeURIComponent(cx[1]).toUpperCase()}|${cx[2]}`;
+        contractsArrived.set(key, Date.now());
+        /* the pricing stamp of the chain the page held for the date as its quotes landed (the newest row's minute) */
+        try {
+          const chain = book.peekEntry(decodeURIComponent(cx[1]))?.byDate[cx[2]] ?? [];
+          let at = 0;
+          for (const nn of chain) if (nn.gexAt != null && nn.gexAt >= at) at = nn.gexAt;
+          if (at > 0) quoteStamp.set(key, at);
+        } catch {
+          /* the app not loaded yet */
+        }
+      }
+    }
     return new Response(got.body, { status: got.status, headers: { 'content-type': 'application/json' } });
   } finally {
     inFlight--;
@@ -130,7 +244,9 @@ const EARLY = new Set<string>(EARLY_CLOSE_DATES as string[]);
 const nyFmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
 function ny(ms: number): { iso: string; min: number } {
   const p = Object.fromEntries(nyFmt.formatToParts(new Date(ms)).map(x => [x.type, x.value]));
-  return { iso: `${p.year}-${p.month}-${p.day}`, min: Number(p.hour) * 60 + Number(p.minute) + Number(p.second) / 60 };
+  /* to the millisecond: Intl names whole seconds, and the page's clock is continuous (core/tradingYear.ts) — at 11:23:50.897
+     the dropped 0.897 s read as 1e-4 of the front date's fraction */
+  return { iso: `${p.year}-${p.month}-${p.day}`, min: Number(p.hour) * 60 + Number(p.minute) + Number(p.second) / 60 + (ms - Math.floor(ms / 1000) * 1000) / 60_000 };
 }
 const isSession = (iso: string) => {
   const d = new Date(`${iso}T12:00:00Z`).getUTCDay();
@@ -294,13 +410,45 @@ for (const t of NAMES) {
     }
   }
 
-  /* 2. GEX hand sums off the raw rows */
-  const rows: Row[] = [];
-  for (const [p, d] of raw) if (p.startsWith(`/stock/${t}/spot-exposures/expiry-strike?limit=500&page=`) && Array.isArray(d)) rows.push(...(d as Row[]));
+  /* 2. GEX hand sums off the raw rows — THE rows the page's chains were laid from (rowsSeen, by each node's own stamp) */
   const floor = e.expiries.map(x => x.date).filter(d => d >= front).sort()[0] ?? front;
-  /* the contracts of every live date, read here (the page reads only its own-vol dates) */
+  const snapRows = book.snapshotFor(t, 'ALL', 'full')!;
+  const rows: Row[] = [];
+  let rowsMissing = 0;
+  let rowsUsed = 0;
+  const pageDates = Object.keys(snapRows.uwByDate ?? {}).filter(d => d >= floor && snapRows.uwByDate![d]?.length);
+  for (const d of pageDates)
+    for (const node of snapRows.uwByDate![d]) {
+      if (node.gexAt == null) continue;
+      const r = rowsSeen.get(rowKey(d, node.strike, node.gexAt));
+      if (r) {
+        rows.push(r);
+        rowsUsed++;
+      } else rowsMissing++;
+    }
+  /* a listing the page holds no chain for (past BOOK_LISTINGS) is the newest answer's rows, as the whole book carries it */
+  {
+    const held = new Set(pageDates);
+    const latest = new Map<string, Row>();
+    for (const [p, d] of raw) if (p.startsWith(`/stock/${t}/spot-exposures/expiry-strike?limit=500&page=`) && Array.isArray(d)) for (const r of d as Row[]) if (!held.has(String(r.expiry))) latest.set(`${r.expiry}|${r.strike}`, r);
+    rows.push(...latest.values());
+  }
+  check(`${t}: the hand sums read the very rows the page's chains were laid from (${rowsUsed} rows over ${pageDates.length} dates, by each strike's own pricing stamp; ${rowsMissing} not among the answers read)`, rowsMissing === 0 && rowsUsed > 0);
+  /* the contracts of every live date: the page's own answers where it read the date (the same quotes it solved), else read
+     here */
   const contracts = new Map<string, Row[]>();
+  let reused = 0;
   for (const x of e.expiries.map(y => y.date).filter(d => d >= floor)) {
+    const bySym = new Map<string, Row>();
+    const mine = (p: string) => p.startsWith(`/stock/${t}/option-contracts?limit=500&expiry=${x}&`);
+    /* a replay: every recorded answer of the date's contracts (the recording run's page read every date) */
+    for (const [p, d] of recordedAnswers()) if (mine(p) && Array.isArray(d)) for (const r of d as Row[]) bySym.set(String(r.option_symbol), r);
+    for (const [p, d] of raw) if (mine(p) && Array.isArray(d)) for (const r of d as Row[]) bySym.set(String(r.option_symbol), r);
+    if (bySym.size) {
+      reused++;
+      contracts.set(x, [...bySym.values()]);
+      continue;
+    }
     const list: Row[] = [];
     for (let page = 0; page < 40; page++) {
       const got = (await own(`/stock/${t}/option-contracts?limit=500&expiry=${x}&page=${page}`)) as Row[] | null;
@@ -310,6 +458,7 @@ for (const t of NAMES) {
     }
     contracts.set(x, list);
   }
+  console.log(`     contracts: ${reused} of ${contracts.size} dates are the page's own answers (the quotes it solved); the rest read here`);
   /* settled AM contracts' share of each row (an index's monthly from 09:30 of its date), from the contracts' own gamma × OI */
   const amCut = new Map<string, number>();
   for (const [x, list] of contracts) {
@@ -356,7 +505,45 @@ for (const t of NAMES) {
 
   /* 3. the flip, every leg at its own contract's vol, each root on its own clock */
   const vols = new Map<string, number>();
-  const ois = new Map<string, { am: number; pm: number; amIv: number; pmIv: number }>();
+  /* PARITY SPOT. A cash index's rows carry its print at the row's minute, the quotes their own instant: for a chain under
+     seven calendar days the price the quotes stand at is their parity forward's, S* = F·e^(−rT), F the median of
+     K + e^(rT)·(C_mid − P_mid) over the four strikes nearest the money with both sides quoted (spread within 25% of the
+     mid) — the page's rule (core/parity.ts impliedBookSpot), written here again; within 2% of the print, else the print.
+     The SPX 0DTE solved at the print ran 8% under the vols its own quotes give (11:23 run). An equity stays on the print. */
+  const parityMemo = new Map<string, number>();
+  const INDEX = new Set(['SPX', 'NDX', 'RUT', 'XSP', 'VIX']);
+  function paritySpot(x: string, list: Row[], px: number, at: number): number {
+    const hit = parityMemo.get(x);
+    if (hit != null) return hit;
+    let out = px;
+    const tc = tCal(at, x, false);
+    if (INDEX.has(t) && tc < 7 / 365) {
+      const by = new Map<number, { C?: number; P?: number }>();
+      for (const r of list) {
+        const c = tail(String(r.option_symbol));
+        if (AM_ROOTS[t]?.includes(c.root)) continue;
+        const bid = n(r.nbbo_bid);
+        const ask = n(r.nbbo_ask);
+        const m = (bid + ask) / 2;
+        if (!(bid > 0) || !(ask >= bid) || (ask - bid) / m > 0.25) continue;
+        const cur = by.get(c.k) ?? {};
+        cur[c.right as 'C' | 'P'] = m;
+        by.set(c.k, cur);
+      }
+      const grow = Math.exp(R * tc);
+      const near = [...by].filter(([, v]) => v.C != null && v.P != null).sort((a, b) => Math.abs(a[0] - px * grow) - Math.abs(b[0] - px * grow) || a[0] - b[0]).slice(0, 4);
+      if (near.length >= 3) {
+        const fs = near.map(([k, v]) => k + grow * (v.C! - v.P!)).sort((a, b) => a - b);
+        const h = fs.length >> 1;
+        const F = fs.length % 2 ? fs[h] : (fs[h - 1] + fs[h]) / 2;
+        const sStar = F / grow;
+        if (sStar > 0 && Math.abs(sStar / px - 1) <= 0.02) out = sStar;
+      }
+    }
+    parityMemo.set(x, out);
+    return out;
+  }
+  const ois = new Map<string, { am: number; pm: number; amIv: number; pmIv: number; amQ: boolean; pmQ: boolean }>();
   for (const [x, list] of contracts) {
     for (const r of list) {
       const c = tail(String(r.option_symbol));
@@ -364,30 +551,39 @@ for (const t of NAMES) {
       const pm = !am && (c.root === t || !!PM_ROOTS[t]?.includes(c.root));
       if (!am && !pm) continue;
       /* the clock the quote (and the vendor's vol) stood at: the minute the vendor priced the date's rows */
-      const rowAt = Date.parse(String(rows.find(rr => String(rr.expiry) === x)?.time ?? '')) || now;
+      const qc = quoteClock(t, x);
+      const rowAt = qc?.at ?? (Date.parse(String(rows.find(rr => String(rr.expiry) === x)?.time ?? '')) || now);
       const tt = am ? tAm(rowAt, x) : tPm(rowAt, x);
       if (tt == null) continue;
       const bid = n(r.nbbo_bid);
       const ask = n(r.nbbo_ask);
       const mid = (bid + ask) / 2;
-      const px = n(rows.find(rr => String(rr.expiry) === x)?.price) || spot;
+      const px0 = qc?.px ?? (n(rows.find(rr => String(rr.expiry) === x)?.price) || spot);
+      /* an index's chain under seven calendar days is solved at its own parity spot (the quotes' own price) */
+      const px = am ? px0 : paritySpot(x, list, px0, rowAt);
       const solved = ask > 0 && bid > 0 && (ask - bid) / mid <= 0.4 ? solve(mid, c.right, px, c.k, tt) : null;
+      /* the quote pins a vol: a cent of time value at least (a deep in-the-money leg's vol hangs on fractions of a cent) */
+      const pins = solved != null && mid - Math.max(0, c.right === 'C' ? px - c.k : c.k - px) >= 0.01;
       const vend = n(r.implied_volatility);
       const iv = solved ?? (vend > 0 && vend < 10 ? vend * Math.sqrt(tCal(rowAt, x, am) / tt) : 0);
       const key = `${x}|${c.k}|${c.right}`;
-      const cur = ois.get(key) ?? { am: 0, pm: 0, amIv: 0, pmIv: 0 };
+      const cur = ois.get(key) ?? { am: 0, pm: 0, amIv: 0, pmIv: 0, amQ: false, pmQ: false };
       if (am) {
         cur.am += n(r.open_interest);
         if (iv > 0) cur.amIv = iv;
+        if (pins) cur.amQ = true;
       } else {
         cur.pm += n(r.open_interest);
         if (iv > 0) cur.pmIv = iv;
+        if (pins) cur.pmQ = true;
       }
       ois.set(key, cur);
       if (iv > 0 && !am) vols.set(key, iv);
     }
   }
-  type Leg = { x: string; k: number; g0: number; iv: number; pageIv: number; t: number; s0: number; oi: number; side: 1 | -1 };
+  /* q: the leg's contract has a valid two-sided quote (bid and ask, spread within 40% of the mid) that pins a vol (a cent of
+     time value), and its vol here is solved from it */
+  type Leg = { x: string; k: number; g0: number; iv: number; pageIv: number; t: number; s0: number; oi: number; side: 1 | -1; q?: boolean };
   const legs: Leg[] = [];
   /* the page's own vol per leg (its node's, solved and smoothed by the page) — the second re-pricing below takes these,
      so the arithmetic across every expiry is checked apart from the choice of vol */
@@ -416,9 +612,62 @@ for (const t of NAMES) {
       const amT = tAm(at, x);
       const live = amT != null && o.am > 0;
       const share = live ? o.am / (o.am + o.pm) : 0;
-      if (o.pm > 0 || !live) legs.push({ x, k, g0: g0 * (1 - share), iv: o.pmIv || o.amIv, pageIv: pageVol(x, k, right, false), t: tPm(at, x), s0, oi: o.pm, side });
-      if (live) legs.push({ x, k, g0: g0 * share, iv: o.amIv || o.pmIv, pageIv: pageVol(x, k, right, true), t: amT!, s0, oi: o.am, side });
+      if (o.pm > 0 || !live) legs.push({ x, k, g0: g0 * (1 - share), iv: o.pmIv || o.amIv, pageIv: pageVol(x, k, right, false), t: tPm(at, x), s0, oi: o.pm, side, q: o.pmIv ? o.pmQ : o.amQ });
+      if (live) legs.push({ x, k, g0: g0 * share, iv: o.amIv || o.pmIv, pageIv: pageVol(x, k, right, true), t: amT!, s0, oi: o.am, side, q: o.amIv ? o.amQ : o.pmQ });
     }
+  }
+  /* AN IN-THE-MONEY LEG TAKES ITS STRIKE'S OUT-OF-THE-MONEY VOL. Its quote is intrinsic plus a few cents: the vol it
+     solves to hangs on a cent and on the discounting (SPX 2026-11-09 7725P, 4% in the money a session out: 0.171 here,
+     0.254 on the page, off the same mid) — and walked to the flip the leg is at the money, so that guess moved the whole
+     book's flip 0.1% of spot. Parity says a strike's call and put carry one vol (exactly so on a European index), and the
+     out-of-the-money side's quote pins it: an in-the-money leg (a call under the price its rows were marked at, a put above)
+     takes the same strike's other leg's own vol, on the same clock, where that leg has one (book/flipLevel.ts legsOfDate,
+     the same rule). The page's own vol for the leg, read back for the checks below, is taken the same way. */
+  {
+    const byKey = new Map<string, Leg>();
+    for (const l of legs) byKey.set(`${l.x}|${l.k}|${l.t}|${l.side}`, l);
+    const own = new Map(legs.map(l => [l, { iv: l.iv, q: l.q, pageIv: l.pageIv }] as const));
+    for (const l of legs) {
+      const itm = l.side === 1 ? l.k < l.s0 : l.k > l.s0;
+      if (!itm) continue;
+      const other = byKey.get(`${l.x}|${l.k}|${l.t}|${-l.side}`);
+      const o = other ? own.get(other) : undefined;
+      if (o && o.iv > 0) {
+        l.iv = o.iv;
+        l.q = o.q;
+      }
+      /* …and the page's vol for it is the one the page holds for that other leg (its re-pricing reads it so) */
+      if (o && o.pageIv > 0) l.pageIv = o.pageIv;
+    }
+  }
+  /* COVERAGE (audit 2026-11-06, finding 2): of the legs whose contract has a valid two-sided quote, the share the page
+     prices at that quote's own vol (its vol within 1% of the one solved here), and the gamma-weighted share */
+  {
+    const quoted = legs.filter(l => l.q && l.iv > 0 && l.g0);
+    const onQuote = quoted.filter(l => l.pageIv > 0 && Math.abs(l.pageIv / l.iv - 1) <= 0.01);
+    const w = (ls: Leg[]) => ls.reduce((a, l) => a + Math.abs(l.g0), 0);
+    console.log(`     quote coverage: ${quoted.length} of ${legs.length} legs carry a valid two-sided quote; the page prices ${onQuote.length} of them (${((onQuote.length / Math.max(1, quoted.length)) * 100).toFixed(1)}%, ${((w(onQuote) / Math.max(1, w(quoted))) * 100).toFixed(1)}% of their gamma) at that quote's own vol`);
+    /* the dates where the most quoted gamma is off its quote's vol, with the median page ÷ hand vol there */
+    const byX = new Map<string, { all: number; off: number; ratios: number[] }>();
+    const on = new Set(onQuote);
+    for (const l of quoted) {
+      const cur = byX.get(l.x) ?? { all: 0, off: 0, ratios: [] };
+      cur.all += Math.abs(l.g0);
+      if (!on.has(l)) {
+        cur.off += Math.abs(l.g0);
+        if (l.pageIv > 0) cur.ratios.push(l.pageIv / l.iv);
+      }
+      byX.set(l.x, cur);
+    }
+    const worst = [...byX].filter(([, v]) => v.off > 0).sort((a, b) => b[1].off - a[1].off).slice(0, 4);
+    if (process.env.PINPOINT_LEGS)
+      for (const [x] of worst) {
+        const nodes = snapRows.uwByDate?.[x] ?? [];
+        const top = nodes.reduce<{ at: number; px: number }>((m, nn) => (nn.gexAt != null && nn.gexAt >= m.at ? { at: nn.gexAt, px: nn.gexPx ?? 0 } : m), { at: 0, px: 0 });
+        console.log(`       ${x}: solved here at ${JSON.stringify(quoteClock(t, x))}, the page's chain is priced at ${JSON.stringify(top)}`);
+      }
+    if (worst.length)
+      console.log(`     most quoted gamma off its quote: ${worst.map(([x, v]) => `${x} ${((v.off / v.all) * 100).toFixed(0)}% (page ÷ hand vol ${v.ratios.length ? v.ratios.sort((a, b) => a - b)[Math.floor(v.ratios.length / 2)].toFixed(3) : 'none'})`).join(', ')}`);
   }
   let ownPriced = 0;
   /* a leg no quote or vendor vol prices (a far wing after the close) takes its own date's smile, built here from the vols
@@ -444,7 +693,8 @@ for (const t of NAMES) {
     let sum = 0;
     for (const l0 of legs) {
       if (only && l0.x !== only) continue;
-      const l = usePage ? { ...l0, iv: l0.pageIv } : l0;
+      /* the page's vol where it holds one; a leg it holds none for takes the same stand-in as below (its date's smile) */
+      const l = usePage ? { ...l0, iv: l0.pageIv > 0 ? l0.pageIv : l0.iv } : l0;
       if (!(l.iv > 0) || !(l.t > 0)) {
         sum += l.g0;
         continue;
@@ -502,8 +752,8 @@ for (const t of NAMES) {
   console.log(`     ${legs.length} legs over ${liveDates.size} dates, ${((ownPriced / Math.max(1, legs.length)) * 100).toFixed(1)}% on their own contract's vol (the rest their date's smile); hand net at spot ${(netAt(spot) / 1e9).toFixed(3)}B`);
   const near = (a: number | null | undefined, b: number | null) => (a == null || b == null ? a == null && b == null : Math.abs(a - b) <= spot * 0.0005);
   /* (a) the arithmetic: every leg of every expiry re-priced here at the vol the page holds for it (a leg it holds none
-     for — a date whose contracts it does not read — carried flat here: the page prices those at the date's smile or
-     at-the-money vol, so this bounds what that stand-in moves) */
+     for — a wing with no quote and no vendor vol — at its date's smile solved here, as in (b); it was carried flat, which
+     with every date's contracts read now moved SPX's re-price 0.06% off the page's on those few legs alone) */
   check(`${t} All: the flip ${lvA.flip?.toFixed(2) ?? 'none'} = every leg re-priced here at the page's own vols ${pageVolFlip?.toFixed(2) ?? 'none'} (${(pageVolShare * 100).toFixed(1)}% of legs carry one; within 0.05% of spot = ${(spot * 0.0005).toFixed(2)})`, near(lvA.flip, pageVolFlip));
   check(`${t} Today: the flip ${lv0.flip?.toFixed(2) ?? 'none'} = the front date re-priced here at the page's vols ${pageVolFront?.toFixed(2) ?? 'none'}`, near(lv0.flip, pageVolFront));
   /* (b) the vols too: every leg at its own contract's vol solved here off its quote at the minute the rows were priced
@@ -517,19 +767,41 @@ for (const t of NAMES) {
   const handFront = flipOf(spot * 0.9, spot * 1.1, front);
   check(`${t} Today: the flip ${lv0.flip?.toFixed(2) ?? 'none'} against the front date at its own contracts' vols solved here ${handFront?.toFixed(2) ?? 'none'} (${handFront != null && lv0.flip != null ? ((Math.abs(lv0.flip - handFront) / spot) * 100).toFixed(3) : '—'}% of spot)`, nearOwn(lv0.flip, handFront));
   /* where the two disagree, date by date: the page's own net per date (flipLevel datesNetAt, house sign) at both flips */
-  if (lvA.flip != null && pageVolFlip != null && Math.abs(lvA.flip - pageVolFlip) > spot * 0.0005) {
+  if (lvA.flip != null && pageVolFlip != null && (Math.abs(lvA.flip - pageVolFlip) > spot * 0.0005 || (handFlip != null && Math.abs(lvA.flip - handFlip) > spot * tolOwn))) {
     usePage = true;
     const { datesNetAt } = await import('../src/data/flipLevel');
     const snap = book.snapshotFor(t, 'ALL', 'full')!;
     const ds = [...liveDates].sort();
     const at = [lvA.flip, handFlip];
     const pageNets = datesNetAt(snap, ds, at);
-    const rowsOut = ds.map((d, i) => ({ d, page: pageNets[i]?.map(v => -v) ?? null, hand: at.map(x => netAt(x, d)) }));
-    rowsOut.sort((a, b) => Math.abs((b.page?.[0] ?? 0) - b.hand[0]) - Math.abs((a.page?.[0] ?? 0) - a.hand[0]));
-    console.log(`     per date at the page's flip ${lvA.flip.toFixed(2)} (page | hand, $M) — the largest gaps:`);
-    for (const r of rowsOut.slice(0, 6)) console.log(`       ${r.d}  ${r.page ? (r.page[0] / 1e6).toFixed(1) : '—'} | ${(r.hand[0] / 1e6).toFixed(1)}`);
+    const rowsOut = ds.map((d, i) => {
+      usePage = true;
+      const hand = at.map(x => netAt(x, d));
+      usePage = false;
+      return { d, page: pageNets[i]?.map(v => -v) ?? null, hand, own: netAt(lvA.flip!, d) };
+    });
+    rowsOut.sort((a, b) => Math.max(Math.abs((b.page?.[0] ?? 0) - b.hand[0]), Math.abs((b.page?.[0] ?? 0) - b.own)) - Math.max(Math.abs((a.page?.[0] ?? 0) - a.hand[0]), Math.abs((a.page?.[0] ?? 0) - a.own)));
+    console.log(`     per date at the page's flip ${lvA.flip.toFixed(2)} (page | here at the page's vols | here at each contract's own vol, $M) — the largest gaps:`);
+    for (const r of rowsOut.slice(0, 6)) console.log(`       ${r.d}  ${r.page ? (r.page[0] / 1e6).toFixed(1) : '—'} | ${(r.hand[0] / 1e6).toFixed(1)} | ${(r.own / 1e6).toFixed(1)}`);
     const pageSum = rowsOut.reduce((a, r) => a + (r.page?.[0] ?? 0), 0);
-    console.log(`       Σ ${(pageSum / 1e6).toFixed(1)} | ${(rowsOut.reduce((a, r) => a + r.hand[0], 0) / 1e6).toFixed(1)}`);
+    console.log(`       Σ ${(pageSum / 1e6).toFixed(1)} | ${(rowsOut.reduce((a, r) => a + r.hand[0], 0) / 1e6).toFixed(1)} | ${(rowsOut.reduce((a, r) => a + r.own, 0) / 1e6).toFixed(1)}`);
+    /* PINPOINT_LEGS=1: the legs of the worst date whose re-priced gamma at the page's flip differs most between the page's
+       vol and the contract's own */
+    if (process.env.PINPOINT_LEGS) {
+      const d = rowsOut[0].d;
+      const one = (l: Leg, iv: number) => {
+        usePage = false;
+        const saved = l.iv;
+        l.iv = iv;
+        const legsBak = legs.splice(0, legs.length, l);
+        const v = netAt(lvA.flip!);
+        legs.splice(0, legs.length, ...legsBak);
+        l.iv = saved;
+        return v;
+      };
+      const diffs = legs.filter(l => l.x === d).map(l => ({ l, page: one(l, l.pageIv), own: one(l, l.iv) })).sort((a, b) => Math.abs(b.page - b.own) - Math.abs(a.page - a.own)).slice(0, 8);
+      for (const { l, page, own: o } of diffs) console.log(`         ${d} ${l.k}${l.side === 1 ? 'C' : 'P'} t ${(l.t * 390 * 252).toFixed(0)}m s0 ${l.s0} oi ${l.oi} quoted ${!!l.q} iv page ${l.pageIv.toFixed(4)} own ${l.iv.toFixed(4)} → ${(page / 1e6).toFixed(1)} | ${(o / 1e6).toFixed(1)} $M`);
+    }
     usePage = false;
   }
   check(`${t} All: the regime is the sign of that net at spot (${lvA.regime}; hand ${netAt(spot) > 0 ? 'LONG' : 'SHORT'})`, lvA.regime === (netAt(spot) > 0 ? 'LONG' : 'SHORT'));

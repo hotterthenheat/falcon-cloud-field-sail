@@ -1,17 +1,21 @@
 import { impliedVolFromPrice } from './greeks';
 import { tradingMinutes, tradingYears, TRADING_DAYS } from './tradingYear';
 import { sessionCloseMinOn } from './calendar';
-import { nyIsoDate, nyMinutes } from './nyTime';
+import { nyIsoDate, nyMinutesExact } from './nyTime';
 
 /** The vendor's year. Their own implied move is k·S·σ·√(dte/365). */
 const CALENDAR_YEAR_MIN = 365 * 24 * 60;
 const FLOOR_MIN = 5;
 
-/** Calendar minutes from `now` to the expiry's cash close (16:00 ET, 13:00 on an early close), five at the least. This is the clock a 365-day vol was solved on. */
+/** Calendar minutes from `now` to the expiry's cash close (16:00 ET, 13:00 on an early close), five at the least: whole
+    New York days × 1440 plus the minutes of the day, continuous to the millisecond (core/nyTime.ts nyMinutesExact — it
+    once read whole minutes, 09:30:49 as 09:30). New York's wall clock, as the vendors count days: across a DST change
+    it is the wall clock's minutes, not the hour more or less that elapses (Weigher's Friday-close move,
+    weigher-golden.ts, holds the quote's straddle on this count). This is the clock a 365-day vol was solved on. */
 export function calendarYears(expiry: string, nowMs = Date.now()): number {
   const today = nyIsoDate(nowMs);
   const days = Math.round((Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
-  const mins = days * 1440 + (sessionCloseMinOn(expiry) - nyMinutes(nowMs));
+  const mins = days * 1440 + (sessionCloseMinOn(expiry) - nyMinutesExact(nowMs));
   return Math.max(FLOOR_MIN, mins) / CALENDAR_YEAR_MIN;
 }
 

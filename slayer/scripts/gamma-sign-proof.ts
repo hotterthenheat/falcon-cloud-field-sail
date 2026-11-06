@@ -166,7 +166,8 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
     const a = base + Math.floor(Math.random() * 20 * 86_400_000);
     const b = a + Math.floor(Math.random() * 6 * 86_400_000);
     const old = (tradingMinutes('2099-12-31', a) ?? 0) - (tradingMinutes('2099-12-31', b) ?? 0);
-    if (old !== tradingMinutesBetween(a, b)) ok = false;
+    /* both continuous to the millisecond (core/tradingYear.ts): equal to the float's rounding */
+    if (Math.abs(old - tradingMinutesBetween(a, b)) > 1e-7) ok = false;
   }
   const t0 = performance.now();
   for (let i = 0; i < 10_000; i++) tradingMinutesBetween(base + i * 60_000, base + 6 * 3_600_000);

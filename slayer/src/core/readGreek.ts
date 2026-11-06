@@ -19,7 +19,7 @@
 import { impliedVolFromPrice } from './greeks';
 import { rateOn } from './carry';
 import { sessionCloseMinOn } from './calendar';
-import { nyIsoDate, nyMinutes } from './nyTime';
+import { nyIsoDate, nyMinutesExact } from './nyTime';
 import { normCdf as normalCDF } from './math';
 
 const YEAR_MIN = 365 * 1440;
@@ -95,12 +95,13 @@ export interface GreekRead {
 
 export type GreekResult = GreekRead | { ok: false; why: GreekWhy };
 
-/** Calendar years to the expiry's cash close. Null once that close has passed. Not floored. */
+/** Calendar years to the expiry's cash close (New York's wall clock, continuous to the millisecond: core/volClock.ts
+    calendarYears). Null once that close has passed. Not floored. */
 export function calendarYearsOpen(expiry: string, atMs: number): number | null {
   const iso = expiry.slice(0, 10);
   const today = nyIsoDate(atMs);
   const days = Math.round((Date.parse(`${iso}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
-  const mins = days * 1440 + (sessionCloseMinOn(iso) - nyMinutes(atMs));
+  const mins = days * 1440 + (sessionCloseMinOn(iso) - nyMinutesExact(atMs));
   if (!(mins > 0)) return null;
   return mins / YEAR_MIN;
 }

@@ -3,7 +3,7 @@
    the house sign of core/dealerSign.ts. Pure: no fetch, no state. */
 
 import { nyIsoDate } from '../../core/nyTime';
-import { nyInstant, regularCloseMin } from '../../core/session';
+import { nyInstant, regularCloseMin, sessionAt } from '../../core/session';
 import { keptLeg, keptVendorLeg, DEALER_SIDE, type Right } from '../../core/dealerSign';
 import { type StrikeNode } from '../../types/market';
 import { blackScholesGreeks } from '../../core/greeks';
@@ -354,12 +354,35 @@ export function cutGex(n: StrikeNode): Pick<StrikeNode, 'callGex' | 'putGex' | '
 /* The vendor's vega stays on the leg until paintLegs replaces it with Black-Scholes vega at the live spot, on the
    trading clock, times open interest, signed by the one model (core/dealerSign.ts). */
 const LONG_QUOTE_MS = 15 * 60_000;
+/** A same-day date's NBBO is solved only when it was taken within this of the minute its rows were priced at */
+const SAME_DAY_QUOTE_MS = 5 * 60_000;
+
+/* QUOTE FRESHNESS (audit 2026-11-06, finding 2). A contract's NBBO is the vendor's live quote at the moment it answered
+   (after the bell it reads 0), so its age is the age of the ANSWER (UwContract.quoted_at, stamped by
+   whalesOptionContractsPaged) against the minute the date's rows were priced at — the clock and price it is solved at.
+   It was the age of the contract's last TRADE (last_tape_time): in the session a far strike that had not traded for
+   two minutes (0DTE) or fifteen (any other date) had its live two-sided quote thrown away and the vendor's calendar vol
+   stood in, and that rule alone left most legs of the book without a vol solved from their own quote (SPY 10:30:
+   34% of legs). A row with no answer stamp (a proof's raw rows) falls back to the last trade, as before. */
+/** The instant an NBBO taken at `at` stands at: `at` in the regular session; outside it the quote is the last session's
+    close (the book does not move until the open), so a read before the open or after the bell is as of that close */
+function quoteInstant(at: number): number {
+  const s = sessionAt(at);
+  if (s.phase === 'regular') return at;
+  const day = s.lastRegular;
+  return day ? Math.min(at, nyInstant(day, regularCloseMin(day))) : at;
+}
 
 function quoteUsable(row: UwContract, expiry: string, now = Date.now()): boolean {
   const bid = num(row.nbbo_bid);
   const ask = num(row.nbbo_ask);
   if (bid > 0 && ask > 0 && bid > ask + 1e-6) return false;
   if (bid === 0 && ask === 0 && (row.nbbo_bid != null || row.nbbo_ask != null)) return false;
+  const quoted = typeof row.quoted_at === 'number' && row.quoted_at > 0 ? quoteInstant(row.quoted_at) : null;
+  if (quoted != null) {
+    const limit = expiry && expiry === nyIsoDate(now) ? SAME_DAY_QUOTE_MS : LONG_QUOTE_MS;
+    return Math.abs(now - quoted) <= limit;
+  }
   const stamp = Date.parse(String(row.last_tape_time || row.updated_at || ''));
   const limit = expiry ? quoteMaxAge(expiry, now) : LONG_QUOTE_MS;
   if (Number.isFinite(stamp) && now - stamp > limit) return false;
@@ -915,12 +938,27 @@ export function mergeChains(parts: StrikeNode[][]): StrikeNode[] {
   return [...by.values()];
 }
 
-/* The dates that re-price with their contracts' own vols: the front date and every live date holding at least
-   OWN_IV_SHARE of the dates' gross gamma — the Map and a Board-only name pick them by the same rule off the same chains. */
+/* The dates that re-price with their contracts' own vols: EVERY live date that holds strikes (audit 2026-11-06, finding
+   2). It was the front date and the dates holding at least OWN_IV_SHARE of the dates' gross gamma; the rest re-priced at
+   the date's at-the-money vol, flat across strikes, and with the stale-quote rule (quoteUsable) only 12–24% of the
+   book's legs carried a vol solved from their own quote — the flip sat 0.09–0.34% of spot off a re-price at each
+   contract's own vol. The big dates are still read first (bigIvDates). `full`: the name's full book (Pinpoint's Map and
+   levels, entry.wantFull) — a name read for the Board alone keeps the big dates only (bigIvDates), so twenty Board names
+   do not each read every date's contracts; a date whose contracts are in anyway re-prices at their vols there too
+   (data/flipLevel.ts legSet). */
 const OWN_IV_SHARE = 0.005;
-export function ownIvDates(byDate: Readonly<Record<string, readonly StrikeNode[] | undefined>>, dates: readonly string[], front: string | undefined): Set<string> {
-  const gross = (d: string) => (byDate[d] ?? []).reduce((a, n) => a + Math.abs(n.callGex) + Math.abs(n.putGex), 0);
-  const g = dates.map(d => [d, gross(d)] as const);
+const grossOf = (byDate: Readonly<Record<string, readonly StrikeNode[] | undefined>>, d: string) => (byDate[d] ?? []).reduce((a, n) => a + Math.abs(n.callGex) + Math.abs(n.putGex), 0);
+export function ownIvDates(byDate: Readonly<Record<string, readonly StrikeNode[] | undefined>>, dates: readonly string[], front: string | undefined, full = true): Set<string> {
+  if (!full) return new Set(bigIvDates(byDate, dates, front));
+  return new Set(dates.filter(d => d === front || !!byDate[d]?.length));
+}
+/** The front date and the dates holding OWN_IV_SHARE or more of the dates' gross gamma, biggest first: their contracts are
+    read first, in the ordinary lane; every other date's in the low lane after them */
+export function bigIvDates(byDate: Readonly<Record<string, readonly StrikeNode[] | undefined>>, dates: readonly string[], front: string | undefined): string[] {
+  const g = dates.map(d => [d, grossOf(byDate, d)] as const);
   const total = g.reduce((a, [, v]) => a + v, 0);
-  return new Set(g.filter(([d, v]) => d === front || (total > 0 && v >= OWN_IV_SHARE * total)).map(([d]) => d));
+  return g
+    .filter(([d, v]) => d === front || (total > 0 && v >= OWN_IV_SHARE * total))
+    .sort((a, b) => (a[0] === front ? -1 : b[0] === front ? 1 : b[1] - a[1]))
+    .map(([d]) => d);
 }

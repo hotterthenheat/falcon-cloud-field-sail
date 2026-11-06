@@ -363,7 +363,7 @@ export function buildBuilding(
      (a Board-only name: the dates its flip re-prices with their own vols, uwBook ownIvDates). */
   const by = snapshot.uwByDate ?? {};
   const liveDates = Object.keys(by).filter(d => d >= floor && by[d]?.length).sort();
-  const own = ownIvDates(by, liveDates, liveDates[0]);
+  const own = ownIvDates(by, liveDates, liveDates[0], !!entry?.wantFull);
   const listed = new Set((entry?.expiries ?? []).map(e => e.date).filter(d => d >= floor));
   const touched = new Set(oiChange?.rows.filter(r => r.expiry >= floor && (scopeDates === 'ALL' || (Array.isArray(scopeDates) && scopeDates.includes(r.expiry)))).map(r => r.expiry) ?? []);
   const factsMissing =

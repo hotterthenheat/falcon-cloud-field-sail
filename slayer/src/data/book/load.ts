@@ -13,7 +13,7 @@ import { applyDay, needDay } from './day';
 import { historyFrom, noteSplit, vexOntoAll } from './levels';
 import { dayFracOf, dayIvOf, impliedMoveOf, termDteOf, termIvOf, termKOf, termMoveOf } from './move';
 import { carryFacts, chainFrom, flowMap, foldContracts, liveGammaRows, num, oiMap, paintLegs, pricedClockOf, type LiveGamma, withLiveGamma } from './scale';
-import { BOARD_MS, BOOK_LISTINGS, FULL_MS, LIVE_GAMMA_MS, cache, chartAll, chartSpan, closestDate, datesComplete, emit, emptyDates, gammaPriced, gen, horizonFactsMissing, hotGet, isHot, keptBooks, liveGammaCache, liveGammaWait, peekEntry, recordAsked, recordIso, settledLive, type BookMode, type Entry } from './store';
+import { BOARD_MS, BOOK_LISTINGS, FULL_MS, LIVE_GAMMA_MS, cache, chartAll, chartSpan, closestDate, datesComplete, emit, emptyDates, factsFirst, gammaPriced, gen, horizonFactsMissing, hotGet, isHot, keptBooks, liveGammaCache, liveGammaWait, peekEntry, recordAsked, recordIso, settledLive, type BookMode, type Entry } from './store';
 import { readKept } from './kept';
 import { noteExposureRows } from './exposureLog';
 import { hasListedOptions } from '../symbolDirectory';
@@ -207,9 +207,11 @@ async function fillExpiryFacts(entry: Entry, token: number, only?: readonly stri
   /* One expiry at a time (the whole-name walk of option-contracts pages unstably); a date whose read fails is left unread
      so it is asked again, never taken as having no contracts. */
   const hot = isHot(entry.ticker);
+  /* the big dates in the ordinary lane, every other date's contracts in the low lane (no row on screen waits on them) */
+  const first = factsFirst(entry);
   const books = await mapLimit(dates, 3, async date => {
     try {
-      const rows = await whalesOptionContractsPaged(entry.ticker, date, hot);
+      const rows = await whalesOptionContractsPaged(entry.ticker, date, hot && first.has(date), 60, !first.has(date));
       return [date, Array.isArray(rows) ? foldContracts(rows, date, pricedClockOf(entry.byDate[date] ?? []).at, entry.ticker) : null] as const;
     } catch {
       return [date, null] as const;

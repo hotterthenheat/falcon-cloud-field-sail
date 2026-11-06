@@ -23,6 +23,7 @@ const PROOFS = [
   'lgbm-parity-proof',
   'chart-proof',
   'clock-proof',
+  'clock-seconds-proof',
   'chart-zone-proof',
   'bar-pass-proof',
   'contract-quote-proof',
@@ -99,6 +100,7 @@ const PROOFS = [
   'greeks-fd-proof',
   'settle-roots-proof',
   'flip-complete-proof',
+  'flip-coverage-proof',
 ];
 
 const goldens = () =>

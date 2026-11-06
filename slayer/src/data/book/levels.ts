@@ -237,7 +237,7 @@ const liveAllMemo = new WeakMap<Entry, { all: StrikeNode[]; byDate: Entry['byDat
 const SUMMED = ['Gex', 'Dex', 'Vex', 'Vanna', 'Charm'] as const;
 function oneSnapshot(entry: Entry, base: StrikeNode[]): StrikeNode[] {
   const floor = isoDate(bookToday());
-  /* every live listing must be one the dates read (the first forty — datesComplete) */
+  /* every live listing must be one the dates read (the first BOOK_LISTINGS — datesComplete) */
   if (!entry.gammaLive || !datesComplete(entry) || entry.expiries.filter(e => e.date >= floor).length > BOOK_LISTINGS) return base;
   const dates = Object.keys(entry.byDate).filter(d => d >= floor && entry.byDate[d]?.length);
   if (!dates.length) return base;

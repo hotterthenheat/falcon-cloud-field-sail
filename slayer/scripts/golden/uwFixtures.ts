@@ -50,6 +50,10 @@ export function installUwFixtures(set: string): Fixtures {
       const saved = JSON.parse(gunzipSync(readFileSync(file)).toString('utf8')) as Saved;
       return new Response(saved.body, { status: saved.status, headers: { 'content-type': saved.type ?? 'application/json' } });
     }
+    /* a date's contracts the recording does not hold: when the set was recorded the book read only its big dates'
+       contracts (book/scale.ts ownIvDates before 2026-11-06), so the others answer as the vendor refusing them (404) — the
+       date is read with none and its legs take the smile or the at-the-money vol, as they did then */
+    if (!RECORD && !theta && /^\/stock\/[^/]+\/option-contracts\?(?=.*expiry=)/.test(path)) return new Response(JSON.stringify({ error: 'not recorded' }), { status: 404, headers: { 'content-type': 'application/json' } });
     if (!RECORD) throw new Error(`golden: no recording for ${theta ? 'theta ' : ''}${path} in ${set} (record with GOLDEN_RECORD=1)`);
     let res: Response | null = null;
     if (theta) {
