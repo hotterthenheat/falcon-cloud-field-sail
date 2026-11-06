@@ -291,7 +291,7 @@ LOCKED = H1 ∪ H2 ∪ ≥ 2026-07-01, 2026-H1 unassigned. **LOCKED is never fet
 | A | 2024-03-01 .. 2024-05-31 (64) | 62 sessions before (from 2023-11-29) | daily SPY/QQQ/IWM/SPXW expirations, UW flow available |
 | B | 2022-03-01 .. 2022-05-31 (≈64) | 62 sessions before (from 2021-12) | bear/high-vol regime; SPY/QQQ M/W/F dailies only, SPXW adds Tue/Thu from 2022-04/05 |
 
-Panel tiers per (session, expiration): USE (1-minute q0 + q2), FULL (1-minute q0, the 6 sessions before first use),
+Panel tiers per (session, expiration): USE (1-minute q0; fills from on-demand 1-second quotes, edata/fills.py), FULL (1-minute q0, the 6 sessions before first use),
 COARSE (15-minute q0: feeds 15/30/60-minute MID EMAs only). Trade bars are 1-minute everywhere.
 VALIDATION (2025) blocks are fetched by Phase 2 with the same code after PREREG is frozen.
 

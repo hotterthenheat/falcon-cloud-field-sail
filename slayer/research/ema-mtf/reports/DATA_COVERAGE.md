@@ -197,8 +197,10 @@ root-session the 1-minute bar-end NBBO of every expiration in use (0DTE, every 1
 expiration of 8–30 / 31–90 / 91–200), 15-minute snapshots for those expirations' earlier life (warm-up for 15m/30m/60m),
 1-minute SIP trade bars of all of them, the full positioning book every 30 minutes (eval sessions), OI, and 1-minute
 underlying bars 04:00–16:00. SPY block A: 1.8–2.6 MB per eval session, 1.2–1.4 MB per history session.
-**Status at hand-off: see BASELINES.md and the hand-off note** (fetch order: every root's eval + 6 pre-block sessions
-first, coarse history after; resumable: `cd slayer/research/ema-mtf && V2_THETA_SLOTS=1 python3 -m edata.panel --block A`
-then `--block B`). Block B (2022-03..05) is planned with the same code and not yet fetched. Disk: the whole EMA store
-is ~0.2 GB so far against a 2.5 GB budget; the machine's free space fell from 8.1 to ~4.3 GB during the session
-because of other workers — the fetcher stops itself below 3 GB.
+**Status at hand-off: block A is complete** — 126 sessions × 4 roots (64 eval + 62 warm-up), 0 failed root-sessions,
+577 MB; UW flow alerts for every eval session (SPY/QQQ/IWM; SPX/SPXW return none under those tickers), 9 MB; 1-second
+fill quotes for the ~6,800 contract-days the baselines traded, 469 MB (`v2data/ema/fills`, reusable by Phase 2). The
+whole EMA store is 1.1 GB of the 2.5 GB budget. **Block B (2022-03..05) is planned (STRATEGY_SPEC §15, PREREG §2) and
+NOT fetched**: `cd slayer/research/ema-mtf && V2_THETA_SLOTS=1 python3 -m edata.panel --block B` (resumable, ≈3–4 h
+at one request in flight; respect the 09:15–16:05 ET one-in-flight window on live days). The machine's free disk
+moved between 3.3 and 8.1 GB during the session because of other workers; the fetcher stops itself below 3 GB.
