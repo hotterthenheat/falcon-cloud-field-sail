@@ -43,7 +43,34 @@ export const neutral = (s: string): string => s.replace(VENDOR, 'market data').r
 const clock = (ms: number) => nyClock(ms, { zone: true });
 
 /** A client path (quotes, flow, server) from its reads */
-export function pathRow(id: 'quotes' | 'flow' | 'server', r: PathRead, now: number): StatusRow {
+/** The Compass engine's reading of the option chain's own stamps (compassScan FeedHealth), for the quotes row: the
+    terminal can answer every read while its option quotes are minutes old (2026-11-06 09:35–10:15 ET), and an answer
+    alone said "answering". */
+export interface OptionStaleness {
+  state: 'fresh' | 'stale';
+  since: number;
+  lagMs: number;
+  names: readonly string[];
+  fallback: readonly string[];
+  blind: readonly string[];
+  at: number;
+}
+
+/** Stale snapshots, in words: how far behind, since when, and what the scan does about it. */
+export function staleWords(f: OptionStaleness): string {
+  const lag = f.lagMs > 0 ? ` ${ageWords(f.lagMs)} behind` : '';
+  const from = f.since ? ` since ${clock(f.since)}` : '';
+  const n = f.names.length;
+  const fell = f.fallback.length ? ` ${f.fallback.length} of ${n} scored from a current source.` : '';
+  const blind = f.blind.length ? ` ${f.blind.length} of ${n} not scored (no current quote).` : '';
+  return `Stale snapshots: option quotes${lag}${from} (${n} ${n === 1 ? 'name' : 'names'}).${fell}${blind}`;
+}
+
+/** Stale option quotes count for this long after the mark that saw them (a mark runs every minute) */
+const STALE_HOLD_MS = 3 * 60_000;
+export const optionsStaleNow = (f: OptionStaleness | null | undefined, now: number): boolean => !!f && f.state === 'stale' && now - f.at <= STALE_HOLD_MS;
+
+export function pathRow(id: 'quotes' | 'flow' | 'server', r: PathRead, now: number, options?: OptionStaleness | null): StatusRow {
   const META = {
     quotes: { label: 'Live quotes', what: 'The market data terminal: stock, index and option prices, chains and minute bars' },
     flow: { label: 'Options flow & exposure', what: 'The flow tape, the dealer book and exposure, levels, news and filings' },
@@ -64,6 +91,8 @@ export function pathRow(id: 'quotes' | 'flow' | 'server', r: PathRead, now: numb
   const ttl = staleAfter(id === 'quotes' ? 'quotes' : id === 'flow' ? 'flow' : 'compass', now);
   const taken = id === 'flow' && r.dataAt ? ` · data taken ${nyClock(r.dataAt, { seconds: true, zone: true })}` : '';
   if (now - r.okAt > Math.max(ttl, 5 * 60_000)) return { ...base, state: 'degraded', line: `No answer in ${ageWords(now - r.okAt)} — nothing on screen has asked lately${taken}.` };
+  /* answering is not current: the option chain's own stamps can lag while every read answers */
+  if (id === 'quotes' && options && optionsStaleNow(options, now)) return { ...base, state: 'degraded', line: `Answering, but ${staleWords(options).replace(/^Stale snapshots: o/, 'o')} ${cap(since)}.` };
   return { ...base, state: 'up', line: `${cap(since)}${taken}.` };
 }
 
@@ -83,6 +112,8 @@ export interface CompassInput {
   quotesDownSince: number;
   /** a mark is due now (the engine's scan window is open) */
   markDue: boolean;
+  /** the option chain's freshness at the engine's last mark */
+  options?: OptionStaleness | null;
 }
 
 export function compassRow(c: CompassInput, now: number): StatusRow {
@@ -94,6 +125,7 @@ export function compassRow(c: CompassInput, now: number): StatusRow {
   const mark = c.lastMark ? `last mark ${nyClock(c.lastMark, { zone: true })}` : 'no mark yet today';
   if (e && !e.running) return { ...base, state: 'off', line: `Serving the record, not scanning: ${neutral(e.why || 'the scan is off in this process.')} ${cap(mark)}.` };
   if (c.quotes === 'down') return { ...base, state: 'degraded', line: `Running, scan paused — live quotes are not answering${c.quotesDownSince ? ` since ${clock(c.quotesDownSince)}` : ''}. Missed marks are scored later from recorded quotes. ${cap(mark)}.` };
+  if (c.options && optionsStaleNow(c.options, now)) return { ...base, state: 'degraded', line: `Running — ${staleWords(c.options)} ${cap(mark)}.` };
   const heardTtl = staleAfter('compass', now);
   if (c.heardAt && now - c.heardAt > heardTtl) return { ...base, state: 'degraded', line: `Stale — the board was last heard ${ageWords(now - c.heardAt)} ago. ${cap(mark)}.` };
   /* a mark every minute of the scan window: three missed in a row is stale */

@@ -7,7 +7,7 @@
    printed. */
 
 import { nyParts } from '../core/nyTime';
-import { lotteryExit, reversalLine, stopAfter, treeExit } from './compassParams';
+import { groupBOn, lotteryExit, reversalLine, stopAfter, treeExit } from './compassParams';
 import type { OptionRight } from '../types/compass';
 
 export type SignalBook = 'A' | 'B' | 'C' | 'R';
@@ -17,6 +17,9 @@ export interface PathQuote {
   t: number;
   bid: number;
   ask: number;
+  /** The displayed sizes, when the row carried them (the terminal's rows do): frozenTail reads them */
+  bidSize?: number;
+  askSize?: number;
 }
 
 /** One underlying one-minute bar: the minute's start (epoch ms) and close. */
@@ -76,14 +79,18 @@ const minuteStart = (ms: number) => Math.floor(ms / 60_000) * 60_000;
 const validQuote = (q: PathQuote) => q.ask > 0 && q.bid >= 0 && q.ask >= q.bid;
 
 /** The underlying's last five minutes, from closes known at `at`: the close of the minute before against the close
-    six minutes before. */
-function ret5At(bars: readonly PathBar[], at: number): number {
+    six minutes before. With `since` (COMPASS_REVERSAL_AFTER_ENTRY=1, the fill's instant) the window starts no earlier
+    than the bar that closed at the fill: the move since the entry, never the minutes before it; none yet in the
+    fill's own minute. */
+export function ret5At(bars: readonly PathBar[], at: number, since?: number): number {
   const cut = minuteStart(at);
+  const from = since == null ? cut - 6 * 60_000 : Math.max(cut - 6 * 60_000, minuteStart(since) - 60_000);
+  if (from >= cut - 60_000) return NaN;
   let now = NaN;
   let then = NaN;
   for (const b of bars) {
     if (b.t === cut - 60_000) now = b.c;
-    if (b.t === cut - 6 * 60_000) then = b.c;
+    if (b.t === from) then = b.c;
   }
   return now > 0 && then > 0 ? now / then - 1 : NaN;
 }
@@ -158,7 +165,7 @@ export function settleSignal(sig: SignalCore, quotes: readonly PathQuote[], unde
       /* the reversal reads the underlying's minute closes: it is judged on the minute quotes only, not on the 1-second
          quotes added inside a minute that crossed the stop or a target */
       if (q.t % 60_000 === 0 && q.t - fill.t >= 60_000) {
-        const line = reversalLine(paid, q.bid, sig.right, ret5At(under, q.t));
+        const line = reversalLine(paid, q.bid, sig.right, ret5At(under, q.t, groupBOn('COMPASS_REVERSAL_AFTER_ENTRY') ? fill.t : undefined));
         if (line) return closed(fill, { at: q.t, px: q.bid, why: line }, peak, stopAfter(paid, peak, runner), q);
       }
       if (late) return closed(fill, { at: q.t, px: q.bid, why: flatWord(ownFlat != null ? minuteOfDay(ownFlat) : flatMin) }, peak, stopAfter(paid, peak, runner), q);
@@ -273,4 +280,69 @@ export function daySummary(rows: readonly { outcome: Outcome | null }[]): DaySum
   out.net = Number(out.net.toFixed(2));
   out.openMark = Number(out.openMark.toFixed(2));
   return out;
+}
+
+/* ---- frozen history ---- */
+
+/** One history row's full quote: bid, ask and their displayed sizes. */
+export interface FullQuote {
+  t: number;
+  bid: number;
+  ask: number;
+  bidSize?: number;
+  askSize?: number;
+}
+
+/** A quote row repeated, sizes and all. Rows without sizes never count (a stand-in path, not the terminal's). */
+const sameRow = (a: FullQuote, b: FullQuote) =>
+  a.bid === b.bid && a.ask === b.ask && Number.isFinite(a.bidSize) && Number.isFinite(a.askSize) && a.bidSize === b.bidSize && a.askSize === b.askSize;
+
+/** The rows that close a series as one frozen copy: the trailing run of interval rows (stamped on a minute) whose bid,
+    ask and both sizes are all the same, when it spans `minMs` or more; else null. Returned as the run's first
+    stamp.
+
+    THE FAULT (2026-11-06, caught live at 10:53:16 ET on MU 2026-11-06 680P, and in the record at 10:21–10:31): the
+    terminal's interval history (/option/history/quote, interval=1m or 5m) sometimes answers with every row from
+    some minute up to the present carrying one and the same quote, sizes included — a store behind real time filled
+    forward to the end asked. The row count is right and the stamps are the minutes asked, so nothing else shows it;
+    21 seconds later the same read was right again. The record's fills were 09:51's quote at 10:22 (MU 710P 7.10/7.45
+    against 17.05/17.65), a TSLA 355C path stood at 4.30 for ten minutes, and the scan's mids 5 and 15 minutes back
+    were one frozen copy (every 10:20 call read the same mid at 10:05 and 10:15). A live, two-sided option quote does
+    not repeat its sizes for minutes; a run that ends in the past (the session over) is history, not this. */
+export function frozenTail(rows: readonly FullQuote[], minMs = 2 * 60_000): number | null {
+  const mins = rows.filter(r => r.t % 60_000 === 0);
+  if (mins.length < 2) return null;
+  let i = mins.length - 1;
+  while (i > 0 && sameRow(mins[i - 1], mins[i]) && mins[i].t - mins[i - 1].t <= 5 * 60_000) i -= 1;
+  const first = mins[i];
+  const last = mins[mins.length - 1];
+  return last.t - first.t >= minMs ? first.t : null;
+}
+
+/** A path as far as it can be trusted at `now`: cut before a frozen tail that reaches the present (frozenTail; one
+    whose last row is `settledMs` or more before `now` is the record, kept), and the instant the cut leaves it at
+    (`now` when nothing was cut), for the settlement's clock: a cut path is not "three minutes with no fill". */
+export function trustedPath<T extends FullQuote>(rows: readonly T[], now: number, settledMs = 15 * 60_000): { path: T[]; asOf: number; cutAt: number | null } {
+  const sorted = rows.slice().sort((a, b) => a.t - b.t);
+  const cut = frozenTail(sorted);
+  const lastMinute = [...sorted].reverse().find(r => r.t % 60_000 === 0);
+  if (cut == null || !lastMinute || now - lastMinute.t >= settledMs) return { path: sorted, asOf: now, cutAt: null };
+  return { path: sorted.filter(r => r.t < cut), asOf: cut - 1, cutAt: cut };
+}
+
+/** A 1-second window read agrees with the minute quotes at its ends: its first second near the quote that stood at its
+    start, or its last second near the one at its end (inside three spreads, a tenth of the mid, or 0.05). A window
+    from a store behind real time is one stale quote throughout, far from both ends (2026-11-06 AVGO 2026-11-06 305P:
+    a 3.35 "stop" at 10:29:01 inside minutes that bid 6.30 to 6.85); it is not kept, and the exit waits for the next
+    read. A window with no rows, or with no minute quote at either end, is taken as read. */
+export function fineAgrees(sec: readonly PathQuote[], start: PathQuote | undefined, end: PathQuote | undefined): boolean {
+  if (!sec.length || (!start && !end)) return true;
+  const near = (a: PathQuote, b: PathQuote) => {
+    const ma = (a.bid + a.ask) / 2;
+    const mb = (b.bid + b.ask) / 2;
+    const tol = Math.max(3 * Math.max(a.ask - a.bid, b.ask - b.bid), 0.1 * Math.max(ma, mb), 0.05);
+    return Math.abs(ma - mb) <= tol;
+  };
+  const sorted = sec.slice().sort((a, b) => a.t - b.t);
+  return (!!start && near(sorted[0], start)) || (!!end && near(sorted[sorted.length - 1], end));
 }

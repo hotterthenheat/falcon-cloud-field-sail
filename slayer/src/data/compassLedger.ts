@@ -7,7 +7,7 @@
 import { useSyncExternalStore } from 'react';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import { currentPicks, noteLeft, takeWouldPicks, underCloses } from './compassModel';
-import { FINE_MAX, fineWindows, grossPnl, noFees, settleSignal, type Outcome, type PathBar, type PathQuote, type SignalBook, type SignalCore } from './compassOutcome';
+import { FINE_MAX, fineAgrees, fineWindows, grossPnl, noFees, settleSignal, trustedPath, type Outcome, type PathBar, type PathQuote, type SignalBook, type SignalCore } from './compassOutcome';
 import { stopAfter } from './compassParams';
 import { compassHost } from './compassHost';
 import { nyIsoDate, nyParts, nyWallStamp } from '../core/nyTime';
@@ -333,7 +333,8 @@ const n = (v: unknown) => {
   return Number.isFinite(x) ? x : NaN;
 };
 
-/** Theta's NBBO rows as path quotes: the row's own stamp, bid and ask. */
+/** Theta's NBBO rows as path quotes: the row's own stamp, bid and ask, and the sizes when the row has them (the frozen
+    copy check reads them: compassOutcome frozenTail). */
 export function readQuotes(data: unknown): PathQuote[] {
   const out: PathQuote[] = [];
   for (const r of flat(data)) {
@@ -341,7 +342,9 @@ export function readQuotes(data: unknown): PathQuote[] {
     const bid = n(r.bid);
     const ask = n(r.ask);
     if (!t || !Number.isFinite(bid) || !Number.isFinite(ask)) continue;
-    out.push({ t, bid, ask });
+    const bidSize = n(r.bid_size);
+    const askSize = n(r.ask_size);
+    out.push(Number.isFinite(bidSize) && Number.isFinite(askSize) ? { t, bid, ask, bidSize, askSize } : { t, bid, ask });
   }
   return out.sort((a, b) => a.t - b.t);
 }
@@ -465,7 +468,9 @@ export async function fineExits(sig: FineSig, minute: PathQuote[], now = Date.no
       if (budget <= 0) break;
       budget -= 1;
       const got = await readFineWindow(sig, w);
-      if (!got) {
+      /* a window that did not answer, or that disagrees with the minute quotes at both its ends (a store behind real
+         time: compassOutcome fineAgrees), is not kept: it and every window after it wait for the next pass */
+      if (!got || !fineAgrees(got, minute.find(q => q.t === w[0]), minute.find(q => q.t === w[1]))) {
         stalled = true;
         break;
       }
@@ -505,20 +510,27 @@ export async function settleOpen(now = Date.now()): Promise<void> {
       if (sig.book === 'R') continue;
       if (sig.outcome && (sig.outcome.status === 'closed' || sig.outcome.status === 'unavailable')) continue;
       if (now - sig.pathAt < 50_000) continue;
-      const quotes = await contractPath(sig, sig.outcome?.fill?.at ?? null);
+      const read = await contractPath(sig, sig.outcome?.fill?.at ?? null);
       /* this contract's path did not answer: the next one is still read (one fault used to stop every later call's
          settlement for that minute, newest first, so an old open call behind a failing one never settled) */
-      if (!quotes) continue;
+      if (!read) continue;
+      /* a frozen copy at the end of the read (a store behind real time, filled forward to now: compassOutcome
+         frozenTail) is not the contract's path: the call is settled on the rows before it, as of that instant, and read
+         again on the next pass. Fills and exits were priced on it (2026-11-06 10:21–10:31: five of nine calls, frozen
+         on the record). */
+      const trust = trustedPath(read, now);
+      const quotes = trust.path;
       const under = await underCloses(sig.ticker, ymd(sig.day));
       /* Books A and B: the stop and target minutes are judged on their 1-second quotes, and a close is final only
          once every one of them before the exit was read (a read that failed let the call close, and freeze, on the
          minute quotes) */
       const fine: FinePath = sig.book === 'C' ? { path: quotes, unread: [] } : await fineExits(sig, quotes);
-      let out = heldOpen(sig, fine.path, under, settleSignal(sig, fine.path, under, Date.now()), fine.unread);
+      let out = heldOpen(sig, fine.path, under, settleSignal(sig, fine.path, under, trust.cutAt == null ? Date.now() : trust.asOf), fine.unread);
       if (sig.book === 'C' && out.fill && !sig.outcome?.fill) {
         const sec = await contractPath(sig, out.fill.at);
+        const secTrust = sec ? trustedPath(sec, now) : null;
         /* its seconds did not answer: held open at the fill and read again next pass, not closed on the minutes */
-        out = sec ? settleSignal(sig, sec, under, Date.now()) : heldOpen(sig, quotes, under, out, [[out.fill.at, out.fill.at + 125_000]]);
+        out = secTrust ? settleSignal(sig, secTrust.path, under, secTrust.cutAt == null ? Date.now() : secTrust.asOf) : heldOpen(sig, quotes, under, out, [[out.fill.at, out.fill.at + 125_000]]);
       }
       const after = quotes.filter(q => q.t > sig.firedAt && q.t % 60_000 === 0 && (!out.exit || q.t <= out.exit.at));
       const next: Signal = { ...sig, outcome: out, pathAt: Date.now(), spark: after.map(q => q.bid).filter(b => b >= 0) };

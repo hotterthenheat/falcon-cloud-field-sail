@@ -80,8 +80,9 @@ export interface EngineOptions {
   dir: string;
   /** The app's public/ folder (the model files and the universe) */
   publicDir: string;
-  /** One ThetaData answer, in-process (server/thetaProxy.mjs thetaDirect) */
-  theta: (path: string) => Promise<{ status: number; body: string; type: string }>;
+  /** One ThetaData answer, in-process (server/thetaProxy.mjs thetaDirect). The engine asks in the 'engine' lane: its
+      reads go ahead of every page's and always find the terminal's reserved slots (server/thetaSlots.mjs). */
+  theta: (path: string, opt?: { lane?: 'engine' }) => Promise<{ status: number; body: string; type: string }>;
   /** One Unusual Whales answer, in-process (server/uwProxy.mjs uwDirect), for the economic calendar */
   uw?: (path: string) => Promise<{ status: number; body: string }>;
   /** Run the scan (false: serve the files only) */
@@ -337,7 +338,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
     server: true,
     theta: async p => {
       try {
-        const got = await o.theta(p);
+        const got = await o.theta(p, { lane: 'engine' });
         return thetaAnswer(got.status, got.body, got.type);
       } catch {
         return { status: 503, data: null, error: 'terminal_down' };
