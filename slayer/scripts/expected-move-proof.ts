@@ -12,6 +12,8 @@
      $154.5 1σ. The date's own contracts now price it.
   3. The money the same pages print: a figure that rounds to 1,000 of its unit is the next unit (fmtUsd once wrote
      999,960 as "$1000.0K", fmtDollars 999.6M as "$1000M").
+  4. The Trader's Clock's share at the bell off a surface is gross gamma, the Board's measure (it summed |net| a cell); a
+     live book waits for the Board's share instead of printing that stand-in.
 
   Run: npx tsx scripts/expected-move-proof.ts
 */
@@ -114,6 +116,20 @@ const base = (ticker: string, spot: number, extra: Partial<Entry>): Entry => ({
   const got = [fmtUsd(999_960), fmtUsd(-999_960_000), fmtUsd(999.6), fmtUsd(999_940), fmtGexUsd(-999_960), fmtDollars(999_600_000), fmtDollars(999_600), fmtDollars(999.7), fmtDollars(999_400)];
   const want = ['$1.0M', '-$1.0B', '$1.0K', '$999.9K', '−$1.0M', '$1.0B', '$1M', '$1K', '$999K'];
   check(`money at a unit's edge: ${got.join(' ')} (once "$1000.0K", "$1000M")`, JSON.stringify(got) === JSON.stringify(want));
+}
+
+/* ---- 4. the Trader's Clock's share at the bell, where the Board's share is not read: gross gamma, as the Board counts it ---- */
+{
+  const { surfaceBellShare } = await import('../src/data/exposureSurface');
+  /* today's 100 strike: calls +10, puts −10 (net 0); a later date: calls +20 at 100 and 105. Gross: 20 of 60 = 33% */
+  const surface = {
+    expiries: [{ dte: 0, short: 'Nov 6' }, { dte: 7, short: 'Nov 13' }] as never,
+    strikes: [100, 105],
+    call: { gex: [[10, 0], [20, 20]] } as never,
+    put: { gex: [[-10, 0], [0, 0]] } as never,
+  };
+  const share = surfaceBellShare(surface);
+  check(`a strike whose calls and puts cancel still expires: ${share}% of gross gamma at the bell (|net| once read 0%)`, share === 33);
 }
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');

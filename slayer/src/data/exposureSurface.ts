@@ -54,6 +54,23 @@ export const GREEK_UNIT: Record<Greek, string> = {
 export const todayColumn = (surface: { expiries: readonly SurfaceExpiry[] }): number =>
   surface.expiries.findIndex(e => e.dte === 0 && e.short !== 'Book');
 
+/** The share of the drawn gamma that expires today, percent — gross, |call| + |put| a cell, the Board's own measure
+    (book/levels.ts peekBellShare); null without a today column. A book with no live share (Practice, a replay) reads it
+    off its surface. It once summed |net| a cell, so a strike whose calls and puts cancel counted as nothing expiring. */
+export function surfaceBellShare(surface: Pick<ExposureSurface, 'expiries' | 'strikes' | 'call' | 'put'>): number | null {
+  const today = todayColumn(surface);
+  if (today < 0) return null;
+  let dies = 0;
+  let total = 0;
+  for (let e = 0; e < surface.expiries.length; e++)
+    for (let s = 0; s < surface.strikes.length; s++) {
+      const v = Math.abs(surface.call.gex[e]?.[s] ?? 0) + Math.abs(surface.put.gex[e]?.[s] ?? 0);
+      total += v;
+      if (e === today) dies += v;
+    }
+  return total > 0 ? Math.round((100 * dies) / total) : null;
+}
+
 export interface SurfaceExpiry {
   dte: number;
   /** "0DTE", "2d", "45d" */
