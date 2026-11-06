@@ -7,6 +7,7 @@ open interest and the positioning book.
 Blocks (DEV only; LOCKED is never fetched; see specs/STRATEGY_SPEC.md section 9):
   A  eval 2024-03-01..2024-05-31, warm-up history from 62 sessions before
   B  eval 2022-03-01..2022-05-31, warm-up history from 62 sessions before
+  V  VALIDATION eval 2025-07-01..2025-09-30 (fetch only; outcomes are not looked at before a candidate is frozen)
 
 Per root R in SPY, QQQ, IWM, SPXW and session D:
   oi.parquet   option/history/open_interest expiration=* (the morning report = prior close), every expiration
@@ -51,7 +52,8 @@ UND_DIR = os.path.join(EMA_DATA, 'und')
 ROOTS = ('SPY', 'QQQ', 'IWM', 'SPXW')
 STRIKE_RANGE = {'SPY': 15, 'QQQ': 12, 'IWM': 8, 'SPXW': 30}
 UND = {'SPY': ('stock', 'SPY'), 'QQQ': ('stock', 'QQQ'), 'IWM': ('stock', 'IWM'), 'SPXW': ('index', 'SPX')}
-BLOCKS = {'A': ('20240301', '20240531'), 'B': ('20220301', '20220531')}
+BLOCKS = {'A': ('20240301', '20240531'), 'B': ('20220301', '20220531'),
+          'V': ('20250701', '20250930')}     # VALIDATION: the pre-declared fallback window (PREREG 9b item 12)
 HIST = 62
 FULL_BEFORE = 6
 M0 = 9 * 60 + 30
