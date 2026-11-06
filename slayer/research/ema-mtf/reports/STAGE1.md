@@ -115,7 +115,8 @@ Events by block × root × DTE bucket:
 
 ### Null calibration (V2 rule 11; PREREG §4.5, A2 items 10–11)
 
-* Permutation null: not run yet.
+* **Permutation null**: 200 runs, feature values permuted among warm events within session × root × bucket × right. Share of runs with any feature passing CI > 0 and Holm < 0.05 (family FWER): **100.0%** (must be ≤ 5% for the pipeline to count: **FAILED**); share passing all five rules: 100.0%. Median smallest Holm p per run: 0.010.
+* Observed δ percentile in its own permutation distribution (the 10 largest observed δ): 30m H 1.0%; 1m L50 0.0%; 60m D 34.5%; 15m B 0.0%; 1m L200 0.0%; 60m H 0.0%; 1m C 0.0%; 60m B 2.0%; 60m L200 8.0%; 30m A 0.0%.
 * Synthetic null: not run yet.
 
 ### S1A by root, DTE bucket and right (δ Y30 in pp, 95% CI) — every feature
@@ -214,4 +215,74 @@ Base events: model B fired on the event contract's 5m MID chart (5,907 events). 
 | ATM IV up over 60 min (obs.) | 1,425 | 3,212 | -1.64 | -1.08 | [-3.80, +1.60] | 0.7781 | 1.0000 | 0.9513 | -2.69 | +0.90 | +0.36 | -0.75 | no (ci_gt_0, holm_lt_0.05, each_block_gt_0) |
 | contract RVOL > 2 (obs.) | 1,602 | 1,887 | -1.02 | +3.76 | [-2.05, +7.11] | 0.2329 | 1.0000 | 0.7144 | -0.51 | +2.45 | +1.25 | +7.04 | no (ci_gt_0, holm_lt_0.05, each_block_gt_0) |
 | UW ask-side flow, trade dir., 15 min (obs.) | 1,519 | 662 | -0.38 | +1.61 | [-3.60, +6.59] | 0.3062 | 1.0000 | 0.7144 | +1.61 | n/a | +1.17 | +7.41 | no (ci_gt_0, holm_lt_0.05) |
+
+## Null calibration — diagnosis (POST-HOC, labelled; no Stage-1 decision depends on it)
+
+The pre-registered permutation null failed (above). Two mechanisms were found and demonstrated:
+
+**1. The PREREG null leaks same-day future information.** Permuting a feature across the decisions of one session keeps that day's prevalence, and the prevalence partly reflects the path after each decision. Test: replace each event's feature by the same cell's value k decisions later (future) or earlier (past). δ Y30 (pp):
+
+| feature @ tf | real | +30 min (future) | +60 min (future) | −30 min (past) | −60 min (past) |
+|---|---|---|---|---|---|
+| S @ 1m | +0.30 | +14.96 | +1.94 | +0.57 | +0.22 |
+| A @ 1m | -0.43 | -0.02 | -0.75 | -0.02 | -0.25 |
+| B @ 1m | -0.19 | +1.71 | -0.06 | +0.16 | -0.50 |
+| C @ 1m | +0.49 | +16.59 | +5.08 | +0.86 | +0.10 |
+| D @ 1m | +0.11 | +6.39 | +0.44 | +0.02 | +0.34 |
+| H @ 1m | -0.29 | -7.46 | -3.05 | -0.70 | -0.60 |
+| L50 @ 1m | +1.11 | +16.68 | +5.91 | +0.54 | +0.37 |
+| L200 @ 1m | +0.78 | +11.30 | +8.81 | +0.52 | +0.42 |
+| S @ 5m | -0.09 | +15.81 | +9.13 | +0.05 | -0.01 |
+| A @ 5m | +0.16 | +4.26 | -0.34 | -0.07 | +0.16 |
+| B @ 5m | -0.03 | +15.61 | +1.91 | +0.28 | +0.52 |
+| C @ 5m | -0.41 | +11.71 | +5.67 | -0.11 | -0.21 |
+| D @ 5m | +0.35 | +17.22 | +3.43 | +0.26 | -0.45 |
+| H @ 5m | -1.05 | +0.55 | -3.33 | -0.39 | +0.18 |
+| L50 @ 5m | +0.19 | +12.32 | +9.32 | -0.04 | +0.04 |
+| L200 @ 5m | +0.11 | +4.63 | +4.49 | -0.29 | -0.09 |
+| S @ 15m | -0.03 | +7.46 | +8.19 | -0.43 | -0.36 |
+| A @ 15m | +0.13 | +13.29 | +0.25 | +0.08 | -0.11 |
+| B @ 15m | +0.86 | +15.45 | +11.72 | -0.06 | -0.01 |
+| C @ 15m | +0.28 | +5.65 | +4.77 | -0.07 | -1.01 |
+| D @ 15m | +0.39 | +9.94 | +7.07 | +0.37 | +0.02 |
+| H @ 15m | +0.18 | +17.73 | -3.05 | +1.33 | +1.39 |
+| L50 @ 15m | -0.01 | +5.13 | +6.17 | -0.50 | -0.41 |
+| L200 @ 15m | -0.04 | +1.36 | +1.86 | -0.46 | -0.40 |
+| S @ 30m | +0.01 | +1.54 | +4.55 | -0.53 | -0.58 |
+| A @ 30m | +0.44 | +11.13 | +9.70 | -0.09 | +0.42 |
+| B @ 30m | +0.42 | +3.54 | +7.29 | -0.19 | +0.55 |
+| C @ 30m | +0.37 | +2.54 | +3.62 | -0.27 | -0.76 |
+| D @ 30m | +0.05 | +2.79 | +5.81 | -0.38 | -0.38 |
+| H @ 30m | +1.58 | +16.74 | +12.77 | +0.33 | +0.36 |
+| L50 @ 30m | +0.00 | +1.17 | +3.83 | -0.63 | -0.45 |
+| L200 @ 30m | +0.26 | +0.37 | +1.07 | -0.05 | -0.04 |
+| S @ 60m | -0.09 | -0.48 | +1.61 | -1.12 | -1.18 |
+| A @ 60m | +0.42 | +3.49 | +8.96 | +0.90 | +0.16 |
+| B @ 60m | +0.48 | +0.58 | +2.63 | +0.07 | -0.25 |
+| C @ 60m | +0.06 | +0.36 | +2.30 | -0.65 | -0.50 |
+| D @ 60m | +0.97 | +0.85 | +2.64 | -0.77 | -1.07 |
+| H @ 60m | +0.60 | +5.35 | +11.24 | +1.28 | +1.19 |
+| L50 @ 60m | -0.01 | -0.39 | +1.29 | -0.62 | -0.58 |
+| L200 @ 60m | +0.46 | +0.26 | +0.58 | +0.08 | +0.05 |
+
+A feature carrying the outcome window's information is found at +5 to +17 pp, so the pipeline has power. The real features behave like the past-shifted ones (≈ 0), which is a further check that they carry no look-ahead.
+
+**2. Pooling the blocks lets slow regime features confound δ.** A leak-free null permutes feature values across SESSIONS at the same root × bucket × right × decision close, so the time of day is kept and the day's path is broken. Under the pre-registered strata it still has FWER **95%** (19/20 runs). The biased features are L200 at 30m and 60m (null mean +0.16 and +0.36 pp, z ≈ +3 and +9). Their prevalence differs between the 2022 and 2024 regimes, and the strata do not separate the blocks (A2 item 3). Adding the half-hour alone does not fix it (s1_diag_tod_noblock.pkl: 15/20 runs).
+
+**S1A-T (post-hoc)**: the same statistic, rules and Holm, with the strata also split by block and by the half-hour of the decision close. Leak-free null: FWER **0.0%** over 10 runs (≤ 5% needed: OK). Real data: **0 of 40 pass**. Smallest p-values:
+
+| feature @ tf | δ Y30 (pp) | 95% CI | p | Holm | rules failed |
+|---|---|---|---|---|---|
+| L50 @ 1m | +1.04 | [-0.02, +1.95] | 0.0285 | 1.0000 | ci_gt_0, holm_lt_0.05 |
+| L200 @ 1m | +0.80 | [-0.14, +1.69] | 0.0497 | 1.0000 | ci_gt_0, holm_lt_0.05 |
+| B @ 15m | +1.01 | [-0.26, +2.19] | 0.0680 | 1.0000 | ci_gt_0, holm_lt_0.05 |
+| B @ 60m | +0.66 | [-0.28, +1.59] | 0.0855 | 1.0000 | ci_gt_0, holm_lt_0.05, block_B_gt_0 |
+| D @ 60m | +1.01 | [-0.62, +2.67] | 0.1085 | 1.0000 | ci_gt_0, holm_lt_0.05 |
+| H @ 30m | +1.52 | [-1.12, +4.22] | 0.1285 | 1.0000 | ci_gt_0, holm_lt_0.05, block_B_gt_0 |
+| A @ 60m | +0.48 | [-0.53, +1.48] | 0.1792 | 1.0000 | ci_gt_0, holm_lt_0.05 |
+| B @ 30m | +0.51 | [-0.54, +1.65] | 0.1832 | 1.0000 | ci_gt_0, holm_lt_0.05 |
+| C @ 1m | +0.50 | [-0.44, +1.42] | 0.1957 | 1.0000 | ci_gt_0, holm_lt_0.05, block_B_gt_0 |
+| S @ 1m | +0.34 | [-0.38, +1.02] | 0.2167 | 1.0000 | ci_gt_0, holm_lt_0.05 |
+
+**Reading.** A miscalibrated (anti-conservative) screen can only produce false *passes*. No real feature passed the pre-registered screen or the calibrated post-hoc one, so "no option-chart feature has incremental, executable value at h = 30" does not depend on the calibration failure. A future pre-registration should use the S1A-T strata (block × time of day) and the leak-free cross-session null.
 

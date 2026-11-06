@@ -166,7 +166,55 @@ def main():
           f"{pct(bB['delta']) if bB else 'n/a'} | {pct(r['Y15']['delta'])} | {pct(r['Y60']['delta'])} | "
           f"{'**PASS**' if r['pass'] else 'no (' + ', '.join(k for k, v in r['rules'].items() if not v) + ')'} |")
     w('')
+    diag(w)
     open(REPORT, 'w').write('\n'.join(L) + '\n')
+
+
+def diag(w):
+    """Post-hoc diagnostics of the null calibration (stage1/diag_perm.py, stage1/diag_tod.py)."""
+    p1 = os.path.join(OUT, 's1_diag_perm.pkl')
+    if not os.path.exists(p1):
+        return
+    d = pickle.load(open(p1, 'rb'))
+    w('## Null calibration — diagnosis (POST-HOC, labelled; no Stage-1 decision depends on it)\n')
+    w('The pre-registered permutation null failed (above). Two mechanisms were found and demonstrated:\n')
+    w('**1. The PREREG null leaks same-day future information.** Permuting a feature across the decisions of one '
+      'session keeps that day\'s prevalence, and the prevalence partly reflects the path after each decision. Test: '
+      "replace each event's feature by the same cell's value k decisions later (future) or earlier (past). δ Y30 (pp):\n")
+    w('| feature @ tf | real | +30 min (future) | +60 min (future) | −30 min (past) | −60 min (past) |')
+    w('|---|---|---|---|---|---|')
+    for (F, tf), r in d['shift'].items():
+        w(f"| {F} @ {tf}m | {pct(r['real'])} | {pct(r[6])} | {pct(r[12])} | {pct(r[-6])} | {pct(r[-12])} |")
+    w('\nA feature carrying the outcome window\'s information is found at +5 to +17 pp, so the pipeline has power. The '
+      'real features behave like the past-shifted ones (≈ 0), which is a further check that they carry no look-ahead.\n')
+    lf = d.get('leakfree', [])
+    if lf:
+        w(f"**2. Pooling the blocks lets slow regime features confound δ.** A leak-free null permutes feature values across "
+          f"SESSIONS at the same root × bucket × right × decision close, so the time of day is kept and the day's path is "
+          f"broken. Under the pre-registered strata it still has FWER **{np.mean([x['any_holm'] for x in lf]) * 100:.0f}%** "
+          f"({sum(x['any_holm'] for x in lf)}/{len(lf)} runs). The biased features are L200 at 30m and 60m (null mean +0.16 "
+          f"and +0.36 pp, z ≈ +3 and +9). Their prevalence differs between the 2022 and 2024 regimes, and the strata do not "
+          f"separate the blocks (A2 item 3). Adding the half-hour alone does not fix it "
+          f"(s1_diag_tod_noblock.pkl: 15/20 runs).\n")
+    p2 = os.path.join(OUT, 's1_diag_tod.pkl')
+    if os.path.exists(p2):
+        t = pickle.load(open(p2, 'rb'))
+        nl = t.get('null', [])
+        rows = t['s1a_t']
+        w(f"**S1A-T (post-hoc)**: the same statistic, rules and Holm, with the strata also split by block and by the "
+          f"half-hour of the decision close. Leak-free null: FWER **{np.mean([x['any_holm'] for x in nl]) * 100 if nl else float('nan'):.1f}%** "
+          f"over {len(nl)} runs (≤ 5% needed: {'OK' if nl and np.mean([x['any_holm'] for x in nl]) <= 0.05 else 'not met / pending'}). "
+          f"Real data: **{sum(r['pass'] for r in rows)} of 40 pass**. Smallest p-values:\n")
+        w('| feature @ tf | δ Y30 (pp) | 95% CI | p | Holm | rules failed |')
+        w('|---|---|---|---|---|---|')
+        for r in sorted(rows, key=lambda r: r['Y30']['p'])[:10]:
+            w(f"| {r['feature']} @ {r['tf']}m | {pct(r['Y30']['delta'])} | {ci(r['Y30']['ci'])} | {pv(r['Y30']['p'])} | "
+              f"{pv(r['holm'])} | {', '.join(k for k, v in r['rules'].items() if not v) or 'PASS'} |")
+        w('')
+    w('**Reading.** A miscalibrated (anti-conservative) screen can only produce false *passes*. No real feature passed '
+      'the pre-registered screen or the calibrated post-hoc one, so "no option-chart feature has incremental, '
+      'executable value at h = 30" does not depend on the calibration failure. A future pre-registration should use the '
+      'S1A-T strata (block × time of day) and the leak-free cross-session null.\n')
     print('wrote', REPORT)
 
 

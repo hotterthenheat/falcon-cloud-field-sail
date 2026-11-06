@@ -6,7 +6,9 @@ sessions, same root x bucket x right x decision close) passes features. Their pr
 and Y30 varies with the time of day (theta, the 15:55 cut), while the S1A strata do not hold the time of day fixed.
 
 S1A-T = the same statistic, rules, bootstrap and Holm, with the strata also split by the half-hour of the decision
-close. Its calibration = the leak-free permutation null (200 runs, seed 20261108): FWER must be <= 5%.
+close AND by the DEV block (a first version without the block still failed its leak-free null, FWER 15/20: features
+whose prevalence differs between the 2022 and 2024 regimes -- the 30m/60m EMA200 -- carry a between-block confound
+when the strata pool the blocks; kept as s1_diag_tod_noblock.pkl). Its calibration = the leak-free permutation null (200 runs, seed 20261108): FWER must be <= 5%.
 
     python3 -m stage1.diag_tod [--runs 200]   -> v2data/ema/results/stage1/s1_diag_tod.pkl
 """
@@ -31,10 +33,11 @@ class DesignTOD(Design):
     def __init__(self, ev, ses):
         super().__init__(ev, ses)
         hh = ((ev.m.to_numpy() + 1) // 30).astype(np.int64)
-        self.J0 = self.J0 * NH
+        blk = (ev.block.to_numpy() == 'B').astype(np.int64)
+        self.J0 = self.J0 * NH * 2
         for tf in TFS:
             u = ev[f'ust_{tf}'].to_numpy()
-            s = ((self.rbr * NH + hh) * 3 + np.where(np.isfinite(u), u + 1, 0)).astype(np.int64)
+            s = (((self.rbr * 2 + blk) * NH + hh) * 3 + np.where(np.isfinite(u), u + 1, 0)).astype(np.int64)
             self.strata[tf] = np.where(np.isfinite(u), s, -1)
 
 
