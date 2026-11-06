@@ -126,7 +126,7 @@ def und_tables(sym, days):
     return m1, t5
 
 
-def run_root(root: str, block: str, out_rows: list):
+def run_root(root: str, block: str, out_rows: list, lats=('L0c', 'L60', 'L0')):
     p = Panel(root)
     plan = p.plan(block)
     have = set(p.days())
@@ -146,7 +146,9 @@ def run_root(root: str, block: str, out_rows: list):
     midx = asof_index(mb)
     xups = {(s, kms): g for (s, kms), g in mb[mb.xup].groupby(['session', 'known_ms'])}
     print(root, block, f'loaded {len(days)} sessions, {len(mb)} 5m MID bars in {time.time()-t0:.0f}s', flush=True)
-    sims = {x: Simulator(p, ExecConfig(), sessions=sorted(have)) for x in ('XT30', 'X3S')}
+    from edata.fills import FillBook
+    sims = {(x, L): Simulator(p, ExecConfig(latency=L), sessions=sorted(have), fills=FillBook(root) if L == 'L2' else None)
+            for x in ('XT30', 'X3S') for L in lats}
     uclose = lambda d: float(m1[m1.session == int(d)].c.iloc[-1]) if (m1.session == int(d)).any() else np.nan
 
     def und_state(D, m):
@@ -187,7 +189,7 @@ def run_root(root: str, block: str, out_rows: list):
                             if st == side:
                                 dec['BL5'].append((m, side, tuple(among)))
             for bl, items in dec.items():
-                for xname, sim in sims.items():
+                for (xname, lat), sim in sims.items():
                     busy_until = -1
                     for it in sorted(items):
                         m, side = it[0], it[1]
@@ -199,7 +201,7 @@ def run_root(root: str, block: str, out_rows: list):
                         e, k, r, dl = c
                         ex = XTime() if xname == 'XT30' else X3S(mb, midx, (e, k, r))
                         rec = sim.run(Trade(root, e, k, r, int(D), m, tag=bl, meta={'delta': dl}), ex, und_close=uclose)
-                        rec.update({'baseline': bl, 'exit': xname, 'bucket': b, 'block': block, 'dte': (pd.Timestamp(str(e)) - pd.Timestamp(D)).days})
+                        rec.update({'baseline': bl, 'exit': xname, 'latency': lat, 'bucket': b, 'block': block, 'dte': (pd.Timestamp(str(e)) - pd.Timestamp(D)).days})
                         out_rows.append(rec)
                         if rec.get('status') == 'filled' and bl != 'BL1':
                             busy_until = rec['exit_decision_m'] if rec['exit_decision_session'] == D else 10_000
@@ -210,14 +212,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--block', required=True)
     ap.add_argument('--roots', default='SPY,QQQ,IWM,SPXW')
+    ap.add_argument('--lat', default='L0c,L60,L0')
     a = ap.parse_args()
     os.makedirs(OUT, exist_ok=True)
     for root in a.roots.split(','):
         rows = []
-        run_root(root, a.block, rows)
+        run_root(root, a.block, rows, tuple(a.lat.split(',')))
         if rows:
             df = pd.DataFrame(rows)
-            df.to_parquet(os.path.join(OUT, f'baselines_{a.block}_{root}.parquet'))
+            df.to_parquet(os.path.join(OUT, f'baselines_{a.block}_{root}_{a.lat.replace(",", "-")}.parquet'))
             print(root, a.block, len(df), 'records written', flush=True)
 
 

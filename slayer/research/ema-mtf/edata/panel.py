@@ -13,8 +13,9 @@ Per root R in SPY, QQQ, IWM, SPXW and session D:
   q0.parquet   1-minute NBBO snapshots stamped at each bar END (09:31..16:00), expiration=*, strike_range=N(R):
                the NBBO-mid chart and the decision quote. m = index of the bar that the snapshot closes.
                Tiered: 'use'/'full' expirations at 1 minute; 'coarse' expirations at 15 minutes (m = 14, 29, ...).
-  q2.parquet   the same snapshots 2 s after each bar end (start_time 09:30:02): the fill quote of an order sent at a
-               bar close with the default 2 s latency. Eval sessions, 'use' expirations only (m = -1 is 09:30:02).
+  (q2.parquet  REMOVED: a start_time of 09:30:02 does not shift the terminal's 1-minute sampling -- the rows are the
+               :00 NBBO relabelled (validated against the 100 ms store). Fill quotes 2 s after a bar end come from
+               edata/fills.py: 1-second NBBO of the traded contract-day, fetched on demand and cached.)
   tb.parquet   1-minute trade-print OHLC bars built from every OPRA print (option/history/trade expiration=*), SIP rules
                (edata/sip.py): cancels dropped, O/C from last-eligible prints, H/L from high/low-eligible prints,
                volume from volume-eligible prints. Only non-empty minutes are stored.
@@ -208,7 +209,10 @@ def fetch_root_day(root, D, plan, is_eval):
         t = t[t.exp.isin(keep)]
         return sip.minute_bars(t)
 
-    jobs = {'q0': q0, 'q2': q2 if is_eval else (lambda: None), 'tb': trades}
+    # q2 is NOT fetched any more: validated 2026-11-06 (edata/validate.py snap 20240417) the terminal's interval
+    # grid does not move with start_time -- rows stamped 09:31:02, 09:32:02 ... carry the NBBO of 09:31:00, 09:32:00
+    # (100% equal to the 100 ms store at :00, 43% at :02). The 2 s fill comes from edata/fills.py instead.
+    jobs = {'q0': q0, 'tb': trades}
     with cf.ThreadPoolExecutor(2) as ex:
         futs = {k: ex.submit(f) for k, f in jobs.items()}
         res = {}

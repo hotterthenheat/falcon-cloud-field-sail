@@ -117,7 +117,7 @@ return is being measured**. Four consequences, and how the spec handles each:
 | bar m closes | E = 09:31 + m |
 | features of every series/timeframe | as of E (bars with known_ms ≤ E); positioning snapshots visible from their stamp; UW alerts from `created_at` |
 | decision | at E (entry decisions only for E ∈ [09:31, 15:50]) |
-| order arrives | E + latency. **2 s (primary)**: the NBBO snapshot stamped E+2 s (`q2`); 0 s optimistic (the snapshot at E); 60 s pessimistic (the snapshot at E+60 s) |
+| order arrives | E + latency. **2 s (primary, "L2")**: the NBBO in force at E+2 s from the contract-day's 1-second quotes (`edata/fills.py`, fetched on demand; a 1-minute grid with start_time 09:30:02 is NOT a 2 s grid — it repeats the :00 NBBO, DATA_COVERAGE §6). Screening uses **L0c** (the bar-end NBBO moved by the measured mean 2 s drift, +0.17%/+0.05% of mid buy/sell) with **L60** (the next bar end) beside it; L0 (no latency) is reported as the optimistic bound only (PREREG A1) |
 | exit decisions | at every later 1-minute bar close; filled the same way |
 | flat | 15:55 bar close (decision 15:55:00, arrival 15:55:02) for every position unless the variant holds overnight (§6) |
 

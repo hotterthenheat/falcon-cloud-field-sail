@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from engine.execution import ExecConfig, HoldUntil, Simulator, Trade
-from etests.util import EXP, K, FakePanel, random_walk_quotes
+from etests.util import EXP, K, FakePanel, Sim, random_walk_quotes
 
 D = '20240417'
 
@@ -51,7 +51,7 @@ def test_matches_compass_engine_fills():
 
     ref = Engine(sess, OneShot(), SimConfig(latency_ms=2000, max_entry_spread_frac=None)).run()[0]
     p = FakePanel('SPY', {D: _grid_from_ticks(ms, bid, ask, bs, as_, 0)}, {D: _grid_from_ticks(ms, bid, ask, bs, as_, 2000)})
-    sim = Simulator(p, ExecConfig(latency='L2', max_spread_frac=1.0))
+    sim = Sim(p, ExecConfig(latency='L2', max_spread_frac=1.0))
     mine = sim.run(Trade('SPY', EXP, K, 1, int(D), decision_m=29), HoldUntil(int(D), 59))
     assert mine['status'] == 'filled'
     assert abs(mine['entry_px'] - ref['entry_px']) < 1e-9, (mine['entry_px'], ref['entry_px'])
@@ -68,7 +68,7 @@ def _panel(**kw):
 def test_latency_variants_use_the_right_snapshot():
     p, q0, q2 = _panel()
     for lat, grid, m in (('L0', q0, 29), ('L2', q2, 29), ('L60', q0, 30)):
-        r = Simulator(p, ExecConfig(latency=lat)).run(Trade('SPY', EXP, K, 1, int(D), 29), HoldUntil(int(D), 59))
+        r = Sim(p, ExecConfig(latency=lat)).run(Trade('SPY', EXP, K, 1, int(D), 29), HoldUntil(int(D), 59))
         row = grid[D][grid[D].m == m].iloc[0]
         assert abs(r['entry_px'] - row.ask / 100) < 1e-9, lat
 
@@ -76,22 +76,22 @@ def test_latency_variants_use_the_right_snapshot():
 def test_spread_size_and_one_sided_rejections():
     p, q0, q2 = _panel()
     q2[D].loc[q2[D].m == 29, 'ask'] = q2[D].loc[q2[D].m == 29, 'bid'] * 2
-    r = Simulator(p).run(Trade('SPY', EXP, K, 1, int(D), 29), HoldUntil(int(D), 59))
+    r = Sim(p).run(Trade('SPY', EXP, K, 1, int(D), 29), HoldUntil(int(D), 59))
     assert r['status'] == 'rejected' and r['why'] == 'spread'
     q2[D].loc[q2[D].m == 30, 'as'] = 0
-    r = Simulator(p).run(Trade('SPY', EXP, K, 1, int(D), 30), HoldUntil(int(D), 59))
+    r = Sim(p).run(Trade('SPY', EXP, K, 1, int(D), 30), HoldUntil(int(D), 59))
     assert r['status'] == 'rejected' and r['why'] == 'no size'
     q2[D].loc[q2[D].m == 31, 'bid'] = 0
-    r = Simulator(p).run(Trade('SPY', EXP, K, 1, int(D), 31), HoldUntil(int(D), 59))
+    r = Sim(p).run(Trade('SPY', EXP, K, 1, int(D), 31), HoldUntil(int(D), 59))
     assert r['status'] == 'rejected'
-    r = Simulator(p).run(Trade('SPY', EXP, K, 1, int(D), 380), HoldUntil(int(D), 384))
+    r = Sim(p).run(Trade('SPY', EXP, K, 1, int(D), 380), HoldUntil(int(D), 384))
     assert r['status'] == 'rejected' and r['why'] == 'entry window'
 
 
 def test_partial_entry_and_walking_exit():
     p, q0, q2 = _panel(size=3)
     q2[D].loc[q2[D].m == 59, 'bs'] = 1
-    r = Simulator(p, ExecConfig(qty=5)).run(Trade('SPY', EXP, K, 1, int(D), 29), HoldUntil(int(D), 59))
+    r = Sim(p, ExecConfig(qty=5)).run(Trade('SPY', EXP, K, 1, int(D), 29), HoldUntil(int(D), 59))
     assert r['qty'] == 3 and r['partial_entry']
     b59, b60 = (q2[D][q2[D].m == m].bid.iloc[0] / 100 for m in (59, 60))
     assert abs(r['exit_px'] - (1 * b59 + 2 * b60) / 3) < 1e-9 and r['exit_walk_bars'] == 1
@@ -99,22 +99,22 @@ def test_partial_entry_and_walking_exit():
 
 def test_flat_at_1555_and_fees():
     p, q0, q2 = _panel()
-    r = Simulator(p).run(Trade('SPY', EXP, K, 1, int(D), 100), HoldUntil(int(D) + 5, 0))
+    r = Sim(p).run(Trade('SPY', EXP, K, 1, int(D), 100), HoldUntil(int(D) + 5, 0))
     assert r['exit_reason'] == 'flat' and r['exit_decision_m'] == 384
     assert abs(r['exit_px'] - q2[D][q2[D].m == 384].bid.iloc[0] / 100) < 1e-9
     assert abs(r['fees'] - 1.30) < 1e-9
     pS = FakePanel('SPXW', q0, q2)
-    rS = Simulator(pS).run(Trade('SPXW', EXP, K, 1, int(D), 100), HoldUntil(int(D), 120))
+    rS = Sim(pS).run(Trade('SPXW', EXP, K, 1, int(D), 100), HoldUntil(int(D), 120))
     assert abs(rS['fees'] - 2.30) < 1e-9
 
 
 def test_overnight_hold_and_expiry_flat():
     p, q0, q2 = _panel()
-    r = Simulator(p, ExecConfig(overnight=True)).run(Trade('SPY', EXP, K, 1, int(D), 300), HoldUntil(20240418, 10))
+    r = Sim(p, ExecConfig(overnight=True)).run(Trade('SPY', EXP, K, 1, int(D), 300), HoldUntil(20240418, 10))
     assert r['exit_reason'] == 'hold_end' and r['exit_session'] == '20240418'
     q0e, q2e = random_walk_quotes([D], exp=int(D))
     pe = FakePanel('SPY', q0e, q2e)
-    r = Simulator(pe, ExecConfig(overnight=True)).run(Trade('SPY', int(D), K, 1, int(D), 300), HoldUntil(20240418, 10))
+    r = Sim(pe, ExecConfig(overnight=True)).run(Trade('SPY', int(D), K, 1, int(D), 300), HoldUntil(20240418, 10))
     assert r['exit_reason'] == 'expiry_flat'
 
 
@@ -122,5 +122,5 @@ def test_no_bid_to_the_end_marks_intrinsic_and_flags():
     p, q0, q2 = _panel()
     for g in (q0, q2):
         g[D].loc[g[D].m > 40, 'bid'] = 0
-    r = Simulator(p).run(Trade('SPY', EXP, K, 1, int(D), 29), HoldUntil(int(D), 59), und_close=lambda d: 503.0)
+    r = Sim(p).run(Trade('SPY', EXP, K, 1, int(D), 29), HoldUntil(int(D), 59), und_close=lambda d: 503.0)
     assert r['forced_intrinsic'] and abs(r['exit_px'] - 3.0) < 1e-9

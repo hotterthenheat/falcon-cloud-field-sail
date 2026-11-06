@@ -16,7 +16,7 @@ import pandas as pd
 from engine.chart import SERIES, ContractChart, contract_minutes
 from engine.execution import ExecConfig, Simulator, Trade
 from engine import signals as S
-from etests.util import EXP, K, FakePanel, random_walk_quotes
+from etests.util import EXP, K, FakePanel, Sim, random_walk_quotes
 
 DAYS = ['20240415', '20240416', '20240417']
 RNG = np.random.default_rng(11)
@@ -189,7 +189,7 @@ def test_exits_identical_when_the_future_is_noise_and_canary_caught():
 
     for name in ('X1', 'X3', 'X4', 'X7', 'X8', 'X2a', 'X2c', 'X5', 'X6', 'X9', 'X10'):
         chart = _chart(q0, q2, tb)
-        sim = Simulator(FakePanel('SPY', q0, q2, tb), ExecConfig(max_spread_frac=1.0))
+        sim = Sim(FakePanel('SPY', q0, q2, tb), ExecConfig(max_spread_frac=1.0))
         r0 = sim.run(Trade('SPY', EXP, K, 1, int(D), 60), make(name, chart))
         assert r0['status'] == 'filled'
         xd, xm = r0['exit_decision_session'], r0['exit_decision_m']
@@ -197,17 +197,17 @@ def test_exits_identical_when_the_future_is_noise_and_canary_caught():
         # chart rows after the exit DECISION are noise too
         cq0, _, ctb = _noised(q0, q2, tb, xd, xm)
         chart_n = ContractChart(contract_minutes(FakePanel('SPY', cq0, nq2, ctb), EXP, K, 1, DAYS))
-        sim_n = Simulator(FakePanel('SPY', nq0, nq2, ntb), ExecConfig(max_spread_frac=1.0))
+        sim_n = Sim(FakePanel('SPY', nq0, nq2, ntb), ExecConfig(max_spread_frac=1.0))
         r1 = sim_n.run(Trade('SPY', EXP, K, 1, int(D), 60), make(name, chart_n))
         assert (r1['exit_m'], r1['exit_reason']) == (r0['exit_m'], r0['exit_reason']), name
         assert abs(r1['exit_px'] - r0['exit_px']) < 1e-12, name
         exits[name] = r0["exit_reason"]
     print("    exit reasons:", exits)
     # canary
-    sim = Simulator(FakePanel('SPY', q0, q2, tb), ExecConfig(max_spread_frac=1.0))
+    sim = Sim(FakePanel('SPY', q0, q2, tb), ExecConfig(max_spread_frac=1.0))
     r0 = sim.run(Trade('SPY', EXP, K, 1, int(D), 60), PeekExit(q0))
     assert r0['exit_reason'] == 'peek'
     nq0, nq2, ntb = _noised(q0, q2, tb, D, r0['exit_decision_m'])
-    r1 = Simulator(FakePanel('SPY', nq0, nq2, ntb), ExecConfig(max_spread_frac=1.0)).run(
+    r1 = Sim(FakePanel('SPY', nq0, nq2, ntb), ExecConfig(max_spread_frac=1.0)).run(
         Trade('SPY', EXP, K, 1, int(D), 60), PeekExit(nq0))
     assert (r1['exit_decision_m'], r1['exit_px']) != (r0['exit_decision_m'], r0['exit_px']), 'canary not caught'

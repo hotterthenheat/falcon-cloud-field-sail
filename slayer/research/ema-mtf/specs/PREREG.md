@@ -187,6 +187,20 @@ then red team (rule 13), then a ≥ 15-session live shadow (rule 8).
 See `reports/BASELINES.md`. These are references, not hypotheses: Phase 2 compares every variant with BL2 (random,
 same exit) and BL3/BL4 and reports the difference; no threshold in §7 is changed by them.
 
+## 9a. Amendment A1 (2026-11-06, before any Stage-1/2 outcome and before the baselines ran): latency source
+
+Found while building the panel (`edata/validate.py`, DATA_COVERAGE §6): the terminal's 1-minute grid does not move
+with `start_time` — the "2 s after the bar" rows are the bar-end NBBO relabelled (100% equal to the 100 ms store at
+:00, 43% at :02). Exact 2 s fills therefore need the contract-day's 1-second NBBO (`edata/fills.py`, verified 100%
+equal to the 100 ms store at bar end + 2 s). Rules, replacing "2 s latency" wherever §4–§7 use it:
+* **Screening** (Stage 1 outcomes Y_h, Stage 2 variants, walk-forward, ablation, sensitivity) runs at **L0c** = fills at
+  the bar-end NBBO (L0) **minus the measured mean 2-second drift** (+0.17% of mid on the buy, +0.05% on the sell,
+  `edata/latency_cal.py`, 2.08M contract-minutes, applied as an extra cost on every fill), with **L60** (fills at the
+  next bar end) reported beside it.
+* **Promotion** (§7 bar) and VALIDATION are evaluated at exact **L2** (1-second NBBO 2 s after each decision) on
+  every trade of the candidate; a candidate must pass at L2 — L0c is never the result of record.
+* This changes no feature, model, parameter or pass threshold, adds no variant, and is logged in the ledger.
+
 ## 10. Final verdict mapping (fixed now)
 
 * **A — viable edge**: a frozen candidate passes VALIDATION and the single blind LOCKED look at the §7 bar.

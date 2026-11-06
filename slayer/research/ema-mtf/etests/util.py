@@ -31,6 +31,30 @@ class FakePanel:
         return self._res if D in self._q0 else None
 
 
+class FakeFills:
+    """L2 fill source for tests: q2 grids (snapshots 2 s after each bar end, by m) answer quote_at(D, c, ms)."""
+
+    def __init__(self, q2: dict):
+        self.q2 = q2
+
+    def quote_at(self, D, c, ms):
+        m = (ms - 2000) // 60_000 - (9 * 60 + 30) - 1
+        x = self.q2.get(str(D))
+        if x is None:
+            return None
+        x = x[(x.exp == c[0]) & (x.strike == c[1]) & (x.right == c[2]) & (x.m == m)]
+        if not len(x):
+            return None
+        r = x.iloc[0]
+        return (r.bid / 100, r.ask / 100, int(r.bs), int(r['as']))
+
+
+def Sim(panel, cfg=None, **kw):
+    """engine.execution.Simulator with the panel's q2 test grid as the 1-second fill source."""
+    from engine.execution import Simulator
+    return Simulator(panel, cfg, fills=FakeFills(panel._q2), **kw)
+
+
 def random_walk_quotes(days, seed=1, start=2.0, vol=0.004, spread=0.02, size=20, exp=EXP, strike=K, right=1):
     """1-minute snapshots q0 (bar ends) and q2 (+2 s) of one contract: q2 = q0 of the same minute nudged by a small
     independent move (2 s of drift), both in cents."""

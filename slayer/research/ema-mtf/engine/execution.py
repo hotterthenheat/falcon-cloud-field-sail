@@ -2,8 +2,11 @@
 closes, fills at the NBBO in force after the latency, never at the mid.
 
   decision     at the end E of a 1-minute bar (09:31 .. 15:55); the strategy sees only data known at E
-  arrival      E + latency.  latency 2 s (default): the snapshot stamped E+2 s (q2 grid);  0 s: the snapshot at E
-               (optimistic);  60 s: the snapshot at E+60 s (the next bar end, pessimistic)
+  arrival      E + latency.  'L2' (protocol default): the NBBO in force at E+2 s from the contract-day's 1-second
+               quotes (edata/fills.py, fetched on demand; Simulator(fills=...));  'L0': the 1-minute snapshot at E
+               (optimistic: no latency);  'L60': the snapshot at E+60 s (the next bar end, pessimistic).
+               Measured on the 100 ms store (edata/latency_cal.py): L2 costs on average +0.17% of mid on the buy and
+               +0.05% on the sell versus L0; screening runs report L0 and L60 as bounds, candidates are re-run at L2.
   buy          the ask in force at arrival (+ slip_ticks ticks), quantity capped at the displayed ask size; the
                remainder is cancelled (a partial fill is recorded); no fill if the quote is one-sided, crossed,
                wider than max_spread_frac of mid, or the size is 0
@@ -42,7 +45,9 @@ def tick(root: str, px: float) -> float:
 
 @dataclass
 class ExecConfig:
-    latency: str = 'L2'            # 'L0' | 'L2' | 'L60'
+    latency: str = 'L2'            # 'L2' (exact, needs fills) | 'L0c' (screening) | 'L0' | 'L60'
+    drift_buy: float = 0.0017      # L0c: mean ask move in the 2 s after a bar end, share of mid (edata/latency_cal.py)
+    drift_sell: float = 0.0005     # L0c: mean bid move against a seller
     slip_ticks: int = 0
     max_spread_frac: float = 0.08
     qty: int = 1
@@ -64,7 +69,7 @@ class Trade:
 
 
 class QuoteBook:
-    """Per (root, session) access to the decision grid (q0) and fill grid (q2) of contracts, keyed by m."""
+    """Per (root, session) access to the 1-minute decision grid (q0: the NBBO at each bar end) of contracts, keyed by m."""
 
     def __init__(self, panel):
         self.p = panel
@@ -73,7 +78,7 @@ class QuoteBook:
     def _day(self, D: str, which: str) -> dict:
         key = (D, which)
         if key not in self._c:
-            df = self.p.q0(D) if which == 'q0' else self.p.q2(D)
+            df = self.p.q0(D)
             out = {}
             if len(df):
                 cols = [df[c].to_numpy() for c in ('exp', 'strike', 'right', 'm', 'bid', 'ask', 'bs', 'as')]
@@ -103,18 +108,30 @@ def _valid(q, max_spread=None):
 
 
 class Simulator:
-    def __init__(self, panel, cfg: ExecConfig | None = None, sessions: list[str] | None = None):
+    def __init__(self, panel, cfg: ExecConfig | None = None, sessions: list[str] | None = None, fills=None):
+        """fills: an object with quote_at(D, (exp, strike, right), ms) -> (bid, ask, bid size, ask size) in dollars,
+        the NBBO in force at ms (edata/fills.FillBook: 1-second quotes). Required for latency 'L2'."""
         self.p = panel
         self.root = panel.root
         self.cfg = cfg or ExecConfig()
         self.book = QuoteBook(panel)
         self.sessions = sessions or panel.days()
+        self.fills = fills
+        if self.cfg.latency == 'L2' and fills is None:
+            raise ValueError("latency 'L2' needs a 1-second fill source (edata/fills.FillBook); use 'L0'/'L60' bounds otherwise")
 
     def arrival(self, D: str, c, m: int):
-        """The quote an order sent at the close of bar m meets, per the latency setting; (quote, arrival label)."""
+        """The quote an order sent at the close of bar m meets, per the latency setting."""
         L = self.cfg.latency
         if L == 'L2':
-            return self.book.quote(D, 'q2', c, m)
+            return self.fills.quote_at(D, c, RTH_OPEN_MS + (m + 1) * 60_000 + 2000)
+        if L == 'L0c':
+            # the bar-end NBBO moved by the measured mean 2-second drift (PREREG amendment A1)
+            q = self.book.quote(D, 'q0', c, m)
+            if q is None or not (q[0] > 0 and q[1] >= q[0]):
+                return q
+            mid = (q[0] + q[1]) / 2
+            return (max(q[0] - self.cfg.drift_sell * mid, 0.0), q[1] + self.cfg.drift_buy * mid, q[2], q[3])
         if L == 'L0':
             return self.book.quote(D, 'q0', c, m)
         if L == 'L60':
@@ -186,7 +203,7 @@ class Simulator:
         dd = [d for d in days if d >= xD]
         for d in dd:
             for m in range(xm if d == xD else 0, FLAT_M + 6):
-                qx = self.arrival(d, c, m) if m <= FLAT_M else self.book.quote(d, 'q2', c, m)
+                qx = self.arrival(d, c, m)
                 if qx is None or not (qx[0] > 0 and qx[1] >= qx[0]):
                     walked += 1
                     continue
