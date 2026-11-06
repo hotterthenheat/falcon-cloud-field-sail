@@ -10,6 +10,7 @@ import { PHONE_ROW_PX, fitEdgeLabels } from './edgeLabelFit';
 import { RibbonCache, drawRibbons } from './nodeRibbon';
 import { LEVELS_LABELS, drawLevels, levelInk, pickLevels, spaceLevels, type LevelPick } from './nodeLevels';
 import { heatInks, heatPalette, layoutHeatLabels, onHeatPalette, paintHeatLabels, type HeatLabel } from './nodeHeat';
+import { meterLayer, threadInk, ThreadsLook } from './nodeThreads';
 
 /*
   The exposure field: one filled band per strike, from the midpoint of the strike below to the midpoint of the
@@ -1223,6 +1224,8 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
   /** The host's levels, named at the edge with the zones */
   edgeLevels: (() => EdgeLevel[]) | null = null;
   private _paneViews: (FieldPaneView | NodesPaneView | TagsPaneView)[];
+  /** The threads look (nodeConcept.ts `threads`, dev only): nodeThreads.ts, drawn on the strikes keptRows keeps */
+  private threads: ThreadsLook | null = null;
   hover: BeadHit | null = null;
   ringInk: readonly [number, number, number] = [255, 255, 255];
   /** Told after every data hand-off, with the scale the cells stand against — the host's legend */
@@ -1236,25 +1239,14 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
   constructor() {
     this._paneViews = [new FieldPaneView(this), new NodesPaneView(this), new TagsPaneView(this)];
     /* dev only: each layer's draw cost onto window.__nodesMeter when a probe set one ([start, ms] pairs) */
-    if (import.meta.env?.DEV && typeof window !== 'undefined')
-      for (const v of this._paneViews) {
-        const r = v.renderer() as { draw(target: DrawTarget): void };
-        const draw = r.draw.bind(r);
-        r.draw = (target: DrawTarget) => {
-          const m = (window as unknown as { __nodesMeter?: [number, number][] }).__nodesMeter;
-          if (!m) return draw(target);
-          const t0 = performance.now();
-          draw(target);
-          m.push([t0, performance.now() - t0]);
-        };
-      }
+    for (const v of this._paneViews) meterLayer(v.renderer() as { draw(target: DrawTarget): void });
   }
 
   valueOf(l: GexSnapshot['levels'][number]): number {
     return levelValue(l, this.greek);
   }
 
-  /** The look (nodeConcept.ts, dev only): `current`, or `heat` (nodeHeat.ts) */
+  /** The look (nodeConcept.ts, dev only): `current`, `heat` (nodeHeat.ts) or `threads` (nodeThreads.ts) */
   concept: NodeConcept = 'current';
   /** The heat's labels at the price axis, laid out by the nodes pass and painted on the top layer */
   heatLabels: HeatLabel[] = [];
@@ -1275,8 +1267,11 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
             this.requestUpdate?.();
           })
         : null;
+    this.threads = concept === 'threads' ? new ThreadsLook(this) : null;
     this.heatLabels = [];
     this.chips = [];
+    this.tags = [];
+    this.beadRows = null;
     this.rev++;
     this.requestUpdate?.();
   }
@@ -1396,9 +1391,9 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     const step = Math.min(STEPS - 1, Math.floor(t * STEPS));
     const r = this.ringInk;
     const ring = `rgba(${r[0]},${r[1]},${r[2]},0.95)`;
-    /* a bead row rings its bead at the strike, the field a whole cell */
+    /* a bead row rings its bead at the strike, the field a whole cell (and so do the threads: any strike reads) */
     const heat = this.concept === 'heat';
-    const bead = this.look !== 'heat' && !heat ? this.beadRows?.get(row) : undefined;
+    const bead = this.look !== 'heat' && !heat && !this.threads ? this.beadRows?.get(row) : undefined;
     if (bead != null) {
       const y = this.series.priceToCoordinate(hover.strike);
       if (y == null) return null;
@@ -1411,6 +1406,7 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
       const hi = heatInks((0.299 * g[0] + 0.587 * g[1] + 0.114 * g[2]) / 255 > 0.55);
       return { ...geo, fill: hi.solid[v > 0 ? 0 : 1][step], ring, rect: true };
     }
+    if (this.threads) return { ...geo, ry: Math.min(geo.ry, 2.5), fill: threadInk(this.groundRgb(), v), ring, rect: true };
     return { ...geo, fill: v > 0 ? LUT.posSolid[step] : LUT.negSolid[step], ring, rect: true };
   }
 
@@ -1463,7 +1459,7 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     if (price === null) return null;
     const row = this.rowAt(price);
     /* with no field drawn, only a beaded row answers, and only near its line */
-    if ((this.look === 'beads' || this.look === 'ribbon' || this.look === 'levels') && this.concept !== 'heat') {
+    if ((this.look === 'beads' || this.look === 'ribbon' || this.look === 'levels') && this.concept === 'current') {
       const rad = this.beadRows?.get(row);
       const yRow = row >= 0 ? this.series.priceToCoordinate(this.strikes[row]) : null;
       if (rad == null || yRow == null || Math.abs(yRow - y) > Math.max(4, rad + 2)) return null;
@@ -1587,8 +1583,8 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     this.requestUpdate?.();
   }
 
-  paneViews(): (FieldPaneView | NodesPaneView | TagsPaneView)[] {
-    return this._paneViews;
+  paneViews(): readonly { zOrder(): 'top' | 'bottom'; renderer(): { draw(target: DrawTarget): void } }[] {
+    return this.threads ? this.threads.views : this._paneViews;
   }
 
   /**

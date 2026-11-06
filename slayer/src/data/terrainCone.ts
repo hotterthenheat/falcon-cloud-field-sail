@@ -7,8 +7,9 @@
    close and the next session's the variance grows linearly in trading time from today's to the next expiry's (the
    forward variance), so the curves are smooth and never shrink.
 
-   Pinpoint's 1σ is the vendor's straddle × √(π/2): an at-the-money straddle prices E|move| = σ·√(2/π), so both are the
-   same σ; they differ only by what each vendor quotes (ThetaData's vol against Unusual Whales' straddle price). */
+   Pinpoint's 1σ (data/book/move.ts) is the same S·σ·√T off the date's own row (its vol, else its implied move ÷ the
+   vendor's k); the two differ only by which vendor's vol they read. The nodes view's candidate looks draw the cone off
+   that one (data/nodeCone.ts), so the cone beside the nodes is the expected move the rest of the book prints. */
 
 import { nyIsoDate, nyParts, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { isEarlyClose, isTradingDay } from '../core/calendar';
