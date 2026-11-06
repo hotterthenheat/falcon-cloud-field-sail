@@ -210,7 +210,7 @@ async function fillExpiryFacts(entry: Entry, token: number, only?: readonly stri
   const books = await mapLimit(dates, 3, async date => {
     try {
       const rows = await whalesOptionContractsPaged(entry.ticker, date, hot);
-      return [date, Array.isArray(rows) ? foldContracts(rows, date, pricedClockOf(entry.byDate[date] ?? []).at) : null] as const;
+      return [date, Array.isArray(rows) ? foldContracts(rows, date, pricedClockOf(entry.byDate[date] ?? []).at, entry.ticker) : null] as const;
     } catch {
       return [date, null] as const;
     }
@@ -564,7 +564,7 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
       /* in only once read — a failed read is asked again on the next pass, never taken as "no contracts" */
       current.factsDates = new Set([...(current.factsDates ?? []), front]);
       const have = current.byDate[front] ?? chain;
-      const book = foldContracts(rows, front, pricedClockOf(have).at);
+      const book = foldContracts(rows, front, pricedClockOf(have).at, current.ticker);
       if (book.size && have.length) current.byDate = { ...current.byDate, [front]: paintLegs(have, book, true, current.spot, front, current.ticker) };
       current.frontFacts = true;
       current.at = Date.now();
@@ -598,7 +598,7 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
       const after = cache.get(entry.ticker);
       if (after && rows) {
         const have = after.byDate[ny];
-        const book = foldContracts(rows, ny, pricedClockOf(have ?? []).at);
+        const book = foldContracts(rows, ny, pricedClockOf(have ?? []).at, after.ticker);
         if (book.size && have?.length) after.byDate = { ...after.byDate, [ny]: paintLegs(have, book, true, after.spot, ny, after.ticker) };
         after.factsDates = new Set([...(after.factsDates ?? []), ny]);
         after.at = Date.now();
@@ -782,7 +782,7 @@ async function loadExpiriesNow(entry: Entry, token: number): Promise<void> {
     const byDate = { ...current.byDate };
     const empty = emptyDates.get(entry.ticker) ?? new Set<string>();
     for (const [date, chain] of fetched) {
-      if (chain?.length) byDate[date] = carryFacts(chain, byDate[date]);
+      if (chain?.length) byDate[date] = carryFacts(chain, byDate[date], date);
       else if (chain && !byDate[date]?.length) empty.add(date);
     }
     emptyDates.set(entry.ticker, empty);

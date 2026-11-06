@@ -9,7 +9,7 @@ import { nyIsoDate } from '../core/nyTime';
 import { expiryOpen } from '../core/tradingYear';
 import { expiryLabel } from './book/levels';
 import { peekIv } from './book/move';
-import { HIGHER_KEYS, chainClock, contractHigher, strikeHigher, type HigherKey } from './liveHigher';
+import { HIGHER_KEYS, addHigher, amStrikeHigher, chainClock, contractHigher, strikeHigher, type HigherKey } from './liveHigher';
 import { pickLegWalls } from '../core/walls';
 import { carryFor } from '../core/carry';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
@@ -256,7 +256,7 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow, mode: BookMod
       closed.push(false);
       return null;
     }
-    const { years: t, volPt } = chainClock(col.chain, col.date);
+    const { years: t, volPt, at: clockAt } = chainClock(col.chain, col.date);
     /* No time left is not a zero. The column is marked closed and the cells stay blank. */
     if (t == null) {
       closed.push(true);
@@ -268,8 +268,9 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow, mode: BookMod
     const at = new Map(strikes.map((s, si) => [s, si]));
     for (const node of col.chain) {
       if (!want.has(node.strike)) continue;
-      const callN = node.callBook ?? node.callOI;
-      const putN = node.putBook ?? node.putOI;
+      /* the PM contracts on the date's clock; the live AM contracts (node.am) on theirs, added below */
+      const callN = node.callBook ?? node.callOI - (node.am?.callOI ?? 0);
+      const putN = node.putBook ?? node.putOI - (node.am?.putOI ?? 0);
       const callOk = (node.callIv ?? 0) > 0 && (node.callIv ?? 0) <= 3;
       const putOk = (node.putIv ?? 0) > 0 && (node.putIv ?? 0) <= 3;
       let dropped = false;
@@ -285,7 +286,7 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow, mode: BookMod
       if (si != null && dropped) blankMiss[si] = true;
       const h = mode === 'flow' && node.flow
         ? { color: node.flow.color, vomma: node.flow.vomma, speed: node.flow.speed, veta: node.flow.veta, zomma: node.flow.zomma }
-        : strikeHigher(pricedSpot, node.strike, t, node.callIv, node.putIv, callN, putN, volPt, carry.r, carry.q);
+        : addHigher(strikeHigher(pricedSpot, node.strike, t, node.callIv, node.putIv, callN, putN, volPt, carry.r, carry.q), amStrikeHigher(pricedSpot, node, col.date, clockAt, carry.r, carry.q));
       if (h) m.set(node.strike, h);
     }
     return m;

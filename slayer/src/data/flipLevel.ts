@@ -6,6 +6,7 @@ import { bellDay, shortDay, todayScopeLabel } from './bookWindow';
 import { carryFor } from '../core/carry';
 import { tradingMinutesBetween, tradingYears } from '../core/tradingYear';
 import { vendorIvOnTradingClock } from '../core/volClock';
+import { amTradingYears } from '../core/settle';
 import { dollarGammaPerContract, netGammaClockPath, netGammaPath, quietLegs, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
 import { nyIsoDate, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { bookToday, isoDate, isTradingDay } from '../core/calendar';
@@ -83,7 +84,7 @@ const ITM_RUNAWAY_IV = 1.5;
 /** One date's legs. `own`: each contract's own vol where it is in, the same expiry's smile at that strike where it is
     not — else the date's ATM vol (a calendar-year vol, moved onto the trading clock the legs run on). `s0`: the price
     the date's gamma was priced at, when it is not the search's spot. `spot`: where the smile's OTM side is read from. */
-const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, now: number, own: boolean, s0?: number, perRow = false, spot = 0): GammaLeg[] => {
+export const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, now: number, own: boolean, s0?: number, perRow = false, spot = 0): GammaLeg[] => {
   const t0 = yearsTo(date, now);
   const atm0 = vendorIvOnTradingClock(atmIv, date, now);
   const out: GammaLeg[] = [];
@@ -96,15 +97,15 @@ const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, n
     const wing = smile ? smile(n.strike) : 0;
     const volOf = (mine: number | undefined) => (own && mine && mine > 0 ? mine : wing > 0 ? wing : atm);
     const at = own0 && own0 > 0 ? own0 : spot;
-    const push = (g0: number, mine: number | undefined, oi: number, itm: boolean, side: 1 | -1) => {
+    const push = (g0: number, mine: number | undefined, oi: number, itm: boolean, side: 1 | -1, tLeg = t) => {
       let g = g0;
       let iv = volOf(mine);
       let ownIv = own && !!mine && mine > 0;
       /* An in-the-money leg in its last day trades at parity, so a runaway own vol (over ITM_RUNAWAY_IV and well above
          the smile) is noise: its gamma at spot is scaled to the smile's vol and the rest is carried flat (legSet). */
-      if (own && ownIv && itm && t <= 1 / YEAR_SESSION && at > 0 && (mine ?? 0) > ITM_RUNAWAY_IV && wing > 0 && wing < (mine ?? 0) * 0.7) {
-        const g1 = dollarGammaPerContract(at, n.strike, t, wing);
-        const g2 = dollarGammaPerContract(at, n.strike, t, mine!);
+      if (own && ownIv && itm && tLeg <= 1 / YEAR_SESSION && at > 0 && (mine ?? 0) > ITM_RUNAWAY_IV && wing > 0 && wing < (mine ?? 0) * 0.7) {
+        const g1 = dollarGammaPerContract(at, n.strike, tLeg, wing);
+        const g2 = dollarGammaPerContract(at, n.strike, tLeg, mine!);
         if (g2 > 0) {
           g = g0 * Math.min(1, g1 / g2);
           iv = wing;
@@ -113,8 +114,20 @@ const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, n
       }
       /* a leg the vendor prints no gamma for at spot still holds contracts: priced outright from its open interest
          (core/gammaFlip.ts) once price walks toward it */
-      if (g || (oi > 0 && iv > 0)) out.push({ strike: n.strike, g0: g, iv, t, s0: own0, oi: oi > 0 ? oi : undefined, side, ownIv });
+      if (g || (oi > 0 && iv > 0)) out.push({ strike: n.strike, g0: g, iv, t: tLeg, s0: own0, oi: oi > 0 ? oi : undefined, side, ownIv });
     };
+    /* an index's live AM monthly at this strike (node.am, core/settle.ts) is its own leg: its share of the row's gamma,
+       its open interest and vol, re-priced to ITS settlement (09:30 of the date — the previous session's close on the
+       trading clock), not the weeklies' 16:00 */
+    const am = n.am;
+    const tAm = am ? amTradingYears(date, perRow && n.gexAt ? n.gexAt : now) : null;
+    if (am && tAm != null) {
+      push(n.callGex * (1 - am.callShare), n.callIv, Math.max(0, n.callOI - am.callOI), n.strike < at, -1);
+      push(n.putGex * (1 - am.putShare), n.putIv, Math.max(0, n.putOI - am.putOI), n.strike > at, 1);
+      push(n.callGex * am.callShare, am.callIv || n.callIv, am.callOI, n.strike < at, -1, tAm);
+      push(n.putGex * am.putShare, am.putIv || n.putIv, am.putOI, n.strike > at, 1, tAm);
+      continue;
+    }
     push(n.callGex, n.callIv, n.callOI, n.strike < at, -1);
     push(n.putGex, n.putIv, n.putOI, n.strike > at, 1);
   }

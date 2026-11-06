@@ -117,6 +117,14 @@ export interface StrikeNode {
   putBook?: number;
   /** False when this strike's flow net is too small a share of its volume to trust. The sign is still the flow sign. */
   flowFirm?: boolean;
+  /** An index's AM-settled monthly contracts at this strike while they still trade (core/settle.ts): their open interest
+      (inside callOI/putOI, NOT inside callBook/putBook, which count the PM contracts), their own vol on THEIR clock (to
+      09:30 of the date — the previous session's close on the trading clock), and their share of the vendor row's
+      gamma (vendor per-contract gamma × OI). The flip and the contract greeks price them to that clock. */
+  am?: { callOI: number; putOI: number; callIv: number; putIv: number; callShare: number; putShare: number };
+  /** The share of the vendor row's gamma (call, put) held by contracts the book does not count — AM contracts once they
+      settle at 09:30 of their date (the vendor's rows still carry them). Taken off every time the row is laid on. */
+  cut?: { call: number; put: number };
   /** Spot-exposure dollars for one strike. Ask is dealers selling, bid is dealers buying. Not greek-exposure shares. */
   vendor?: {
     px: number;

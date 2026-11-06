@@ -92,6 +92,7 @@ const PROOFS = [
   'indicators-al-proof',
   'day-iv-proof',
   'greeks-fd-proof',
+  'settle-roots-proof',
 ];
 
 const goldens = () =>
