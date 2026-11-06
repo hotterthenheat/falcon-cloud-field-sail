@@ -91,6 +91,7 @@ const PROOFS = [
   'tv-levels-proof',
   'indicators-al-proof',
   'day-iv-proof',
+  'greeks-fd-proof',
 ];
 
 const goldens = () =>

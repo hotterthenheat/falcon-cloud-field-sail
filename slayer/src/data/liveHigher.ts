@@ -4,6 +4,7 @@ import { quotedVolPoint } from '../core/volClock';
 import { SESSION_LENGTH_MIN } from '../core/nyTime';
 import { keptLeg, type Right } from '../core/dealerSign';
 import type { MarketSnapshot } from '../types/market';
+import { carryFor } from '../core/carry';
 
 /* Colour, vomma, speed, veta, zomma: Black-Scholes at each contract's own vol and the book's spot, OI as the count, kept in
    the house sign of the one dealer model (core/dealerSign.ts: dealers long the calls, short the puts).
@@ -42,11 +43,14 @@ const ZERO_SIDE = (): Record<HigherKey, HigherSide> => ({
 });
 
 /** Kept dollars (house sign) for `count` contracts of one leg. Null when it cannot be priced.
-    color $GEX/session · speed $GEX per 1% move · zomma $GEX/vol pt · vomma $vega/vol pt · veta $vega/session. */
-export function contractHigher(spot: number, strike: number, years: number, iv: number, count: number, right: Right = 'C', volPt = 1): Record<HigherKey, number> | null {
+    color $GEX/session · speed $GEX per 1% move · zomma $GEX/vol pt · vomma $vega/vol pt · veta $vega/session.
+    `r`, `q`: the name's carry (core/carry.ts carryFor) — the rate and yield its vols were solved at and its vega, vanna
+    and charm are priced at (book/scale.ts paintLegs). Left out they were the seam's, q = 0 (audit 2026-11-06: a name
+    with a yield had its higher greeks priced at none, off vols solved at its yield). */
+export function contractHigher(spot: number, strike: number, years: number, iv: number, count: number, right: Right = 'C', volPt = 1, r?: number, q?: number): Record<HigherKey, number> | null {
   if (!Number.isFinite(count) || count === 0) return null;
   if (!(iv > 0) || iv > 3) return null;
-  const g = higherGreeksExact(spot, strike, years, iv);
+  const g = higherGreeksExact(spot, strike, years, iv, r, q);
   if (!g) return null;
   const gexScale = spot * spot * 0.01;
   const kept = (perLong: number) => keptLeg(right, perLong * 100, count);
@@ -64,9 +68,9 @@ export function contractHigher(spot: number, strike: number, years: number, iv: 
 
 /** Call and put dollars at one strike. Null when neither leg can be priced. `years` is the trading-year fraction to that
     expiry; the counts are the contracts' open interest, the count gamma uses. */
-export function strikeHigher(spot: number, strike: number, years: number, callIv: number | undefined, putIv: number | undefined, callCount: number, putCount: number, volPt = 1): Record<HigherKey, HigherSide> | null {
-  const call = contractHigher(spot, strike, years, callIv ?? 0, callCount, 'C', volPt);
-  const put = contractHigher(spot, strike, years, putIv ?? 0, putCount, 'P', volPt);
+export function strikeHigher(spot: number, strike: number, years: number, callIv: number | undefined, putIv: number | undefined, callCount: number, putCount: number, volPt = 1, r?: number, q?: number): Record<HigherKey, HigherSide> | null {
+  const call = contractHigher(spot, strike, years, callIv ?? 0, callCount, 'C', volPt, r, q);
+  const put = contractHigher(spot, strike, years, putIv ?? 0, putCount, 'P', volPt, r, q);
   if (!call && !put) return null;
   const out = ZERO_SIDE();
   for (const k of HIGHER_KEYS) {
@@ -118,6 +122,7 @@ export function higherForStrikes(
   }
   if (!any) return out;
   const want = new Set(strikes);
+  const carry = carryFor(snapshot.ticker);
   for (const date of dates) {
     const nodes = byDate[date];
     if (!nodes?.length) continue;
@@ -125,7 +130,7 @@ export function higherForStrikes(
     if (t == null) continue;
     for (const n of nodes) {
       if (!want.has(n.strike)) continue;
-      const h = strikeHigher(snapshot.spot, n.strike, t, n.callIv, n.putIv, n.callBook ?? n.callOI, n.putBook ?? n.putOI, volPt);
+      const h = strikeHigher(snapshot.spot, n.strike, t, n.callIv, n.putIv, n.callBook ?? n.callOI, n.putBook ?? n.putOI, volPt, carry.r, carry.q);
       if (!h) continue;
       let cur = out.get(n.strike);
       if (!cur) {

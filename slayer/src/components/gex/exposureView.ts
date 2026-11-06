@@ -18,7 +18,7 @@ export const GREEK_PICK_OPTIONS: MultiOption[] = [
   { value: 'charm', label: 'CHARM', hint: 'Charm: dollars of stock one session’s passing makes dealers sell (negative: buy), price and vol unchanged' },
   { value: 'color', label: 'COLOR', hint: 'Change in GEX over one session ($ per 1%, per session)' },
   { value: 'vomma', label: 'VOMMA', hint: 'Change in dollar vega for a one-point vol move ($ per vol point, per vol point)' },
-  { value: 'speed', label: 'SPEED', hint: 'Change in GEX for a 1% move ($ per 1%, per 1%)' },
+  { value: 'speed', label: 'SPEED', hint: 'Change in dealer gamma for a 1% move, in GEX dollars at today’s price ($ per 1%, per 1%)' },
   { value: 'veta', label: 'VETA', hint: 'Change in dollar vega over one session ($ per vol point, per session)' },
   { value: 'zomma', label: 'ZOMMA', hint: 'Change in GEX for a one-point vol move ($ per 1%, per vol point)' },
 ];

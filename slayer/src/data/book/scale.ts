@@ -449,16 +449,15 @@ function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: stri
     /* the vendor's columns are scaled at the price and minute they were priced at (v.px, v.at), as the open-interest
        book's are (withLiveGamma) — never the live spot or the wall clock, or Live drifts from Settled with no new rows */
     const vPx = v?.px && v.px > 0 ? v.px : spot;
-    const share = expiry ? sessionShare(expiry, v?.at ?? pricedAt) : 1;
     const dexOf = (x: number) => x / (vPx * 0.01);
-    const chmOf = (x: number) => (x / CHARM_SESSION) * share;
     const callCount = !leg || heldGate ? (leg?.callOI ?? n.callOI) : dealerInventory(leg.callOI, leg.callAsk, leg.callBid, leg.callMulti, leg.callVol);
     const putCount = !leg || heldGate ? (leg?.putOI ?? n.putOI) : dealerPuts(leg.putOI, leg.putAsk, leg.putBid, leg.putMulti, leg.putVol);
     const gex = v?.asks && !heldGate ? { call: add3('C', true, ident, v.g[0], v.g[1], v.g[2]), put: add3('P', true, ident, v.g[3], v.g[4], v.g[5]) } : { call: n.callGex, put: n.putGex };
     const dex = v?.asks && !heldGate ? { call: add3('C', false, dexOf, v.d[0], v.d[1], v.d[2]), put: add3('P', false, dexOf, v.d[3], v.d[4], v.d[5]) } : { call: n.callDex, put: n.putDex };
-    const charm = v?.asks && !heldGate ? { call: add3('C', true, chmOf, v.c[0], v.c[1], v.c[2]), put: add3('P', true, chmOf, v.c[3], v.c[4], v.c[5]) } : { call: n.callCharm, put: n.putCharm };
     const callBs = n.callIv && n.callIv > 0 && years > 0 ? blackScholesGreeks(priceSpot, n.strike, years, n.callIv, r, q) : null;
     const putBs = n.putIv && n.putIv > 0 && years > 0 ? blackScholesGreeks(priceSpot, n.strike, years, n.putIv, r, q) : null;
+    /* charm off the contracts, like vanna: the flow count × Black-Scholes charm per session × S (see paintLegs) */
+    const charm = v?.asks && !heldGate ? { call: callBs ? keptLeg('C', (callBs.charmCall / 252) * 100 * spot, callCount) : n.callCharm, put: putBs ? keptLeg('P', (putBs.charmPut / 252) * 100 * spot, putCount) : n.putCharm } : { call: n.callCharm, put: n.putCharm };
     if (ticker && v?.asks && callBs && callCount !== 0) {
       const key = `${ticker}|${nyIsoDate()}`;
       if (!loggedFlow.has(key)) {
@@ -473,8 +472,8 @@ function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: stri
     /* vanna off the contracts, like vega: the flow count × Black-Scholes vanna × S per quoted vol point (the vendor's
        vanna columns are not one unit across names) — the open-interest figure when the gate holds */
     const vanna = v?.asks && !heldGate ? { call: callBs ? keptLeg('C', callBs.vanna * spot * volPt, callCount) : n.callVanna, put: putBs ? keptLeg('P', putBs.vanna * spot * volPt, putCount) : n.putVanna } : { call: n.callVanna, put: n.putVanna };
-    const hc = callBs ? contractHigher(priceSpot, n.strike, years, n.callIv ?? 0, callCount, 'C', volPt) : null;
-    const hp = putBs ? contractHigher(priceSpot, n.strike, years, n.putIv ?? 0, putCount, 'P', volPt) : null;
+    const hc = callBs ? contractHigher(priceSpot, n.strike, years, n.callIv ?? 0, callCount, 'C', volPt, r, q) : null;
+    const hp = putBs ? contractHigher(priceSpot, n.strike, years, n.putIv ?? 0, putCount, 'P', volPt, r, q) : null;
     const higher = { color: { call: hc?.color ?? 0, put: hp?.color ?? 0 }, vomma: { call: hc?.vomma ?? 0, put: hp?.vomma ?? 0 }, speed: { call: hc?.speed ?? 0, put: hp?.speed ?? 0 }, veta: { call: hc?.veta ?? 0, put: hp?.veta ?? 0 }, zomma: { call: hc?.zomma ?? 0, put: hp?.zomma ?? 0 } };
     drafts.push({ n, held: heldGate, outside, gex, dex, vanna, charm, vex: { call: callBs ? keptLeg('C', callBs.vega * 100 * volPt, callCount) : n.callVex, put: putBs ? keptLeg('P', putBs.vega * 100 * volPt, putCount) : n.putVex }, pack: higher });
   }
@@ -498,8 +497,8 @@ function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: stri
       vex = { call: d.n.callVex, put: d.n.putVex };
       const cN = d.n.callBook ?? d.n.callOI;
       const pN = d.n.putBook ?? d.n.putOI;
-      const hc = years > 0 && (d.n.callIv ?? 0) > 0 ? contractHigher(priceSpot, d.n.strike, years, d.n.callIv ?? 0, cN, 'C', volPt) : null;
-      const hp = years > 0 && (d.n.putIv ?? 0) > 0 ? contractHigher(priceSpot, d.n.strike, years, d.n.putIv ?? 0, pN, 'P', volPt) : null;
+      const hc = years > 0 && (d.n.callIv ?? 0) > 0 ? contractHigher(priceSpot, d.n.strike, years, d.n.callIv ?? 0, cN, 'C', volPt, r, q) : null;
+      const hp = years > 0 && (d.n.putIv ?? 0) > 0 ? contractHigher(priceSpot, d.n.strike, years, d.n.putIv ?? 0, pN, 'P', volPt, r, q) : null;
       higher = { color: { call: hc?.color ?? 0, put: hp?.color ?? 0 }, vomma: { call: hc?.vomma ?? 0, put: hp?.vomma ?? 0 }, speed: { call: hc?.speed ?? 0, put: hp?.speed ?? 0 }, veta: { call: hc?.veta ?? 0, put: hp?.veta ?? 0 }, zomma: { call: hc?.zomma ?? 0, put: hp?.zomma ?? 0 } };
     }
     d.n.flow = { gex, dex, vex, vanna, charm, ...higher, disagree: show && flowNet !== 0 && d.n.netGex !== 0 && Math.sign(flowNet) !== Math.sign(d.n.netGex), held: !show, outside: d.outside };
@@ -608,10 +607,17 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
     /* vanna always off the contracts, whatever the rows carried: vanna × S × OI per quoted vol point */
     n.callVanna = call && callN !== 0 ? keptLeg('C', call.vanna * spot * volPt, callN) : 0;
     n.putVanna = put && putN !== 0 ? keptLeg('P', put.vanna * spot * volPt, putN) : 0;
-    if (!carried(v?.c)) {
-      n.callCharm = call && callN !== 0 ? keptLeg('C', (call.charmCall / 252) * 100 * spot, callN) : 0;
-      n.putCharm = put && putN !== 0 ? keptLeg('P', (put.charmPut / 252) * 100 * spot, putN) : 0;
-    }
+    /* charm off the contracts too, at the same vol and clock as vanna and vega (audit 2026-11-06). The vendor's charm_oi
+       is its own delta model's: its unit and clock are the house's (charm_oi ÷ CHARM_SESSION × T_cal/T_trade lands within
+       0.3% of Black-Scholes at the vendor's own vol where its delta agrees — SPY 10/29 765P −28.25M against −28.30M,
+       778C −8.128M against −8.128M), but near the money on an expiring date its delta is not Black-Scholes at any vol the
+       contract quotes (SPY 764C Δ 0.858 against 0.911 at its own vol), and its charm ran 5–40% off the re-pricing at the
+       contract's quote-implied vol, the 772C with the other sign (−0.53M against +0.54M). The rows' charm stands in only
+       until the date's contracts are read, or where a leg has no vol to price. */
+    if (call && callN !== 0) n.callCharm = keptLeg('C', (call.charmCall / 252) * 100 * spot, callN);
+    else if (!carried(v?.c) || callN === 0) n.callCharm = 0;
+    if (put && putN !== 0) n.putCharm = keptLeg('P', (put.charmPut / 252) * 100 * spot, putN);
+    else if (!carried(v?.c) || putN === 0) n.putCharm = 0;
     n.netVex = n.callVex + n.putVex;
     n.netDex = n.callDex + n.putDex;
     n.netVanna = n.callVanna + n.putVanna;

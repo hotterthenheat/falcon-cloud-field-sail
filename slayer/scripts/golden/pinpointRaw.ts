@@ -96,6 +96,19 @@ export function bsVanna(S: number, K: number, t: number, v: number, r = 0.042): 
   return (-Math.exp((-d1 * d1) / 2) / Math.sqrt(2 * Math.PI)) * (d2 / v);
 }
 
+/** One long contract's delta, r = 4.2%, no dividend: N(d1) for a call, N(d1) − 1 for a put — written out here */
+export function bsDelta(S: number, K: number, t: number, v: number, right: string, r = 0.042): number {
+  const d1 = (Math.log(S / K) + (r + (v * v) / 2) * t) / (v * Math.sqrt(t));
+  return right === 'C' ? phiCdf(d1) : phiCdf(d1) - 1;
+}
+
+/** One long contract's charm per SESSION of the 252-session clock, by a finite difference of bsDelta in time (time
+    passing: t shrinks) — no closed form, nothing of the app's */
+export function bsCharmSession(S: number, K: number, t: number, v: number, right: string, r = 0.042): number {
+  const h = Math.min(t * 1e-3, 1e-5);
+  return ((bsDelta(S, K, t - h, v, right, r) - bsDelta(S, K, t + h, v, right, r)) / (2 * h)) / 252;
+}
+
 /** Implied vol off a quote mid by bisection (put through parity), null outside the model's range */
 function solveVol(mid: number, S: number, K: number, t: number, right: string, r = 0.042): number | null {
   const call = right === 'C' ? mid : mid + S - K * Math.exp(-r * t);
