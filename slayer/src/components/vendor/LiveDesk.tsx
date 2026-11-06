@@ -2,7 +2,7 @@ import { GLOSSARY } from '../gex/glossary';
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { createChart, LineSeries, LineStyle, type IChartApi, type ISeriesApi, type Time, type UTCTimestamp } from 'lightweight-charts';
-import { BULL, PUT_WALL, SILVER_FILL, resolveInk } from '../gex/paletteInk';
+import { BULL, PUT_WALL, SILVER, resolveInk } from '../gex/paletteInk';
 import { dayChartOptions, daySurface } from '../gex/dayChart';
 import { besideDot } from '../gex/besideDot';
 import { hhmm } from '../../data/ahead';
@@ -456,7 +456,7 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
   const still = (rows: Record<string, unknown>[]) => stillListed(rows, today).filter(r => !windowed || want.has(dayOf(r)));
   const painRows = still(series(taken(book, 'max-pain'))).sort((a, b) => dayOf(a).localeCompare(dayOf(b)));
   const pain = painRows[0];
-  const painLine = stamps(painRows, 'expiry', [{ key: 'max_pain', name: 'Max pain', ink: SILVER_FILL }]);
+  const painLine = stamps(painRows, 'expiry', [{ key: 'max_pain', name: 'Max pain', ink: SILVER }]);
   /* The vendor's NOPE as printed: it is the whole name's, and the head says so rather than deriving a per-window one. */
   const nopeSrc = series(taken(book, 'nope'));
   const nopeLine = stamps(thin(cutAt(nopeSrc, at)), 'timestamp', [{ key: 'nope', name: 'NOPE', ink: BULL }]);
@@ -467,7 +467,7 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
   const flowSource = windowed ? (summed ?? []) : series(taken(book, 'greek-flow'));
   const flow = stamps(thin(cutAt(flowSource, at)), 'timestamp', [
     { key: 'dir_delta_flow', name: 'Delta', ink: BULL },
-    { key: 'dir_vega_flow', name: 'Vega', ink: SILVER_FILL },
+    { key: 'dir_vega_flow', name: 'Vega', ink: SILVER },
   ]);
   const expiryFlow = still(series(taken(book, 'flow-expiry')));
   const byExpiry = stamps(expiryFlow, 'expiry', [
@@ -714,7 +714,7 @@ export function EarningsVol({ ticker }: { ticker: string }) {
   });
   const term = stamps(termRows, 'dte', [
     { key: 'vol', name: 'IV', ink: BULL },
-    { key: 'mid', name: 'Median', ink: SILVER_FILL },
+    { key: 'mid', name: 'Median', ink: SILVER },
   ]);
   const chart = term.some(l => l.pts.length >= 2);
   const facts = [

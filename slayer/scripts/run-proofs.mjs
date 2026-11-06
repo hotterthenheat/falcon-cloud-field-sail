@@ -61,6 +61,7 @@ const PROOFS = [
   'tape-move-proof',
   'dark-glass-proof.mjs',
   'impact-ink-proof.mjs',
+  'silver-ink-proof.mjs',
   'surfaces-proof',
   'theta-wait-proof',
   'book-mode-proof',

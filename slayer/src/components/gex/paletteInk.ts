@@ -20,6 +20,8 @@ export const THERMAL_WARM = 'rgb(var(--thermal-warm))';
 export const THERMAL_COOL = 'rgb(var(--thermal-cool))';
 /* The silver as a surface (a filled pill with the dark word); as an ink it is `--silver`. */
 export const SILVER_FILL = 'rgb(var(--silver-fill))';
+/* …and the silver as an ink (a line, a word): deep steel on paper (scripts/silver-ink-proof.mjs) */
+export const SILVER = 'rgb(var(--silver))';
 /* The clock's pressure pair */
 export const EMBER = 'rgb(var(--ember))';
 export const GLACIER = 'rgb(var(--glacier))';
