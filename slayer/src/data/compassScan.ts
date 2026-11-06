@@ -85,6 +85,8 @@ export function odteEventModel(sleeve: SleeveKey): typeof MODEL4 | null {
 /* COMPASS_WEEKLY_ALL=1: the weekly scan reads every root of the 458-name book, not only the 20 with the full feature
    row. The others score with their open-interest columns missing (the trees read those as missing, not as 0). */
 const WEEKLY_ALL = serverEnv.COMPASS_WEEKLY_ALL === '1';
+/* COMPASS_MODEL_RISK=1 runs the Model Risk book (the tail-risk fade); off by default. */
+const MODEL_RISK_ON = serverEnv.COMPASS_MODEL_RISK === '1';
 
 function weeklyNames(now: number): string[] {
   return (WEEKLY_ALL ? ALL : WEEKLY_FOCUS).filter(t => optionScanOpen(t, 1, now));
@@ -985,7 +987,9 @@ async function tick(): Promise<void> {
     }
     bg('the card quotes', refreshHeld(Date.now()));
     bg('the last trades', refreshTapeSpots(Date.now()));
-    bg('tail risk', tailPass(Date.now(), tail => setScanMeta({ tail })));
+    /* Model Risk is off unless COMPASS_MODEL_RISK=1: on 651 DEV sessions every variant lost (as coded −2.5% a trade,
+       7,367 trades, CI below 0 in every year and day type; research/compass-v2/edge-r). Its code stays. */
+    if (MODEL_RISK_ON) bg('tail risk', tailPass(Date.now(), tail => setScanMeta({ tail })));
     if (Date.now() - settleAt > 60_000) {
       settleAt = Date.now();
       bg('settlement', settleOpen(Date.now()));
