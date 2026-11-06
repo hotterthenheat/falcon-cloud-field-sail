@@ -270,6 +270,14 @@ export function withLiveGamma(chain: readonly StrikeNode[], live: LiveGamma, exp
         next.cut = { call: am.callShare, put: am.putShare };
         next.callOI = Math.max(0, next.callOI - am.callOI);
         next.putOI = Math.max(0, next.putOI - am.putOI);
+        /* their vega, vanna, charm and delta come off too */
+        if (am.added) {
+          for (const k of Object.keys(am.added) as (keyof NonNullable<typeof am.added>)[]) next[k] -= am.added[k];
+          next.netVex = next.callVex + next.putVex;
+          next.netVanna = next.callVanna + next.putVanna;
+          next.netCharm = next.callCharm + next.putCharm;
+          next.netDex = next.callDex + next.putDex;
+        }
       }
       /* settled AM contracts the row still carries come off (n.cut, set when the contracts were laid on) */
       const cut = cutGex(next);
@@ -770,18 +778,22 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
       const a = n.am;
       const ca = a.callIv > 0 && a.callOI !== 0 ? blackScholesGreeks(spotPx, n.strike, tAm, a.callIv, carry?.r, carry?.q) : null;
       const pa = a.putIv > 0 && a.putOI !== 0 ? blackScholesGreeks(spotPx, n.strike, tAm, a.putIv, carry?.r, carry?.q) : null;
+      /* what the AM contracts add is kept (am.added), to come off when they settle before the contracts are read again */
+      const added = { callVex: 0, putVex: 0, callVanna: 0, putVanna: 0, callCharm: 0, putCharm: 0, callDex: 0, putDex: 0 };
       if (ca) {
-        n.callVex += keptLeg('C', ca.vega * 100 * volPtAm, a.callOI);
-        n.callVanna += keptLeg('C', ca.vanna * spot * volPtAm, a.callOI);
-        n.callCharm += keptLeg('C', (ca.charmCall / 252) * 100 * spot, a.callOI);
-        if (dexOwn) n.callDex += keptLeg('C', ca.deltaCall * 100 * spot, a.callOI);
+        added.callVex = keptLeg('C', ca.vega * 100 * volPtAm, a.callOI);
+        added.callVanna = keptLeg('C', ca.vanna * spot * volPtAm, a.callOI);
+        added.callCharm = keptLeg('C', (ca.charmCall / 252) * 100 * spot, a.callOI);
+        if (dexOwn) added.callDex = keptLeg('C', ca.deltaCall * 100 * spot, a.callOI);
       }
       if (pa) {
-        n.putVex += keptLeg('P', pa.vega * 100 * volPtAm, a.putOI);
-        n.putVanna += keptLeg('P', pa.vanna * spot * volPtAm, a.putOI);
-        n.putCharm += keptLeg('P', (pa.charmPut / 252) * 100 * spot, a.putOI);
-        if (dexOwn) n.putDex += keptLeg('P', pa.deltaPut * 100 * spot, a.putOI);
+        added.putVex = keptLeg('P', pa.vega * 100 * volPtAm, a.putOI);
+        added.putVanna = keptLeg('P', pa.vanna * spot * volPtAm, a.putOI);
+        added.putCharm = keptLeg('P', (pa.charmPut / 252) * 100 * spot, a.putOI);
+        if (dexOwn) added.putDex = keptLeg('P', pa.deltaPut * 100 * spot, a.putOI);
       }
+      for (const k of Object.keys(added) as (keyof typeof added)[]) n[k] += added[k];
+      n.am = { ...a, added };
     }
     n.netVex = n.callVex + n.putVex;
     n.netDex = n.callDex + n.putDex;

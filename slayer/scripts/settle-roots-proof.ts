@@ -208,6 +208,11 @@ for (const amFirst of [true, false]) {
   const net = next.reduce((a, x) => a + dealerOf(x.netGex), 0);
   /* the share is Thursday's (gamma × OI then), so the net is near, not exactly, Friday's PM-only */
   check(`Thu's chain under Fri 10:00 rows: no AM leg left live, their open interest off (6950C ${next.find(x => x.strike === 6950)!.callOI}), net ${(net / 1e9).toFixed(3)}B against the SPXW's ${(pmNet / 1e9).toFixed(3)}B`, next.every(x => !x.am) && next.find(x => x.strike === 6950)!.callOI === OI_PM(6950) && Math.abs(net / pmNet - 1) < 0.25);
+  /* …and the AM contracts' vega comes off with them: what is left is the SPXW's, as Thursday priced it */
+  const k = 6950;
+  const pmVega = 100 * OI_PM(k) * vegaPt(S, k, tradingYears(EXP, thu), pmVol(k)) * quotedVolPoint(EXP, thu);
+  const left = dealerOf(next.find(x => x.strike === k)!.callVex);
+  check(`Thu's chain under Fri 10:00 rows: ${k}C dollar vega ${(left / 1e6).toFixed(4)}M is the SPXW contracts' alone (${(pmVega / 1e6).toFixed(4)}M; with the AM ${(dealerOf(painted.find(x => x.strike === k)!.callVex) / 1e6).toFixed(4)}M)`, Math.abs(left / pmVega - 1) < 3e-3);
 }
 
 /* ---- an adjusted root ---- */
