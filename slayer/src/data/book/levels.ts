@@ -12,7 +12,7 @@ import { type LevelsScope } from '../levelsScope';
 import { sameName } from '../spotGexBook';
 import { expiryOpen } from '../../core/tradingYear';
 import { emptyNode, mergeChains } from './scale';
-import { LADDER_DTE, chartAll, chartSpan, closestDate, datesComplete, gammaPriced, peekEntry, peekGammaPriced, settledLive, settledRows, type Entry } from './store';
+import { BOOK_LISTINGS, LADDER_DTE, chartAll, chartSpan, closestDate, datesComplete, gammaPriced, peekEntry, peekGammaPriced, settledLive, settledRows, type Entry } from './store';
 import { blankTapeDay } from './tape';
 import { peekTape } from '../thetaTape';
 
@@ -238,7 +238,7 @@ const SUMMED = ['Gex', 'Dex', 'Vex', 'Vanna', 'Charm'] as const;
 function oneSnapshot(entry: Entry, base: StrikeNode[]): StrikeNode[] {
   const floor = isoDate(bookToday());
   /* every live listing must be one the dates read (the first forty — datesComplete) */
-  if (!entry.gammaLive || !datesComplete(entry) || entry.expiries.filter(e => e.date >= floor).length > 40) return base;
+  if (!entry.gammaLive || !datesComplete(entry) || entry.expiries.filter(e => e.date >= floor).length > BOOK_LISTINGS) return base;
   const dates = Object.keys(entry.byDate).filter(d => d >= floor && entry.byDate[d]?.length);
   if (!dates.length) return base;
   type Sum = { c: Record<(typeof SUMMED)[number], number>; p: Record<(typeof SUMMED)[number], number>; px?: number; at?: number };
@@ -282,7 +282,7 @@ export function peekSessionAll(ticker: string, settledDate: string): StrikeNode[
   const e = peekEntry(ticker);
   if (!e || e.status !== 'live' || !e.gammaLive) return null;
   const floor = isoDate(bookToday());
-  if (!datesComplete(e) || e.expiries.filter(x => x.date >= floor).length > 40) return null;
+  if (!datesComplete(e) || e.expiries.filter(x => x.date >= floor).length > BOOK_LISTINGS) return null;
   const live = liveAll(e);
   const rows = settledRows(e, settledDate);
   if (!rows?.size) return live;

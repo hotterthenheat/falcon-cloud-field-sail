@@ -12,7 +12,7 @@ import { nyIsoDate, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { bookToday, isoDate, isTradingDay } from '../core/calendar';
 import { bookCandles } from './book/levels';
 import { ownIvDates } from './book/scale';
-import { peekEntry, peekGammaPriced } from './book/store';
+import { BOOK_LISTINGS, emptyDates, peekEntry, peekGammaPriced } from './book/store';
 import { registeredDates } from './chainDates';
 import { callWallWords, putWallWords, wallPlace } from '../core/walls';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
@@ -328,8 +328,14 @@ function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: num
   const floor = isoDate(bookToday());
   const want = dates === 'ALL' ? Object.keys(by).filter(d => d >= floor && by[d]?.length) : dates.filter(d => by[d]?.length);
   if (!want.length) return null;
-  const listed = (snapshot.uwExpiries ?? []).map(e => e.date).filter(d => d >= floor);
-  const complete = dates === 'ALL' ? listed.length === 0 || listed.every(d => want.includes(d)) : true;
+  /* the whole book is final once every listing the book READS is in (the first BOOK_LISTINGS, as datesComplete; a listed
+     date whose strikes came back empty is in, with none). It once waited on every listing: SPX lists 54 and the book
+     reads 40, so its All flip stayed "…" for good (audit 2026-11-06); listings past those are the whole book's rows,
+     carried flat below. */
+  const empty = entry.keptAt ? new Set(entry.keptEmpty) : emptyDates.get(snapshot.ticker);
+  const shown = new Set((snapshot.uwExpiries ?? []).map(e => e.date));
+  const listed = entry.expiries.slice(0, BOOK_LISTINGS).map(e => e.date).filter(d => d >= floor && shown.has(d));
+  const complete = dates === 'ALL' ? listed.every(d => want.includes(d) || !!empty?.has(d)) : true;
   /* `at` pins the clock (a finished session's close). Live levels price each date from the price and at the minute the
      vendor priced its rows (uwBook peekGammaPriced). */
   const pinned = at ?? snapshot.asOf ?? snapshot.flipAt;
@@ -347,7 +353,7 @@ function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: num
   const pricedIn = pinned != null || !entry.gammaLive || [...ownDates].every(d => !!peekGammaPriced(snapshot.ticker, d));
   const termIn = want.every(d => ownDates.has(d)) || !!entry.termIv;
   const carry = carryFor(snapshot.ticker);
-  const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${want.map(d => chainSig(by[d])).join(',')}|${chainSig(chain)}|${sig}|${chain.length}|${factsIn}|${entry.factsDates?.size ?? 0}|${pricedIn}|${termIn}|${asOfPx ?? ''}|${carry.r}|${carry.q}`;
+  const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${want.map(d => chainSig(by[d])).join(',')}|${chainSig(chain)}|${sig}|${chain.length}|${factsIn}|${entry.factsDates?.size ?? 0}|${pricedIn}|${termIn}|${complete}|${asOfPx ?? ''}|${carry.r}|${carry.q}`;
   const term = entry.termIv ?? {};
   const legs: GammaLeg[] = [];
   let withVol = 0;

@@ -93,6 +93,7 @@ const PROOFS = [
   'day-iv-proof',
   'greeks-fd-proof',
   'settle-roots-proof',
+  'flip-complete-proof',
 ];
 
 const goldens = () =>
