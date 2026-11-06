@@ -27,6 +27,7 @@ const PROOFS = [
   'contract-quote-proof',
   'compass-return-proof',
   'compass-gate-proof',
+  'compass-groupb-proof',
   'compass-late-proof',
   'compass-record-proof',
   'fixture-proof',
