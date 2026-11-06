@@ -26,9 +26,10 @@ export const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0'
 /** "$48M" / "$1.2B" — the schedule's dollars */
 export const fmtDollars = (v: number): string => {
   const a = Math.abs(v);
-  if (a >= 1e9) return `$${(a / 1e9).toFixed(1)}B`;
-  if (a >= 1e6) return `$${(a / 1e6).toFixed(0)}M`;
-  if (a >= 1e3) return `$${(a / 1e3).toFixed(0)}K`;
+  /* a unit whose figure rounds to 1,000 is the next unit: 999.6M is "$1.0B", never "$1000M" */
+  if (a >= 999.5e6) return `$${(a / 1e9).toFixed(1)}B`;
+  if (a >= 999.5e3) return `$${(a / 1e6).toFixed(0)}M`;
+  if (a >= 999.5) return `$${(a / 1e3).toFixed(0)}K`;
   return `$${a.toFixed(0)}`;
 };
 

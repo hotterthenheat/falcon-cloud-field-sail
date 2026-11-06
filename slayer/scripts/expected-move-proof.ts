@@ -10,6 +10,8 @@
      at 7335, 30-day 0.2166 → 1σ $78 to the close and $101 a session, while its own at-the-money contracts (7330/7335/7340,
      call ~0.29 and put ~0.38 on the trading clock) price ~$155 — the 7335 straddle's last trades, 64.22 + 59.10, are a
      $154.5 1σ. The date's own contracts now price it.
+  3. The money the same pages print: a figure that rounds to 1,000 of its unit is the next unit (fmtUsd once wrote
+     999,960 as "$1000.0K", fmtDollars 999.6M as "$1000M").
 
   Run: npx tsx scripts/expected-move-proof.ts
 */
@@ -103,6 +105,15 @@ const base = (ticker: string, spot: number, extra: Partial<Entry>): Entry => ({
   const mo = peekScopeMove('SPXX', '2026-11-20');
   check(`SPX Nov 20 reads its own row's vol (${mo?.source})`, mo?.source === 'fitted');
   near('SPX Nov 20: straddle = √(2/π)·S·σ·√T_cal (no vendor k on a straddle)', (mo?.straddle ?? 0) / (STRADDLE_K * S * 0.240905864732588), Math.sqrt(((Date.parse('2026-11-20T21:00:00Z') - Date.parse('2026-11-05T23:40:00Z')) / 60_000) / 525_600), 1e-6);
+}
+
+/* ---- 3. the money figures the same pages print, at a unit's edge (a figure that rounds to 1,000 is the next unit) ---- */
+{
+  const { fmtUsd, fmtGexUsd } = await import('../src/data/gex');
+  const { fmtDollars } = await import('../src/data/ahead');
+  const got = [fmtUsd(999_960), fmtUsd(-999_960_000), fmtUsd(999.6), fmtUsd(999_940), fmtGexUsd(-999_960), fmtDollars(999_600_000), fmtDollars(999_600), fmtDollars(999.7), fmtDollars(999_400)];
+  const want = ['$1.0M', '-$1.0B', '$1.0K', '$999.9K', '−$1.0M', '$1.0B', '$1M', '$1K', '$999K'];
+  check(`money at a unit's edge: ${got.join(' ')} (once "$1000.0K", "$1000M")`, JSON.stringify(got) === JSON.stringify(want));
 }
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');
