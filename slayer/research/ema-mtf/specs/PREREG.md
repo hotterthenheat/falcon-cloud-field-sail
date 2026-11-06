@@ -279,6 +279,63 @@ changes, and no variant is added**: 0 trials.
     (64 sessions, warm-up from 2025-04-01) is estimated at ≈ 0.62 GB → 2.37 GB, and it is used. Nothing from 2025 had
     been fetched or looked at.
 
+## 9c. Amendment A3 (2026-11-06, EMA-2, before any Stage-2 outcome was computed)
+
+Why: §5–§6 and STRATEGY_SPEC §7–§10 leave some execution details open. They are fixed here, by `stage2/`, which is
+tested trade by trade against `engine/execution.Simulator` + `engine/signals.py` (`etests/test_stage2.py`). This was
+committed before any Stage-2 variant or null ran on real data. **No variant, parameter or threshold changes**: 0 trials,
+except item 9's reference, which is counted.
+
+1. **Entry decisions**: every Stage-2-C trigger is on the 5m chart. Entries are taken at 5m closes 09:35–15:50
+   (STRATEGY_SPEC §5) and flattened at 15:55.
+2. **Contract**: the trigger is evaluated on every tradable contract's own chart (§7).
+   * Within a (bucket, right), the trigger contract nearest |delta| 0.40 is taken (ties: the cheaper ask).
+   * If a call and a put both trigger in the same bucket, the one nearer 0.40 is taken (ties: the call).
+   * One open position per (variant, root, bucket). A new entry needs a decision after the open position's exit
+     decision bar.
+3. **MTF models with the centre trigger** (B on 5m):
+   * A (5,15): model B fired on a 15m bar ending at the decision or at one of the two previous 5m closes.
+   * B (5,15): 15m state +1.
+   * C (5,15,60), D and E (1,5,15,30,60): the listed timeframes include the 5m trigger timeframe. D is the weighted
+     score ≥ 0.6 with all five states defined; E is ≥ 3 of 5 at +1.
+   * F (5,15) needs an H trigger by its own definition, so the variant is entry H on 5m + 15m state ≤ 0 + 15m E5 slope
+     > 0.
+   * Every state is read at its timeframe's last completed bar, and only once E21 is warm.
+4. **Entry E** reads the HTF state from the 15m chart. **F** is B + the underlying's close on the trade's side of the
+   session VWAP and of its 5m EMA21. **G** is B + net GEX < 0 + no wall against within 0.3% (latest snapshot visible
+   at stamp + 60 s; wall distance from the underlying's close).
+5. **Exits** read the 5m trigger chart. "Highest timeframe used at entry" (exits 6, 10) is 5m for every exit variant
+   (they all sit on the centre, which has no MTF).
+   * X1/X2 levels are the 5m EMAs known at the entry decision, frozen.
+   * X2 is three 1-contract units averaged into one trade record.
+   * X5 uses the 1m MID chart's confirmed swing lows (close-only pivots), with a 1.5×ATR stop until one forms.
+   * ATR is the Wilder(14) true range of the contract's 5m TRADE bars where the TRADE series is dense (≥ 80% of the
+     last 28 wall-clock 5m bars printed), else 1.25 × the Wilder mean |Δ| of the 5m MID closes.
+6. **Stage-2 nulls (§5.3)**: 20 seeds per variant for the Stage-2 table; ≥ 200 for a §7 candidate.
+   * (a) Shuffled time: per (session, root, bucket), the variant's number of filled entries, drawn at random 5m
+     decision closes in random order. The one-position rule applies, and draws continue until the count is met.
+     The side is random, the contract is the tradable one nearest 0.40, and the exit is the variant's.
+   * (b) Shuffled side: the variant's entry times and buckets, a coin-flip right, the contract of that right nearest
+     the variant contract's |delta|, and the variant's exit.
+   * The variant's percentile is the share of null runs whose pooled net expectancy is below the variant's.
+7. **Fill models**: L0c is the screening model. L60 is run beside it for every Stage-2-C variant. Exact L2 (1-second
+   NBBO, fetched only outside 09:15–16:05 ET) is run only for a §7 candidate's trades.
+8. **Day types** use compass-v2's fixed `classify_session` rules, applied to the 1-minute SPX (else SPY) closes
+   09:35–15:55. Return on capital = Σ net $ / Σ (premium + entry fee) $.
+9. **Reference run, counted**: BL3 (underlying-only 5m EMA9/21 cross, side of the cross, contract nearest 0.40) with
+   exit 3. It is the underlying-only reference for the centre and is logged in the ledger as one baseline look. The
+   option-only reference with exit 3 *is* the centre (BL4's entry), so it is not run twice.
+10. **Stage 3 (§6)**:
+    * Walk-forward: within each Stage-2 family, the variant with the highest train-month pooled net expectancy
+      (L0c) is run on each test month. Train months use only DEV sessions before the test month, minus a 1-session
+      embargo.
+    * PBO: CSCV with 16 blocks on the sessions × variants matrix of per-session mean net returns (0 for a session
+      with no trade).
+    * DSR: per-trade Sharpe of the WF OOS trades, with N = `ledger_trials()` of the global ledger at the time of the
+      look.
+    * Ablation and sensitivity are run only for a candidate that passes the §7 DEV-WF bar (other than the
+      L2/sensitivity items, which are part of that bar).
+
 ## 10. Final verdict mapping (fixed now)
 
 * **A — viable edge**: a frozen candidate passes VALIDATION and the single blind LOCKED look at the §7 bar.

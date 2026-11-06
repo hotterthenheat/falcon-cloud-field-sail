@@ -614,49 +614,51 @@ def build(root: str, block: str, src: Source | None = None, full: bool = True, l
     ev.insert(1, 'block', block)
     keys = np.unique(ckey(ev.exp, ev.strike, ev.right))
     log(root, block, f'{len(ev)} events, {len(keys)} contracts, outcomes in {time.time()-t0:.0f}s')
-    # 2) option MID features per timeframe
+    # 2)-5) per timeframe, one table at a time (memory): MID features, underlying state, P* reprice, TRADE arm
+    import gc
     cm = contract_minutes(src, days_all, keys)
-    mts = {}
+    ut = und_tf_tables(u1)
+    ivf = frozen_iv(cm, u1) if full else None
+    qsess = cm[['exp', 'strike', 'right', 'session']].drop_duplicates() if full else None
+    cols = {}
     for tf in TFS:
         mt = mid_tables(cm, tf)
-        mts[tf] = mt
         ft = with_features(mt)
-        j = asof_join(ev, ft, list(FEATURES) + ['state'], f'o{tf}_')
+        j = asof_join(ev, ft, list(FEATURES) + ['state'], 'o')
+        del ft
         for F in FEATURES:
-            ev[f'f_{F}_{tf}'] = j[f'o{tf}_{F}'].to_numpy()
-        ev[f'st_{tf}'] = j[f'o{tf}_state'].to_numpy()
-        ev[f'kms_{tf}'] = j[f'o{tf}_kms'].to_numpy()
-    log(root, block, f'MID features in {time.time()-t0:.0f}s')
-    # 3) underlying states per timeframe (sign-aligned to the trade)
-    ut = und_tf_tables(u1)
-    for tf in TFS:
+            cols[f'f_{F}_{tf}'] = j[f'o{F}'].to_numpy()
+        cols[f'st_{tf}'] = j['ostate'].to_numpy()
+        cols[f'kms_{tf}'] = j['okms'].to_numpy()
         i = asof_rows(ut[tf], ev.session, ev.dec_ms)
-        st = np.where(i >= 0, ut[tf].state.to_numpy()[np.clip(i, 0, None)], np.nan)
-        ev[f'ust_{tf}'] = st * ev.right.to_numpy()
+        cols[f'ust_{tf}'] = np.where(i >= 0, ut[tf].state.to_numpy()[np.clip(i, 0, None)], np.nan) * ev.right.to_numpy()
+        if full:
+            rt = reprice_table(mt, ivf, u1, tf)
+            del mt
+            ft = with_features(rt)
+            del rt
+            j = asof_join(ev, ft, list(FEATURES), 'p')
+            del ft
+            for F in FEATURES:
+                cols[f'p_{F}_{tf}'] = j[f'p{F}'].to_numpy()
+            tt = trade_tables(src, days_all, keys, tf)
+            dens = trade_density(ev, tt, qsess, tf, sorted(set(WARM_N.values())))
+            if len(tt):
+                ft = with_features(tt.assign(b=tt.b.astype(np.int16)))
+                j = asof_join(ev, ft, list(FEATURES), 't')
+                del ft
+            for F in FEATURES:
+                v = j[f't{F}'].to_numpy() if len(tt) else np.full(len(ev), np.nan)
+                cols[f't_{F}_{tf}'] = np.where(dens[WARM_N[F]] >= 0.8, v, np.nan)
+            cols[f'tdens21_{tf}'] = dens[21]
+            del tt
+        else:
+            del mt
+        gc.collect()
+        log(root, block, f'tf {tf} done in {time.time()-t0:.0f}s')
+    ev = pd.concat([ev, pd.DataFrame(cols, index=ev.index)], axis=1)
     if not full:
         return ev
-    # 4) theta / reprice control
-    ivf = frozen_iv(cm, u1)
-    for tf in TFS:
-        rt = reprice_table(mts[tf], ivf, u1, tf)
-        ft = with_features(rt)
-        j = asof_join(ev, ft, list(FEATURES), f'p{tf}_')
-        for F in FEATURES:
-            ev[f'p_{F}_{tf}'] = j[f'p{tf}_{F}'].to_numpy()
-    log(root, block, f'reprice control in {time.time()-t0:.0f}s')
-    # 5) TRADE replication arm (density rule)
-    qsess = cm[['exp', 'strike', 'right', 'session']].drop_duplicates()
-    for tf in TFS:
-        tt = trade_tables(src, days_all, keys, tf)
-        dens = trade_density(ev, tt, qsess, tf, sorted(set(WARM_N.values())))
-        if len(tt):
-            ft = with_features(tt.assign(b=tt.b.astype(np.int16)))
-            j = asof_join(ev, ft, list(FEATURES), f't{tf}_')
-        for F in FEATURES:
-            v = j[f't{tf}_{F}'].to_numpy() if len(tt) else np.full(len(ev), np.nan)
-            ev[f't_{F}_{tf}'] = np.where(dens[WARM_N[F]] >= 0.8, v, np.nan)
-        ev[f'tdens21_{tf}'] = dens[21]
-    log(root, block, f'TRADE arm in {time.time()-t0:.0f}s')
     # 6) S1C confirmations
     from engine.underlying import Underlying
     U = Underlying(UND_SYM[root], days_all, vol_sym='SPY' if root == 'SPXW' else None, tfs=(5,))
