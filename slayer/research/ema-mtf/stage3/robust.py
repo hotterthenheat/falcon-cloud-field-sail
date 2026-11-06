@@ -102,7 +102,8 @@ def run_look(R, v: dict, spec: dict) -> pd.DataFrame:
     c = dict(spec.get('cfg', {}))
     fee = None
     if 'fee_spxw' in c:
-        fee = c.pop('fee_spxw') if R.d.root == 'SPXW' else None
+        f_spx = c.pop('fee_spxw')
+        fee = f_spx if R.d.root == 'SPXW' else None
     cfg = Cfg(fee=fee, **c)
     ex = spec.get('exit', v['exit'])
     return pd.DataFrame(R.run_entries(ent, ex, f"{v['id']}|{spec['name']}", cfg=cfg))
