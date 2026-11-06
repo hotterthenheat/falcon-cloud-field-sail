@@ -211,6 +211,14 @@ whole EMA store is 1.1 GB of the 2.5 GB budget.
 * **VALIDATION**: the pre-declared fallback window 2025-07-01..09-30 (PREREG §9b item 12: the full 2025-H2 would not
   fit the budget) is being fetched with the same code by `edata/chain.py`, under the same window guard. No outcome is
   computed from it before a candidate is frozen.
+  * Status at the 09:07 ET pause: SPY/QQQ/IWM have every eval session (64/64) plus the 6 sessions before; their
+    coarse warm-up is not yet fetched. SPXW has 16/64 eval sessions. The hist OI (20 sessions before 2025-07-01) is
+    complete.
+  * The guard resumes the chain at 16:06 ET. To restart it after a container restart:
+    `python3 -m edata.windowed -- python3 -m edata.chain`.
+  * The UW flow for the window is not fetched: no candidate reached VALIDATION (FINAL_ASSESSMENT verdict C), so it is
+    not needed.
+  * Store at hand-off: 2.1 GB of the 2.5 GB budget.
 
 Phase 1's original note: **Block B (2022-03..05) is planned (STRATEGY_SPEC §15, PREREG §2) and
 NOT fetched**: `cd slayer/research/ema-mtf && V2_THETA_SLOTS=1 python3 -m edata.panel --block B` (resumable, ≈3–4 h

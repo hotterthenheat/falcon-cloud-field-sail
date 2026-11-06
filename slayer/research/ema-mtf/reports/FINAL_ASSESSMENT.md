@@ -50,7 +50,7 @@ TRADE (charting-app print chart, dense subset only), tested as its own family: 0
      gives δ up to +17 pp; shifting it backward gives ≈ 0, like the real features.
   2. The pre-registered strata pool the 2022 and 2024 blocks, so slow regime features (30m/60m EMA200) pick up a
      between-block confound.
-* **The pre-registered synthetic zero-drift null also failed**: 10 of 14 seeds have a Holm-passing feature (≤ 1 of 20 is allowed). The run stopped at 14 of the 20 registered seeds to free memory; no remaining seed can change the outcome. The cause is the generator: Black–Scholes at one vol per session, with the real U-shaped intraday vol profile, is not a martingale at the decision times. Synthetic premiums drift +0.9% per 30 min at 09:45 and −0.6% midday, and premium-state features track that drift. A compass-v2-style generator therefore cannot calibrate a screen of premium-chart features; a variance-clock generator would.
+* **The pre-registered synthetic zero-drift null also failed**: 10 of 14 seeds have a Holm-passing feature (≤ 1 of 20 is allowed). 14 of the 20 registered seeds were complete at hand-off. The other 6 are running in the background (resumable, `python3 -m stage1.run synth`) and cannot change the outcome. The cause is the generator: Black–Scholes at one vol per session, with the real U-shaped intraday vol profile, is not a martingale at the decision times. Synthetic premiums drift +0.9% per 30 min at 09:45 and −0.6% midday, and premium-state features track that drift. A compass-v2-style generator therefore cannot calibrate a screen of premium-chart features; a variance-clock generator would.
 * A corrected design ("S1A-T": strata split by block and half-hour, leak-free cross-session null) is calibrated:
   FWER 3.0% (6 of 200 leak-free runs). On it the real data also give **0 of 40**. On the flawed synthetic generator it also over-detects (6 of 9 seeds), for the generator reason above.
 * A miscalibrated screen can only create false passes, so the Stage-1 conclusion stands: no option-chart feature has
@@ -61,7 +61,8 @@ TRADE (charting-app print chart, dense subset only), tested as its own family: 0
 * Stage 2-S was not built: PREREG §5.2 builds it only from Stage-1 passers, and there were none.
 * Stage 2-C ran all 23 one-factor-at-a-time variants. Centre: B cross on the 5m MID chart, exit 3. The variants
   change the entry (A–H), the MTF model (A–F) or the exit (1–10).
-* Plus an underlying-only reference: 9,269–24,144 trades a variant (MTF A/F: 513/477).
+* Plus an underlying-only reference. Trade counts are 4,183–24,144 per entry/exit variant and 477–2,932 per MTF variant.
+* The brief's §13 metrics (trades, win rate, average winner/loser, expectancy, profit factor, net $, return on premium, max DD, Sharpe/Sortino, holding time, losing streak, spread/fee cost, gross vs net), with session-clustered CIs and broken down by ticker, DTE, call/put, block and day type, are in STAGE2 for every variant. Timeframes are covered by the MTF variants and by S1A/S1B.
 
 **All 23 are negative net. None has a CI above 0.**
 
@@ -141,7 +142,7 @@ Full tables: STAGE3 §"Sensitivity and ablation"; look-level trade logs: `v2data
     nulls for the centre, F, exit 4 and exit 10).
   * VWAP-side confirmation is the strongest single confirmation (δ +3.8 pp, nominal).
   * Trend-following exits capture trend days.
-  * None of this survives the spread: the edge over random entry (≈ +0.7–1.1 pp) is smaller than the round-trip cost
+  * None of this survives the spread: the edge over random entry with the same exit (+0.7 to +1.9 pp) is smaller than the round-trip cost
     (≈ 1.3% spread + fees at 0.40 delta).
 * **Does not work**:
   * Option-chart EMA states and triggers as incremental information over the underlying (Stage 1, and the reprice
