@@ -25,9 +25,9 @@ import { useResolvedTheme } from '../../../theme/theme';
 import type { ExposureExpiry } from '../../../types/gex';
 import type { TileControl, TileProps, TileState, WorkspaceCtx } from '../tile';
 import { useDeskClock } from '../useDeskClock';
-import { agendaOf, buildingOf, clockNow, keyLevelsFor, surface30 } from './derive';
-import { useLevelsFor } from '../../../data/levelsFor';
-import { useNameLevels } from '../../../data/levelsScope';
+import { agendaOf, buildingOf, clockNow, keyLevelsFor, levelsWaiting, surface30 } from './derive';
+import { drawnLevels, useLevelsFor } from '../../../data/levelsFor';
+import { levelsForName, useNameLevels } from '../../../data/levelsScope';
 import { TileHeads, TileNoBook, TileRead, TileRow, TileRows, dirInk, fmtStrike, signedPct, useDoor } from './parts';
 import { pctWhole as pct } from '../../../core/format';
 
@@ -156,12 +156,15 @@ export const LevelsTile = ({ ctx, state }: TileProps) => {
   }, [rows, fam, lens, ratio]);
   if (!rows) return <TileNoBook ticker={ctx.ticker} />;
   const live = ctx.snapshot.liveBook;
-  const wallsIn = !live || !!house?.wallsFinal;
-  const flipIn = !live || !!house?.complete;
+  /* the one gate (levelsFor drawnLevels); a replayed or simulated book (no house) reads its own profile */
+  const drawn = drawnLevels(house);
+  const wallsIn = !live || drawn.wallsIn;
+  const flipIn = !live || drawn.flipIn;
   const spot = last != null && last > 0 ? last : ctx.snapshot.spot;
-  const flip = live ? (flipIn ? house?.flip ?? null : null) : Number.isFinite(ctx.exposure.levels.flip) ? ctx.exposure.levels.flip : null;
-  const callWall = live ? house?.callWall ?? null : Number.isFinite(ctx.exposure.levels.callWall) ? ctx.exposure.levels.callWall : null;
-  const putWall = live ? house?.putWall ?? null : Number.isFinite(ctx.exposure.levels.putWall) ? ctx.exposure.levels.putWall : null;
+  const own = (v: number) => (Number.isFinite(v) ? v : null);
+  const flip = live ? drawn.flip : own(ctx.exposure.levels.flip);
+  const callWall = live ? drawn.callWall : own(ctx.exposure.levels.callWall);
+  const putWall = live ? drawn.putWall : own(ctx.exposure.levels.putWall);
   const above = flip != null && spot >= flip;
   /* the flip in words that are true of the book: where it is, "…" while it is priced, or — a final read with none — the
      sign the net keeps across ±10% (never "no put gamma") */
@@ -203,7 +206,13 @@ export const TargetsTile = ({ ctx, state, size }: TileProps) => {
   const agenda = agendaOf(ctx.snapshot, order);
   const door = useDoor();
   const { focusOn } = useFocus();
-  if (!agenda) return <TileNoBook ticker={ctx.ticker} why={surface30(ctx.snapshot) ? 'The ranking waits on the name’s at-the-money IV.' : undefined} />;
+  if (!agenda)
+    return (
+      <TileNoBook
+        ticker={ctx.ticker}
+        why={levelsWaiting(ctx.snapshot) ? 'The ranking waits on the contracts its levels are read from…' : surface30(ctx.snapshot) ? 'The ranking waits on the name’s at-the-money IV.' : undefined}
+      />
+    );
   const wide = size.room !== 'small';
   /** # · strike · reached · holds · at stake (the stake's lane only where there is room for it) */
   const cols = wide ? '26px minmax(0,1fr) 46px 86px 104px' : '26px minmax(0,1fr) 46px 60px';
@@ -304,27 +313,34 @@ const levelWords = (l: { strike: number; distPct: number } | null) => (l ? `${fm
 
 export const PairTile = ({ ctx, state }: TileProps) => {
   const b = againstOf(ctx, state);
+  /* Each name in its own levels scope, the one Pinpoint's head sets for it and every other tile reads (Pinpoint's
+     Compare does the same) — never "Today" for a name set to All expiries */
+  const scopeA = useNameLevels(ctx.ticker);
+  const scopeB = useNameLevels(b);
   const cmp = useMemo(() => {
     try {
       const clock = clockNow();
-      const sa = buildCompareSide(ctx.snapshot, clock);
+      const sa = buildCompareSide(ctx.snapshot, clock, scopeA);
       const snapB = snapshotOf(b);
-      const sb = snapB ? buildCompareSide(snapB, clock) : null;
+      const sb = snapB ? buildCompareSide(snapB, clock, levelsForName(b)) : null;
       return sa && sb ? buildCompare(sa, sb, clock) : null;
     } catch {
       return null;
     }
-  }, [ctx.snapshot, b]);
+  }, [ctx.snapshot, b, scopeA, scopeB]);
   if (!cmp) return <TileNoBook ticker={ctx.ticker} />;
   const cols = 'minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr)';
   const flipOf = (s: CompareSide) => (s.flip != null && s.flipDistPct != null ? { strike: s.flip, distPct: s.flipDistPct } : null);
+  /* nothing drawn off a side whose levels are not final (the stand-in book's walls are not the day's): "…" */
+  const waits = (s: CompareSide) => s.levels.complete === false;
+  const lvl = (s: CompareSide, l: { strike: number; distPct: number } | null) => (waits(s) ? '…' : levelWords(l));
   const rows: { read: string; a: ReactNode; b: ReactNode }[] = [
     { read: 'Today', a: <span className={dirInk(cmp.a.changePct)}>{signedPct(cmp.a.changePct)}</span>, b: <span className={dirInk(cmp.b.changePct)}>{signedPct(cmp.b.changePct)}</span> },
     { read: cmp.inSession ? 'Move left today' : 'A day’s move', a: cmp.a.sigmaLeftPct == null ? '…' : `±${cmp.a.sigmaLeftPct.toFixed(2)}%`, b: cmp.b.sigmaLeftPct == null ? '…' : `±${cmp.b.sigmaLeftPct.toFixed(2)}%` },
-    { read: 'Call wall', a: levelWords(cmp.a.callWall), b: levelWords(cmp.b.callWall) },
-    { read: 'Put wall', a: levelWords(cmp.a.putWall), b: levelWords(cmp.b.putWall) },
-    { read: 'Flip', a: levelWords(flipOf(cmp.a)), b: levelWords(flipOf(cmp.b)) },
-    { read: 'Likeliest close', a: cmp.a.closes ? fmtStrike(cmp.a.closes.strike) : '—', b: cmp.b.closes ? fmtStrike(cmp.b.closes.strike) : '—' },
+    { read: 'Call wall', a: lvl(cmp.a, cmp.a.callWall), b: lvl(cmp.b, cmp.b.callWall) },
+    { read: 'Put wall', a: lvl(cmp.a, cmp.a.putWall), b: lvl(cmp.b, cmp.b.putWall) },
+    { read: 'Flip', a: lvl(cmp.a, flipOf(cmp.a)), b: lvl(cmp.b, flipOf(cmp.b)) },
+    { read: 'Likeliest close', a: waits(cmp.a) ? '…' : cmp.a.closes ? fmtStrike(cmp.a.closes.strike) : '—', b: waits(cmp.b) ? '…' : cmp.b.closes ? fmtStrike(cmp.b.closes.strike) : '—' },
     { read: 'Dealers', a: `${regimeWord(cmp.a)} moves`, b: `${regimeWord(cmp.b)} moves` },
   ];
   return (

@@ -93,5 +93,49 @@ entry = lgb.Booster(model_file=f'{root}/public/models/model_entry_all6months.txt
 runner = lgb.Booster(model_file=f'{root}/public/models/model_runner_all6months.txt').predict(row)[0]
 enc = lambda v: None if math.isnan(v) else float(str(np.float32(v)))
 out = {'source': 'scripts/golden/compass-ref.py, LightGBM %s' % lgb.__version__, 'x': [enc(v) for v in row[0]], 'entry': float(entry), 'runner': float(runner)}
+
+# ---- Feature version 2 (Group B): the same contract on the trading-time clock -------------------------------------
+# T is the regular-session minutes from the mark to the expiry's close (each session ahead with its own close, an early
+# close 13:00, holidays and weekends skipped; time outside the regular session counts nothing), over 390 x 252, + 1e-6.
+# The calendar is shared/marketCalendar.mjs, read here as text. Column 15 is those minutes; every column that reads T
+# (24-27, 36-42) is solved on it; the rest are version 1's. Here: SPY 505C expiring Friday 2026-10-30, at the same
+# Wednesday 10:30 mark (330 + 390 + 390 = 1110 minutes).
+import datetime as dt, re, os
+cal = open(f'{root}/shared/marketCalendar.mjs').read()
+def dates(name):
+    body = re.search(name + r' = \[(.*?)\];', cal, re.S).group(1)
+    return set(re.findall(r"'(\d{4}-\d{2}-\d{2})'", body))
+HOL, EARLY = dates('HOLIDAY_DATES'), dates('EARLY_CLOSE_DATES')
+def session_day(d): return d.weekday() < 5 and d.isoformat() not in HOL
+def close_min(d): return 13 * 60 if d.isoformat() in EARLY else 16 * 60
+def trading_minutes(expiry, day, minute):
+    e = dt.date.fromisoformat(expiry); d = dt.date.fromisoformat(day)
+    if e < d: return 0
+    total = max(0, close_min(d) - max(570, minute)) if session_day(d) else 0
+    while d < e:
+        d += dt.timedelta(days=1)
+        if session_day(d): total += close_min(d) - 570
+    return total
+cases = {'wed 10:30 -> fri weekly': trading_minutes('2026-10-30', '2026-10-28', 630),
+         'thu 21:00 -> fri 0dte (overnight)': trading_minutes('2026-10-30', '2026-10-29', 1260),
+         'fri 2026-11-27 12:30, 13:00 close, 0dte': trading_minutes('2026-11-27', '2026-11-27', 750),
+         'wed 2026-11-25 10:00 -> fri 11-27 (thanksgiving skipped)': trading_minutes('2026-11-27', '2026-11-25', 600),
+         'fri 16:30 curb -> mon weekly': trading_minutes('2026-11-02', '2026-10-30', 990)}
+tm = cases['wed 10:30 -> fri weekly']
+T = tm / (390 * 252) + T_EPS  # bs() and iv() read T
+c503v, p503v = feat(iv((1.80 + 1.84) / 2, 503, True)), feat(iv((1.75 + 1.79) / 2, 503, False))
+atm2, skew2 = (c503v + p503v) / 2, p503v - c503v
+civ2 = feat(iv(mid, K, True))
+_, de2, ga2, th2, ve2 = bs(K, civ2 if civ2 > 0 else atm2, True)
+gex2 = sum((c - p) * bs(k, atm2, True)[2] * S * S * 0.01 for k, c, p in oi) / 1e9
+x2 = list(x)
+x2[15] = tm; x2[24] = atm2; x2[25] = skew2; x2[26] = atm2 / (rv30 * math.sqrt(390 * 252)); x2[27] = gex2
+x2[36] = civ2; x2[37] = de2; x2[38] = ga2; x2[39] = th2; x2[40] = ve2; x2[41] = ga2 / abs(th2); x2[42] = th2 / mid
+row2 = np.array([x2], dtype=np.float32).astype(np.float64)
+out['v2'] = {'expiry': '2026-10-30', 'tm': tm, 'cases': cases, 'x': [enc(v) for v in row2[0]]}
+for name, f in (('entry', 'model_entry_v2.txt'), ('runner', 'model_runner_v2.txt')):
+    path = f'{root}/public/models/{f}'
+    if os.path.exists(path): out['v2'][name] = float(lgb.Booster(model_file=path).predict(row2)[0])
+print('v2 tm', tm, 'atm', atm2, 'civ', civ2, 'theta', th2, {k: out['v2'].get(k) for k in ('entry', 'runner')}, cases)
 open(f'{root}/scripts/golden/compass-ref.json', 'w').write(json.dumps(out, indent=1))
 print('S', S, 'atm', atm, 'skew', skew, 'civ', civ, 'entry', entry, 'runner', runner)

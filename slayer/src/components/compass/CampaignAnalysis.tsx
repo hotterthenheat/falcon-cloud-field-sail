@@ -13,7 +13,7 @@ import { activeStop, signalOf, useSignals } from '../../data/compassLedger';
 import { useContractBars, useContractLive, useSecondGreek, useThetaBook } from '../../data/thetaBook';
 import { useOptionTape } from '../../data/tapeFeed';
 import { usePinpointFeed } from '../../data/uwBook';
-import { levelsFor } from '../../data/levelsFor';
+import { drawnLevels, levelsFor } from '../../data/levelsFor';
 import { levelsForName } from '../../data/levelsScope';
 import { peekChange } from '../../data/book/day';
 import { leftOf } from '../../data/compassModel';
@@ -423,12 +423,13 @@ const CampaignAnalysis = ({
       : `${dayStamp(setup.expiryDate)}${Number.isFinite(sessionsLeft) ? ` · ${sessionsLeft} ${sessionsLeft === 1 ? 'session' : 'sessions'} left` : ''}`;
   const cashName = setup.ticker === 'SPXW' || setup.ticker === 'XSP' ? 'SPX' : setup.ticker === 'NDXP' ? 'NDX' : setup.ticker === 'RUTW' ? 'RUT' : setup.ticker;
   usePinpointFeed(null);
-  const levels = levelsFor(cashName, levelsForName(cashName));
+  /* the one gate (levelsFor drawnLevels): no wall off a stand-in book — "…" until the scope's own contracts are in */
+  const drawn = drawnLevels(levelsFor(cashName, levelsForName(cashName)));
   const wall = (() => {
-    const marks = [levels?.callWall, levels?.putWall].filter((n): n is number => n != null);
+    const marks = [drawn.callWall, drawn.putWall].filter((n): n is number => n != null);
     if (!marks.length || !(spotPx > 0)) return null;
     const nearer = marks.reduce((a, b) => (Math.abs(a - spotPx) <= Math.abs(b - spotPx) ? a : b));
-    return { price: nearer, kind: nearer === levels?.callWall ? 'call wall' : 'put wall', pts: Math.abs(nearer - spotPx) };
+    return { price: nearer, kind: nearer === drawn.callWall ? 'call wall' : 'put wall', pts: Math.abs(nearer - spotPx) };
   })();
   const greekOk = Number.isFinite(ivPct) && ivPct > 0;
   const pts = spotPx > 0 ? (setup.right === 'C' ? spotPx - setup.strike : setup.strike - spotPx) : NaN;
@@ -745,7 +746,7 @@ const CampaignAnalysis = ({
                 <Fact k="Open interest" v={bookOi > 0 ? Math.round(bookOi).toLocaleString('en-US') : '—'} />
                 <Fact k="Rho" v={gWord(gRho)} />
                 <Fact k="From spot" v={place || '—'} />
-                <Fact k="From the wall" v={wall ? `${wall.pts.toFixed(0)} pts · ${wall.kind}` : '—'} />
+                <Fact k="From the wall" v={wall ? `${wall.pts.toFixed(0)} pts · ${wall.kind}` : drawn.wallsIn ? '—' : '…'} />
                 <Fact k="Called" v={setup.seenAt ? nyClock(setup.seenAt, { zone: true }) : '—'} />
                 <Fact k="Expires" v={dayStamp(setup.expiryDate)} />
                 <Fact k="Breakeven" v={Number.isFinite(breakeven) ? money(breakeven) : '—'} />

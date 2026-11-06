@@ -33,6 +33,16 @@ import {
   inLottery,
   releaseBlocks,
   thetaBurns,
+  decayBurns,
+  tradingMinutesTo,
+  yearFracV2,
+  minutesLeftCol,
+  greekVol,
+  ivFeature,
+  FEATURE_V2,
+  LIVE_FEATURE_VERSION,
+  groupBOn,
+  type FeatureVersion,
   lotteryEntry,
   P1_MIN,
   WEEKLY_STRIKES,
@@ -48,10 +58,12 @@ import {
   OUTSIDE_TRAINED_WORD,
 } from './compassParams';
 import { COMPASS_TICKERS } from './compassUniverse';
+import { setupIdOf } from './compass';
+import { shadowClears, shadowOn, shadowPick, shadowScore, shadowTrees, type ShadowRow } from './compassShadow';
 import { optionScanOpen, sessionDayOpen, sessionIso, sessionYmd, tapeClockOf } from './compassSession';
 import type { OptionRight, Setup } from '../types/compass';
 import type { PathBar } from './compassOutcome';
-import { CORE, INDEX, INPUT_NAMES, NO_DAILY, SECTOR_OF, UNDER, atmPair, barsBefore, curveFrom, features, tapeOf, yearsLeft, type Bar, type Curve, type PinBook } from './compassFeatures';
+import { CORE, INDEX, INPUT_NAMES, NO_DAILY, SECTOR_OF, UNDER, atmPair, atmRows, barsBefore, curveFrom, decayOver, features, tapeOf, yearsLeft, type Bar, type Curve, type PinBook } from './compassFeatures';
 
 let ENTRY: Tree[] = [];
 let RUNNER: Tree[] = [];
@@ -457,16 +469,26 @@ export async function warmSession(names: readonly string[], now = Date.now()): P
   await Promise.all([run(), run()]);
 }
 
-/** Open interest per strike of one expiry, from ThetaData's open-interest snapshot (one ask per name and expiry). */
-async function pinOf(ticker: string, expiry: string, spot: number, strict = false): Promise<PinBook | null> {
+/** The open-interest count a mark could read: the count's own day (published ~06:30 ET; from 07:00 ET that day's,
+    before it the previous one). Keyed on the mark, not the wall clock (Group B bug fix, scripts/compass-groupb-proof.ts):
+    a mark scored late read the count of the minute it was scored, a count published after the mark. */
+export function oiCountDay(markMs: number): string {
+  const clock = nyParts(markMs);
+  return ymd(markMs - (clock.hour * 60 + clock.minute < 7 * 60 ? 86_400_000 : 0));
+}
+
+/** Open interest per strike of one expiry, from the open-interest snapshot (one ask per name and expiry). The snapshot
+    is the current count: a late mark finds its own day's count only when it was read at the time (cached); on a cold
+    cache it reads the current one, as before. */
+export async function pinOf(ticker: string, expiry: string, spot: number, strict = false, now = Date.now()): Promise<PinBook | null> {
   if (!CORE.has(ticker)) return null;
   /* open interest is the clearing house's overnight count, published early each morning (stamped 06:30 ET): one read
      per published count (an empty answer is asked again after five minutes). The key was the session, and a session
      starts at 20:15 the evening before, so a book read overnight was kept through the next regular session, one
-     count stale; it is now the count's own day (from 07:00 ET, today's count). */
-  const clock = nyParts(Date.now());
-  const countDay = ymd(Date.now() - (clock.hour * 60 + clock.minute < 7 * 60 ? 86_400_000 : 0));
-  const key = `${ticker}|${expiry}|${countDay}`;
+     count stale; it is now the count's own day (from 07:00 ET, today's count). The day is the mark's, not the wall
+     clock's (Group B): a mark scored late (a replay, the session's fill) read the count of the day it was filled, so
+     an evening mark took the next morning's count. Live the two are the same minute. */
+  const key = `${ticker}|${expiry}|${oiCountDay(now)}`;
   const hit = pinCache.get(key);
   if (hit && (hit.book || Date.now() - hit.at < 5 * 60_000)) return hit.book;
   const got = await compassHost().theta(`/option/snapshot/open_interest?symbol=${encodeURIComponent(ticker)}&expiration=${expiry.replace(/-/g, '').slice(0, 8)}&format=json`);
@@ -517,6 +539,73 @@ const rowFns = new Set<(row: ScoredRow) => void>();
 export function onScoredRow(fn: (row: ScoredRow) => void): () => void {
   rowFns.add(fn);
   return () => rowFns.delete(fn);
+}
+
+/** The feature version the live trees read (compassParams FEATURE_V1 / FEATURE_V2): version 1 until version 2's trees
+    pass the holdout (docs/compass-group-b.md). */
+let liveFeatures: FeatureVersion = LIVE_FEATURE_VERSION;
+
+/** One scored row as research reads it (research/groupb/build.ts): both versions' inputs, the live answer, and every
+    gate a book applies apart from the line, so any pair of trees can be run through the same seats offline. Nothing
+    registers a research hook in the app. */
+export interface ResearchRow {
+  setup: Setup;
+  minute: number;
+  mark: number;
+  late: boolean;
+  /** one scoring pass (the books choose among a pass's rows together), and the row's order in the run */
+  pass: number;
+  order: number;
+  x1: number[];
+  x2: number[];
+  p1: number | null;
+  prun: number | null;
+  entryOk: boolean;
+  /** the theta-burn gate as the live engine reads it (the trained 16:00 check; the repriced decay off a full regular day
+      only with COMPASS_GATE_DECAY=1) and as version 2 does */
+  burns1: boolean;
+  burns2: boolean;
+  /** Book A's and Book B's gates without the line */
+  aGeom: boolean;
+  bGeom: boolean;
+  dte: number;
+  retOpen: number;
+  session: string;
+  flatAt: number;
+  trained: boolean;
+  /** a full regular day's mark (the flat is 15:55 and T is today's minutes to 16:00): version 1's inputs are its training's */
+  regularDay: boolean;
+  /** trading minutes to the expiry (version 2's clock) */
+  tm: number;
+  /** B4 moved this slot's ATM vol (a stale or crossed ATM row was read before the filter) */
+  atmMoved: boolean;
+}
+const researchFns = new Set<(row: ResearchRow) => void>();
+let scorePass = 0;
+let researchOrder = 0;
+
+/** Research only: every row the scan builds inputs for, with both versions and the books' gates. */
+export function onResearchRow(fn: (row: ResearchRow) => void): () => void {
+  researchFns.add(fn);
+  return () => researchFns.delete(fn);
+}
+
+/** Version 2's theta burn: the decay to the flat by repricing on the trading clock, at the contract's solved vol (else
+    the ATM vol, else 0.30), from the version 2 row. */
+function gateV2(raw2: readonly number[], s: Setup, spot: number, v2: { tm: number; iv: number }, flatMs: number): boolean {
+  if (!Number.isFinite(flatMs)) return false;
+  const vol = greekVol(raw2[36], ivFeature(v2.iv));
+  const tNow = yearFracV2(v2.tm);
+  const tFlat = yearFracV2(tradingMinutesTo(s.expiryDate, flatMs));
+  return decayBurns(decayOver(spot, s.strike, vol, s.right === 'C', tNow, tFlat), s.ask);
+}
+
+/** Research only: whether B4's filter moves the slot's ATM vol (the unfiltered pair against the filtered one). */
+function atmMoved(list: Setup[], kept: Setup[], spot: number, T: number): boolean {
+  if (kept.length === list.length) return false;
+  const was = atmPair(list, spot, T).iv;
+  const iv = atmPair(kept, spot, T).iv;
+  return !(was === iv || (Number.isNaN(was) && Number.isNaN(iv)));
 }
 
 const seenAsks = new Map<string, { minute: number; bid: number; ask: number }[]>();
@@ -1162,6 +1251,164 @@ export function scoreRow(x: readonly number[]): { p1: number | null; prun: numbe
   return { p1, prun: predict(RUNNER, x), why: '' };
 }
 
+/** Everything a scoring pass reads before it builds a row: the bars as they stood at the mark (minute t-1's bar for a
+    live score), SPY's and the sector ETFs' price at a live mark, the prior session, the open interest (the count a
+    live read had at the mark), and each name and expiry's quotes 30 minutes back. The scan (scoreRows) and the live
+    contract (scoreLiveContract) both read through it, so the two build the same row for the same contract and minute
+    (B3: the live contract read the wall clock's date, no SPY or sector price at the mark, and the mids of an id the
+    scan never noted). */
+interface PassInputs {
+  day: string;
+  minute: number;
+  mark: number;
+  flatT: number;
+  book: Map<string, Bar[]>;
+  spy: Bar[];
+  secBars: Map<string, Bar[]>;
+  marks: Map<string, number>;
+  pd: Map<string, { h: number; l: number; c: number } | null>;
+  pins: Map<string, PinBook | null>;
+  seeded: (s: Setup, m: number) => { bid: number; ask: number } | null;
+  midBack: (s: Setup, m: number) => number;
+}
+
+async function passInputs(rows: Setup[], now: number, late: boolean): Promise<PassInputs> {
+  const clock = nyParts(now);
+  const minute = clock.hour * 60 + clock.minute;
+  const mark = Math.floor(now / 60_000) * 60_000;
+  const day = sessionYmd(now);
+  const names = [...new Set(rows.map(s => UNDER[s.ticker] ?? printOf(s.ticker)))];
+  /* a live score reads minute t-1's bar (the day range, the returns): a memo up to a minute old may not have it yet */
+  const need = !late && minute - 1 >= 9 * 60 + 30 && minute - 1 < 16 * 60 ? minute - 1 : undefined;
+  /* a late mark reads the bars as they stood at it (every bar begun before its minute, what a live score had then):
+     the session's bars as they stand when it is filled reach past it. A live score has nothing later to cut. */
+  const asOf = (bars: Bar[]) => (late ? barsBefore(bars, now) : bars);
+  const book = new Map<string, Bar[]>();
+  await Promise.all(names.map(async name => { book.set(name, asOf(await loadBars(name, day, true, need))); }));
+  const spy = asOf(await loadBars('SPY', day, true, need));
+  const etfs = [...new Set(names.map(name => SECTOR_OF[name]).filter(Boolean))];
+  const secBars = new Map<string, Bar[]>();
+  await Promise.all(etfs.map(async etf => { secBars.set(etf, asOf(await loadBars(etf, day, true, need))); }));
+  const flatT = flatTOf(closeOn(day));
+  /* a live scan reads SPY's and the sector ETFs' price at the mark: their minute bar is not in yet */
+  const marks = new Map<string, number>();
+  if (!late) {
+    await Promise.all(['SPY', ...etfs].map(async name => {
+      const px = await priceNow(name);
+      if (px > 0) marks.set(name, px);
+    }));
+  }
+  const pd = new Map<string, { h: number; l: number; c: number } | null>();
+  await Promise.all(names.map(async name => { pd.set(name, await loadPrior(name, day, true)); }));
+  const pins = new Map<string, PinBook | null>();
+  const wanted = new Map<string, { ticker: string; expiry: string; spot: number }>();
+  for (const s of rows) {
+    if (!CORE.has(s.ticker)) continue;
+    const key = `${s.ticker}|${s.expiryDate}`;
+    if (!wanted.has(key)) wanted.set(key, { ticker: s.ticker, expiry: s.expiryDate, spot: s.spot ?? 0 });
+  }
+  await Promise.all([...wanted].map(async ([key, row]) => {
+    pins.set(key, await pinOf(row.ticker, row.expiry, row.spot, true, now));
+  }));
+  const groups = new Map<string, Setup[]>();
+  for (const s of rows) {
+    const key = `${s.ticker}|${s.expiryDate}`;
+    const list = groups.get(key) ?? [];
+    list.push(s);
+    groups.set(key, list);
+  }
+  const windows = new Map<string, SeedWindow | null>();
+  await Promise.all([...groups].map(async ([key, list]) => { windows.set(key, await seedQuotes(list, now, true)); }));
+  /* a minute's quote from the mark's own window first, else what the scans saw */
+  const seeded = (s: Setup, m: number) => windows.get(`${s.ticker}|${s.expiryDate}`)?.get(s.id)?.get(m) ?? null;
+  const midBack = (s: Setup, m: number) => {
+    const q = seeded(s, m);
+    return q ? (q.bid + q.ask) / 2 : midThen(s.id, m);
+  };
+  return { day, minute, mark, flatT, book, spy, secBars, marks, pd, pins, seeded, midBack };
+}
+
+interface SlotInputs {
+  under: string;
+  tape: ReturnType<typeof tapeOf>;
+  horizon: number;
+  atmList: Setup[];
+  iv: number;
+  skew: number;
+  v2For: (s: Setup) => { tm: number; iv: number; skew: number };
+  etf: string;
+  sec: Bar[];
+  curve: Curve | null;
+  overnightRoot: boolean;
+  tapeClock: ReturnType<typeof tapeClockOf>;
+  left: number;
+  session: Exclude<ReturnType<typeof sessionKindOf>, null> | undefined;
+  trained: boolean;
+}
+
+/** One name and sleeve's shared inputs at the mark (its tape, its ATM pair on both clocks, its session and flat), or
+    null when the tape has no price. */
+async function slotInputs(inp: PassInputs, list: Setup[], now: number): Promise<SlotInputs | null> {
+  const ticker = list[0].ticker;
+  const under = UNDER[ticker] ?? ticker;
+  const indexName = INDEX.has(ticker) || INDEX.has(under);
+  const quoted = list.find(s => (s.spot ?? 0) > 0)?.spot ?? NaN;
+  const tape = tapeOf(inp.book.get(under) ?? [], indexName, inp.minute, quoted);
+  if (!(tape.S > 0)) return null;
+  const horizon = yearsLeft(tape.tt);
+  /* B4: the rows with a valid quote stamped inside 90 seconds. The live ATM pair reads them only with
+     COMPASS_ATM_FRESH=1 (off by default: every board row, as the shipped trees' live answers always have); the
+     version 2 shadow and the research rows always read the filtered pair */
+  const atmList = atmRows(list, now);
+  const { iv, skew } = atmPair(groupBOn('COMPASS_ATM_FRESH') ? atmList : list, tape.S, horizon);
+  /* version 2: the trading minutes to each expiry of the slot, and its ATM pair on that clock */
+  const v2Of = new Map<string, { tm: number; iv: number; skew: number }>();
+  const v2For = (s: Setup) => {
+    let got = v2Of.get(s.expiryDate);
+    if (!got) {
+      const tm = tradingMinutesTo(s.expiryDate, now);
+      got = { tm, ...atmPair(atmList.filter(r => r.expiryDate === s.expiryDate), tape.S, yearFracV2(tm)) };
+      v2Of.set(s.expiryDate, got);
+    }
+    return got;
+  };
+  const etf = ticker === 'SPXW' ? '' : (SECTOR_OF[ticker] ?? SECTOR_OF[under] ?? '');
+  const sec = etf ? inp.secBars.get(etf) ?? [] : [];
+  const curve = await curveFor(under, now);
+  /* the session the mark is in (overnight for the index roots, pre-market for the equity options, regular, curb):
+     the entry gate and the call's flat are that session's */
+  const overnightRoot = OVERNIGHT_ROOTS.includes(ticker);
+  /* the root's own tape ends: its curb (17:00, 16:15 or none) and the Global Trading Hours window at the mark (to
+     11:30 on a holiday morning) */
+  const tapeClock = tapeClockOf(ticker, now);
+  const left = minutesToFlat(tape.tt, inp.flatT, overnightRoot, tapeClock);
+  const session = sessionKindOf(tape.tt, inp.flatT, overnightRoot, tapeClock) ?? undefined;
+  const trained = inModelWindow(tape.tt);
+  return { under, tape, horizon, atmList, iv, skew, v2For, etf, sec, curve, overnightRoot, tapeClock, left, session, trained };
+}
+
+/** One contract's inputs at the mark: version 1's row; version 2's when asked for (the shadow, research), or off a
+    full regular day with COMPASS_GATE_DECAY=1 (where version 1's theta check does not belong to the session's flat and
+    version 2's repriced decay decides); version 2's theta burn. */
+function rowInputs(inp: PassInputs, slot: SlotInputs, s: Setup, mid: number, wantV2: boolean): { raw1: number[]; raw2: number[] | null; v2: { tm: number; iv: number; skew: number }; flatMs: number; regularDay: boolean; burns2: boolean } | null {
+  const { tape, under, left } = slot;
+  const pin = inp.pins.get(`${s.ticker}|${s.expiryDate}`) ?? null;
+  const mids = { m5: inp.midBack(s, inp.minute - 5), m15: inp.midBack(s, inp.minute - 15) };
+  const pxMarks = { spy: inp.marks.get('SPY'), sec: slot.etf ? inp.marks.get(slot.etf) : undefined };
+  const bars = inp.book.get(under) ?? [];
+  const prior = inp.pd.get(under) ?? null;
+  const raw1 = features({ ...s, mid }, inp.minute, bars, inp.spy, prior, slot.iv, slot.skew, slot.sec, slot.curve, pin, mids, pxMarks);
+  if (!raw1) return null;
+  const v2 = slot.v2For(s);
+  /* the decay to this session's flat on the trading clock (version 2's gate; version 1's off the full day) */
+  const flatMs = inp.mark + left * 60_000;
+  const regularDay = left + 5 === minutesLeftCol(tape.tt);
+  /* version 2's row off a full regular day feeds the repriced theta gate only when COMPASS_GATE_DECAY=1 */
+  const raw2 = wantV2 || (!regularDay && groupBOn('COMPASS_GATE_DECAY')) ? features({ ...s, mid }, inp.minute, bars, inp.spy, prior, v2.iv, v2.skew, slot.sec, slot.curve, pin, mids, pxMarks, { tradingMinutes: v2.tm }) : null;
+  const burns2 = raw2 ? gateV2(raw2, s, tape.S, v2, flatMs) : false;
+  return { raw1, raw2, v2, flatMs, regularDay, burns2 };
+}
+
 async function scoreAll(setups: Setup[], now: number, merge = false, late = false): Promise<ScoreResult> {
   try {
     return await scoreRows(setups, now, merge, late);
@@ -1190,56 +1437,10 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
     return optionScanOpen(s.ticker, dte, now);
   });
   if (!rows.length) return 'scored';
-  const names = [...new Set(rows.map(s => UNDER[s.ticker] ?? printOf(s.ticker)))];
-  /* a live score reads minute t-1's bar (the day range, the returns): a memo up to a minute old may not have it yet */
-  const need = !late && minute - 1 >= 9 * 60 + 30 && minute - 1 < 16 * 60 ? minute - 1 : undefined;
-  /* a late mark reads the bars as they stood at it (every bar begun before its minute, what a live score had then):
-     the session's bars as they stand when it is filled reach past it. A live score has nothing later to cut. */
-  const asOf = (bars: Bar[]) => (late ? barsBefore(bars, now) : bars);
-  const book = new Map<string, Bar[]>();
-  await Promise.all(names.map(async name => { book.set(name, asOf(await loadBars(name, day, true, need))); }));
-  const spy = asOf(await loadBars('SPY', day, true, need));
-  const etfs = [...new Set(names.map(name => SECTOR_OF[name]).filter(Boolean))];
-  const secBars = new Map<string, Bar[]>();
-  await Promise.all(etfs.map(async etf => { secBars.set(etf, asOf(await loadBars(etf, day, true, need))); }));
-  const flatT = flatTOf(closeOn(day));
+  const inp = await passInputs(rows, now, late);
+  const { flatT, seeded } = inp;
   /* a late mark is judged on the seats and contracts as they stood at its mark */
   const calledBy = (id: string) => seen.has(id) && (!late || (seenMark.get(id) ?? 0) <= mark);
-  /* a live scan reads SPY's and the sector ETFs' price at the mark: their minute bar is not in yet */
-  const marks = new Map<string, number>();
-  if (!late) {
-    await Promise.all(['SPY', ...etfs].map(async name => {
-      const px = await priceNow(name);
-      if (px > 0) marks.set(name, px);
-    }));
-  }
-  const pd = new Map<string, { h: number; l: number; c: number } | null>();
-  await Promise.all(names.map(async name => { pd.set(name, await loadPrior(name, day, true)); }));
-  const pins = new Map<string, PinBook | null>();
-  const wanted = new Map<string, { ticker: string; expiry: string; spot: number }>();
-  for (const s of rows) {
-    if (!CORE.has(s.ticker)) continue;
-    const key = `${s.ticker}|${s.expiryDate}`;
-    if (!wanted.has(key)) wanted.set(key, { ticker: s.ticker, expiry: s.expiryDate, spot: s.spot ?? 0 });
-  }
-  await Promise.all([...wanted].map(async ([key, row]) => {
-    pins.set(key, await pinOf(row.ticker, row.expiry, row.spot, true));
-  }));
-  const groups = new Map<string, Setup[]>();
-  for (const s of rows) {
-    const key = `${s.ticker}|${s.expiryDate}`;
-    const list = groups.get(key) ?? [];
-    list.push(s);
-    groups.set(key, list);
-  }
-  const windows = new Map<string, SeedWindow | null>();
-  await Promise.all([...groups].map(async ([key, list]) => { windows.set(key, await seedQuotes(list, now, true)); }));
-  /* a minute's quote from the mark's own window first, else what the scans saw */
-  const seeded = (s: Setup, m: number) => windows.get(`${s.ticker}|${s.expiryDate}`)?.get(s.id)?.get(m) ?? null;
-  const midBack = (s: Setup, m: number) => {
-    const q = seeded(s, m);
-    return q ? (q.bid + q.ask) / 2 : midThen(s.id, m);
-  };
   const bySlot = new Map<string, Setup[]>();
   for (const s of rows) {
     const key = slotOf(s);
@@ -1263,33 +1464,22 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
     for (const [key, pick] of picks) if (sleeves.has(pick.sleeve) && !seen.has(pick.id)) next.delete(key);
     for (const [key, pick] of wingPicks) if (sleeves.has(pick.sleeve) && !seen.has(key)) wingNext.delete(key);
   }
+  scorePass += 1;
+  /* feature version 2's trees in the shadow (compassShadow; off unless the server turns it on): scored beside the live
+     trees on every row, run through the same books on their own seats, never a call */
+  const shadow = shadowOn() && (await shadowTrees());
+  const shadowRows: ShadowRow[] = [];
   const aPool: { setup: Setup; p1: number; prun: number | null; gex: number; retOpen: number }[] = [];
   const bPool: { setup: Setup; p1: number; prun: number | null; gex: number; retOpen: number }[] = [];
   for (const [, list] of bySlot) {
     const ticker = list[0].ticker;
-    const under = UNDER[ticker] ?? ticker;
-    const indexName = INDEX.has(ticker) || INDEX.has(under);
-    const quoted = list.find(s => (s.spot ?? 0) > 0)?.spot ?? NaN;
-    const tape = tapeOf(book.get(under) ?? [], indexName, minute, quoted);
     const report = list[0].sleeve === 'weekly' ? reports.weekly : reports.odte;
-    if (!(tape.S > 0)) {
+    const slot = await slotInputs(inp, list, now);
+    if (!slot) {
       report.quiet += list.length;
       continue;
     }
-    const horizon = yearsLeft(tape.tt);
-    const { iv, skew } = atmPair(list, tape.S, horizon);
-    const etf = ticker === 'SPXW' ? '' : (SECTOR_OF[ticker] ?? SECTOR_OF[under] ?? '');
-    const sec = etf ? secBars.get(etf) ?? [] : [];
-    const curve = await curveFor(under, now);
-    /* the session the mark is in (overnight for the index roots, pre-market for the equity options, regular, curb):
-       the entry gate and the call's flat are that session's */
-    const overnightRoot = OVERNIGHT_ROOTS.includes(ticker);
-    /* the root's own tape ends: its curb (17:00, 16:15 or none) and the Global Trading Hours window at the mark (to
-       11:30 on a holiday morning) */
-    const tapeClock = tapeClockOf(ticker, now);
-    const left = minutesToFlat(tape.tt, flatT, overnightRoot, tapeClock);
-    const session = sessionKindOf(tape.tt, flatT, overnightRoot, tapeClock) ?? undefined;
-    const trained = inModelWindow(tape.tt);
+    const { tape, horizon, atmList, iv, overnightRoot, tapeClock, left, session, trained } = slot;
     const notes: string[] = [];
     const scoredP = new Map<string, number>();
     const lineWhy = (p: number) => (p + 1e-12 < P1_MIN
@@ -1318,11 +1508,41 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       }
       const mid = (s.bid + s.ask) / 2;
       noteMid(s.id, qMin, mid);
-      const pin = pins.get(`${s.ticker}|${s.expiryDate}`) ?? null;
-      const raw = features({ ...s, mid }, minute, book.get(under) ?? [], spy, pd.get(under) ?? null, iv, skew, sec, curve, pin, { m5: midBack(s, minute - 5), m15: midBack(s, minute - 15) }, { spy: marks.get('SPY'), sec: etf ? marks.get(etf) : undefined });
-      if (!raw) continue;
-      const x = f32(raw);
+      const built = rowInputs(inp, slot, s, mid, liveFeatures === FEATURE_V2 || researchFns.size > 0 || shadow);
+      if (!built) continue;
+      const { raw1, raw2, v2, flatMs, regularDay, burns2 } = built;
+      const x1 = f32(raw1);
+      const x2 = raw2 ? f32(raw2) : null;
+      const x = liveFeatures === FEATURE_V2 && x2 ? x2 : x1;
       const scored = scoreRow(x);
+      const dt = Math.max(0, left - 1) / (SESSION_MIN * YEAR_SESSIONS);
+      if (researchFns.size) {
+        const dist0 = strikeDistance(list.map(row => row.strike), tape.S, s.strike);
+        const span0 = strikeSpan(tape.S, list.map(row => row.strike), SPAN_INDEX.includes(s.ticker as typeof SPAN_INDEX[number]));
+        const prior0 = seeded(s, minute - BOOK_B_LOOKBACK) ?? quoteAt(s.id, minute - BOOK_B_LOOKBACK);
+        const timeOk = entryTimeOk(tape.tt, flatT, overnightRoot, tapeClock);
+        const rec: ResearchRow = {
+          setup: s, minute, mark, late, pass: scorePass, order: researchOrder++, x1, x2: x2 ?? x1, p1: scored.p1, prun: scored.prun,
+          entryOk: timeOk, burns1: !regularDay && groupBOn('COMPASS_GATE_DECAY') ? burns2 : thetaBurns(x1[39], x1[38], s.ask, dt), burns2,
+          aGeom: bookAPass(tape.tt, dist0, span0, dte, s.bid, s.ask, 1, flatT, overnightRoot, tapeClock),
+          bGeom: !!prior0 && bookBPass(tape.tt, dist0, span0, dte, s.bid, s.ask, prior0.bid, prior0.ask, 1, flatT, overnightRoot, tapeClock),
+          dte, retOpen: tape.op > 0 && tape.S > 0 ? tape.S / tape.op - 1 : NaN, session: session ?? '', flatAt: flatMs, trained, regularDay,
+          tm: v2.tm, atmMoved: atmMoved(list, atmList, tape.S, horizon),
+        };
+        for (const fn of researchFns) fn(rec);
+      }
+      if (shadow && x2 && !burns2 && entryTimeOk(tape.tt, flatT, overnightRoot, tapeClock)) {
+        const sh = shadowScore(x2);
+        if (shadowClears(sh.p1)) {
+          const strikesOf = list.map(row => row.strike);
+          const d2 = strikeDistance(strikesOf, tape.S, s.strike);
+          const sp2 = strikeSpan(tape.S, strikesOf, SPAN_INDEX.includes(s.ticker as typeof SPAN_INDEX[number]));
+          const pr2 = seeded(s, minute - BOOK_B_LOOKBACK) ?? quoteAt(s.id, minute - BOOK_B_LOOKBACK);
+          const geomA = bookAPass(tape.tt, d2, sp2, dte, s.bid, s.ask, 1, flatT, overnightRoot, tapeClock);
+          const geomB = !geomA && !!pr2 && bookBPass(tape.tt, d2, sp2, dte, s.bid, s.ask, pr2.bid, pr2.ask, 1, flatT, overnightRoot, tapeClock);
+          if (geomA || geomB) shadowRows.push({ setup: { ...s, mark, flatAt: flatMs }, p1: sh.p1, prun: sh.prun, retOpen: tape.op > 0 && tape.S > 0 ? tape.S / tape.op - 1 : NaN, book: geomA ? 'A' : 'B', flatAt: flatMs, session: session ?? '' });
+        }
+      }
       if (scored.p1 == null) {
         notes.push(`${word} ${scored.why}`);
         continue;
@@ -1343,9 +1563,13 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
         notes.push(`${word} is outside this root's session`);
         continue;
       }
-      /* the decay to this session's flat (was the regular flat for every mark) */
-      const dt = Math.max(0, left - 1) / (SESSION_MIN * YEAR_SESSIONS);
-      if (thetaBurns(x[39], x[38], s.ask, dt)) {
+      /* the decay to this session's flat (was the regular flat for every mark). Version 1 on a full regular day keeps
+         its trained check (the 16:00 theta over the minutes to 15:55); off it (a half day, the overnight, the
+         pre-market, the curb) the 16:00 theta does not belong to that flat (B2b); with COMPASS_GATE_DECAY=1 the repriced
+         decay on the trading clock decides there, as it does for version 2. Off by default: the trained check
+         everywhere, as before (the gate change moves the call set both ways with no outcome evidence behind it) */
+      const burns = liveFeatures === FEATURE_V2 || (!regularDay && groupBOn('COMPASS_GATE_DECAY')) ? burns2 : thetaBurns(x1[39], x1[38], s.ask, dt);
+      if (burns) {
         notes.push(`${word} theta burns the stop before the flat`);
         continue;
       }
@@ -1357,8 +1581,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       const span = strikeSpan(tape.S, list.map(row => row.strike), SPAN_INDEX.includes(s.ticker as typeof SPAN_INDEX[number]));
       const prior = seeded(s, minute - BOOK_B_LOOKBACK) ?? quoteAt(s.id, minute - BOOK_B_LOOKBACK);
       const retOpen = tape.op > 0 && tape.S > 0 ? tape.S / tape.op - 1 : NaN;
-      const flatAt = mark + left * 60_000;
-      const row = { setup: { ...s, tapeSession: session, outsideTrained: !trained || undefined, flatAt }, p1, prun, gex: x[27], retOpen };
+      const row = { setup: { ...s, tapeSession: session, outsideTrained: !trained || undefined, flatAt: flatMs }, p1, prun, gex: x[27], retOpen };
       if (bookAPass(tape.tt, dist, span, dte, s.bid, s.ask, p1, flatT, overnightRoot, tapeClock)) aPool.push(row);
       else if (prior && bookBPass(tape.tt, dist, span, dte, s.bid, s.ask, prior.bid, prior.ask, p1, flatT, overnightRoot, tapeClock)) bPool.push(row);
       else if (!prior && dist > span) notes.push(`${word} has no quote from 30 minutes earlier`);
@@ -1500,6 +1723,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       });
     }
   }
+  if (shadow) shadowPick(shadowRows, day);
   picks.clear();
   for (const [key, pick] of next) picks.set(key, pick);
   wingPicks.clear();
@@ -1754,35 +1978,32 @@ export async function scoreLiveContract(input: {
   if (hit && now - hit.at < 20_000) return { ...hit, ...seatsNow() };
   try {
     if (!(await ensureModels()) || !modelsLocked()) return blank;
-    const clock = nyParts(now);
-    const minute = clock.hour * 60 + clock.minute;
-    const day = ymd(now);
+    /* the scan's own row for this contract at this minute (B3): the same inputs read the same way (passInputs,
+       slotInputs, rowInputs), the scan's contract id (so the quotes 5 and 15 minutes back are the ones the scan noted
+       and read) and its sleeve, the session's date, not the wall clock's */
     const ticker = input.ticker;
-    const under = UNDER[ticker] ?? printOf(ticker);
-    const indexName = INDEX.has(ticker) || INDEX.has(under);
-    const bars = await loadBars(under, day);
-    const spy = under === 'SPY' ? bars : await loadBars('SPY', day);
-    const etf = SECTOR_OF[under] ?? SECTOR_OF[ticker] ?? '';
-    const sec = etf ? await loadBars(etf, day) : [];
-    const prior = await loadPrior(under, day);
-    const tape = tapeOf(bars, indexName, minute, input.spot);
-    const retOpen = tape.S > 0 && tape.op > 0 ? tape.S / tape.op - 1 : null;
-    if (!(tape.S > 0)) {
-      const scored = { p1: null, prun: null, retOpen, gex: null };
-      liveScoreMemo.set(key, { at: now, ...scored });
-      return { ...scored, ...seatsNow() };
-    }
-    const mine = weigherStub(ticker, input.strike, input.right, input.bid, input.ask, input.expiryIso);
-    mine.spot = tape.S;
-    const mates = (input.rows ?? [])
+    const day = sessionYmd(now);
+    const dte = weekdayDte(day, input.expiryIso);
+    const sleeve = dte === 0 ? 'odte' : 'weekly';
+    const asSetup = (strike: number, right: OptionRight, bid: number, ask: number): Setup => ({
+      ...weigherStub(ticker, strike, right, bid, ask, input.expiryIso),
+      id: setupIdOf({ ticker, strike, right, scanner: 'top-setups', sleeve }),
+      sleeve,
+      spot: input.spot,
+      quotedAt: now,
+    });
+    const mine = asSetup(input.strike, input.right, input.bid, input.ask);
+    const list = (input.rows ?? [])
       .filter(r => r.ask > r.bid && r.ask > 0 && r.bid >= 0)
-      .map(r => weigherStub(ticker, r.strike, r.right, r.bid, r.ask, input.expiryIso));
-    if (!mates.some(s => s.right === mine.right && Math.abs(s.strike - mine.strike) < 1e-6)) mates.push(mine);
-    const horizon = yearsLeft(tape.tt);
-    const { iv, skew } = atmPair(mates, tape.S, horizon);
-    const pin = CORE.has(ticker) ? await pinOf(ticker, input.expiryIso, tape.S > 0 ? tape.S : input.spot) : null;
-    noteMid(mine.id, minute, mine.mid);
-    const raw = features(mine, minute, bars, spy, prior, iv, skew, sec, curveOf(under), pin, { m5: midThen(mine.id, minute - 5), m15: midThen(mine.id, minute - 15) });
+      .filter(r => !(r.right === mine.right && Math.abs(r.strike - mine.strike) < 1e-6))
+      .map(r => asSetup(r.strike, r.right, r.bid, r.ask));
+    list.push(mine);
+    const inp = await passInputs(list, now, false);
+    const slot = await slotInputs(inp, list, now);
+    const retOpen = slot && slot.tape.S > 0 && slot.tape.op > 0 ? slot.tape.S / slot.tape.op - 1 : null;
+    const built = slot ? rowInputs(inp, slot, mine, mine.mid, liveFeatures === FEATURE_V2) : null;
+    noteMid(mine.id, inp.minute, mine.mid);
+    const raw = built ? (liveFeatures === FEATURE_V2 ? built.raw2 : built.raw1) : null;
     if (!raw) {
       const scored = { p1: null, prun: null, retOpen, gex: null };
       liveScoreMemo.set(key, { at: now, ...scored });

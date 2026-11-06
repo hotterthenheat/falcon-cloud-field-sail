@@ -1,10 +1,12 @@
 # Regenerates scripts/fixtures/lgbm-parity.json with the real LightGBM.
 # Run: python -I scripts/lgbm-parity-fixture.py . scripts/fixtures/lgbm-parity.json (needs lightgbm and numpy)
+#      python -I scripts/lgbm-parity-fixture.py . scripts/fixtures/lgbm-parity-v2.json v2   (feature version 2's trees)
 import json, re, sys, numpy as np, lightgbm as lgb
 root = sys.argv[1]
-entry = lgb.Booster(model_file=f'{root}/public/models/model_entry_all6months.txt')
-runner = lgb.Booster(model_file=f'{root}/public/models/model_runner_all6months.txt')
-txt = open(f'{root}/public/models/model_entry_all6months.txt').read()
+tag = sys.argv[3] if len(sys.argv) > 3 else 'all6months'
+entry = lgb.Booster(model_file=f'{root}/public/models/model_entry_{tag}.txt')
+runner = lgb.Booster(model_file=f'{root}/public/models/model_runner_{tag}.txt')
+txt = open(f'{root}/public/models/model_entry_{tag}.txt').read()
 infos = re.search(r'^feature_infos=(.*)$', txt, re.M).group(1).split()
 ranges = []
 for s in infos:
@@ -29,7 +31,7 @@ X = np.vstack(rows)
 pe = entry.predict(X); pr = runner.predict(X)
 def enc(v): return None if np.isnan(v) else float(str(np.float32(v)))  # shortest float32 text; the reader applies Math.fround
 out = {
-  'source': 'LightGBM %s Booster.predict on public/models/*_all6months.txt; inputs are float32 (apply Math.fround), null is NaN' % lgb.__version__,
+  'source': 'LightGBM %s Booster.predict on public/models/*_%s.txt; inputs are float32 (apply Math.fround), null is NaN' % (lgb.__version__, tag),
   'vectors': [[enc(v) for v in r] for r in X],
   'entry': [float(v) for v in pe], 'runner': [float(v) for v in pr]}
 s = json.dumps(out, separators=(',', ':'))

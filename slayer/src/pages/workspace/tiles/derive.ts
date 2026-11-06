@@ -12,7 +12,7 @@ import { readSessionClock } from '../../../data/moc';
 import { buildKeyLevels } from '../../../data/pulse';
 import { bookCandles, bookHistory } from '../../../data/book/levels';
 import { snapshotFor } from '../../../data/book/feed';
-import { levelsFor, type TickerLevels } from '../../../data/levelsFor';
+import { drawnLevels, levelsFor, type TickerLevels } from '../../../data/levelsFor';
 import { levelsForName } from '../../../data/levelsScope';
 import { LEVELS_WINDOW } from '../../../data/roomLevels';
 import { peekIv } from '../../../data/book/move';
@@ -62,15 +62,10 @@ export const houseOf = (s: MarketSnapshot | null): TickerLevels | null => (s?.li
 /** A house reading as the chart's levels: the walls and the supreme only once the scope's own contracts are in, the flip
     only once final — before that each is NaN (nothing drawn), never another book's level standing in */
 export const keyLevelsFrom = (spot: number, house: TickerLevels | null): KeyLevels => {
-  const walls = !!house?.wallsFinal;
-  const n = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? Number.NaN : v);
-  return {
-    spot,
-    callWall: walls ? n(house!.callWall) : Number.NaN,
-    putWall: walls ? n(house!.putWall) : Number.NaN,
-    supreme: walls ? n(house!.supreme) : Number.NaN,
-    flip: house?.complete ? n(house.flip) : Number.NaN,
-  };
+  /* the one gate (levelsFor drawnLevels), the one Terrain's and Weigher's panes read through */
+  const d = drawnLevels(house);
+  const n = (v: number | null) => (v == null ? Number.NaN : v);
+  return { spot, callWall: n(d.callWall), putWall: n(d.putWall), supreme: n(d.supreme), flip: n(d.flip) };
 };
 
 /** The walls, flip and supreme the chart draws: the house's on a live book; a replayed or simulated book (no house) reads
@@ -115,10 +110,16 @@ const onceBy = <K, T>(build: (s: MarketSnapshot, k: K) => T) => {
   };
 };
 
+/** A live book whose levels are not final yet: the scope's own contracts, or the flip's pricing, still landing. The
+    agenda names its targets by the levels ("the call wall"), so it waits as board.ts deskAgenda does. */
+export const levelsWaiting = (s: MarketSnapshot): boolean => !!s.liveBook && profile15(s)?.levels.complete === false;
+
 export const agendaOf = onceBy<AgendaOrder, Agenda>((s, order) => {
   const p = profile15(s);
   const b = buildingOf(s);
   const surf = surface30(s);
   if (!p || !b || !surf) throw new Error('no book');
+  /* nothing named off a stand-in book (the whole book standing in for "Today" names other walls) */
+  if (levelsWaiting(s)) throw new Error('levels pending');
   return buildAgenda(s, p, b, surf, sessionBars(s.ticker) ?? [], clockNow(), ivOf(s.ticker), order);
 });
