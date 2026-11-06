@@ -62,7 +62,7 @@ export const GREEK_EXPLAIN: Record<Greek, string> = {
   charm: 'CHARM: the stock dealers must buy or sell as a day passes, with price and vol unchanged — the clock pulling on their hedges',
   color: 'COLOR: how the gamma-per-1% book changes as this session runs, from each contract’s own vol — the slope right now, not a forecast of tomorrow’s gamma',
   vomma: 'VOMMA: how much vega the book gains or loses when implied volatility moves one point, from each contract’s own vol',
-  speed: 'SPEED: how much the gamma-per-1% book changes when the underlying moves one dollar',
+  speed: 'SPEED: how much dealer gamma changes when the underlying moves 1%, in gamma-per-1% dollars at today’s price (the dollar figure’s own growth with price is left out)',
   veta: 'VETA: how vega changes as this session runs, from each contract’s own vol — the slope right now, not a forecast of tomorrow’s vega',
   zomma: 'ZOMMA: how much the gamma-per-1% book changes when implied volatility moves one point',
 };

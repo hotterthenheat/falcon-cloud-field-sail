@@ -53,7 +53,8 @@ export interface StrikeExposure {
   color: GreekSplit;
   /** Dollars of vega gained or lost per vol point. */
   vomma: GreekSplit;
-  /** Dollars of gamma-per-1% added when the underlying moves one dollar. */
+  /** Dealer gamma's change for a 1% move (∂Γ/∂S × 1%·S), in gamma-per-1% dollars at today's spot — the S² of the dollar
+      figure is held at today's price, so this is not d(GEX)/dS (data/liveHigher.ts). */
   speed: GreekSplit;
   /** Dollars of vega the clock adds per session. */
   veta: GreekSplit;
