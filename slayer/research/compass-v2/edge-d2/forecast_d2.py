@@ -221,6 +221,8 @@ def report():
                     if ok.sum() > 10 and yy[ok].min() != yy[ok].max():
                         a = roc_auc_score(yy[ok], P[j][ok])
                         nulls.setdefault(f'{model}|{target}', []).append(a)
+                        lo, _ = boot_auc(yy[ok], P[j][ok], days[ok], n=200, seed=b0 + j)
+                        nulls.setdefault(f'{model}|{target}|ci', []).append(lo > 0.5)
     for target in TARGETS:
         L += [f'## Target {target}', '', '| model | OOS days | positives (base rate) | AUC [95% CI] | shuffled-null AUC p95 (real beats) | Brier (clim) | Brier skill | flagged | precision | recall |',
               '|---|---:|---:|---|---|---|---:|---:|---:|---:|']
@@ -232,8 +234,10 @@ def report():
             nl = nulls.get(f'{model}|{target}')
             if nl is not None and 'auc' in m:
                 m['null_p95'] = float(np.percentile(nl, 95)); m['null_beats'] = float(np.mean(np.array(nl) < m['auc'])); m['null_n'] = len(nl)
+                m['null_fdr'] = float(np.mean(nulls.get(f'{model}|{target}|ci', [np.nan])))
             J[f'{model}|{target}'] = m
-            nls = f"{m['null_p95']:.3f} ({100 * m['null_beats']:.0f}%, {m['null_n']} runs)" if 'null_p95' in m else '-'
+            nls = (f"{m['null_p95']:.3f} ({100 * m['null_beats']:.0f}%, {m['null_n']} runs; FDR {100 * m['null_fdr']:.1f}%)"
+                   if 'null_p95' in m else '-')
             br = f"{m['brier']:.4f} ({m['brier_clim']:.4f})" if 'brier' in m else '-'
             bss = f"{100 * m['bss']:+.1f}%" if 'bss' in m else '-'
             L.append(f"| {model} | {m['n']} | {m['pos']} ({100 * m['base']:.1f}%) | {m.get('auc', float('nan')):.3f} [{m.get('auc_lo', float('nan')):.3f}, {m.get('auc_hi', float('nan')):.3f}] | {nls} | {br} | {bss} | "
