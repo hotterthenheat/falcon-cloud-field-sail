@@ -246,7 +246,7 @@ def main():
         sr = kx.mean() / kx.std(ddof=1) if len(kx) > 2 else np.nan
         srs = [T[(T.set == st) & (T.picker == n) & T.ret_fee.notna()].ret_fee for n in names]
         srv = float(np.var([s.mean() / s.std(ddof=1) for s in srs if len(s) > 2]))
-        dsr = deflated_sharpe(sr, len(kx), trials, srv) if np.isfinite(sr) else np.nan
+        dsr = deflated_sharpe(sr, len(kx), trials, None)['dsr'] if np.isfinite(sr) else np.nan
         L += [f'PBO (CSCV, 16 blocks, {len(names)} pickers): {pb:.2f}; K Sharpe/trade {sr:.3f}, DSR at N = {trials}: {dsr:.3f}', '']
         summ['sets'][st] = {'rows': R, 'paired': PR, 'null_random': nr, 'null_shuffle': ns, 'pbo': pb, 'dsr': dsr,
                             'abstain_kf': [len(a0), a0.ret_fee.mean(), lo, hi]}

@@ -107,6 +107,7 @@ def profile(und, day):
     P = np.maximum(smooth5(M.mean(0)), 1e-12)
     lev = M.sum(1) / P.sum()
     z = (np.array([R[d][0] for d in prior]) / np.sqrt(P[None, :] * np.maximum(lev[:, None], 1e-6))).ravel()
+    z = (z - z.mean()) / z.std()  # standardised: zero mean, unit variance (the drift is kappa's job alone)
     return {'P': P, 'prev_r2': M[-1], 'z': z}
 
 
@@ -173,11 +174,11 @@ def fit(setname, sigs):
     out = {}
     for k in range(5):
         tr = L[L.fold != k]
-        X = np.c_[np.ones(len(tr)), tr.lp.values, tr.lt.values]
-        coef, *_ = np.linalg.lstsq(X, tr.lr.values, rcond=None)
-        res = tr.lr.values - X @ coef
+        X = np.c_[np.ones(len(tr)), tr['lp'].values, tr['lt'].values]
+        coef, *_ = np.linalg.lstsq(X, tr['lr'].values, rcond=None)
+        res = tr['lr'].values - X @ coef
         ss = S[S.fold != k]
-        lpt = coef[0] + coef[1] * ss.lp.values + coef[2] * ss.lt.values
+        lpt = coef[0] + coef[1] * ss['lp'].values + coef[2] * ss['lt'].values
         sig_f = np.sqrt(np.exp(lpt) * np.mean(np.exp(res)) * ss.Phold.values)
         kappa = float(np.mean(ss.sgn.values * ss.ret.values / sig_f))
         sp = {}
@@ -190,7 +191,7 @@ def fit(setname, sigs):
             sp[root] = {'beta': float(cs[1]), 'hmin': float(np.percentile(g.h.values, 5)), 'n': int(len(g))}
         rng = np.random.default_rng(k)
         out[str(k)] = {'coef': [float(c) for c in coef], 'res': [float(x) for x in rng.choice(res, min(2000, len(res)), replace=False)],
-                       'res_sd': float(res.std()), 'n_level': int(len(tr)), 'r2': float(1 - res.var() / tr.lr.var()),
+                       'res_sd': float(res.std()), 'n_level': int(len(tr)), 'r2': float(1 - res.var() / tr['lr'].var()),
                        'kappa': kappa, 'n_kappa': int(len(ss)), 'spread': sp}
     json.dump(out, open(f, 'w'))
     return out

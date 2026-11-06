@@ -180,21 +180,57 @@ def pick_all(nproc=2):
         for i, d in enumerate(pool.imap(pick_session, todo)):
             if (i + 1) % 20 == 0:
                 print(f'{time.strftime("%H:%M:%S")} picked {i + 1}/{len(todo)} ({time.time() - t0:.0f}s)', flush=True)
+    open(os.path.join(PICKS, 'DONE'), 'w').write(time.strftime('%H:%M:%S'))
     print('picks done', flush=True)
 
 
-def do_session(day, sigs):
-    f = os.path.join(PICKS, f'{day}.json')
-    rec = json.load(open(f)) if os.path.exists(f) else [ht._clean(choose(sig)) for sig in sigs]
+MAIN = ('Kf', 'Kr', 'A', 'B', 'C', 'D')
+
+
+def do_session(day, sigs, phase=1):
+    """phase 1: fetch the compared pickers' outcomes (nulls' picks marked deferred unless already cached by a main
+    pick); phase 2: fill the deferred ones in an existing result file. Fetch order never changes an outcome."""
+    f = os.path.join(PICKS, f'{day}.json') if phase == 1 else os.path.join(RES, f'{day}.json')
+    rec = json.load(open(f))
     for ch in rec:
         sig = ch['sig']
         cache = {}
-        for name, p in ch['picks'].items():
+        for name in sorted(ch['picks'], key=lambda n: n not in MAIN):
+            p = ch['picks'][name]
             key = (p['root'], p['k'], p['call'])
-            if key not in cache:
-                cache[key] = D.outcome(sig, *key)
-            p['out'] = cache[key]
+            if phase == 2 and (p.get('out') or {}).get('skip') != 'deferred':
+                cache.setdefault(key, p['out'])
+                continue
+            if key in cache:
+                p['out'] = cache[key]
+            elif phase == 1 and name not in MAIN:
+                p['out'] = {'skip': 'deferred'}
+            else:
+                cache[key] = p['out'] = D.outcome(sig, *key)
     return rec
+
+
+def run_phase2(max_minutes=1e9):
+    order, _ = session_order()
+    t0, n = time.time(), 0
+    for day in order:
+        f = os.path.join(RES, f'{day}.json')
+        if not os.path.exists(f):
+            continue
+        rec = json.load(open(f))
+        if not any((p.get('out') or {}).get('skip') == 'deferred' for r in rec for p in r['picks'].values()):
+            continue
+        if time.time() - t0 > max_minutes * 60:
+            print('time cut', flush=True)
+            break
+        rec = do_session(day, None, phase=2)
+        tmp = f + '.tmp'
+        json.dump(ht._clean(rec), open(tmp, 'w'))
+        os.replace(tmp, f)
+        n += 1
+        if n % 10 == 0:
+            print(f'{time.strftime("%H:%M:%S")} phase2 sessions {n} fetch {D.STATS["fetch"]} ({D.STATS["fetch_s"]:.0f}s)', flush=True)
+    print('phase2 done', D.STATS, flush=True)
 
 
 def run(max_minutes=1e9):
@@ -206,8 +242,12 @@ def run(max_minutes=1e9):
         f = os.path.join(RES, f'{day}.json')
         if os.path.exists(f):
             continue
+        while not os.path.exists(os.path.join(PICKS, f'{day}.json')):  # the CPU phase runs alongside, same order
+            if os.path.exists(os.path.join(PICKS, 'DONE')):
+                break
+            time.sleep(5)
         if not os.path.exists(os.path.join(PICKS, f'{day}.json')):
-            continue  # picks first (CPU phase); the run picks up later sessions on a re-run
+            continue
         if time.time() - t0 > max_minutes * 60:
             print('time cut', flush=True)
             break
@@ -241,6 +281,6 @@ if __name__ == '__main__':
                     {r: (round(v['beta'], 3), round(v['hmin'], 3)) for r, v in x['spread'].items()})
     elif cmd == 'pick':
         pick_all(int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else 2)
-    elif cmd == 'run':
+    elif cmd in ('run', 'run2'):
         mm = [float(a) for a in sys.argv[2:] if a[0].isdigit()]
-        run(mm[0] if mm else 1e9)
+        (run if cmd == 'run' else run_phase2)(mm[0] if mm else 1e9)
