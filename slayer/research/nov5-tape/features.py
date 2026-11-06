@@ -87,6 +87,8 @@ def build(D):
     fl = load.flow(D)
     nw = load.news(D)
     cr = load.compass_rows(D)
+    tr = load.trades(D)                 # tick prints with the NBBO in force (liquid band), or None
+    tr_ms = tr.ms.values if tr is not None else None
     oi0 = load.oi(D)
     oi0 = oi0[oi0.exp == int(D)]
     rows = []
@@ -151,6 +153,21 @@ def build(D):
         if len(w15):
             g = w15.groupby(['k', 'r']).v.sum().sort_values(ascending=False)
             x['top_vol15'] = ', '.join(f"{k:g}{'C' if r else 'P'} {v:,}" for (k, r), v in g.head(3).items())
+        # signed premium flow from the tick prints (NBBO in force at the print): + at/above the ask, - at/below the bid
+        if tr is not None:
+            a0, b0 = np.searchsorted(tr_ms, (T - 900) * 1000), np.searchsorted(tr_ms, T * 1000)
+            w = tr.iloc[a0:b0]
+            if len(w):
+                pr = w.px.values * w['size'].values * 100.0
+                sg = np.where(w.px.values >= w.ask.values, 1, np.where(w.px.values <= w.bid.values, -1, 0))
+                for nm, rr in (('p', 0), ('c', 1)):
+                    sel = w.r.values == rr
+                    tot = float(pr[sel].sum())
+                    x[f'netprem_{nm}15'] = float((pr[sel] * sg[sel]).sum())
+                    x[f'netprem_{nm}15_share'] = x[f'netprem_{nm}15'] / tot if tot > 0 else np.nan
+                g = pd.Series(pr * sg, index=pd.MultiIndex.from_arrays([w.k.values, w.r.values])).groupby(level=[0, 1]).sum()
+                g = g.sort_values(ascending=False)
+                x['top_bought15'] = ', '.join(f"{k:g}{'C' if r else 'P'} ${v / 1e6:+.1f}M" for (k, r), v in g.head(3).items())
         # UW flow alerts published in [T-15 min, T)
         if len(fl):
             f15 = fl[(fl.s >= T - 900) & (fl.s < T) & fl.ticker.isin(INDEX_FLOW)]

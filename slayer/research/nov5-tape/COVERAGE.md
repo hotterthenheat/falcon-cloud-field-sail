@@ -19,20 +19,25 @@ Generated tables: `results/COVERAGE_20261105.md` (`coverage.py`). Raw data: `v2d
 | UW headlines | as published | 1,026 unique; from 09:06 ET (Hormuz tankers on fire 09:09 and 09:23; "Nasdaq 100 extends decline to 3%" 09:48; Arm/Qualcomm chip sell-off; "risk of renewed war with Iran eased" 11:29; MOC imbalance +$508M 15:51) |
 | Live scanner | ~1 min | 387 chain / ctx / under snapshots, movers.jsonl |
 | Compass scored rows | every 5 min 09:45-16:10 | 9,332 SPXW rows, 74 marks, p1 per contract |
+| SPXW 0DTE 1-second NBBO (with displayed sizes) | 1 s | **262 contracts: every strike 7100-7750, calls and puts** (the day's whole range 7350-7681 +-3%), full session |
+| SPXW 0DTE tick prints with the NBBO in force | tick | 1,745,365 prints, 4.53 M contracts, strikes 7100-7750 (96% of the day's 4.7 M volume) |
 
-## What is missing (2026-11-05)
-- **1-second NBBO and tick prints of the 2026-11-05 SPXW chain.** At study time (2026-11-06 07:15-…) the terminal answered
-  "No data" to every sub-minute read of that day's options (1 s / 100 ms / tick quotes, `trade`, `trade_quote`; also for
-  the 2026-11-06 expiry on 2026-11-05), while 1-minute aggregates (greeks, OHLC) and the index/stock 1-second data
-  answered. 2026-11-04 (two days back) answers at 1 s and tick. So the 2026-11-05 store was not built yet; the fetcher
-  probes and fills it when it is (`fetch_tape.py probe`, `drive_c.sh`). Until then every 2026-11-05 option number here is
-  on the **1-minute board** (the NBBO in force at each minute stamp), labelled `1m`: it misses sub-minute extremes, so
-  the ceiling is a lower bound of the true 1-second ceiling, and "+2 s" fills are the minute's quote.
-- Aggressor side of prints (no `trade_quote`): option premium flow by strike is volume x VWAP from the 1-minute OHLC,
-  not buy/sell-signed. UW alerts carry their own ask-side / bid-side premium.
+## What is missing / how it was handled (2026-11-05)
+- **The 1-second and tick stores of 2026-11-05 were built late.** From 07:15 to ~09:30 UTC on 2026-11-06 the terminal
+  answered "No data" to every sub-minute read of that day's options (1 s / tick quotes, `trade`, `trade_quote`), while
+  1-minute aggregates answered. The first study pass (pre-registration, in-sample rule shaping) therefore used the
+  **1-minute board** (the NBBO in force at each minute stamp). The store answered from ~09:33 UTC; the 1-second NBBO and
+  ticks for 7100-7750 were then fetched and the ceiling, the timeline and the in-sample rule results were re-run on
+  them (the rules themselves read only 1-minute inputs and were not changed). Contracts outside 7100-7750 (deep ITM /
+  far OTM) stay on the 1-minute board in the ceiling (`res` column).
+- Aggressor side: from the tick prints (print at/above the ask = bought, at/below the bid = sold) inside 7100-7750; the
+  1-minute OHLC volume covers the rest of the chain unsigned.
+- OI is a once-a-day report (the morning file = the prior close): intraday "OI change" is not observable; volume is.
 - Futures (ES) overnight; dark pool; UW per-minute vendor GEX for SPX history (the app's own recorder has SPX vendor
   rows per minute, used only as a cross-check).
 - Flow/headlines for 2026-11-04: the recorder started on 2026-11-05.
+- 2026-11-04 (first out-of-sample day): 1-minute chain, OI, prior EOD, index 1 s; 1-second paths were fetched only for
+  the contracts a rule picked (none: no rule triggered).
 
 ## Terminal behaviour worth knowing
 - Wildcard (`strike=*`) chain reads are cut off after ~30 s and come back silently truncated (60 of 259 strikes): the

@@ -153,7 +153,7 @@ def dev():
             M[di[d], j] = val
     pb = pbo_cscv(M, 16)
     L = ['# NOV5 rules on DEV (sessions before 2025, 1-second NBBO, ask in / bid out +2 s, $0.65/side)\n',
-         f'Sessions with a result file: {len(days)} (first {days[0]}, last {days[-1]}). Trial count for DSR: {n_trials} '
+         f'DEV sessions run: {len(glob.glob(os.path.join(RN.RESD, "dev", "*.json")))}; with at least one trigger: {len(days)} (first {days[0]}, last {days[-1]}). Trial count for DSR: {n_trials} '
          f'(ledger) . PBO (CSCV, 16 blocks, {len(RN.variants())} variants): {pb["pbo"]:.2f}.\n', tb]
     # by year and side for each variant with n >= 30
     L.append('\n## By year and side (net expectancy, n)\n')

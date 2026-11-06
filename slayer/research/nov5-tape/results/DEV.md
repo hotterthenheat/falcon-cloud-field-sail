@@ -1,6 +1,6 @@
 # NOV5 rules on DEV (sessions before 2025, 1-second NBBO, ask in / bid out +2 s, $0.65/side)
 
-Sessions with a result file: 204 (first 2020-02-21, last 2024-12-31). Trial count for DSR: 705 (ledger) . PBO (CSCV, 16 blocks, 16 variants): 0.41.
+DEV sessions run: 600; with at least one trigger: 204 (first 2020-02-21, last 2024-12-31). Trial count for DSR: 725 (ledger) . PBO (CSCV, 16 blocks, 16 variants): 0.41.
 
 | variant | n (skips) | sessions | win | avg win | avg loss | expectancy net [95% CI] | gross | median | $/$ | side-shuffle beats | synthetic beats / FDR | DSR |
 |---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|

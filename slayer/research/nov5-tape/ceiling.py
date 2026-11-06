@@ -121,6 +121,7 @@ def run(D):
     S0 = float(load.bars(D).o.iloc[0])
     ss, sp = load.spx(D)
     spx_at = lambda t: float(sp[max(np.searchsorted(ss, t, side='right') - 1, 0)])  # noqa: E731
+    # the 09:30 greeks row is not valid (delta 0 or 1, IV 0): the entry delta of a 09:30 fill is read at 09:31
     dl = {(float(k), int(r), int(m)): float(d) for k, r, m, d in zip(ch.k, ch.r, ch.m, ch.delta)}
     rows = []
     for (k, r), c in ch.groupby(['k', 'r']):
@@ -141,10 +142,10 @@ def run(D):
                'usd_buy': u['buy'], 'usd_sell': u['sell'], 'usd_in': u['t_in'], 'usd_out': u['t_out'],
                'usd_gain': 100 * g - 2 * FEE, 'usd_pct': g / u['buy'],
                'usd_S_in': spx_at(u['t_in']), 'usd_S_out': spx_at(u['t_out']),
-               'usd_delta_in': abs(dl.get((float(k), int(r), int(min(u['t_in'] // 60, 959))), np.nan)),
+               'usd_delta_in': abs(dl.get((float(k), int(r), int(min(max(u['t_in'] // 60, 571), 959))), np.nan)),
                'pct_buy': p['buy'], 'pct_sell': p['sell'], 'pct_in': p['t_in'], 'pct_out': p['t_out'],
                'pct_mult': p['sell'] / p['buy'],
-               'pct_delta_in': abs(dl.get((float(k), int(r), int(min(p['t_in'] // 60, 959))), np.nan))}
+               'pct_delta_in': abs(dl.get((float(k), int(r), int(min(max(p['t_in'] // 60, 571), 959))), np.nan))}
         row['usd_mny_in'] = (float(k) / row['usd_S_in'] - 1) * sgn
         for kk, legs in ks.items():
             row[f'k{kk}_usd'] = sum(100 * (x['sell'] - x['buy']) - 2 * FEE for x in legs)
