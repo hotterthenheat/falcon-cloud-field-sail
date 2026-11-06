@@ -109,12 +109,15 @@ export function netGexOf(chain: readonly { netGex: number }[]): number {
   return retailNet(n);
 }
 
-/** The net GEX hover, in words — and, where the book's net and the side of the flip disagree, why both are true */
+/** The net GEX hover, in words — and, where the book's net and the regime disagree, why both are true. The net is the
+    rows' own (priced at the price the book was marked at); the regime is the sign of the same contracts re-priced at
+    spot (data/flipLevel.ts). Before the open they can differ: SPY 2026-10-29 pre-market, +$107.7M at the 772.31 close,
+    −$99M at the 770.06 print, short gamma (audit 2026-11-05: this hover once said "long gamma overall" beside it). */
 export const netGexTitle = (net: number, regime: 'LONG' | 'SHORT' | null): string => {
   const base = net > 0 ? 'Net positive: dealers are long gamma overall, so their hedging tends to absorb moves' : net < 0 ? 'Net negative: dealers are short gamma overall, so their hedging tends to amplify moves' : 'Balanced';
-  /* the regime IS this sign (data/flipLevel.ts), so the two can no longer disagree */
-  void regime;
-  return `${base}.`;
+  const against = regime != null && net !== 0 && net > 0 !== (regime === 'LONG');
+  if (!against) return `${base}.`;
+  return `${base}, at the price the book was marked at. At the current price the same contracts net ${regime === 'SHORT' ? 'short' : 'long'} gamma — that is the regime: price has moved off the mark (before the open, the last close).`;
 };
 
 /** The desk's agenda for a name — one build for the Agenda page, the Board and Compare: the same window, open-interest

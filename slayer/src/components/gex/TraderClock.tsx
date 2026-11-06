@@ -8,7 +8,7 @@ import { bellNone as bellNoneWords, BELL_NONE_TITLE } from '../../data/flipLevel
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import FoldDoor from './FoldDoor';
 import { useBoxFold } from '../../data/boxFold';
-import { todayColumn, buildExposureSurface, CALENDAR_DTES } from '../../data/exposureSurface';
+import { surfaceBellShare, buildExposureSurface, CALENDAR_DTES } from '../../data/exposureSurface';
 import { roomLevels } from '../../data/roomLevels';
 import { buildVannaCharm } from '../../data/vannacharm';
 import { readSessionClock } from '../../data/moc';
@@ -338,22 +338,11 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
     try {
       /* The Board's share: the feed's gamma per expiry, today's date against every live date; the older reads stand in until it lands. */
       const feed = peekBellShare(snapshot.ticker);
-      if (feed.share != null || feed.why === 'none') {
+      if (feed.share != null || feed.why === 'none' || snapshot.liveBook) {
+        /* a live book waits for the Board's share ("…") rather than print a different one in the meantime */
         bellShare = feed.share;
       } else {
-        const surface = buildExposureSurface(snapshot, 20, CALENDAR_DTES);
-        const todayCol = todayColumn(surface);
-        if (todayCol >= 0) {
-          let dies = 0;
-          let total = 0;
-          for (let e = 0; e < surface.expiries.length; e++)
-            for (let s = 0; s < surface.strikes.length; s++) {
-              const v = Math.abs(surface.net.gex[e][s] ?? 0);
-              total += v;
-              if (e === todayCol) dies += v;
-            }
-          bellShare = total > 0 ? Math.round((100 * dies) / total) : null;
-        }
+        bellShare = surfaceBellShare(buildExposureSurface(snapshot, 20, CALENDAR_DTES));
       }
     } catch {
       /* no surface yet */

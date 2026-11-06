@@ -12,7 +12,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { buildExposureProfile } from '../../data/exposure';
 import { GREEKS, GREEK_UNIT } from '../../data/exposureSurface';
-import { distanceIn, fmtShared, sharedUnit, GREEK_EXPLAIN, GREEK_LABEL, WINDOW, type Compare, type CompareSide, type Greek } from '../../data/compare';
+import { distanceIn, fmtShared, regimeTag, sharedUnit, GREEK_EXPLAIN, GREEK_LABEL, WINDOW, type Compare, type CompareSide, type Greek } from '../../data/compare';
 import type { DistanceUnit } from '../../data/atr';
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { netGexTitle } from '../../data/board';
@@ -111,9 +111,8 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
   /* net GEX in the retail sign: positive = dealers long gamma = absorbs; the other greeks keep the ladder's own sign */
   const shownThen = (v: number | null): number | null => (v == null ? null : shownGreek(greek, v));
   const net = greek === 'gex' ? s.netGex : shownGreek(greek, s.rows[greek].reduce((acc, r) => acc + r.value, 0));
-  const flipAt = s.flip;
-  /* The regime is the net's sign (data/flipLevel.ts), never the side of the flip. */
-  const regimeWord = flipAt != null && flipAt > 0 && Math.abs(s.spot - flipAt) / flipAt <= 0.0005 ? 'either way' : s.netGex >= 0 ? 'absorbs' : 'amplifies';
+  /* The regime is the sign of the net re-priced at spot (data/flipLevel.ts) — the sentence's (compare.ts regimeTag) */
+  const regimeWord = regimeTag(s);
   const rowOf = (strike: number): StrikeExposure | undefined => s.strikes.find(r => r.strike === strike);
   /* a level outside the drawn window still has its value, read off the side's whole chain */
   const NODE_KEY = { gex: 'netGex', dex: 'netDex', vex: 'netVex', vanna: 'netVanna', charm: 'netCharm' } as const;

@@ -1,13 +1,17 @@
-/* The expected move every odd reads: the vendor's implied move is its ATM straddle, so 1σ = straddle·√(π/2)
-   (data/expectedMove.ts); a date with no implied move uses k·S·σ·√T on the vendor's own fitted k, T the calendar time to
-   that expiry's close (core/volClock calendarYears). The vendor's `dte` is whole calendar days from its row's date to the
-   expiry — Friday's rows put Monday at 3 and the same day at 0, and its move ÷ (S·σ·√(dte/365)) is one k (0.680 ± 0.004 on
-   SPY 2026-10-30, dte 3…31) where dte+1 drifts from 0.59 to 0.67 — so tomorrow is one day of variance, not two. */
+/* The expected move every odd reads. The vendor's implied move is NOT its at-the-money straddle: it is k·S·σ·√(dte/365)
+   on its own at-the-money vol, k ≈ 0.68 (0.680 ± 0.004 on SPY 2026-10-30, dte 3…31) — about 0.85 of the straddle, whose
+   own k is √(2/π) ≈ 0.80 (audit 2026-11-05: implied_move ÷ the at-the-money straddle mid 0.82–0.86 on every SPY and NVDA
+   expiry of the Oct 29 golden set, dte 2…779, and on SPY and AAPL Nov 6/9/20). So 1σ = S·σ·√(dte/365) — the date's own
+   vol where its row prints one, else its implied move ÷ k — and the straddle the words name is √(2/π) of that
+   (data/expectedMove.ts sigmaFromStraddle). Read as a straddle, every 1σ and odd came out 0.85× the market's.
+   A date with no row of its own uses S·σ·√T on the calendar time to that expiry's close (core/volClock calendarYears).
+   The vendor's `dte` is whole calendar days from its row's date to the expiry — Friday's rows put Monday at 3 and the
+   same day at 0, and dte+1 drifts k from 0.59 to 0.67 — so tomorrow is one day of variance, not two. */
 
 import { bookToday, isoDate, nextSession, MONTHS as MON3 } from '../../core/calendar';
 import { nyIsoDate, nySessionPhase } from '../../core/nyTime';
 import { calendarYears, sigmaMoveOfQuotedIv } from '../../core/volClock';
-import { tradingMinutes } from '../../core/tradingYear';
+import { tradingMinutes, tradingYears, TRADING_DAYS } from '../../core/tradingYear';
 import { now } from '../../core/clock';
 import { sigmaFromStraddle, sigmaOverMinutes, STRADDLE_K, STRADDLE_TO_SIGMA, undatedExpiry } from '../expectedMove';
 import { type UwInterp, type UwTerm } from '../whales';
@@ -77,18 +81,47 @@ export function termDteOf(rows: UwTerm[]): Record<string, number> | null {
   }
   return Object.keys(out).length ? out : null;
 }
-/* The expected move as one standard move (1σ, dollars): the vendor's implied move is its ATM straddle, so 1σ = straddle·√(π/2);
-   a date with no implied move uses k·S·σ·√T_calendar to its close on the vendor's own scale (k fitted, else √(2/π)). Every odd and the cone read these. */
+/* The expected move as one standard move (1σ, dollars): S·σ·√(dte/365) off the date's own row (its vol, else its implied
+   move ÷ k); a date with no row uses S·σ·√T_calendar to its close. Every odd and the cone read these. */
+/** The vendor's implied move ÷ (S·σ·√(dte/365)) when its rows give no fit of their own (Entry.termK): measured 0.68 */
+export const VENDOR_MOVE_K = 0.68;
+/** One standard move into `d`, dollars, off the date's own vendor row — null when it has none. The row's vol on the row's
+    own clock where it prints both (a one-day row's implied move ÷ the median k ran 0.778 against 0.68 on 2026-10-28: its
+    vol matched the straddle mid within 1%, its move ÷ k did not); else its implied move ÷ k. */
+export function vendorSigma(e: Entry, d: string | null | undefined): number | null {
+  if (!d || !(e.spot > 0)) return null;
+  const iv = e.termIv?.[d];
+  const dte = e.termDte?.[d];
+  if (iv && iv > 0 && dte && dte > 0) return e.spot * iv * Math.sqrt(dte / 365);
+  const move = e.termMove?.[d];
+  return move && move > 0 ? move / (e.termK ?? VENDOR_MOVE_K) : null;
+}
+/** The date's own at-the-money vol off its painted contracts, on the trading clock (book/scale.ts paintLegs: solved off
+    each quote, else the contract's vol moved onto that clock): the mean of the call and put vols at the two strikes
+    either side of spot, interpolated — null until the date's contracts are in or when no strike pair carries both.
+    A date with no row of its own (SPX, NDX and RUT print only their AM monthlies) is priced off what its own options
+    say, never the 30-day vol (SPX 2026-11-05 for Nov 6: ATM ~0.33 on this clock, a $155 1σ, against the 30-day 21.7%'s $78). */
+export function contractsAtmIv(e: Entry, d: string | null | undefined): number | null {
+  if (!d || !(e.spot > 0) || !e.factsDates?.has(d)) return null;
+  const both = (e.byDate[d] ?? []).filter(n => (n.callIv ?? 0) > 0 && (n.putIv ?? 0) > 0).sort((a, b) => a.strike - b.strike);
+  const lo = both.filter(n => n.strike <= e.spot).pop();
+  const hi = both.find(n => n.strike >= e.spot);
+  if (!lo || !hi) return null;
+  const iv = (n: (typeof both)[number]) => ((n.callIv ?? 0) + (n.putIv ?? 0)) / 2;
+  const u = hi.strike === lo.strike ? 0 : (e.spot - lo.strike) / (hi.strike - lo.strike);
+  const v = iv(lo) * (1 - u) + iv(hi) * u;
+  return v > 0 && v < 5 ? v : null;
+}
 interface ScopeMove {
   /** Dollars, one standard move (1σ) over the horizon */
   move: number;
-  /** The vendor's straddle the move was read from, dollars (≈0.80σ) */
+  /** The at-the-money straddle that 1σ prices, dollars (√(2/π)·σ ≈ 0.80σ) */
   straddle: number;
   /** The expiry the move runs to */
   until: string | null;
   /** True when that expiry is past the coming session — the odds are "by <date>", not "by the close" */
   multi: boolean;
-  source: 'vendor' | 'fitted' | 'iv30';
+  source: 'vendor' | 'fitted' | 'contracts' | 'iv30';
   /** "1σ = the vendor's straddle into Nov 20 × 1.25" — which number was used, in words */
   words: string;
 }
@@ -96,12 +129,11 @@ export const monDayOf = (iso: string): string => {
   const [, m, d] = iso.split('-').map(Number);
   return m && d ? `${MON3[m - 1]} ${d}` : iso;
 };
-/** The straddle a vendor vol implies into `expiry`'s close on the vendor's own scale: k·S·σ·√T_calendar. */
-const straddleOf = (e: Entry, iv: number, expiry: string, nowMs: number): number => (e.termK ?? STRADDLE_K) * e.spot * iv * Math.sqrt(calendarYears(expiry, nowMs));
-/** One session's (390 trading minutes) 1σ off `expiry`'s vol on the vendor's scale: volClock's σ, times k/√(2/π) so a
-    vol-derived straddle sits on the same scale as the vendor's printed ones (k = √(2/π) when no row fits one). */
-const sessionSigmaOf = (e: Entry, iv: number, expiry: string, nowMs: number): number =>
-  ((e.termK ?? STRADDLE_K) / STRADDLE_K) * sigmaMoveOfQuotedIv(e.spot, iv, expiry, 390, nowMs);
+/** The at-the-money straddle a vol prices into `expiry`'s close: √(2/π)·S·σ·√T_calendar (no vendor k: that k scales its
+    implied move, not a straddle). */
+const straddleOf = (e: Entry, iv: number, expiry: string, nowMs: number): number => STRADDLE_K * e.spot * iv * Math.sqrt(calendarYears(expiry, nowMs));
+/** One session's (390 trading minutes) 1σ off `expiry`'s vol: volClock's σ. */
+const sessionSigmaOf = (e: Entry, iv: number, expiry: string, nowMs: number): number => sigmaMoveOfQuotedIv(e.spot, iv, expiry, 390, nowMs);
 export function peekScopeMove(ticker: string, date?: string | null): ScopeMove | null {
   const e = peekEntry(ticker);
   if (!e || e.status !== 'live' || !(e.spot > 0)) return null;
@@ -111,13 +143,16 @@ export function peekScopeMove(ticker: string, date?: string | null): ScopeMove |
   const session = isoDate(nextSession(bookToday()));
   const multi = !!d && d > session;
   const name = d ? monDayOf(d) : null;
-  const vendor = d ? e.termMove?.[d] : undefined;
+  const vendor = vendorSigma(e, d);
   const of = (straddle: number, source: ScopeMove['source'], words: string): ScopeMove => ({ move: sigmaFromStraddle(straddle), straddle, until: d, multi, source, words: `1σ = ${words} × ${STRADDLE_TO_SIGMA.toFixed(2)}` });
-  if (vendor && vendor > 0) return of(vendor, 'vendor', `the printed at-the-money straddle into ${name}`);
+  if (vendor && vendor > 0) return of(vendor * STRADDLE_K, 'vendor', `the at-the-money straddle into ${name}`);
   const t = now().getTime();
   const until = d ?? session;
   const atm = d ? e.termIv?.[d] : undefined;
   if (atm && atm > 0) return of(straddleOf(e, atm, until, t), 'fitted', `the straddle ${name}'s at-the-money vol prices`);
+  /* no row for the date: its own at-the-money contracts, on the trading clock to its close */
+  const own = contractsAtmIv(e, d);
+  if (own) return of(STRADDLE_K * e.spot * own * Math.sqrt(tradingYears(until, t)), 'contracts', `the straddle ${name}'s own at-the-money contracts price`);
   /* the 30-day vol over the time to this expiry, its variance unchanged (σ_30·√T): the same vol, a shorter horizon */
   if (e.iv > 0) return of(straddleOf(e, e.iv, until, t), 'iv30', `the straddle the 30-day implied vol prices (no vol printed for ${name ?? 'the expiry'})`);
   return null;
@@ -133,20 +168,24 @@ export function peekDaySigma(ticker: string, date?: string | null): number | nul
   const listed = e.expiries.map(x => x.date).filter(d => d >= floor).sort();
   const d = date && date >= floor ? date : listed[0] ?? null;
   const session = isoDate(nextSession(bookToday()));
-  const move = d ? e.termMove?.[d] : undefined;
+  const move = vendorSigma(e, d);
   const t = now().getTime();
   if (d === session && move && move > 0) {
-    if (!sameDayRunning(d)) return sigmaFromStraddle(move);
-    /* the 1-day tenor (days = 1) is one calendar day of variance — one session's — on the vendor's scale */
-    if (e.dayIv && e.dayIv > 0) return sigmaFromStraddle((e.termK ?? STRADDLE_K) * e.spot * e.dayIv * Math.sqrt(1 / 365));
-    if (e.dayMoveFrac > 0 && e.dayMoveFrac < 0.2) return sigmaFromStraddle(e.dayMoveFrac * e.spot);
-    /* the straddle left is the move over the trading minutes left (210 in all on an early close): one 390-minute session is
-       that σ × √(390 / left) */
+    if (!sameDayRunning(d)) return move;
+    /* the 1-day tenor (days = 1) is one calendar day of variance — one session's: S·σ·√(1/365) */
+    if (e.dayIv && e.dayIv > 0) return e.spot * e.dayIv * Math.sqrt(1 / 365);
+    /* its implied move is on the vendor's k as well (SPY 2026-11-05: 0.013 against 0.366·√(1/365), k 0.68) */
+    if (e.dayMoveFrac > 0 && e.dayMoveFrac < 0.2) return (e.dayMoveFrac * e.spot) / (e.termK ?? VENDOR_MOVE_K);
+    /* the move left is over the trading minutes left (210 in all on an early close): one 390-minute session is that σ ×
+       √(390 / left) */
     const left = tradingMinutes(d, t, false) ?? 0;
-    return sigmaFromStraddle(move) * Math.sqrt(390 / Math.max(39, left));
+    return move * Math.sqrt(390 / Math.max(39, left));
   }
   const atm = d ? e.termIv?.[d] : undefined;
   if (d && atm && atm > 0) return sessionSigmaOf(e, atm, d, t);
+  /* its own contracts' vol is already on the trading clock: one session is S·σ·√(1/252) */
+  const own = contractsAtmIv(e, d);
+  if (own) return e.spot * own * Math.sqrt(1 / TRADING_DAYS);
   return e.iv > 0 ? sessionSigmaOf(e, e.iv, undatedExpiry(t), t) : null;
 }
 
@@ -158,8 +197,8 @@ export function peekMoveToClose(ticker: string, date: string | null | undefined,
   const floor = isoDate(bookToday());
   const listed = e.expiries.map(x => x.date).filter(d => d >= floor).sort();
   const d = date && date >= floor ? date : listed[0] ?? null;
-  const move = d ? e.termMove?.[d] : undefined;
-  if (d && sameDayRunning(d) && nySessionPhase() === 'open' && move && move > 0) return sigmaFromStraddle(move);
+  const move = vendorSigma(e, d);
+  if (d && sameDayRunning(d) && nySessionPhase() === 'open' && move && move > 0) return move;
   const day = peekDaySigma(ticker, date);
   return day == null ? null : sigmaOverMinutes(day, minutesLeft);
 }

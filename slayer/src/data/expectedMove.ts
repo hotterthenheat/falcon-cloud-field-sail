@@ -4,14 +4,15 @@ import { sessionAtOrBefore, isoDate } from '../core/calendar';
 import { nyParts } from '../core/nyTime';
 import { now } from '../core/clock';
 
-/* The cone and the one σ every Pinpoint odd reads. The vendor's implied move is the ATM straddle, σ·√(2/π) ≈ 0.80σ for a normal move.
+/* The cone and the one σ every Pinpoint odd reads. An ATM straddle is σ·√(2/π) ≈ 0.80σ for a normal move (the vendor's
+   implied move is not one: it is ≈ 0.68σ, about 0.85 of the straddle — data/book/move.ts).
    A vol is quoted on the calendar year for its expiry; every σ off a vol is core/volClock's sigmaMoveOfQuotedIv — the variance
    moved onto the trading clock, S·σ_trading·√(minutes / (390·252)) — the same σ as Terrain's forward-variance cone. One session
    is NOT a calendar day's variance: a 30-day 20% vol over one session at S = 600 is ≈ $7.5, not 600·0.2·√(1/365) = $6.28, and a
    0DTE 20% vol at noon prices $2.56 to the close, not $4.93. */
 
-/** 1σ per dollar of ATM straddle: σ = straddle·√(π/2) ≈ 1.2533 (dollars → dollars; E|X| = σ·√(2/π) for a normal X;
-    UW SPY 10/29 implied_move 5.09 against the 772 straddle mid 5.26). */
+/** 1σ per dollar of ATM straddle: σ = straddle·√(π/2) ≈ 1.2533 (dollars → dollars; E|X| = σ·√(2/π) for a normal X).
+    A straddle, not the vendor's implied move (k·S·σ·√T, k ≈ 0.68: SPY 11/20 implied 17.87 against the straddle mid 21.51). */
 export const STRADDLE_TO_SIGMA = Math.sqrt(Math.PI / 2);
 /** Straddle ÷ (S·σ·√T) for a normal move, √(2/π) ≈ 0.798 — the straddle fit's k when the vendor's rows give none. */
 export const STRADDLE_K = Math.sqrt(2 / Math.PI);

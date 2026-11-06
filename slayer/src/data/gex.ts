@@ -14,9 +14,10 @@ export function fmtUsd(v: number): string {
   const a = Math.abs(v);
   /* A figure that rounds to nothing is nothing, never "-$0". */
   const sign = v < 0 && a >= 0.5 ? '-' : '';
-  if (a >= 1e9) return `${sign}$${(a / 1e9).toFixed(1)}B`;
-  if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(1)}M`;
-  if (a >= 1e3) return `${sign}$${(a / 1e3).toFixed(1)}K`;
+  /* a unit whose figure rounds to 1,000 is the next unit: 999,950 is "$1.0M", never "$1000.0K" */
+  if (a >= 999.95e6) return `${sign}$${(a / 1e9).toFixed(1)}B`;
+  if (a >= 999.95e3) return `${sign}$${(a / 1e6).toFixed(1)}M`;
+  if (a >= 999.5) return `${sign}$${(a / 1e3).toFixed(1)}K`;
   return `${sign}$${a.toFixed(0)}`;
 }
 
