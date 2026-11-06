@@ -1,0 +1,32 @@
+samples 25 (seed 7 of 104 triggers)
+book read at t identical with later bars/boards as noise: 25/25
+trigger features + all three cell picks identical: 25/25
+R1a: every masked read up to t equals the stored book (raw flip): 4/4
+canary forming bar caught: 25/25
+canary next chain stamp caught: 25/25
+
+BASE SPXW 2022-05-10 50400: read same, features+picks same
+R1A SPXW 2022-01-05 50760: read same, features+picks same
+BASE IWM 2022-01-14 50400: read same, features+picks same
+R1A QQQ 2022-01-26 46920: read same, features+picks same
+R1A SPXW 2022-04-08 40860: read same, features+picks same
+R1A IWM 2022-03-23 43500: read same, features+picks same
+BASE SPXW 2023-01-04 39600: read same, features+picks same
+BASE QQQ 2022-02-28 45000: read same, features+picks same
+R1B SPY 2022-03-25 45000: read same, features+picks same
+BASE SPY 2022-05-20 39600: read same, features+picks same
+R1B SPY 2020-03-04 45000: read same, features+picks same
+BASE SPXW 2023-01-17 39600: read same, features+picks same
+BASE QQQ 2022-01-12 39600: read same, features+picks same
+BASE SPXW 2022-02-11 50400: read same, features+picks same
+BASE SPY 2020-02-26 50400: read same, features+picks same
+BASE SPXW 2022-04-08 39600: read same, features+picks same
+BASE QQQ 2020-03-20 45000: read same, features+picks same
+BASE IWM 2020-02-21 50400: read same, features+picks same
+R1B QQQ 2022-01-26 39600: read same, features+picks same
+BASE IWM 2022-01-10 45000: read same, features+picks same
+R1B SPXW 2022-03-16 39600: read same, features+picks same
+BASE QQQ 2020-03-31 45000: read same, features+picks same
+R1B QQQ 2022-02-09 39600: read same, features+picks same
+BASE SPXW 2022-01-18 45000: read same, features+picks same
+R1B SPXW 2022-03-23 39600: read same, features+picks same
