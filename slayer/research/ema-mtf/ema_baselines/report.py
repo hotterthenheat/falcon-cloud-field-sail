@@ -143,7 +143,7 @@ def main():
     w('\n## Median minutes held (L0c)\n')
     w(f.groupby(['baseline', 'exit']).bars_held.median().unstack().to_string().replace('\n', '\n    ').join(['    ', '']))
     w('\n## Reading\n')
-    w('READING_PLACEHOLDER')
+    w(open(os.path.join(HERE, 'ema_baselines', 'READING.md')).read())
     print('\n'.join(out))
 
 
