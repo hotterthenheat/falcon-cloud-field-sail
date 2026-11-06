@@ -1,0 +1,6 @@
+signals tested: 60 (S1 20, S2 40 drawn)
+identical with today replaced by noise: 60/60
+identical with boards replaced by noise: 60/60
+identical with later_days replaced by noise: 60/60
+canary board_t caught: 60/60
+canary forming_bar caught: 60/60
