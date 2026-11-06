@@ -117,11 +117,13 @@ def run():
 NULL_MODELS = ('P', 'O', 'F', 'B-VIX')
 
 
-def null(n=200, block=20):
-    """Shuffled-day labels: labels permuted across the sample days, full walk-forward refit. Stores p and flag."""
+def null(n=200, block=20, reverse=False):
+    """Shuffled-day labels: labels permuted across the sample days, full walk-forward refit. Stores p and flag.
+    Blocks are seeded by run index, so two processes (one with reverse=True) fill the same files."""
     f = load()
     os.makedirs(os.path.join(OUT, 'null'), exist_ok=True)
-    for b0 in range(0, n, block):
+    order = list(range(0, n, block))
+    for b0 in (order[::-1] if reverse else order):
         fo = os.path.join(OUT, 'null', f'null_{b0:04d}.npz')
         if os.path.exists(fo):
             continue
@@ -312,6 +314,6 @@ if __name__ == '__main__':
     if c == 'run':
         run()
     elif c == 'null':
-        null(int(sys.argv[2]) if len(sys.argv) > 2 else 200)
+        null(int(sys.argv[2]) if len(sys.argv) > 2 else 200, reverse=len(sys.argv) > 3 and sys.argv[3] == 'rev')
     elif c == 'report':
         report()

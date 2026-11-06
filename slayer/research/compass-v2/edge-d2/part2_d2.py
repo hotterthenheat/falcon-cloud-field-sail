@@ -48,7 +48,13 @@ def nov5():
     d = d[(d.rule == 'N2') & d.fill.notna()].copy()
     d['id'] = d.day + '|' + d.t.astype(str) + '|' + d.variant
     real = d[d.sideset == 'real']
-    opp = d[d.sideset == 'opp'][['id', 'ret_net']].rename(columns={'ret_net': 'opp'})
+    fr = []
+    for f in sorted(glob.glob(os.path.join(DATA, 'nov5-tape', 'res', 'dev_flip', '*.json'))):
+        fr += json.load(open(f))
+    o = pd.DataFrame(fr)
+    o = o[(o.rule == 'N2') & (o.sideset == 'flip') & o.fill.notna()].copy()
+    o['id'] = o.day + '|' + o.t.astype(str) + '|' + o.variant
+    opp = o[['id', 'ret_net']].drop_duplicates('id').rename(columns={'ret_net': 'opp'})
     out = {}
     for v in sorted(real.variant.unique()):
         t = real[real.variant == v].merge(opp, on='id', how='left')
