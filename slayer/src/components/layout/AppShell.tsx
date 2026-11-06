@@ -16,6 +16,9 @@ import { openFeeds } from '../../data/feedGate';
 import { noteRouteShown } from '../../data/warmRooms';
 import RouteHold from './RouteHold';
 import { useAllAlerts } from '../gex/alertStore';
+import AppBanner from '../help/AppBanner';
+import { useHelpKey } from '../help/helpKey';
+import { useHelpOpen, useNoticesOpen } from '../../data/overlayDoors';
 
 /* Loaded after the shell paints, on terminal pages only: the alert engine, the drawers, the paper runner. The palette
    (and the ticker universe it searches) loads the first time it is opened. */
@@ -25,6 +28,9 @@ const AlertWatcher = lazy(() => import('../alerts/AlertWatcher'));
 const AlertToasts = lazy(() => import('../alerts/AlertToasts'));
 const PaperRunner = lazy(() => import('../paper/PaperRunner'));
 const CommandPalette = lazy(() => import('./CommandPalette'));
+/* the notification center and the "?" sheet load the first time either is opened */
+const NoticeCenter = lazy(() => import('../help/NoticeCenter'));
+const HelpSheet = lazy(() => import('../help/HelpSheet'));
 
 /* The watcher judges only names with an alert still waiting, so with none waiting it has nothing to do: it (and the
    feeds, the book and the script engine it reads, ~200 KB) loads the moment one is armed, not on every first load. */
@@ -76,6 +82,14 @@ const AppShell = () => {
     setPaletteOpen(true);
   }, []);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
+  /* "?" opens the help sheet from anywhere a field is not taking the key */
+  useHelpKey();
+  const noticesOpen = useNoticesOpen();
+  const helpOpen = useHelpOpen();
+  const [noticesLoaded, setNoticesLoaded] = useState(false);
+  const [helpLoaded, setHelpLoaded] = useState(false);
+  if (noticesOpen && !noticesLoaded) setNoticesLoaded(true);
+  if (helpOpen && !helpLoaded) setHelpLoaded(true);
 
   /* the paid-data feeds open while the shell is mounted; opened during render so the pages' first effects may call */
   const closeFeeds = useRef<(() => void) | null>(null);
@@ -151,6 +165,8 @@ const AppShell = () => {
         style={{ paddingRight: 'var(--editor-w, 0px)' }}
       >
         <div className={`w-full min-w-0 max-w-full flex flex-col ${fillFrame ? 'min-h-full md:h-full' : 'min-h-full'}`}>
+            {/* the one strip for an outage or an announcement (data/banner.ts) */}
+            <AppBanner />
             <ScrollHome />
             <WayBack />
             <div
@@ -182,6 +198,16 @@ const AppShell = () => {
         <PaperRunner />
         <AlertToasts />
       </Suspense>
+      {noticesLoaded && (
+        <Suspense fallback={null}>
+          <NoticeCenter />
+        </Suspense>
+      )}
+      {helpLoaded && (
+        <Suspense fallback={null}>
+          <HelpSheet />
+        </Suspense>
+      )}
       {paletteLoaded && (
         <Suspense fallback={null}>
           <CommandPalette open={paletteOpen} onClose={closePalette} />

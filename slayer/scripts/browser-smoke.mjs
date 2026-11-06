@@ -36,7 +36,8 @@ const ROUTES = [
   '/trace/odte', '/trace/multi-leg', '/trace/compare', '/trace/dark-pool', '/trace/tracker',
   '/settings', '/settings/account', '/settings/billing', '/settings/data', '/settings/appearance', '/settings/desk',
   '/settings/keyboard', '/settings/about',
-  '/community', '/watchlist', '/alerts', '/no-such-page', '/pulse/no-such-room',
+  '/community', '/watchlist', '/alerts', '/notifications', '/help', '/status', '/changelog', '/report',
+  '/no-such-page', '/pulse/no-such-room',
 ];
 const SIZES = [
   { name: 'desktop', width: 1440, height: 900 },

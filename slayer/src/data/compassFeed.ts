@@ -12,6 +12,7 @@ import { feedHeaders } from './feedGate';
 import type { Setup } from '../types/compass';
 import { viewerWords } from './compassParams';
 import { phaseAt } from '../core/session';
+import { notePathDown, notePathUp } from './pathHealth';
 
 /** The served state (data/compassServer.ts CompassState), as this browser reads it. */
 interface Served {
@@ -45,6 +46,9 @@ export interface CompassFeed {
   marks: MarkRow[];
   /** Why the last read failed, for the offline line */
   error: string;
+  /** When this browser last heard the server answer with the board (a fresh state or "same as you have"), epoch ms;
+      0 before any. The state's own `at` stands still while nothing changes; this does not. */
+  heardAt: number;
 }
 
 const KEEP = 'slayer_compass_state_v2';
@@ -61,7 +65,7 @@ const tick = () => {
   if (marketMoving() || Date.now() - lastPullAt >= CLOSED_POLL_MS - 500) void pull();
 };
 
-let feed: CompassFeed = { status: 'loading', at: 0, day: '', engine: null, lock: '', close: null, marks: [], error: '' };
+let feed: CompassFeed = { status: 'loading', at: 0, day: '', engine: null, lock: '', close: null, marks: [], error: '', heardAt: 0 };
 let rev = 0;
 let served = 0;
 const listeners = new Set<() => void>();
@@ -94,7 +98,7 @@ function apply(s: Served, status: FeedStatus): void {
     }
   }
   if (status === 'live') heard = keys;
-  feed = { status, at: s.at, day: s.day, engine: s.engine, lock: s.lock, close: s.close, marks: s.marks, error: '' };
+  feed = { status, at: s.at, day: s.day, engine: s.engine, lock: s.lock, close: s.close, marks: s.marks, error: '', heardAt: status === 'live' ? Date.now() : feed.heardAt };
   emit();
 }
 
@@ -121,6 +125,7 @@ async function pull(): Promise<void> {
       return;
     }
     const res = await fetch(`/api/compass/state${served ? `?rev=${served}` : ''}`, { headers: auth.headers });
+    notePathUp('server');
     /* the engine's own words, with the names a viewer reads (compassParams viewerWords) */
     const body = (await res.text().then(t => JSON.parse(viewerWords(t))).catch(() => null)) as (Served & { same?: boolean; error?: string; code?: string }) | null;
     if (!res.ok || !body) {
@@ -132,10 +137,10 @@ async function pull(): Promise<void> {
       return;
     }
     if (body.same) {
-      if (feed.status !== 'live') {
-        feed = { ...feed, status: 'live', error: '' };
-        emit();
-      }
+      const was = feed.status;
+      feed = { ...feed, status: 'live', error: '', heardAt: Date.now() };
+      /* the board did not move: a re-render only when the condition turned (the hearing is read on the next one) */
+      if (was !== 'live') emit();
       return;
     }
     served = body.rev;
@@ -146,6 +151,7 @@ async function pull(): Promise<void> {
       /* too big for this browser's storage, or closed: the next visit waits for the first read */
     }
   } catch {
+    notePathDown('server', 'unreachable');
     feed = { ...feed, status: feed.at ? 'kept' : 'offline', error: 'The Compass server did not answer.' };
     emit();
   } finally {

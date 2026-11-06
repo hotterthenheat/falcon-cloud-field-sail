@@ -5,8 +5,11 @@ import { AppBoundary } from './components/ui/Fault';
 import { applyStoredDefaults } from './core/storedDefaults';
 import { bootAnalytics } from './core/analytics';
 import { bootSync, watchStorage } from './data/sync';
+import { installErrorLog } from './data/diagnostics';
 import './index.css';
 
+/* the last few console errors, scrubbed as they are kept, for a bug report the reader chooses to make (data/diagnostics.ts) */
+installErrorLog();
 /* a default that changed under stored state is carried into storage once, before any page reads it */
 applyStoredDefaults();
 /* the visit count, only on a build that names the site (core/analytics.ts) */

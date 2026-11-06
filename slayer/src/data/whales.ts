@@ -6,6 +6,7 @@
 import { feedHeaders } from './feedGate';
 import { readSaved, save } from './uwStore';
 import { canonPath } from './canonPath';
+import { notePathDown, notePathUp } from './pathHealth';
 
 export interface UwNews {
   created_at: string;
@@ -299,6 +300,13 @@ async function uwFetch(path: string, priority: boolean, low = false): Promise<Uw
       break;
     }
     if (!res) return { status: 0, data: null, error: 'the flow feed is unreachable', at: null };
+    /* what came back, for the status page and the outage banner (data/pathHealth.ts): any answer means the app's
+       server is there; a 200 is the flow path up, a gateway fault or a refused rate is it down, the app's own gate
+       closed is refused; a request's own fault (a 404, a 422 not carried) says nothing about the path */
+    notePathUp('server');
+    if (res.ok) notePathUp('flow', hubAt(res));
+    else if (gatewayFault(res.status) || res.status === 429 || res.status >= 500) notePathDown('flow', res.status === 429 ? 'busy' : 'down');
+    else if (res.status === 401 || res.status === 402 || res.status === 403) notePathDown('flow', 'refused', { refused: true });
     const text = res.text;
     let parsed: unknown = null;
     try {
@@ -310,6 +318,8 @@ async function uwFetch(path: string, priority: boolean, low = false): Promise<Uw
     if (!res.ok) return { status: res.status, data: typeof parsed === 'string' ? null : data, error: faultWords(res.status, parsed, text), at: null };
     return { status: res.status, data, error: null, at: hubAt(res), held: res.headers.get('x-hub-held') === '1' };
   } catch (e) {
+    notePathDown('server', 'unreachable');
+    notePathDown('flow', 'unreachable');
     return { status: 0, data: null, error: e instanceof Error ? e.message : 'the flow feed is unreachable', at: null };
   }
 }

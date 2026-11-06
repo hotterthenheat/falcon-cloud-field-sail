@@ -16,6 +16,8 @@ import { COMPASS_SET } from '../../data/compassUniverse';
 import { useThetaBook } from '../../data/thetaBook';
 import { useCompassPings } from '../../data/compassAlerts';
 import { nyClock } from '../../core/nyTime';
+import { compassFeed, holdCompassFeed } from '../../data/compassFeed';
+import Freshness, { useBeat } from '../../components/ui/Freshness';
 
 export const COMPASS_LINE = 'Book A and Book B, 0 to 7 days. Book C is same-day only.';
 /** The Tracker's line under the same head. Last page of Compass. */
@@ -42,6 +44,7 @@ const CompassLayout = () => {
           <p className="mt-0.5 text-t11 text-textMuted break-words sm:whitespace-nowrap sm:truncate">{line}</p>
         </div>
         <CallPing />
+        <CompassFreshness />
         <SessionBook />
       </header>
       <div className={onBoard ? 'mt-4 grid grid-cols-1 xl:grid-cols-12 gap-4 items-start xl:flex-1 xl:min-h-0 xl:items-stretch' : onContract ? 'mt-3 flex-1 min-h-0 flex flex-col md:overflow-hidden' : 'contents'} data-compass-row={onBoard ? '' : undefined}>
@@ -65,6 +68,18 @@ const CompassLayout = () => {
       </div>
     </div>
   );
+};
+
+/** THE SHARED STALE STATE for every Compass page (components/ui/Freshness.tsx): nothing while the board answers, "Stale ·
+    as of" when the server has not been heard inside the Compass window, "Reconnecting · as of" while this browser shows
+    its kept copy. The head holds the feed, so every Compass page (the review, the study, a contract) is judged alike. */
+const CompassFreshness = () => {
+  useEffect(() => holdCompassFeed(), []);
+  useBeat();
+  const feed = compassFeed();
+  if (feed.status === 'loading') return null;
+  const down = feed.status === 'kept' || feed.status === 'offline';
+  return <Freshness at={feed.heardAt || feed.at || null} source="compass" down={down} named className="self-center" />;
 };
 
 /** A call the reader asked to hear, for a minute after this page heard it. The chime is the desk toast, not a second one. */

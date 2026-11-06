@@ -13,6 +13,7 @@ import { EMBEDDED } from './embed';
 import { FaviconFollowsMark } from './brand/favicon';
 import { openAlertsDrawer } from './data/alertsDrawer';
 import { openWatchlist } from './data/nameWatch';
+import { openHelp, openNotices } from './data/overlayDoors';
 
 /* Every page is its own chunk, and so is the terminal's shell: the landing and the site pages never load it. */
 const loadShell = () => import('./components/layout/AppShell');
@@ -117,6 +118,28 @@ const WatchlistDoor = () => {
   }
   return <Navigate to={`${back}${back.includes('?') ? '' : search}`} replace />;
 };
+
+/* /notifications and /help are sheets too (components/help/NoticeCenter.tsx, HelpSheet.tsx): the last page shown in
+   this tab (else Pulse) with the sheet open */
+const SheetDoor = ({ open, self }: { open: () => void; self: RegExp }) => {
+  const { search } = useLocation();
+  useEffect(() => {
+    open();
+  }, [open]);
+  let back = '/pulse';
+  try {
+    const kept = sessionStorage.getItem('slayer.lastPage');
+    if (kept && kept.startsWith('/') && !self.test(kept) && !/^\/(alerts|watchlist|notifications|help)(\/|\?|$)/.test(kept)) back = kept;
+  } catch {
+    /* no storage: Pulse */
+  }
+  return <Navigate to={`${back}${back.includes('?') ? '' : search}`} replace />;
+};
+const NOTIFICATIONS = /^\/notifications/;
+const HELP = /^\/help/;
+const Status = lazy(() => import('./pages/status/Status'));
+const Changelog = lazy(() => import('./pages/changelog/Changelog'));
+const Report = lazy(() => import('./pages/report/Report'));
 
 const EarningsRedirect = () => {
   const { ticker } = useParams();
@@ -291,6 +314,11 @@ const App = () => {
             <Route path="/earnings/:ticker" element={<EarningsRedirect />} />
             <Route path="/watchlist" element={<WatchlistDoor />} />
             <Route path="/alerts" element={<AlertsDoor />} />
+            <Route path="/notifications" element={<SheetDoor open={openNotices} self={NOTIFICATIONS} />} />
+            <Route path="/help" element={<SheetDoor open={openHelp} self={HELP} />} />
+            <Route path="/status" element={<Status />} />
+            <Route path="/changelog" element={<Changelog />} />
+            <Route path="/report" element={<Report />} />
             <Route path="/tracker" element={<Navigate to="/compass/tracker" replace />} />
             <Route path="/settings/:section?" element={<Settings />} />
             <Route path="/pinpoint" element={<PinpointLayout />}>

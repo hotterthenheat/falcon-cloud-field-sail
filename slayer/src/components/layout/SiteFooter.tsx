@@ -70,6 +70,18 @@ const STACKS: FooterCol[][] = [
         { label: 'Front page', to: '/' },
       ],
     },
+    /* the help surfaces (components/help, pages/status, pages/changelog, pages/report); /notifications and /help are
+       sheets over the last page, like /alerts */
+    {
+      title: 'Help',
+      links: [
+        { label: 'Status', to: '/status' },
+        { label: 'Changelog', to: '/changelog' },
+        { label: 'Notifications', to: '/notifications' },
+        { label: 'Help & shortcuts', to: '/help' },
+        { label: 'Report a problem', to: '/report' },
+      ],
+    },
   ],
 ];
 

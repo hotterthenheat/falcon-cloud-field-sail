@@ -23,6 +23,7 @@ import {
 } from '../gex/alertStore';
 import { ALERT, alpha } from '../gex/paletteInk';
 import { closeAlertsDrawer, useAlertsDrawer } from '../../data/alertsDrawer';
+import { openNotices } from '../../data/overlayDoors';
 
 /** The kind's icon — a lucide outline, one per thing an alert can watch */
 export const KIND_ICON: Record<AlertKind, LucideIcon> = {
@@ -306,9 +307,21 @@ const AlertsDrawer = () => {
           </Shelf>
         </div>
 
-        <p className="shrink-0 px-3.5 py-2 border-t border-borderSubtle/70 font-mono text-t9 leading-snug text-textMuted">
-          Runs while this tab is open. Nothing is sent anywhere.
-        </p>
+        <div className="shrink-0 px-3.5 py-2 border-t border-borderSubtle/70 flex items-center gap-3">
+          <p className="min-w-0 flex-1 font-mono text-t9 leading-snug text-textMuted">Runs while this tab is open. Nothing is sent anywhere.</p>
+          {/* everything that alerted, with the Compass calls and paper fills, read or not (components/help/NoticeCenter.tsx) */}
+          <button
+            type="button"
+            onClick={() => {
+              closeAlertsDrawer();
+              openNotices();
+            }}
+            className="tap-40 shrink-0 inline-flex items-center gap-1 font-mono text-t9 uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors"
+            data-alerts-notifications
+          >
+            All notifications <ArrowUpRight className="w-2.5 h-2.5" aria-hidden />
+          </button>
+        </div>
       </SheetContent>
     </Sheet>
   );

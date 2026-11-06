@@ -53,6 +53,13 @@ Every page in the terminal meets these rules. Read this with `docs/DATA_SOURCES.
     ("The refresh failed · showing as of 10:42 ET · Retry").
   - `<BoxState loading? error? empty? shape? rows? emptyTitle? emptyReason? errorWhat? onRetry?>{children}</BoxState>`
     — picks one of the above, or the children once there is data.
+- The stale state is one rule and one tag (`data/freshness.ts`, `components/ui/Freshness.tsx`): `useFreshness(at,
+  source, { down })` → `live | stale | reconnecting | unknown`, and `<Freshness at source down? showLive? named? />`,
+  which shows nothing while fresh, "Stale · as of 10:42 ET" past the source's window (`STALE_MS`: quotes 45 s, flow
+  90 s, book 3 min, Compass 30 s, the record 15 min in a session; longer with none moving) and "Reconnecting · as of …"
+  while the feed is down. The Compass head wears it for every Compass page.
+- What the data paths answered is kept in `data/pathHealth.ts` (the quote and flow clients report every answer); the
+  status page (`/status`) and the outage banner (`data/banner.ts`) read only that, never a guess.
 - A small control keeps its drawn size and takes the class `tap-40` (index.css): on a touch screen its hit area
   reaches 40 px around its centre. `DropdownSelect` triggers carry it already.
 - Real-time stock, index and option prices come from `data/thetaQuote.ts` (ThetaData snapshots):

@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import { ChevronDown, X } from 'lucide-react';
+import { ChevronDown, CircleHelp, Inbox, X } from 'lucide-react';
+import { openHelp, openNotices } from '../../data/overlayDoors';
 import JingleBell from '../ui/JingleBell';
 import useFocusTrap from '../ui/useFocusTrap';
 import { NAV_GROUPS, NAV_GROUP_META, itemsByGroup, type NavGroup } from './nav';
@@ -153,6 +154,32 @@ const MobileMenu = ({ open, onClose }: Props) => {
             <JingleBell count={setTotal + unseen} lit={unseen > 0} glyph={18} className="shrink-0 opacity-80" />
             <span>Alerts</span>
             {(unseen > 0 || setTotal > 0) && <span className={`ml-auto font-mono text-t11 tnum ${unseen > 0 ? 'text-select' : 'text-textMuted'}`}>{unseen > 0 ? `${unseen} alerted` : `${setTotal} set`}</span>}
+          </button>
+
+          {/* the notification center and the help sheet (components/help), beside the bell */}
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              openNotices();
+            }}
+            className="w-full flex items-center gap-3 h-11 px-3 rounded-lg text-t14 text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04]"
+            data-mobile-notifications
+          >
+            <Inbox className="w-[18px] h-[18px] shrink-0 text-textMuted" strokeWidth={1.75} aria-hidden />
+            <span>Notifications</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              openHelp();
+            }}
+            className="w-full flex items-center gap-3 h-11 px-3 rounded-lg text-t14 text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04]"
+            data-mobile-help
+          >
+            <CircleHelp className="w-[18px] h-[18px] shrink-0 text-textMuted" strokeWidth={1.75} aria-hidden />
+            <span>Help &amp; shortcuts</span>
           </button>
 
           {NAV_GROUPS.filter(g => g !== 'Home').map(groupBlock)}

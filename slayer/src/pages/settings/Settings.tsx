@@ -17,6 +17,8 @@ import { nyClock } from '../../core/nyTime';
 /* People's grid (AG Grid, ~326 KB) loads only when an owner opens People. */
 const PeopleBox = lazy(() => import('./People'));
 import { NAV_ITEMS } from '../../components/layout/nav';
+import { KEY_GROUPS } from '../../data/shortcuts';
+import { APP_VERSION as VERSION } from '../../data/appVersion';
 import { chime } from '../../core/sound';
 import { TIMEFRAMES, frameServed, type Timeframe } from '../../data/timeframe';
 import { CLOCK_ZONES, setDeskPrefs, useDeskPrefs, type ClockZone } from '../../data/deskPrefs';
@@ -89,75 +91,7 @@ const OPENS_ON_PAGES: DropdownOption<string>[] = [
 /* the zones live with the preference (data/deskPrefs.ts CLOCK_ZONES) — Terrain's timezone door offers the same list */
 const CLOCK_OPTIONS: DropdownOption<ClockZone>[] = CLOCK_ZONES.map(z => ({ value: z.value, label: z.label, hint: z.hint }));
 
-/* Every key the terminal answers to, grouped by where it works, each read off the handler that owns it; `alt` marks alternatives
-   ("1 / 2 / 3 / 4") rather than a chord. */
-type Shortcut = { keys: string[]; does: string; alt?: boolean };
-const KEY_GROUPS: { where: string; keys: Shortcut[] }[] = [
-  {
-    where: 'Everywhere',
-    keys: [
-      { keys: ['Ctrl', 'K'], does: 'Search a name or a page from anywhere' },
-      { keys: ['↑', '↓'], alt: true, does: "Walk the search's results" },
-      { keys: ['Enter'], does: 'Open the result under the mark' },
-      { keys: ['Esc'], does: 'Close what is open — a menu, the alerts, the watchlist, the ladder (from inside it), fullscreen, a replay, the calendar’s focus' },
-    ],
-  },
-  {
-    where: 'Terrain · the desk',
-    keys: [
-      { keys: ['1', '2', '3', '4'], alt: true, does: 'How many charts — one to four' },
-      { keys: ['[', ']'], alt: true, does: 'Walk the charts — the one before, the one after' },
-      { keys: ['Shift', 'R'], does: 'The strike rail beside every chart — on or off' },
-    ],
-  },
-  {
-    where: 'Terrain · the active chart',
-    keys: [
-      { keys: ['F'], does: 'Expand it to the full screen, and back' },
-      { keys: ['S'], does: 'Pick its symbol' },
-      { keys: ['C'], does: 'Compare — cross another name onto it' },
-      { keys: ['↑', '↓'], alt: true, does: 'Flip its name through the watchlist' },
-      { keys: ['−', '='], alt: true, does: 'Step its timeframe down, up' },
-      { keys: ['P'], does: 'Replay — pick a bar, then play' },
-      { keys: ['D'], does: 'Draw mode — the tools in hand' },
-      { keys: ['R'], does: 'Its strike rail — on or off' },
-      { keys: ['Alt', 'R'], does: 'Reset its view — with the pointer over the chart' },
-    ],
-  },
-  {
-    where: 'Review · the backtest desk',
-    keys: [
-      { keys: ['Space'], does: 'Play the clock, and pause it' },
-      { keys: ['←', '→'], alt: true, does: 'Step a minute back, a minute on — never back past your last order' },
-      { keys: ['Shift', '→'], does: 'Five minutes on (Shift ← for five back)' },
-      { keys: ['End'], does: 'Run to the bell — a futures session: to 17:00' },
-      { keys: ['9'], does: 'A futures session: run to 09:30, the stock market’s open' },
-      { keys: ['N'], does: 'Ring the bell and open the next day' },
-      { keys: ['F'], does: 'The chart to the full screen, and back' },
-      { keys: ['D'], does: 'Draw mode on the chart in hand' },
-      { keys: ['T'], does: 'To the order — its size, ready to type' },
-      { keys: ['1', '2'], alt: true, does: 'Put the first name on the desk, or the second' },
-      { keys: ['\\'], does: 'In the full screen: fold the chain away, and back' },
-    ],
-  },
-  {
-    where: 'Review · a trade in the journal',
-    keys: [
-      { keys: ['←', '→'], alt: true, does: 'The trade closed after this one, or the one before — the journal’s own order' },
-      { keys: ['Esc'], does: 'Back to the journal, as you left it' },
-    ],
-  },
-  {
-    where: 'The script editor',
-    keys: [
-      { keys: ['Ctrl', 'S'], does: 'Save the script' },
-      { keys: ['Ctrl', 'Enter'], does: 'Run it on its chart' },
-    ],
-  },
-];
-
-/** The version the About box prints — package.json's, by hand until the build stamps it */
-const VERSION = '1.0.0';
+/* the keys (data/shortcuts.ts, the "?" sheet's list too) and the version (data/appVersion.ts, the bug report's too) */
 
 /* ---- the pieces --------------------------------------------------------------- */
 

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Working from '../ui/Working';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Activity, ArrowRightLeft, CornerDownLeft, Crosshair } from 'lucide-react';
+import { Activity, ArrowRightLeft, Bug, CircleHelp, CornerDownLeft, Crosshair, Inbox, ScrollText } from 'lucide-react';
+import { openHelp, openNotices } from '../../data/overlayDoors';
 import CompanyLogo from '../ui/CompanyLogo';
 import { NAV_ITEMS } from './nav';
 import { GEX_SUBPAGES } from '../../pages/pinpoint/subnav';
@@ -91,8 +92,16 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
       { id: 'nav-/compass/blotter', group: 'Navigate', label: 'Compass → Blotter', hint: 'Every trade recorded, entry to exit', icon: <Activity className="w-3.5 h-3.5" />, run: () => navigate('/compass/blotter') },
       { id: 'nav-/compass/tracker', group: 'Navigate', label: 'Compass → Tracker', hint: 'The setups you keep, live', icon: <Activity className="w-3.5 h-3.5" />, run: () => navigate('/compass/tracker') },
     ];
-    return [...nav, ...gexSubs, ...compassSubs, ...recordSubs, ...flowSubs];
-  }, [navigate]);
+    /* the help surfaces: two pages, a form and two sheets */
+    const help: PaletteAction[] = [
+      { id: 'nav-/status', group: 'Navigate', label: 'Status', hint: 'Whether live quotes, options flow, Compass and the server are answering', icon: <Activity className="w-3.5 h-3.5" />, run: () => navigate('/status') },
+      { id: 'nav-/changelog', group: 'Navigate', label: 'Changelog', hint: 'What changed in the terminal, newest first', icon: <ScrollText className="w-3.5 h-3.5" />, run: () => navigate('/changelog') },
+      { id: 'nav-/report', group: 'Navigate', label: 'Report a problem', hint: 'What went wrong, with the details that help find it', icon: <Bug className="w-3.5 h-3.5" />, run: () => navigate(`/report?from=${encodeURIComponent(location.pathname)}`) },
+      { id: 'open-notifications', group: 'Navigate', label: 'Notifications', hint: 'Alerts that fired, Compass calls, paper fills — read or not', icon: <Inbox className="w-3.5 h-3.5" />, run: openNotices },
+      { id: 'open-help', group: 'Navigate', label: 'Help & keyboard shortcuts', hint: 'Press ? anywhere', icon: <CircleHelp className="w-3.5 h-3.5" />, run: openHelp },
+    ];
+    return [...nav, ...gexSubs, ...compassSubs, ...recordSubs, ...flowSubs, ...help];
+  }, [navigate, location.pathname]);
 
   // Ticker actions live outside the label filter: with a query they ARE the
   // search (symbol/name matched by searchTickers), resting they list the

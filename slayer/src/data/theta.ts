@@ -4,6 +4,7 @@
 import { feedHeaders } from './feedGate';
 import { BoundedMap } from './boundedMap';
 import { canonPath } from './canonPath';
+import { notePathDown, notePathUp } from './pathHealth';
 
 let inflight = 0;
 const next: (() => void)[] = [];
@@ -194,6 +195,8 @@ async function thetaRead(path: string, jump = false): Promise<ThetaAnswer> {
   try {
     const res = await fetch(`/api/theta${path}`, { headers: { ...auth.headers, 'x-theta-soft': '1' }, signal: AbortSignal.timeout(thetaWaitMs(path)) });
     const text = await res.text();
+    /* the app's server answered, whatever it said (data/pathHealth.ts) */
+    notePathUp('server');
     const type = res.headers.get('content-type') || '';
     let parsed: unknown = null;
     if (type.includes('json') || text.startsWith('{') || text.startsWith('[')) {
@@ -213,11 +216,15 @@ async function thetaRead(path: string, jump = false): Promise<ThetaAnswer> {
       /* A stolen session is one read. The terminal is still up and the next read usually lands — a 15s blackout
          is what left the rail saying offline while quotes were answering. A dead terminal still backs off. */
       const login = outage === 'terminal_login';
-      if (outage !== 'session_lost') noteDown(login);
+      if (outage !== 'session_lost') {
+        noteDown(login);
+        notePathDown('quotes', login ? 'login' : 'down', { login });
+      }
       return downAnswer(503, login);
     }
     if (outage === 'no_data') {
       noteUp();
+      notePathUp('quotes');
       return { status: 472, data: null, error: 'no_data' };
     }
     if (!res.ok) {
@@ -225,16 +232,23 @@ async function thetaRead(path: string, jump = false): Promise<ThetaAnswer> {
       if (error === 'terminal_down') {
         const login = loginCode(parsed);
         noteDown(login);
+        notePathDown('quotes', login ? 'login' : 'down', { login });
         return { status: res.status, data, error, ...(login ? { reason: 'login' as const } : {}) };
       }
+      /* the app's own gate (signed out, no plan): closed to this reader, not down */
+      if (res.status === 401 || res.status === 402 || res.status === 403) notePathDown('quotes', 'refused', { refused: true });
       return { status: res.status, data, error };
     }
     noteUp();
+    notePathUp('quotes');
     return { status: res.status, data, error: null };
   } catch (e) {
     /* our own wait ran out: busy, never down (the body can time out too, after the headers came in) */
     if (timedOut(e)) return BUSY_ANSWER();
     noteDown();
+    /* no answer at all: the app's server did not reach this browser */
+    notePathDown('server', 'unreachable');
+    notePathDown('quotes', 'unreachable');
     return { status: 0, data: null, error: 'terminal_down' };
   } finally {
     release();
