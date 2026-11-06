@@ -12,6 +12,15 @@
     the contract's running volume and the open interest it opened on (one /option/history/open_interest read a root and
     day) — the opening read the flow pane's net already makes (data/tape.ts printOpens). The minute's price for how far
     out of the money comes from the name's one-minute bars, read beside the windows.
+    THE CURRENT DAY, ONE EXPIRY A READ: until the terminal has processed a day it will not serve that day's option prints,
+    nor its open interest, with expiration=* (HTTP 400 "Cannot fetch current-day data without specifying an
+    expiration"; checked 2026-11-06 at 17:30 ET, for windows at 09:30 and at 15:50 alike). Today's tape — and any day the
+    terminal answers so — is read one expiry at a time: the root's DAY_EXPIRIES nearest listed expiries within
+    DAY_MAX_DTE days (the pane's nearest bucket, where the session's flow is), each with its own open interest. Such a
+    read costs the terminal about a minute whatever its span (two to five for the busiest 0DTE books, seconds for a past
+    day), so the day is read in DAY_WINDOW_MIN windows, a live pass waits DAY_PASS_GAP_MS after the last, and the
+    expiries' rows are merged into time order before a root takes them. Such a tape is not kept on disk: once the day
+    is processed the wildcard reads it whole.
     Kept: every print of OPTION_PRINT_FLOOR dollars or more as itself, and the smaller ones folded a minute at a time by
     what the pane filters on (type, side, right, in or out of the money, days to run) — only those that lean: a print
     with no side or that may be closing adds nothing to a net. A summary by type holds every print's money.
@@ -78,6 +87,39 @@ const MAX_TAPES = 8;
 const TICK_MS = 5_000;
 /** A failed read waits this long before the tape asks again */
 const BACKOFF_MS = 30_000;
+/** A read the terminal refused outright (a 4xx asking again will not change) waits this long */
+export const REFUSED_BACKOFF_MS = 30 * 60_000;
+
+/** The current day, one expiry a read: the nearest this many listed expiries… */
+export const DAY_EXPIRIES = 4;
+/** …within this many calendar days (the flow pane's nearest bucket, dteBucket 0) */
+export const DAY_MAX_DTE = 14;
+/** A window of the current day: a read costs about the same whatever its span, so a backfill takes half an hour at a
+    time — no more, as SPY's 0DTE book alone answered 61 MB for 09:30–10:30 on 2026-11-06 */
+export const DAY_WINDOW_MIN = 30;
+/** A live pass of the current day waits this long after the last (each read holds a slot for a minute or more) */
+export const DAY_PASS_GAP_MS = 60_000;
+/** How long one expiry's read of the current day may take: the 90 s a history read gets is short for a busy 0DTE book
+    (2026-11-06 after the close: SPY 0DTE 119 s, SPXW 0DTE 276 s, a quieter expiry 52–64 s, a minute or the whole day alike) */
+export const DAY_READ_TIMEOUT_MS = 420_000;
+/** A root's listed expiries are read once in this long */
+const EXPIRY_LIST_HOLD_MS = 30 * 60_000;
+
+/** The terminal refused the request itself: a 4xx that asking again will not change (not 408 or 429, nor its own
+    47x faults about the terminal). `why` is the start of its answer. */
+export class ReadRefused extends Error {
+  readonly status: number;
+  readonly why: string;
+  constructor(status: number, why: string) {
+    super(`refused ${status}${why ? ` (${why})` : ''}`);
+    this.status = status;
+    this.why = why;
+  }
+}
+const refusedStatus = (s: number) => s >= 400 && s < 500 && ![401, 403, 408, 429].includes(s) && !(s >= 470 && s <= 479 && s !== 471 && s !== 473 && s !== 477);
+/** The terminal's answer for a day it has not processed, asked with expiration=* */
+const NEEDS_EXPIRY = /without specifying an expiration/i;
+export const needsExpiry = (e: unknown): boolean => e instanceof ReadRefused && NEEDS_EXPIRY.test(e.why);
 
 /** Roots read for a name: SPX's weeklies trade as SPXW, NDX's as NDXP, RUT's as RUTW */
 const WEEKLY: Record<string, string> = { SPX: 'SPXW', NDX: 'NDXP', RUT: 'RUTW' };
@@ -99,8 +141,9 @@ export const roomForRead = (s: ThetaSlots): boolean => s.waiting === 0 && s.term
 export interface TapeOptions {
   /** <dir>/<day>/<TICKER>.<kind>.json.gz */
   dir: string;
-  /** One terminal answer outside the hub's cache (server/thetaProxy.mjs thetaUncached): a window is megabytes */
-  theta: (path: string) => Promise<{ status: number; body: string }>;
+  /** One terminal answer outside the hub's cache (server/thetaProxy.mjs thetaUncached, everyone else's lane — never the
+      engine's): a window is megabytes. `timeoutMs`: how long this read may take */
+  theta: (path: string, opt?: { timeoutMs?: number }) => Promise<{ status: number; body: string }>;
   slots?: () => ThetaSlots;
   /** false: serve what is kept, read nothing */
   read?: boolean;
@@ -146,6 +189,12 @@ interface RootState {
   vol: Map<string, number>;
   oi: Map<string, number> | null;
   oiTried: boolean;
+  /** Read one expiry at a time: the expiries (YYYY-MM-DD), once listed */
+  exps: string[] | null;
+  /** …the window being read, and the expiries' answers in hand (a failed pass keeps them for the next) */
+  pend: { from: number; to: number; got: Map<string, string> } | null;
+  /** …when the last live pass landed (the next waits DAY_PASS_GAP_MS) */
+  passAt: number;
 }
 
 export interface OptionTape {
@@ -168,6 +217,8 @@ export interface OptionTape {
   fault: string | null;
   retryAt: number;
   saved: boolean;
+  /** The terminal serves this day one expiry at a time (the current day, until it is processed) */
+  byExpiry: boolean;
 }
 
 const dteBucket = (dte: number) => (dte <= 14 ? 0 : dte <= 60 ? 1 : 2);
@@ -183,11 +234,56 @@ const stampMs = (s: string): number => {
 export function newOptionTape(name: string, day: string, open: number, close: number): OptionTape {
   return {
     kind: 'options', name, day, open, close,
-    roots: optionRootsOf(name).map(root => ({ root, through: open, vol: new Map(), oi: null, oiTried: false })),
+    roots: optionRootsOf(name).map(root => ({ root, through: open, vol: new Map(), oi: null, oiTried: false, exps: null, pend: null, passAt: 0 })),
     spot: new Map(), spotThrough: open, spotReadAt: 0,
     prints: [], cells: new Map(), cellList: [], mix: new Map(), seq: 0,
-    asked: 0, running: false, fault: null, retryAt: 0, saved: false,
+    asked: 0, running: false, fault: null, retryAt: 0, saved: false, byExpiry: false,
   };
+}
+
+/**
+ * Several answers of one CSV shape (a root's expiries, each in time order) as one, every row in time order by
+ * `trade_timestamp` — a root takes its rows in time order (ingestOptions). Rows of one stamp keep their order.
+ */
+export function inTimeOrder(csvs: readonly string[]): string {
+  let header = '';
+  let names: string[] = [];
+  const rows: { ms: number; n: number; line: string }[] = [];
+  for (const csv of csvs) {
+    const first = csv.indexOf('\n');
+    if (first < 0) continue;
+    const head = csv.slice(0, first).replace(/\r$/, '');
+    const cols = head.split(',').map(unq);
+    if (!header) [header, names] = [head, cols];
+    /* the same endpoint answers the same columns; should one differ, its fields are put in the first's order */
+    const remap = cols.join(',') === names.join(',') ? null : names.map(k => cols.indexOf(k));
+    const ti = cols.indexOf('trade_timestamp');
+    eachCsvRow(csv, f => {
+      const ms = stampMs(f[ti] ?? '');
+      rows.push({ ms: Number.isFinite(ms) ? ms : 0, n: rows.length, line: (remap ? remap.map(i => (i >= 0 ? f[i] : '')) : f).join(',') });
+    });
+  }
+  if (!header) return '';
+  rows.sort((a, b) => a.ms - b.ms || a.n - b.n);
+  return `${header}\n${rows.map(r => r.line).join('\n')}`;
+}
+
+/** A root's listed expiries (the /option/list/expirations CSV), YYYY-MM-DD */
+export function readExpiries(csv: string): string[] {
+  const out: string[] = [];
+  eachCsvRow(csv, (f, c) => {
+    const e = unq(f[c.get('expiration') ?? -1]).slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(e)) out.push(e);
+  });
+  return out;
+}
+
+/** The expiries a current-day tape reads: the DAY_EXPIRIES nearest listed from the day on, within DAY_MAX_DTE days */
+export function nearExpiries(listed: readonly string[], day: string): string[] {
+  return [...new Set(listed)].filter(e => {
+    const n = dayDiff(e, day);
+    return n >= 0 && n <= DAY_MAX_DTE;
+  }).sort().slice(0, DAY_EXPIRIES);
 }
 
 const optionThrough = (t: OptionTape) => Math.min(...t.roots.map(r => r.through));
@@ -425,7 +521,7 @@ export function startTapes(o: TapeOptions): Tapes {
     }
   };
   const roomTimer = setInterval(pump, 250);
-  const read = async (p: string, kind: string, live: boolean): Promise<string | null> => {
+  const read = async (p: string, kind: string, live: boolean, timeoutMs = 0): Promise<string | null> => {
     await new Promise<void>(go => {
       waiting.push({ live, go });
       pump();
@@ -435,8 +531,9 @@ export function startTapes(o: TapeOptions): Tapes {
       byKind[kind] = (byKind[kind] ?? 0) + 1;
       readTimes.push(now());
       while (readTimes.length && readTimes[0] < now() - 60_000) readTimes.shift();
-      const got = await o.theta(p);
+      const got = await (timeoutMs > 0 ? o.theta(p, { timeoutMs }) : o.theta(p));
       if (got.status === 472) return '';
+      if (refusedStatus(got.status)) throw new ReadRefused(got.status, String(got.body).slice(0, 160).replace(/\s+/g, ' ').trim());
       if (got.status !== 200) {
         const code = /"code":"([a-z_]+)"/.exec(String(got.body).slice(0, 300))?.[1];
         throw new Error(code ?? `status ${got.status}`);
@@ -481,7 +578,20 @@ export function startTapes(o: TapeOptions): Tapes {
   /* ---- the option tape's next step ---- */
   const lastWhole = (close: number, delay = 0) => Math.min(close, Math.floor((now() - delay - LAG_MS) / 60_000) * 60_000);
   const optionLive = (t: OptionTape) => now() < t.close + 60_000 && now() >= t.open;
-  const stepOptions = async (t: OptionTape) => {
+  /* the minute's price: one read of every minute not in hand yet, out to the newest whole minute — so a backfill reads
+     it once — and on a live tape again every few minutes (a print takes the newest minute in hand meanwhile) */
+  const readSpot = async (t: OptionTape, through: number, to: number, end: number, live: boolean) => {
+    if (!(t.spotThrough < to && (to - through > 2 * 60_000 || now() - t.spotReadAt >= SPOT_EVERY_MS))) return;
+    const from = Math.min(t.spotThrough, through);
+    const idx = isIndexName(t.name);
+    const csv = await read(`/${idx ? 'index' : 'stock'}/history/ohlc?symbol=${encodeURIComponent(t.name)}&start_date=${ymd(t.day)}&end_date=${ymd(t.day)}&interval=1m&${span(from, end)}&format=csv`, 'spot', live);
+    if (csv) ingestSpot(t, csv);
+    t.spotThrough = end;
+    t.spotReadAt = now();
+  };
+
+  /* a processed day: every expiry in one read a root and window */
+  const stepOptionsAll = async (t: OptionTape) => {
     const sym = (s: string) => encodeURIComponent(s);
     const d = ymd(t.day);
     /* the open interest each root opened on, first: a print's opening read needs it */
@@ -497,16 +607,7 @@ export function startTapes(o: TapeOptions): Tapes {
     /* the newest whole minutes of a session still trading go ahead of any backfill */
     const live = optionLive(t) && end - through <= 2 * 60_000;
     const to = Math.min(end, through + OPTION_WINDOW_MIN * 60_000);
-    /* the minute's price: one read of every minute not in hand yet, out to the newest whole minute — so a backfill reads
-       it once — and on a live tape again every few minutes (a print takes the newest minute in hand meanwhile) */
-    if (t.spotThrough < to && (to - through > 2 * 60_000 || now() - t.spotReadAt >= SPOT_EVERY_MS)) {
-      const from = Math.min(t.spotThrough, through);
-      const idx = isIndexName(t.name);
-      const csv = await read(`/${idx ? 'index' : 'stock'}/history/ohlc?symbol=${sym(t.name)}&start_date=${d}&end_date=${d}&interval=1m&${span(from, end)}&format=csv`, 'spot', live);
-      if (csv) ingestSpot(t, csv);
-      t.spotThrough = end;
-      t.spotReadAt = now();
-    }
+    await readSpot(t, through, to, end, live);
     /* each root's window (roots behind first); the rows of a root land in time order */
     await Promise.all(
       t.roots.map(async (r, i) => {
@@ -517,6 +618,96 @@ export function startTapes(o: TapeOptions): Tapes {
         r.through = to;
       }),
     );
+  };
+
+  /* a root's listed expiries: one read a root, shared in flight, held EXPIRY_LIST_HOLD_MS; a failed read is not held
+     (the browser's store of the same list is data/chainDates.ts listExpirations; this one reads on everyone else's lane,
+     through the tapes' own gate) */
+  const expiryLists = new Map<string, { at: number; p: Promise<string[]> }>();
+  const listedExpiries = (root: string): Promise<string[]> => {
+    const hit = expiryLists.get(root);
+    if (hit && (hit.at === 0 || now() - hit.at < EXPIRY_LIST_HOLD_MS)) return hit.p;
+    const entry = { at: 0, p: read(`/option/list/expirations?symbol=${encodeURIComponent(root)}&format=csv`, 'list', false).then(csv => readExpiries(csv ?? '')) };
+    expiryLists.set(root, entry);
+    entry.p.then(
+      () => {
+        entry.at = now();
+      },
+      () => {
+        if (expiryLists.get(root) === entry) expiryLists.delete(root);
+      },
+    );
+    return entry.p;
+  };
+  /* every read of a pass lands (or fails) before the pass ends: a failed pass keeps what landed and asks nothing twice */
+  const settle = async (ps: Promise<unknown>[]) => {
+    const out = await Promise.allSettled(ps);
+    const bad = out.find((x): x is PromiseRejectedResult => x.status === 'rejected');
+    if (bad) throw bad.reason;
+  };
+
+  /* the current day (until the terminal processes it): the nearest expiries, one read each */
+  const stepOptionsByExpiry = async (t: OptionTape) => {
+    const sym = (s: string) => encodeURIComponent(s);
+    const d = ymd(t.day);
+    for (const r of t.roots) {
+      if (r.exps) continue;
+      r.exps = nearExpiries(await listedExpiries(r.root), t.day);
+      log(`[tape] ${t.name} ${t.day} options: ${r.root} one expiry a read — ${r.exps.join(' ') || 'none near'}`);
+    }
+    /* the open interest each expiry opened on, first: a print's opening read needs it */
+    for (const r of t.roots) {
+      if (r.oiTried) continue;
+      const exps = r.exps ?? [];
+      const parts: string[] = [];
+      await settle(exps.map(async e => parts.push((await read(`/option/history/open_interest?symbol=${sym(r.root)}&expiration=${ymd(e)}&date=${d}&format=csv`, 'oi', false)) ?? '')));
+      r.oiTried = true;
+      const got = parts.filter(Boolean);
+      r.oi = got.length ? new Map(got.flatMap(csv => [...readOi(csv)])) : exps.length ? null : new Map();
+    }
+    const through = optionThrough(t);
+    const end = lastWhole(t.close);
+    if (end <= through) return;
+    const to = Math.min(end, through + DAY_WINDOW_MIN * 60_000);
+    /* the newest minutes of a session still trading go ahead of any backfill; a live pass waits its gap after the last */
+    const live = optionLive(t) && to === end;
+    const due = t.roots.filter(r => r.through < to && !(live && now() - r.passAt < DAY_PASS_GAP_MS));
+    if (!due.length) return;
+    await readSpot(t, through, to, end, live);
+    await settle(
+      due.map(async r => {
+        const i = t.roots.indexOf(r);
+        const from = r.through;
+        const pend = r.pend && r.pend.from === from ? r.pend : (r.pend = { from, to: Math.min(to, from + DAY_WINDOW_MIN * 60_000), got: new Map() });
+        await settle(
+          (r.exps ?? []).filter(e => !pend.got.has(e)).map(async e => {
+            const csv = await read(`/option/history/trade_quote?symbol=${sym(r.root)}&expiration=${ymd(e)}&date=${d}&${span(from, pend.to)}&strike_range=${OPTION_STRIKES}&exclusive=true&format=csv`, 'options', live, DAY_READ_TIMEOUT_MS);
+            pend.got.set(e, csv ?? '');
+          }),
+        );
+        /* the expiries' rows, merged into time order: a root takes its rows in time order */
+        const csv = inTimeOrder([...pend.got.values()]);
+        if (csv) ingestOptions(t, i, csv);
+        r.through = pend.to;
+        r.pend = null;
+        if (live) r.passAt = now();
+      }),
+    );
+  };
+
+  /* the next step: every expiry at once, or — on a day the terminal has not processed — one expiry a read */
+  const stepOptions = async (t: OptionTape) => {
+    if (!t.byExpiry) {
+      try {
+        await stepOptionsAll(t);
+        return;
+      } catch (e) {
+        if (!needsExpiry(e)) throw e;
+        t.byExpiry = true;
+        log(`[tape] ${t.name} ${t.day} options: the terminal has not processed the day — reading it one expiry at a time`);
+      }
+    }
+    await stepOptionsByExpiry(t);
   };
 
   /* ---- the stock tape's next step ---- */
@@ -606,13 +797,21 @@ export function startTapes(o: TapeOptions): Tapes {
       t.fault = null;
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
-      t.fault = /terminal_down|terminal_unavailable|terminal_login|session_lost/.test(why) ? 'the market data terminal is not answering' : 'the read did not land';
-      t.retryAt = now() + BACKOFF_MS;
-      log(`[tape] ${t.name} ${t.day} ${t.kind}: ${why}`);
+      if (e instanceof ReadRefused) {
+        /* asking again in 30 s will not change the answer: say so, and ask again much later */
+        t.fault = 'the market data terminal refused the request; it is asked again in 30 minutes';
+        t.retryAt = now() + REFUSED_BACKOFF_MS;
+        log(`[tape] ${t.name} ${t.day} ${t.kind}: ${why}; next try in ${REFUSED_BACKOFF_MS / 60_000} min`);
+      } else {
+        t.fault = /terminal_down|terminal_unavailable|terminal_login|session_lost/.test(why) ? 'the market data terminal is not answering' : 'the read did not land';
+        t.retryAt = now() + BACKOFF_MS;
+        log(`[tape] ${t.name} ${t.day} ${t.kind}: ${why}`);
+      }
     } finally {
       t.running = false;
     }
-    if (done() && !t.saved && t.day < nyWall(now()).iso) {
+    /* a day read one expiry at a time holds the nearest expiries only: it is not kept, so the whole day is read once processed */
+    if (done() && !t.saved && t.day < nyWall(now()).iso && !(t.kind === 'options' && t.byExpiry)) {
       t.saved = true;
       save(t.day, t.name, t.kind, wire());
       log(`[tape] ${t.name} ${t.day} ${t.kind}: kept`);
@@ -663,6 +862,8 @@ export function startTapes(o: TapeOptions): Tapes {
       if (!t) {
         const kept = load<OptionTapeWire>(day, name, 'options');
         t = kept ? restoreOptions(kept) : newOptionTape(name, day, win.from, win.to);
+        /* today is not processed yet: the terminal serves it one expiry at a time */
+        if (!kept && day === nyWall(now()).iso) t.byExpiry = true;
         opts.set(key, t);
         evict(opts);
       }
@@ -698,7 +899,7 @@ export function startTapes(o: TapeOptions): Tapes {
       reads: total,
       readsLastMinute: readTimes.filter(x => x >= now() - 60_000).length,
       byKind: { ...byKind },
-      tapes: [...[...opts.values()].map(t => `options ${t.name} ${t.day} through ${hhmm(optionThrough(t))}`), ...[...stocks.values()].map(t => `stock ${t.name} ${t.day} through ${hhmm(t.through)}`)],
+      tapes: [...[...opts.values()].map(t => `options ${t.name} ${t.day} through ${hhmm(optionThrough(t))}${t.byExpiry ? ` by expiry (${t.roots.map(r => `${r.root}: ${r.exps?.join(' ') ?? 'not listed yet'}`).join('; ')})` : ''}${t.fault ? ` — ${t.fault}` : ''}`), ...[...stocks.values()].map(t => `stock ${t.name} ${t.day} through ${hhmm(t.through)}`)],
       inFlight,
     }),
     stop() {

@@ -74,6 +74,7 @@ const PROOFS = [
   'theta-paths-proof',
   'flow-tags-proof',
   'flow-room-proof',
+  'tape-current-day-proof',
   'stock-prints-proof',
   'cone-feed-proof',
   'weigher-gamma-proof',

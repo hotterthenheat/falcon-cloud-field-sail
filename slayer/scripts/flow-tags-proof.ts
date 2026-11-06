@@ -133,7 +133,9 @@ check(`the caption names the type and the legs: "${flowCaption({ ...ANY, kind: '
   check('a leg flagged a cross, or on a crossed or stale quote, reads neither even with a side on it', flowSign({ ...plain, cross: true }, true) === 0 && flowSign({ ...plain, quoteNoRead: 'crossed' }, true) === 0 && flowSign({ ...plain, quoteNoRead: 'stale' }, true) === 0);
 }
 
-/* ---- 6. the reader: two reads at most, the open interest first, contiguous windows, the newest minute live ---- */
+/* ---- 6. the reader: two reads at most, the open interest first, contiguous windows, the newest minute live ----
+   The clock stands on the tape's own day, so this is the current day: the terminal serves it one expiry at a time
+   (scripts/tape-current-day-proof.ts holds that to the terminal's refusal); one expiry is listed here. */
 {
   const FRI_1400 = nyInstant(DAY, 840);
   /* five seconds into 14:00: 13:59 has closed (a minute is read once closed a few seconds) */
@@ -150,6 +152,7 @@ check(`the caption names the type and the legs: "${flowCaption({ ...ANY, kind: '
       most = Math.max(most, inFlight);
       await new Promise(r => setTimeout(r, 5));
       inFlight--;
+      if (p.startsWith('/option/list/expirations')) return { status: 200, body: `symbol,expiration\n"SPY","${DAY}"\n` };
       return { status: 472, body: '' };
     },
   });
@@ -163,7 +166,8 @@ check(`the caption names the type and the legs: "${flowCaption({ ...ANY, kind: '
   const spans = (ps: string[]) => ps.map(p => /start_time=([^&]+)&end_time=([^&]+)/.exec(p)!.slice(1));
   const secOf = (hms: string) => hms.split(':').reduce((a, x) => a * 60 + Number(x), 0);
   const contiguous = (s: string[][]) => s.every((w, i) => i === 0 || Math.abs(secOf(w[0]) - (secOf(s[i - 1][1]) + 0.001)) < 1e-6);
-  check(`options from 09:30 in 15-minute windows to the last whole minute: ${spans(opt)[0]?.join('–')} … ${spans(opt).at(-1)?.join('–')}`, spans(opt)[0]?.[0] === '09:30:00' && spans(opt).at(-1)?.[1] === '13:59:59.999' && contiguous(spans(opt)));
+  check(`options from 09:30 in half-hour windows (the current day, one expiry a read) to the last whole minute: ${spans(opt)[0]?.join('–')} … ${spans(opt).at(-1)?.join('–')}`, spans(opt)[0]?.[0] === '09:30:00' && spans(opt)[0]?.[1] === '09:59:59.999' && spans(opt).at(-1)?.[1] === '13:59:59.999' && contiguous(spans(opt)));
+  check('…each read names its expiry, never expiration=*', opt.length > 0 && opt.every(p => p.includes(`expiration=${DAY.replace(/-/g, '')}`)) && !asked.some(p => p.includes('expiration=*')));
   check(`today's stock prints are the merged tape, fifteen minutes behind: ${stk.at(-1)?.includes('venue=utp_cta')} … ${spans(stk).at(-1)?.join('–')}`, stk.every(p => p.includes('venue=utp_cta') && p.includes('exclusive=true')) && spans(stk).at(-1)?.[1] === '13:44:59.999');
   const before = asked.length;
   clock += 61_000;

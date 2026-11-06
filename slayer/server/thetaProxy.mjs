@@ -92,23 +92,24 @@ export const thetaSlots = () => {
   return { terminal: s.terminal, history: s.history, busy: s.busy, busyHistory: s.busyHistory, waiting: s.waiting, engine: s.busyEngine, waitingEngine: s.waitingEngine };
 };
 
-async function load(reqPath, lane) {
+async function load(reqPath, lane, timeoutMs) {
   return slots.slot(reqPath, async () => {
     /* the terminal refusing for a moment (429, its own count of requests in flight) is asked again twice */
-    let got = await loadNow(reqPath);
+    let got = await loadNow(reqPath, timeoutMs);
     for (let i = 0; i < 2 && got.status === 429; i++) {
       await new Promise((r) => setTimeout(r, 300 * 2 ** i));
-      got = await loadNow(reqPath);
+      got = await loadNow(reqPath, timeoutMs);
     }
     return got;
   }, lane);
 }
 
-async function loadNow(reqPath) {
+async function loadNow(reqPath, timeoutMs) {
   const upstream = await fetch(`${BASE}/v3${reqPath}`, {
     headers: { Accept: 'application/json, text/csv', ...(RELAY ? { 'x-relay-secret': RELAY_SECRET } : {}) },
-    /* a long history span on a terminal already answering seven others can take well over 20 s; a live snapshot cannot */
-    signal: AbortSignal.timeout(isHistory(reqPath) ? 90_000 : 20_000),
+    /* a long history span on a terminal already answering seven others can take well over 20 s; a live snapshot cannot.
+       A reader that knows its read is slower still says how long it waits (the current day's option tape, by expiry) */
+    signal: AbortSignal.timeout(timeoutMs > 0 ? timeoutMs : isHistory(reqPath) ? 90_000 : 20_000),
   });
   const buf = Buffer.from(await upstream.arrayBuffer());
   const type = upstream.headers.get('content-type') || 'text/plain';
@@ -149,12 +150,14 @@ export const thetaHubStats = () => hub.stats();
 
 /** One large history answer for a reader inside this process that keeps its own copy (src/data/exposureHistServer.ts:
     a day's option trades, tens of megabytes a chunk): the same terminal slots as every viewer's call, never the hub's
-    shared cache, which such bodies would crowd out. */
-export async function thetaUncached(reqPath) {
+    shared cache, which such bodies would crowd out. Always everyone else's lane, never the engine's: the engine's
+    reserved slots stay free. `opt.timeoutMs` waits longer than the 90 s a history read gets (src/data/tapeServer.ts:
+    the current day's option prints, one expiry a read, take one to two minutes each). */
+export async function thetaUncached(reqPath, opt) {
   if (process.env.VERCEL && !RELAY && !process.env.THETA_REST_BASE) return { status: 503, body: NO_TERMINAL, type: 'application/json' };
   if (!thetaAllowed(reqPath)) return { status: 404, body: JSON.stringify({ error: 'not found' }), type: 'application/json' };
   try {
-    const got = withLogin(await load(reqPath));
+    const got = withLogin(await load(reqPath, undefined, Number(opt?.timeoutMs) || 0));
     return { status: got.status, body: got.body.toString('utf8'), type: got.type };
   } catch (e) {
     return failed(e);
