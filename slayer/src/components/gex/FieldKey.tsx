@@ -6,6 +6,7 @@ import { memo, useSyncExternalStore } from 'react';
 import { BEAD_RAMP_CSS, FIELD_RAMP_CSS } from './gexNodesPrimitive';
 import { RIBBON_RAMP_CSS } from './nodeRibbon';
 import { heatPalette, heatRampCss, onHeatPalette } from './nodeHeat';
+import { THREAD_RAMP_CSS } from './nodeThreads';
 import { nodeConcept } from './nodeConcept';
 import { fmtUsd } from '../../data/gex';
 import { FIELD_MODE_WORDS, setFieldMode, useFieldMode } from '../../data/fieldMode';
@@ -62,9 +63,10 @@ function FieldKey({ ticker, cut, cutWords, scale, oiNet, compact = false }: Fiel
   const netWords = netValue == null ? '—' : `${netValue >= 0 ? '+' : ''}${fmtUsd(netValue)}`;
   const netInk = netValue == null ? '' : netValue >= 0 ? 'text-goldline' : 'text-steelline';
   const yesterday = cut ? priorSessionWords(ticker, cut) : null;
-  /* the dev-only heat (nodeConcept.ts) wears its own ramp */
+  /* the dev-only looks (nodeConcept.ts) wear their own ramps: heat the page's palette, threads the walls' two inks */
   const pal = useSyncExternalStore(onHeatPalette, heatPalette, heatPalette);
-  const ramp = nodeConcept() === 'heat' ? heatRampCss(pal) : nodeLook === 'heat' ? FIELD_RAMP_CSS : nodeLook === 'ribbon' || nodeLook === 'levels' ? RIBBON_RAMP_CSS : BEAD_RAMP_CSS;
+  const concept = nodeConcept();
+  const ramp = concept === 'heat' ? heatRampCss(pal) : concept === 'threads' ? THREAD_RAMP_CSS : nodeLook === 'heat' ? FIELD_RAMP_CSS : nodeLook === 'ribbon' || nodeLook === 'levels' ? RIBBON_RAMP_CSS : BEAD_RAMP_CSS;
   const title = [
     `${words.name}: ${words.line}.`,
     scale > 0 ? `Full light: ${fmtUsd(scale)} per 1% move — short gamma (pushes a move along) left, long gamma (holds it back) right.` : 'No reading in this session yet.',

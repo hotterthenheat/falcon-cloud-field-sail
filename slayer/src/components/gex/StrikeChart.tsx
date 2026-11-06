@@ -2127,7 +2127,7 @@ const StrikeChart = ({
     chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
 
     const trails = new GexTrailsPrimitive();
-    trails.setConcept(nodeConcept()); // dev-only switch: ?nodes=current|heat
+    trails.setConcept(nodeConcept()); // dev-only switch: ?nodes=current|heat|threads
     trails.chromeInset = chromeInsetRef.current;
     trails.hoverOverlay = true;
     trails.afterDraw = () => drawHoverRef.current();

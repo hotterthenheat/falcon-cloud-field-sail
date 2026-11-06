@@ -1,11 +1,11 @@
-/* Which look the exposure nodes wear on the chart. The candidate (heat, nodeHeat.ts) sits behind a dev-only
-   switch until the owner picks; a production build always draws `current`.
+/* Which look the exposure nodes wear on the chart. The candidates (heat, nodeHeat.ts; threads, nodeThreads.ts) sit
+   behind a dev-only switch until the owner picks; a production build always draws `current`.
 
-     ?nodes=current|heat      in the URL (kept in localStorage, so it survives a navigation), or
-     localStorage['slayer_nodes_concept'] = 'heat'                                      */
+     ?nodes=current|heat|threads   in the URL (kept in localStorage, so it survives a navigation), or
+     localStorage['slayer_nodes_concept'] = 'heat' | 'threads'                                     */
 
-export type NodeConcept = 'current' | 'heat';
-export const NODE_CONCEPTS: readonly NodeConcept[] = ['current', 'heat'];
+export type NodeConcept = 'current' | 'heat' | 'threads';
+export const NODE_CONCEPTS: readonly NodeConcept[] = ['current', 'heat', 'threads'];
 export const NODE_CONCEPT_KEY = 'slayer_nodes_concept';
 
 const isConcept = (v: unknown): v is NodeConcept => typeof v === 'string' && (NODE_CONCEPTS as readonly string[]).includes(v);
