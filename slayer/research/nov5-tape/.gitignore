@@ -1,0 +1,6 @@
+results/*.parquet
+results/*.png
+results/*.csv
+__pycache__/
+*.pyc
+results/*.json
