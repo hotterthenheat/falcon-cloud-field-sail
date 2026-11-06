@@ -53,7 +53,8 @@ for (const t of NAMES) {
 const { levelsFor } = await import('../../src/data/levelsFor');
 const { buildExposureProfile } = await import('../../src/data/exposure');
 const { LEVELS_WINDOW } = await import('../../src/data/roomLevels');
-const { deskAgenda, buildBoardRow } = await import('../../src/data/board');
+const { deskAgenda, buildBoardRow, netGexTitle } = await import('../../src/data/board');
+const { buildCompareSide, regimeTag, regimeWord: compareRegimeWord } = await import('../../src/data/compare');
 const { aheadClock, buildCloseOdds } = await import('../../src/data/ahead');
 const { readSessionClock } = await import('../../src/data/moc');
 const { scopeSigma } = await import('../../src/data/wall');
@@ -123,6 +124,19 @@ for (const t of NAMES) {
     const atSpot = pricedNet(priced, spot);
     expectNear(`${t} ${name}: the net re-priced at spot ${(atSpot / 1e6).toFixed(1)}M (rows ${(want.net / 1e6).toFixed(1)}M)`, lv.netAtSpot, atSpot, 0.02);
     expectEqual(`${t} ${name}: regime is the sign of the net at spot`, lv.regime, atSpot > 0 ? 'LONG' : 'SHORT');
+    /* audit 2026-11-05: Compare's side tag and the Board's net-GEX hover read that regime, not the rows' sign — where the two
+       disagree (SPY Today before the open) the tag once said "absorbs" beside "amplify" in the sentence, and the hover
+       "long gamma overall" beside a short-gamma regime */
+    {
+      const side = buildCompareSide(snap, clock, name === 'today' ? '0DTE' : 'ALL');
+      const tag = side ? regimeTag(side) : null;
+      const word = side ? compareRegimeWord(side) : null;
+      const wantTag = side && Math.abs(side.flipDistPct ?? 1) < 0.05 ? 'either way' : lv.regime === 'LONG' ? 'absorbs' : 'amplifies';
+      expectEqual(`${t} ${name}: Compare's tag is the regime's (${tag}; rows net ${side ? (side.netGex / 1e6).toFixed(1) : '?'}M, the sentence "${word}")`, tag, wantTag);
+      const title = netGexTitle(lv.netGex, lv.regime);
+      const disagree = lv.netGex > 0 !== (lv.regime === 'LONG');
+      expectEqual(`${t} ${name}: the net-GEX hover ${disagree ? 'names the regime it disagrees with' : 'reads the net alone'}`, disagree ? title.includes(`net ${lv.regime === 'SHORT' ? 'short' : 'long'} gamma — that is the regime`) : !title.includes('that is the regime'), true);
+    }
   }
   expectEqual(`${t}: Today reads the front expiry`, lv0.date, gold.front);
   /* the flip gauge counts crossings against the flip as it stood at each bar (the book re-priced at each minute's own

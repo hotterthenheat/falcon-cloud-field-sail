@@ -11,7 +11,7 @@ const WORDS = {
   flip: 'Flip: the price where the net dealer gamma, re-priced at that price, crosses zero — on one side their hedging absorbs moves (long gamma), on the other it amplifies them (short gamma)',
   charm: 'Charm: how the dealers’ delta drifts as time passes with price standing still — near the close of an expiring contract it forces hedging trades on its own, often the late-day drift',
   nope: 'NOPE (net options pricing effect): the net delta of the day’s option trades divided by the shares of stock traded, as the feed prints it. 0 is balanced; +2 means the option flow carries twice the stock’s own volume in bullish delta, −2 the same in bearish — the further from 0, the harder options lean on the stock',
-  dex: 'DEX (delta exposure): the shares dealers hold to hedge their delta — the stock they own (+) or are short (−) right now',
+  dex: 'DEX (delta exposure): the dollars of delta the dealers’ options carry — positive means their options are long delta, hedged by being short that much stock; negative, short delta, hedged by owning it',
   vex: 'VEX (vega exposure): how much the dealers’ book gains or loses when implied volatility moves one point',
   vanna: 'Vanna: how the dealers’ delta changes when implied volatility moves — a drop in vol makes them buy or sell stock without price moving',
   maxPain: 'Max pain: the strike where the most option value would expire worthless — a settlement idea, not a forecast. The likeliest close is ours: the strike the 4:00 print most likely lands on, from the expected move left',

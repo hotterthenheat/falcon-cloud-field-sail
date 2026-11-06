@@ -447,6 +447,11 @@ export function buildPair(a: string, b: string, dailyA?: readonly DailyClose[] |
    the flip", so the sentence under the ruler must not say "amplify" for it */
 const onFlip = (s: CompareSide) => s.flipDistPct != null && Math.abs(s.flipDistPct) < 0.05;
 export const regimeWord = (s: CompareSide) => (onFlip(s) ? 'go either way on' : s.regime === 'LONG' ? 'absorb' : s.regime === 'SHORT' ? 'amplify' : 'lean one way');
+/** The side panel's regime tag: the same regime the sentence reads (levelsFor's, the sign of the net re-priced at spot) —
+    never the sign of the rows' net, which before the open is priced at the last close and can read the other way (SPY
+    2026-10-29 pre-market: rows +$107.7M, at the 770.06 print −$99M, short gamma; the tag once said "absorbs") */
+export const regimeTag = (s: CompareSide): 'either way' | 'absorbs' | 'amplifies' =>
+  onFlip(s) ? 'either way' : s.regime === 'LONG' ? 'absorbs' : s.regime === 'SHORT' ? 'amplifies' : s.netGex >= 0 ? 'absorbs' : 'amplifies';
 
 /* One "at price" (core/walls.ts wallPlace, 0.05%) */
 const placeWords = (strike: number, spot: number, distPct: number): string => {
