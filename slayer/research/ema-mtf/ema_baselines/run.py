@@ -35,6 +35,7 @@ BUCKETS = ('0', '1-7', '8-30', '31-90', '91-200')
 M_FIRST, M_LAST = 14, 329          # decision closes 09:45 .. 15:00
 TARGET, BAND, MAX_SPREAD = 0.40, (0.30, 0.50), 0.08
 HOLD = 30
+BL_ONLY = ('BL1', 'BL2', 'BL3', 'BL4', 'BL5', 'BL6')
 
 
 def seed_of(*parts) -> int:
@@ -191,6 +192,8 @@ def run_root(root: str, block: str, out_rows: list, lats=('L0c', 'L60', 'L0')):
                             if st == side:
                                 dec['BL5'].append((m, side, tuple(among)))
             for bl, items in dec.items():
+                if bl not in BL_ONLY:
+                    continue
                 for (xname, lat), sim in sims.items():
                     busy_until = -1
                     for it in sorted(items):
@@ -215,14 +218,17 @@ def main():
     ap.add_argument('--block', required=True)
     ap.add_argument('--roots', default='SPY,QQQ,IWM,SPXW')
     ap.add_argument('--lat', default='L0c,L60,L0')
+    ap.add_argument('--only', default='BL1,BL2,BL3,BL4,BL5,BL6')
     a = ap.parse_args()
     os.makedirs(OUT, exist_ok=True)
+    global BL_ONLY
+    BL_ONLY = tuple(a.only.split(','))
     for root in a.roots.split(','):
         rows = []
         run_root(root, a.block, rows, tuple(a.lat.split(',')))
         if rows:
             df = pd.DataFrame(rows)
-            df.to_parquet(os.path.join(OUT, f'baselines_{a.block}_{root}_{a.lat.replace(",", "-")}.parquet'))
+            df.to_parquet(os.path.join(OUT, f'baselines_{a.block}_{root}_{a.lat.replace(",", "-")}{"" if len(BL_ONLY) == 6 else "_" + "-".join(BL_ONLY)}.parquet'))
             print(root, a.block, len(df), 'records written', flush=True)
 
 

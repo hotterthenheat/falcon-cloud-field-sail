@@ -46,8 +46,11 @@ def main():
     w = out.append
     w('# Baselines (Phase 1, DEV) — what "no edge" looks like for long premium on these contracts\n')
     w('Pre-registered in `specs/STRATEGY_SPEC.md` §14 and the ledger before this run; references, not candidates; '
-      'nothing was tuned on them. Executable simulator (`engine/execution.py`): decision at a 1-minute bar close, '
-      'ask 2 s later in, bid 2 s after the exit decision out, displayed size, fees $0.65/contract/side (SPXW $1.15). '
+      'nothing was tuned on them. Executable simulator (`engine/execution.py`): decision at a 1-minute bar close; buy '
+      'at the ask, sell at the bid, never the mid; displayed size; fees $0.65/contract/side (SPXW $1.15). Main tables: '
+      'fill model **L0c** = the NBBO at the bar close moved against us by the measured mean 2-second drift (+0.17% of '
+      'mid on buys, +0.05% on sells; PREREG A1); the latency table adds L0 (no latency), L60 (60 s) and exact **L2** '
+      '(1-second NBBO 2 s after the decision) where it was run. '
       f'Sessions: {len(sessions)} DEV eval sessions ({sessions[0]}..{sessions[-1]}), blocks {sorted(df.block.unique())}, '
       f'roots {sorted(df.root.unique())}. DSR trial count {N} (ledger).\n')
     w('Contract: |delta| nearest 0.40 in [0.30, 0.50] of the bucket\'s representative expiration(s), spread ≤ 8% of mid. '
@@ -116,6 +119,8 @@ def main():
             w(f'| {bl} | {xname} | ' + ' | '.join(cells) + ' |')
     w('\n## Exit reasons (L0c)\n')
     w(f.groupby(['baseline', 'exit']).exit_reason.value_counts().unstack(fill_value=0).to_string().replace('\n', '\n    ').join(['    ', '']))
+    w('\n## Median minutes held (L0c)\n')
+    w(f.groupby(['baseline', 'exit']).bars_held.median().unstack().to_string().replace('\n', '\n    ').join(['    ', '']))
     w('\n## Reading\n')
     w('READING_PLACEHOLDER')
     print('\n'.join(out))
