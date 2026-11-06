@@ -1,0 +1,65 @@
+Nov 4 full-day Compass replay (09:30-16:00, REPLAY_CONC=1, finished 2026-11-05 21:27 ET). Engine summary:
+
+2026-11-04: 68 marks, 38 calls, 7075 asks, 0 snapshots refused, 14237 s
+
+slice                    calls  won lost  hit%  avg ret%   total $  outside  worst
+2026-11-04 A Core           33      12   21    36      -3.3   8321.00        0  SPXW 7680C -1700
+2026-11-04 B Wing            0       0    0     –         –      0.00        0  –
+2026-11-04 C Late sweep      5       0    5     0     -50.5   -193.00        0  QQQ 693C -54
+2026-11-04 all              38      12   26    32      -9.5   8128.00        0  SPXW 7680C -1700
+
+week A Core                 33      12   21    36      -3.3   8321.00        0  SPXW 7680C -1700
+week B Wing                  0       0    0     –         –      0.00        0  –
+week C Late sweep            5       0    5     0     -50.5   -193.00        0  QQQ 693C -54
+week overnight               0       0    0     –         –      0.00        0  –
+week pre                     0       0    0     –         –      0.00        0  –
+week regular                38      12   26    32      -9.5   8128.00        0  SPXW 7680C -1700
+week curb                    0       0    0     –         –      0.00        0  –
+week all                    38      12   26    32      -9.5   8128.00        0  SPXW 7680C -1700
+
+session     marks  on board  spread ok    scored  at/over line  entry ok  calls
+regular        68    167034      93885     91192          2352      2352     33
+
+CHECKS: none (fills, exits, entry minutes, labels, seats, NaN)
+
+Per call (fired ET, book, contract, expiry, fill ask, exit, return %, $ per 1 lot, exit):
+09:45 A AAPL 347.50C 2026-11-06 5.7 6.25 10 55 Get out early. The stock reversed over the last 5 minutes.
+09:45 A MSFT 545C 2026-11-06 9.85 11.5 17 165 Get out early. The stock reversed over the last 5 minutes.
+09:45 A META 642.50P 2026-11-06 16.95 14.45 -15 -250 Get out. Small loss. The stock reversed over the last 5 minutes.
+09:45 A AAPL 347.50C 2026-11-04 3.95 5.93 50 198 Take profit 1.50×
+09:45 A IWM 285C 2026-11-04 1.47 0.68 -54 -79 Stop
+09:45 A QQQ 694C 2026-11-04 5.22 5.22 0 0 Stop
+09:45 A SPY 765C 2026-11-04 3.62 1.68 -54 -194 Stop
+09:45 A SPXW 7680C 2026-11-04 31.8 14.8 -53 -1700 Stop
+09:50 A IWM 287P 2026-11-05 2.94 4.41 50 147 Take profit 1.50×
+09:50 A NVDA 202.50C 2026-11-06 5.25 5.05 -4 -20 Get out. Small loss. The stock reversed over the last 5 minutes.
+09:50 A TQQQ 63C 2026-11-04 1.18 1.1 -7 -8 Get out. Small loss. The stock reversed over the last 5 minutes.
+09:50 A NVDA 202.50C 2026-11-04 3.6 3.3 -8 -30 Get out. Small loss. The stock reversed over the last 5 minutes.
+09:50 A META 640P 2026-11-04 10.3 8.1 -21 -220 Get out. The stock reversed over the last 5 minutes.
+09:50 A GOOGL 287.50C 2026-11-04 2.73 4.1 50 137 Take profit 1.50×
+09:50 A XSP 767C 2026-11-04 3.37 2.73 -19 -64 Stop
+09:55 A TLT 81C 2026-11-06 0.59 0.82 39 23 15:55 flat
+09:55 A XSP 765C 2026-11-05 5.97 4.71 -21 -126 15:55 flat
+09:55 A QQQ 692C 2026-11-05 7.64 7.69 1 5 Get out early. The stock reversed over the last 5 minutes.
+09:55 A SPY 763C 2026-11-05 5.58 4.52 -19 -106 15:55 flat
+09:55 A SPXW 7670C 2026-11-05 44.6 44.5 0 -10 Stop
+09:55 A MU 815C 2026-11-04 20.8 16.7 -20 -410 Get out. The stock reversed over the last 5 minutes.
+09:55 A MSFT 545C 2026-11-04 8.15 9 10 85 Get out early. The stock reversed over the last 5 minutes.
+09:55 A AVGO 327.50C 2026-11-04 4.8 4.25 -11 -55 Get out. Small loss. The stock reversed over the last 5 minutes.
+09:55 A AMZN 267.50C 2026-11-04 3.45 2.88 -17 -57 Get out. The stock reversed over the last 5 minutes.
+09:55 A AMD 492.50C 2026-11-04 10.25 8.45 -18 -180 Get out. The stock reversed over the last 5 minutes.
+09:55 A GLD 368C 2026-11-04 2.24 3.36 50 112 Take profit 1.50×
+09:55 A RUTW 2860C 2026-11-04 7.9 3.6 -54 -430 Stop
+09:55 A NDXP 28440C 2026-11-04 240.4 360.6 50 12020 Take profit 1.50×
+10:00 A AMZN 265C 2026-11-06 7.5 6.45 -14 -105 Get out. Small loss. The stock reversed over the last 5 minutes.
+10:05 A GLD 370C 2026-11-05 2.04 2.02 -1 -2 Stop
+10:05 A RUTW 2850C 2026-11-05 15.7 7.3 -54 -840 Stop
+10:05 A TSLA 380C 2026-11-06 11 12.3 12 130 Get out early. The stock reversed over the last 5 minutes.
+10:05 A TSLA 380C 2026-11-04 7.55 8.85 17 130 Get out early. The stock reversed over the last 5 minutes.
+15:20 C GLD 371C 2026-11-04 1.55 1.04 -33 -51 15:50 flat
+15:20 C IWM 284P 2026-11-04 0.49 0.24 -51 -25 15:50 flat
+15:20 C QQQ 693C 2026-11-04 1.02 0.48 -53 -54 15:50 flat
+15:20 C SPY 768C 2026-11-04 0.47 0.2 -57 -27 15:50 flat
+15:20 C XSP 770C 2026-11-04 0.62 0.26 -58 -36 15:50 flat
+
+Note: the day's +$8,128 is one NDXP 28440C (ask 240.40 = $24,040 a contract, +$12,020). Without it the day is -$3,892; 34 of 38 calls were calls on a day the open rally failed.
