@@ -139,6 +139,14 @@ def report(D, df):
                               'buy': t.usd_buy, 'at': [B.clock(x) for x in t.usd_in], 'sell': t.usd_sell,
                               'out': [B.clock(x) for x in t.usd_out], '$ net': t.usd_gain.round(0),
                               'x': t.usd_mult.round(1), 'best 3 legs $': t.k3_usd.round(0), 'best 3 legs': t.k3_legs})))
+    rows = []
+    for root, x in df.groupby('root'):
+        for _, y in x.sort_values('pct_mult', ascending=False).head(3).iterrows():
+            rows.append({'root': root, 'contract': y.contract, 'entry delta': round(y.pct_delta_in, 3), 'buy': y.pct_buy,
+                         'at': B.clock(y.pct_in), 'sell': y.pct_sell, 'out': B.clock(y.pct_out),
+                         'multiple': round(y.pct_mult, 1), '$ net': round(y.pct_gain)})
+    L.append('\n## Per root: top 3 by multiple (SPXW dominates the cross-root table)\n')
+    L.append(md(pd.DataFrame(rows)))
     # where the money was: per root & side
     g = df[df.usd_delta_in <= 0.5].groupby(['root', 'side']).agg(n=('k', 'size'), best_usd=('usd_gain', 'max'),
                                                                    median_mult=('pct_mult', 'median'),
@@ -168,8 +176,12 @@ def report(D, df):
 
 if __name__ == '__main__':
     D = sys.argv[1]
-    df = pd.concat([run(D, r) for r in sys.argv[2].split(',')], ignore_index=True)
-    df.to_parquet(os.path.join(B.OUT, D, 'ceiling.parquet'), index=False)
+    f = os.path.join(B.OUT, D, 'ceiling.parquet')
+    if sys.argv[2] == '--report':
+        df = pd.read_parquet(f)
+    else:
+        df = pd.concat([run(D, r) for r in sys.argv[2].split(',')], ignore_index=True)
+        df.to_parquet(f, index=False)
     txt = report(D, df)
     open(os.path.join(HERE, 'results', f'CEILING_{D}.md'), 'w').write(txt)
     print(txt[:6000])

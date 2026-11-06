@@ -29,7 +29,7 @@ class Day:
     volix: {minute: value} of the root's 30-day vol index (VIX / VXN / RVX) stamped at the minute; flow: UW alerts
     (s, type, prem, chase) or None; news: headlines (s, headline) or None."""
 
-    def __init__(self, root, day, bars, board, x=0, volix=None, flow=None, news=None):
+    def __init__(self, root, day, bars, board, x=0, volix=None, flow=None, news=None, sig=None):
         self.root, self.day, self.x = root, day, x
         self.bars = bars.sort_values('m').reset_index(drop=True)
         self.board = board
@@ -42,7 +42,7 @@ class Day:
                 self.o[i], self.h[i], self.l[i], self.c[i] = r.o, r.h, r.l, r.c
         self.c = pd.Series(self.c).ffill().values
         self.open = float(self.bars.o.iloc[0])
-        self.sig = self._sig()
+        self.sig = self._sig() if sig is None else sig     # sig given: bnullsyn.py's flat-smile synthetic IV
 
     def _sig(self):
         b = self.board[(self.board.bid > 0) & (self.board.ask > self.board.bid)]
@@ -169,6 +169,14 @@ def r4_events(d, m_from=630, m_to=900):
     if f is None or not len(f):
         return out
     f = f[f.chase]
+    fs = f.s.values.astype(float)
+    fput = (f.type.values == 'put')
+    fprem = f.prem.values.astype(float)
+
+    def psum(a, b, put):                       # chase premium published in [a, b) of one type
+        sel = (fs >= a) & (fs < b) & (fput if put else ~fput)
+        return float(fprem[sel].sum())
+
     for m in range(m_from, m_to + 1):
         if m - last < REFRACT:
             continue
@@ -179,15 +187,13 @@ def r4_events(d, m_from=630, m_to=900):
         S30 = d.c[m - 31 - M0]
         r30 = math.log(S / S30)
         e30 = em(S, s_now, 30) / S
-        w = f[(f.s >= T - 900) & (f.s < T)]
-        day = f[(f.s >= 9.5 * 3600) & (f.s < T - 900)]
         nwin = max((T - 900 - 9.5 * 3600) / 900.0, 1.0)
         for side, tp_chase, cond in ((1, 'put', r30 <= -1.5 * e30), (-1, 'call', r30 >= 1.5 * e30)):
             if not cond:
                 continue
-            P = float(w[w.type == tp_chase].prem.sum())
-            Q = float(w[w.type != tp_chase].prem.sum())
-            base = float(day[day.type == tp_chase].prem.sum()) / nwin
+            P = psum(T - 900, T, tp_chase == 'put')
+            Q = psum(T - 900, T, tp_chase != 'put')
+            base = psum(9.5 * 3600, T - 900, tp_chase == 'put') / nwin
             if P >= 3.0 * max(Q, 1.0) and P >= 3.0 * base and P >= 5e5:
                 out.append({'rule': 'R4', 't': T, 'side': side, 'S': S, 'atm': s_now, 'rv': rv_so_far(d, m),
                             'chase': P, 'other': Q, 'base15': base,

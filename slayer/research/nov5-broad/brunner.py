@@ -197,7 +197,13 @@ def xr_time(d, ev, side):
 # ---------------------------------------------------------------- one event
 
 
-def simulate_event(d, ev, side):
+def _path(d, k, call, start, end):
+    if hasattr(d, 'synth'):                     # bnullsyn.py: the synthetic session's own quotes
+        return d.synth.path(k, call, start, end)
+    return BS.get_path(d.root, d.day, d.exp, k, call, start, end, d.study_D)
+
+
+def simulate_event(d, ev, side, long_only=False):
     t = int(ev['t'])
     start, end = max(t - PRE, 9 * 3600 + 31 * 60), min(t + WIN, DS.END_CAP)
     rows = []
@@ -206,12 +212,14 @@ def simulate_event(d, ev, side):
         if pair is None:
             return [{'expr': e, 'exit_rule': 'XP', 'skip': 'no ATM pair'} for e in EXPRS]
         end = DS.END_CAP
-        pc = BS.get_path(d.root, d.day, d.exp, pair['C']['k'], True, start, end, d.study_D)
-        pp = BS.get_path(d.root, d.day, d.exp, pair['P']['k'], False, start, end, d.study_D)
+        pc = _path(d, pair['C']['k'], True, start, end)
+        pp = _path(d, pair['P']['k'], False, start, end)
         if pc is None or pp is None:
             return [{'expr': e, 'exit_rule': 'XP', 'skip': 'no path'} for e in EXPRS]
         r = BS.simulate_xp(BS.combine([pc, pp], [1, 1]), t, 2)
         rows.append({'expr': 'L', 'exit_rule': 'XP', 'k': pair['C']['k'], 'k2': np.nan, **r})
+        if long_only:
+            return rows
         shorts = []
         for nm in ('C', 'P'):
             pk = {**pair[nm], 'delta': 0.50}
@@ -219,8 +227,8 @@ def simulate_event(d, ev, side):
         if any(s is None for s in shorts):
             rows.append({'expr': 'S', 'exit_rule': 'XP', 'skip': 'no short leg'})
         else:
-            sc = BS.get_path(d.root, d.day, d.exp, shorts[0]['k'], True, start, end, d.study_D)
-            sp = BS.get_path(d.root, d.day, d.exp, shorts[1]['k'], False, start, end, d.study_D)
+            sc = _path(d, shorts[0]['k'], True, start, end)
+            sp = _path(d, shorts[1]['k'], False, start, end)
             if sc is None or sp is None:
                 rows.append({'expr': 'S', 'exit_rule': 'XP', 'skip': 'no path'})
             else:
@@ -232,11 +240,11 @@ def simulate_event(d, ev, side):
     exits = EXITS[ev['rule']]
     if pk is None:
         return [{'expr': e, 'exit_rule': x, 'skip': why} for e in EXPRS for x in exits]
-    p1 = BS.get_path(d.root, d.day, d.exp, pk['k'], pk['call'], start, end, d.study_D)
+    p1 = _path(d, pk['k'], pk['call'], start, end)
     if p1 is None:
         return [{'expr': e, 'exit_rule': x, 'skip': 'no path', **pk} for e in EXPRS for x in exits]
     sh = BS.pick_short(d.board, d.bars, t, pk, d.x)
-    p2 = BS.get_path(d.root, d.day, d.exp, sh['k'], sh['call'], start, end, d.study_D) if sh else None
+    p2 = _path(d, sh['k'], sh['call'], start, end) if sh else None
     tx = xr_time(d, ev, side) if 'XR' in exits else None
     for e in EXPRS:
         if e == 'L':
@@ -303,6 +311,40 @@ def main():
             t=lambda x: [B.clock(v) for v in x.t],
             entry_s=lambda x: [B.clock(v) if pd.notna(v) else '' for v in x.get('entry_s', [np.nan] * len(x))],
             exit_s=lambda x: [B.clock(v) if pd.notna(v) else '' for v in x.get('exit_s', [np.nan] * len(x))]).to_string())
+        return
+    if cmd == 'r3ref':
+        # PREREG key null for R3: the same straddle on a seeded sample of 200 same-day-expiry root-sessions, rho > 0.60
+        days = EC.dev_sessions('DEV')
+        cand = []
+        for day in days:
+            assert EC.split_of(day) == 'DEV', day
+            for root in DEV_ROOTS:
+                f = os.path.join(B.OUT, 'volix', VOLIX[root], f'{day}.parquet')
+                if not os.path.exists(f) or not os.path.exists(os.path.join(RES, 'dev', f'{root}_{day}.json')):
+                    continue
+                cand.append((root, day))
+        rng = np.random.default_rng(20261108)
+        rng.shuffle(cand)
+        n = 0
+        for root, day in cand:
+            if n >= 200:
+                break
+            f = os.path.join(RES, 'dev_r3ref', f'{root}_{day}.json')
+            if os.path.exists(f):
+                n += 1
+                continue
+            d = dev_day(root, day)
+            if d is None or d.x != 0:
+                continue
+            s0, v = d.s(575), d.volix.get(575)
+            if not (np.isfinite(s0) and v and v > 0) or s0 / (v / 100) <= 0.60:
+                continue
+            ev = {'rule': 'R3', 't': 576 * 60, 'side': 0, 'S': d.S(576), 'atm': s0, 'rv': np.nan, 'rho': s0 / (v / 100)}
+            rows = [{'root': root, 'day': day, 'exp': d.exp, 'x': d.x, 'rule': 'R3ref', 't': 576 * 60, 'rho': ev['rho'],
+                     'variant': f"R3ref-{r['exit_rule']}-{r['expr']}", **r} for r in simulate_event(d, ev, 0, long_only=True)]
+            atomic_json(rows, f)
+            n += 1
+        print('r3ref done', n, flush=True)
         return
     if cmd == 'dev':
         DS.NOFETCH = '--nofetch' in sys.argv

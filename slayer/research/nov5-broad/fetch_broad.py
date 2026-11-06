@@ -26,6 +26,26 @@ OUT = FT.OUT
 ETF = ('SPY', 'QQQ', 'IWM', 'SPXW')
 
 
+def _disk_ok():
+    """fetch_tape.disk_ok without the race: another process's .tmp file may vanish during the walk."""
+    import shutil
+    free = shutil.disk_usage('/').free
+    used = 0
+    for dp, _, fs in os.walk(FT.OUT):
+        for f in fs:
+            try:
+                used += os.path.getsize(os.path.join(dp, f))
+            except OSError:
+                pass
+    if free < FT.MIN_FREE or used > FT.BUDGET:
+        print(f'STOP disk: free {free / 1e9:.2f} GB, used {used / 1e6:.0f} MB', flush=True)
+        return False
+    return True
+
+
+FT.disk_ok = _disk_ok
+
+
 def rdir(D, root):
     return os.path.join(OUT, D, root)
 
@@ -88,14 +108,42 @@ def ohlc_wild(D, root, exp):
 
 
 def oi_all(D, root):
-    o = FT.csv('/option/history/open_interest', {'symbol': root, 'expiration': '*', 'date': D}, timeout=600)
+    try:
+        o = FT.csv('/option/history/open_interest', {'symbol': root, 'expiration': '*', 'date': D}, timeout=600)
+    except RuntimeError:
+        # the terminal refuses expiration=* for its current day: read the expiries within 40 days one by one
+        lim = (pd.Timestamp(D) + pd.Timedelta(days=40)).strftime('%Y%m%d')
+        parts = []
+        for e in [e for e in expirations(root) if D <= e <= lim]:
+            try:
+                parts.append(FT.csv('/option/history/open_interest', {'symbol': root, 'expiration': e, 'date': D}))
+            except FT.NoData:
+                pass
+        o = pd.concat(parts, ignore_index=True)
     return pd.DataFrame({'exp': o.expiration.astype(str).str.replace('-', '').astype(int), 'k': o.strike.astype('float32'),
                          'r': np.where(o.right.str.upper().str.startswith('C'), 1, 0).astype('int8'),
                          'oi': o.open_interest.astype('int64'), 'stamp': o.timestamp.astype(str)})
 
 
+def spxw_base(D):
+    """SPXW for a day not in nov5-tape: the wildcard read truncates after ~30 s, so the 0DTE board is read one strike
+    and right at a time (nov5-tape's chain_1m) within +-8% of the open, then saved under this store's names."""
+    idx(D)
+    d = rdir(D, 'SPXW')
+    FT.job(os.path.join(d, 'oi_all.parquet'), lambda: oi_all(D, 'SPXW'))
+    s = pd.read_parquet(os.path.join(OUT, D, 'IDX', 'idx_SPX_1s.parquet'))
+    o = float(s[s.px > 0].px.iloc[0])
+    e = exps_for(D, 'SPXW')[0]
+    FT.chain_1m(D, e, os.path.join(d, f'g1m_{e}'), band=(o * 0.92, o * 1.08))
+    for a, b in ((f'g1m_{e}_greeks.parquet', f'g1m_{e}.parquet'), (f'g1m_{e}_ohlc.parquet', f'ohlc_{e}.parquet')):
+        if os.path.exists(os.path.join(d, a)):
+            os.replace(os.path.join(d, a), os.path.join(d, b))
+
+
 def base(D, root):
     d = rdir(D, root)
+    if root == 'SPXW':
+        return spxw_base(D)
     if root != 'SPXW':
         FT.job(os.path.join(d, 'und_1s.parquet'), lambda: und_1s(D, root))
     FT.job(os.path.join(d, 'oi_all.parquet'), lambda: oi_all(D, root))
@@ -112,7 +160,8 @@ def band_contracts(D, root, band):
         mid = ((u.bid + u.ask) / 2)[(u.bid > 0) & (u.ask > 0)]
         lo, hi = float(mid.min()), float(mid.max())
     else:
-        s = pd.read_parquet(os.path.join(OUT, '..', 'nov5-tape', D, 'idx_SPX_1s.parquet'))
+        f = os.path.join(OUT, '..', 'nov5-tape', D, 'idx_SPX_1s.parquet')
+        s = pd.read_parquet(f if os.path.exists(f) else os.path.join(OUT, D, 'IDX', 'idx_SPX_1s.parquet'))
         lo, hi = float(s[s.px > 0].px.min()), float(s[s.px > 0].px.max())
     o = pd.read_parquet(os.path.join(d, f'ohlc_{e}.parquet'))
     v = o.groupby(['k', 'r']).v.sum()

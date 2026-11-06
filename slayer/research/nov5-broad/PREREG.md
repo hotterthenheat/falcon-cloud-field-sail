@@ -129,7 +129,7 @@ is logged in `research-v2-ledger.md` under NOV6, pass or fail.
 - **Key null for R3**: the same straddle (L, XP) at 09:36 on a seeded random sample (seed 20261108) of 200 DEV
   same-day-expiry root-sessions with rho > 0.60 (random-day reference); R3-L must beat >= 95% of 2,000 bootstrap
   draws of the reference mean with the same n.
-- **Variance-clock synthetic zero-drift null** (all DEV variants, `nullsyn.py`, 40 runs): per DEV root-session, the
+- **Variance-clock synthetic zero-drift null** (all DEV variants, `bnullsyn.py`, 40 runs): per DEV root-session, the
   underlying re-simulated from the real open at 10-second steps, log-returns N(-v/2, v) with v(m) = the real day's
   5-minute RMS profile of 1-minute log returns scaled so the post-09:35 total equals sig[09:35]^2 T(09:35); every
   option priced Black-Scholes with the REMAINING generator variance W(t) = sum of v over [t, 16:00) (a variance clock,
