@@ -69,20 +69,21 @@ def csv(path: str, params: dict, patience_s: float = 1800, **kw) -> pd.DataFrame
     while True:
         try:
             b = theta_get(path, params, **kw)
-            break
+            if not b.strip():
+                raise NoData(path)
+            if b.lstrip()[:6].lower() in (b'<html>', b'<!doct'):
+                raise RuntimeError(f'{path}: HTML answer (terminal error page) 429?')
+            return pd.read_csv(io.BytesIO(b))
         except NoData:
             raise
-        except RuntimeError as e:
+        except (RuntimeError, pd.errors.ParserError, ConnectionError, OSError) as e:
+            # a 429, a restart of the shared terminal, or a body cut off mid-stream (truncated CSV)
             msg = str(e)
-            if ('429' not in msg and 'failed after' not in msg) or time.time() - t0 > patience_s:
+            transient = isinstance(e, (pd.errors.ParserError, ConnectionError, OSError)) or '429' in msg or 'failed after' in msg
+            if not transient or time.time() - t0 > patience_s:
                 raise
             time.sleep(wait)
             wait = min(wait * 1.6, 120.0)
-    if not b.strip():
-        raise NoData(path)
-    if b.lstrip()[:6].lower() in (b'<html>', b'<!doct'):
-        raise RuntimeError(f'{path}: HTML answer (terminal error page)')
-    return pd.read_csv(io.BytesIO(b))
 
 
 @lru_cache(maxsize=1)

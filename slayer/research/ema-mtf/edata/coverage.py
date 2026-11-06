@@ -26,10 +26,17 @@ from edata.common import (BUCKETS, EMA_DATA, NoData, bucket_of, check_disk, csv,
                          fetchable, ms_of_day, right_code, sessions_all, sessions_back, write_parquet)
 
 OUT = os.path.join(EMA_DATA, 'coverage')
-DATES = ['20220316', '20220510', '20221117', '20230124', '20230329', '20230526', '20230814', '20231019',
-         '20240110', '20240423', '20240614', '20241118']
+# Sample, as run. The first three sessions were measured in full (|delta| 0.15/0.30/0.50, 1-minute quotes of the last
+# month). The shared terminal then slowed to ~5-10 s a request (other workers' load, a terminal restart at 04:21), so
+# the remaining sessions were cut BEFORE any of them was measured to: 4 sessions, |delta| 0.30/0.50 (the strategy's
+# band), no quote request (two-sided quote share measured 99-100% on the first 402 contracts; listed quote days
+# from option/list/dates/quote are taken as quoted all day for those -- stated as an assumption in the report).
+DATES_FULL = ['20220316', '20220510', '20221117']
+DATES_LITE = ['20230329', '20231019', '20240423', '20241118']
+DATES = DATES_FULL + DATES_LITE
 ROOTS = ['SPY', 'QQQ', 'IWM', 'SPXW', 'SPX']
 TARGETS = (0.15, 0.30, 0.50)
+TARGETS_LITE = (0.30, 0.50)
 HIST = 62
 M0 = 9 * 60 + 30   # minute of day of the first RTH bar
 
@@ -109,10 +116,10 @@ def mask_rows(df, col_ok):
     return res
 
 
-def one_contract(root, D, e, k, r, hist):
+def one_contract(root, D, e, k, r, hist, lite=False):
     base = {'symbol': root, 'expiration': e, 'strike': f'{k:g}', 'right': 'call' if r == 1 else 'put'}
     meta = {}
-    for kind in ('quote', 'trade'):
+    for kind in (('quote',) if lite else ('quote', 'trade')):
         try:
             ds = csv(f'/option/list/dates/{kind}', base, timeout=120)
             v = sorted(ds.iloc[:, 0].astype(str).str.replace('-', ''))
@@ -135,6 +142,8 @@ def one_contract(root, D, e, k, r, hist):
     qdays = [d for d in days if (pd.Timestamp(D) - pd.Timestamp(d)).days <= 27]
     quote = {}
     try:
+        if lite:
+            raise NoData('lite: no quote request')
         q = csv('/option/history/quote', {**base, 'start_date': qdays[0], 'end_date': qdays[-1], 'interval': '1m'}, timeout=300)
         # a snapshot at T closes the bar ending at T: shift by one minute so mask index = bar index
         q = q.assign(timestamp=(pd.to_datetime(q.timestamp) - pd.Timedelta(minutes=1)).dt.strftime('%Y-%m-%dT%H:%M:%S.000'))
@@ -164,12 +173,14 @@ def do(root, D):
     jobs = []
     for b, (e, oi, ncand) in sel.items():
         for (k, r, t, dl, S) in pick_contracts(root, D, e):
+            if D in DATES_LITE and t not in TARGETS_LITE:
+                continue
             jobs.append((b, e, oi, ncand, k, r, t, dl, S))
     out = []
 
     def run(j):
         b, e, oi, ncand, k, r, t, dl, S = j
-        meta, rows = one_contract(root, D, e, k, r, hist)
+        meta, rows = one_contract(root, D, e, k, r, hist, lite=D in DATES_LITE)
         return [{'root': root, 'session': D, 'bucket': b, 'exp': e, 'dte': dte(D, e), 'exp_oi': oi, 'n_exp_in_bucket': ncand,
                  'strike': k, 'right': r, 'target_delta': t, 'delta_1000': dl, 'und_1000': S, 'hist_sessions': len(hist),
                  **meta, **row} for row in rows]
