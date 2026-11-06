@@ -101,6 +101,19 @@ interface Group {
   ink: string;
 }
 
+/** The band the tape's "one move" prints. While minutes are left it is the move left to the close: the field's 1σ once
+    it is drawn, else the last price ± the 1σ to the close (`w1`). Only once nothing is left is it the whole move around
+    the close (`shut`). While the field was still being drawn mid-session the Map printed that full session's band, with
+    "Nothing left in this session", at 10:46 ET (SITECHECK 2026-11-06). */
+export function oneMoveBand(w1: number | null, minLeft: number, spot: number, field: { lo1: number; hi1: number } | null, shut: string): string {
+  if (w1 == null) return '…';
+  if (minLeft > 0 && field) return `${field.lo1.toFixed(2)}–${field.hi1.toFixed(2)}`;
+  if (minLeft > 0 && spot > 0) return `${(spot - w1).toFixed(2)}–${(spot + w1).toFixed(2)}`;
+  return shut;
+}
+/** The "nothing left in this session" card: only once nothing is left, and only while no field is drawn */
+export const shutCardShows = (minLeft: number, field: unknown, shutBand: string | null): boolean => !field && !!shutBand && minLeft <= 0;
+
 const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = false }: Props) => {
   const paper = useResolvedTheme() === 'light';
   const [openOwn, setOpen] = useState(readOpen);
@@ -625,7 +638,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
           </PartFact>
           <PartFact label="One move" title={fieldLast ? `By the close, one move is ${fieldLast.lo1.toFixed(2)} to ${fieldLast.hi1.toFixed(2)}. Two moves is ${fieldLast.lo2.toFixed(2)} to ${fieldLast.hi2.toFixed(2)}.` : 'One expected move from here to the close'}>
             <span data-tape-move={w1 != null ? w1.toFixed(2) : undefined} data-tape-ahead={w1 != null && fieldLast ? `${fieldLast.lo1.toFixed(2)}-${fieldLast.hi1.toFixed(2)}` : undefined}>
-              {w1 == null ? '…' : minLeft > 0 && fieldLast ? `${fieldLast.lo1.toFixed(2)}–${fieldLast.hi1.toFixed(2)} · ${spot >= fieldLast.lo1 && spot <= fieldLast.hi1 ? 'inside' : spot > fieldLast.hi1 ? 'through the high' : 'through the low'} · ${minLeft}m` : shutMove}
+              {w1 != null && minLeft > 0 && fieldLast ? `${oneMoveBand(w1, minLeft, spot, fieldLast, shutMove)} · ${spot >= fieldLast.lo1 && spot <= fieldLast.hi1 ? 'inside' : spot > fieldLast.hi1 ? 'through the high' : 'through the low'} · ${minLeft}m` : w1 != null && minLeft > 0 ? `${oneMoveBand(w1, minLeft, spot, null, shutMove)} · ${minLeft}m` : oneMoveBand(w1, minLeft, spot, fieldLast, shutMove)}
             </span>
           </PartFact>
         </>
@@ -677,7 +690,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
             <div>
               <dt className="text-t11 text-textMuted">One move to the close</dt>
               <dd className="mt-0.5 font-mono text-t14 tnum text-textPrimary whitespace-nowrap" data-tape-move={w1 != null ? w1.toFixed(2) : undefined}>
-                {w1 == null ? '…' : minLeft > 0 && fieldLast ? `${fieldLast.lo1.toFixed(2)}–${fieldLast.hi1.toFixed(2)}` : shutMove}
+                {oneMoveBand(w1, minLeft, spot, fieldLast, shutMove)}
               </dd>
             </div>
           </dl>
@@ -710,7 +723,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
                 </span>
               </div>
             )}
-            {!fieldLast && shutBand && (
+            {shutCardShows(minLeft, fieldLast, shutBand) && shutBand && (
               <div className="pointer-events-none absolute left-2 top-2 z-10 max-w-[260px] rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-t11 leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-ahead-read>
                 <span className="block text-t10 uppercase tracking-wider text-textMuted">{aheadWord === 'today' ? 'Today' : 'Next session'}</span>
                 <span className="block tnum text-textPrimary">One move {shutBand.replace('–', ' – ')}</span>

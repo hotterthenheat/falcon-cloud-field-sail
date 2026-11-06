@@ -57,6 +57,7 @@ const PROOFS = [
   'walls-flip-proof',
   'levels-gate-proof',
   'kept-price-proof',
+  'tape-move-proof',
   'surfaces-proof',
   'theta-wait-proof',
   'book-mode-proof',
