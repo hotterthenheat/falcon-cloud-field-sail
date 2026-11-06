@@ -129,10 +129,11 @@ def select_events(src: Source, plan: dict, D: str, u1: pd.Series) -> pd.DataFram
 def day_grids(q: pd.DataFrame, keys: np.ndarray):
     """Arrays [contract, m] (m = 0..389) of bid, ask (dollars), bid size, ask size for the contracts in `keys`."""
     k = ckey(q.exp.to_numpy(), q.strike.to_numpy(), q.right.to_numpy())
-    pos = {int(v): i for i, v in enumerate(keys)}
+    keys = np.asarray(keys, np.int64)
+    assert np.all(keys[1:] > keys[:-1]), 'keys must be sorted and unique'
     sel = np.isin(k, keys)
     q, k = q[sel], k[sel]
-    ci = np.array([pos[int(v)] for v in k], np.int64)
+    ci = np.searchsorted(keys, k).astype(np.int64)
     m = q.m.to_numpy().astype(np.int64)
     ok = (m >= 0) & (m < 390)
     n = len(keys)

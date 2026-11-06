@@ -50,7 +50,7 @@ def main():
         while in_quiet(now_et()):
             time.sleep(30)
         log('start', ' '.join(argv))
-        p = subprocess.Popen(argv, env=env)
+        p = subprocess.Popen(argv, env=env, start_new_session=True)   # own process group: a chain is stopped whole
         log('child pid', p.pid)
         while True:
             rc = p.poll()
@@ -59,11 +59,11 @@ def main():
                 sys.exit(rc)
             if in_quiet(now_et()):
                 log('quiet window: stopping child', p.pid)
-                p.send_signal(signal.SIGTERM)
+                os.killpg(p.pid, signal.SIGTERM)
                 try:
                     p.wait(timeout=60)
                 except subprocess.TimeoutExpired:
-                    p.kill()
+                    os.killpg(p.pid, signal.SIGKILL)
                     p.wait()
                 log('child stopped; waiting for 16:06 ET')
                 break

@@ -96,6 +96,7 @@ class Runner:
         self._grid = {}
         self._ctx = {}
         self._t1 = {}
+        self._cols = {}
         d = data
         self.t5 = d.t5
         self.t5k = ckey(d.t5.exp, d.t5.strike, d.t5.right)
@@ -111,13 +112,21 @@ class Runner:
             self._grid[D] = DayGrid(self.d.src.q0(D), self.d.keys)
         return self._grid[D]
 
+    def _col(self, tab, c):
+        key = (id(tab), c)
+        if key not in self._cols:
+            self._cols[key] = tab[c].to_numpy(np.int64) if c == '_key' else tab[c].to_numpy(float)
+        return self._cols[key]
+
     def _asof_arrays(self, tab, rows, D, cols):
-        keys = tab.session.to_numpy(np.int64)[rows] * 100_000_000 + tab.known_ms.to_numpy(np.int64)[rows]
+        if (id(tab), '_key') not in self._cols:
+            self._cols[(id(tab), '_key')] = tab.session.to_numpy(np.int64) * 100_000_000 + tab.known_ms.to_numpy(np.int64)
+        keys = self._cols[(id(tab), '_key')][rows]
         q = int(D) * 100_000_000 + (570 + np.arange(390, dtype=np.int64) + 1) * 60_000
         i = np.searchsorted(keys, q, side='right') - 1
         ok = i >= 0
         ii = rows[np.clip(i, 0, None)]
-        out = {c: np.where(ok, tab[c].to_numpy(float)[ii], np.nan) for c in cols}
+        out = {c: np.where(ok, self._col(tab, c)[ii], np.nan) for c in cols}
         out['kms'] = np.where(ok, keys[np.clip(i, 0, None)], -1)
         out['ok'] = ok
         return out
@@ -134,7 +143,8 @@ class Runner:
             rows = self._t5_rows.get(int(ck), np.zeros(0, np.int64))
             cols = ['c', 'ema5', 'ema9', 'ema15', 'ema20', 'ema21', 'ema50', 'ema100', 'ema200', 'atr', 'state']
             t5 = self._asof_arrays(self.t5, rows, D, cols)
-            cx = Ctx(mid, t5, None, {'c': t5['c'], 'ema9': t5['ema9'], 'ema21': t5['ema21'], 'ok': t5['ok']})
+            t5 = {k: v.tolist() for k, v in t5.items()}
+            cx = Ctx(mid.tolist(), t5, None, {'c': t5['c'], 'ema9': t5['ema9'], 'ema21': t5['ema21'], 'ok': t5['ok']})
             self._ctx[key] = cx
         if need_t1 and cx.t1 is None:
             cx.t1 = self._t1_ctx(ck, D)
@@ -157,8 +167,8 @@ class Runner:
         i = np.searchsorted(keys, q, side='right') - 1
         ok = i >= 0
         j = np.clip(i, 0, None)
-        return {'c': np.where(ok, t1.c.to_numpy(float)[rows][j] if len(rows) else np.nan, np.nan),
-                'swing_low': np.where(ok, sw[j] if len(rows) else np.nan, np.nan), 'ok': ok}
+        return {'c': np.where(ok, t1.c.to_numpy(float)[rows][j] if len(rows) else np.nan, np.nan).tolist(),
+                'swing_low': np.where(ok, sw[j] if len(rows) else np.nan, np.nan).tolist(), 'ok': ok.tolist()}
 
     def trade(self, row, exit_name, cfg=None) -> dict:
         cfg = cfg or self.cfg
@@ -176,7 +186,7 @@ class Runner:
         recs = []
         for (D, b), grp in ent.groupby(['session', 'bucket'], sort=True):
             busy = -1
-            for _, r in grp.sort_values('m').iterrows():
+            for r in grp.sort_values('m').to_dict('records'):
                 if concurrency and r['m'] <= busy:
                     continue
                 rec = self.trade(r, exit_name, cfg)
@@ -205,23 +215,45 @@ def _seed(*a) -> int:
     return int(hashlib.sha256('|'.join(map(str, a)).encode()).hexdigest()[:12], 16)
 
 
+def _groups(R: Runner):
+    """Cached once per Runner: for each (session, bucket) the decision closes and, per (m, right), the contract nearest
+    |delta| 0.40 (stable sort by dist then ask, as a per-draw filter would give); for each (session, m, bucket, right)
+    the candidates' |delta|, ask and rows in their original order."""
+    if getattr(R, '_g', None) is None:
+        c = R.d.cand
+        cols = ['session', 'exp', 'strike', 'right', 'm', 'delta']
+        recs = c[cols].to_dict('records')
+        sb, best, smb = {}, {}, {}
+        S, M, Bk, Rt = c.session.to_numpy(), c.m.to_numpy(), c.bucket.to_numpy(), c.right.to_numpy()
+        dist, ask, ad = c.dist.to_numpy(), c.ask.to_numpy(), np.abs(c.delta.to_numpy())
+        for i in range(len(c)):
+            k = (int(S[i]), Bk[i])
+            sb.setdefault(k, set()).add(int(M[i]))
+            smb.setdefault((int(S[i]), int(M[i]), Bk[i], int(Rt[i])), []).append(i)
+        for k, idx in smb.items():
+            idx = np.array(idx)
+            j = idx[np.lexsort((ask[idx], dist[idx]))[0]]
+            best[k] = recs[j]
+        R._g = {'sb': {k: np.array(sorted(v)) for k, v in sb.items()}, 'best': best,
+                'smb': {k: (ad[np.array(v)], ask[np.array(v)], [recs[i] for i in v]) for k, v in smb.items()}}
+    return R._g
+
+
 def null_time(R: Runner, trades: pd.DataFrame, exit_name, seed: int, tag='null_time') -> pd.DataFrame:
     """BL2-style shuffled-time null: per (session, bucket), the variant's number of filled entries drawn at random
     decision closes (random order, the one-position rule applied, drawing until the count is met), random side, the
     tradable contract nearest |delta| 0.40; the variant's exit."""
-    cand = R.d.cand
     f = trades[trades.status == 'filled'] if len(trades) else trades
     if not len(f):
         return pd.DataFrame()
+    G = _groups(R)
     need = f.groupby(['session', 'bucket']).size()
     recs = []
-    by = {k: g for k, g in cand.groupby(['session', 'bucket'])}
     for (D, b), n in need.items():
-        g = by.get((int(D), b))
-        if g is None:
+        ms = G['sb'].get((int(D), b))
+        if ms is None:
             continue
         rng = np.random.default_rng(_seed(seed, R.d.root, D, b, tag))
-        ms = np.array(sorted(g.m.unique()))
         order = rng.permutation(ms)
         sides = rng.choice([1, -1], len(order))
         taken = []
@@ -230,10 +262,9 @@ def null_time(R: Runner, trades: pd.DataFrame, exit_name, seed: int, tag='null_t
                 break
             if any(a <= m <= z for a, z in taken):
                 continue
-            x = g[(g.m == m) & (g.right == side)]
-            if not len(x):
+            r = G['best'].get((int(D), int(m), b, int(side)))
+            if r is None:
                 continue
-            r = x.sort_values(['dist', 'ask'], kind='stable').iloc[0]
             rec = R.trade(r, exit_name)
             if rec['status'] != 'filled':
                 continue
@@ -246,24 +277,41 @@ def null_time(R: Runner, trades: pd.DataFrame, exit_name, seed: int, tag='null_t
 def null_side(R: Runner, trades: pd.DataFrame, exit_name, seed: int, tag='null_side') -> pd.DataFrame:
     """Shuffled-side null: the variant's entry times and buckets, a coin-flip right, the tradable contract of that
     right nearest the variant contract's |delta|; the variant's exit."""
-    cand = R.d.cand
     f = trades[trades.status == 'filled'] if len(trades) else trades
     if not len(f):
         return pd.DataFrame()
-    by = {k: g for k, g in cand.groupby(['session', 'm', 'bucket'])}
+    G = _groups(R)
     recs = []
-    for _, t in f.iterrows():
+    for t in f[['session', 'decision_m', 'bucket', 'delta']].to_dict('records'):
         rng = np.random.default_rng(_seed(seed, R.d.root, t['session'], t['decision_m'], t['bucket'], tag))
         side = 1 if rng.random() < 0.5 else -1
-        g = by.get((int(t['session']), int(t['decision_m']), t['bucket']))
-        if g is None:
+        x = G['smb'].get((int(t['session']), int(t['decision_m']), t['bucket'], side))
+        if x is None:
             continue
-        x = g[g.right == side]
-        if not len(x):
-            continue
-        d = (np.abs(x.delta) - abs(t['delta'])).abs()
-        r = x.assign(_d=d.to_numpy()).sort_values(['_d', 'ask'], kind='stable').iloc[0]
-        rec = R.trade(r, exit_name)
+        ad, ask, rows = x
+        j = np.lexsort((ask, np.abs(ad - abs(t['delta']))))[0]
+        rec = R.trade(rows[j], exit_name)
         rec.update({'variant': tag, 'bucket': t['bucket'], 'block': R.d.block})
         recs.append(rec)
     return pd.DataFrame(recs)
+
+
+def null_summaries(R: Runner, trades: pd.DataFrame, exit_name, seeds, kinds=('time', 'side')) -> pd.DataFrame:
+    """Every null run of a variant at once, session by session (each session's quote grid is built once): the same
+    draws as null_time / null_side for each seed (their RNGs are seeded per (seed, root, session, bucket[, m])), summed
+    per (kind, seed): n filled, sum of net returns, sum of net $."""
+    f = trades[trades.status == 'filled'] if len(trades) else trades
+    acc = {(k, s): [0, 0.0, 0.0] for k in kinds for s in seeds}
+    if not len(f):
+        return pd.DataFrame([{'kind': k, 'seed': s, 'n': 0, 'sum_ret': 0.0, 'sum_pnl': 0.0} for k, s in acc])
+    for D, fd in f.groupby('session', sort=True):
+        for seed in seeds:
+            for kind in kinds:
+                x = (null_time if kind == 'time' else null_side)(R, fd, exit_name, seed)
+                if len(x):
+                    x = x[x.status == 'filled']
+                    a = acc[(kind, seed)]
+                    a[0] += len(x)
+                    a[1] += float(x.ret_net.sum())
+                    a[2] += float(x.pnl_net.sum())
+    return pd.DataFrame([{'kind': k, 'seed': s, 'n': v[0], 'sum_ret': v[1], 'sum_pnl': v[2]} for (k, s), v in acc.items()])

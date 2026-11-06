@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from edata.common import EMA_DATA  # noqa: E402
 from stage2.tables import Stage2Data  # noqa: E402
 from stage2.sim import Cfg  # noqa: E402
-from stage2.variants import Runner, null_side, null_time, run_variant, stage2c  # noqa: E402
+from stage2.variants import Runner, null_summaries, run_variant, stage2c  # noqa: E402
 
 OUT = os.path.join(EMA_DATA, 'results', 'stage2')
 REFS = [{'id': 'REF-BL3-X3', 'entry': 'BL3', 'mtf': None, 'exit': 'X3'}]
@@ -77,13 +77,8 @@ def run(fam: str, blocks, roots, null_seeds: int, log=print, lat='L0c', also_l60
                         _write(t60, p60)
                 rows = []
                 if null_seeds and not v['id'].startswith('REF') and nf:
-                    for seed in range(null_seeds):
-                        for kind, fn in (('time', null_time), ('side', null_side)):
-                            x = fn(R, t, v['exit'], seed)
-                            x = x[x.status == 'filled'] if len(x) else x
-                            rows.append({'variant': v['id'], 'kind': kind, 'seed': seed, 'block': b, 'root': r, 'n': len(x),
-                                         'sum_ret': float(x.ret_net.sum()) if len(x) else 0.0,
-                                         'sum_pnl': float(x.pnl_net.sum()) if len(x) else 0.0})
+                    ns = null_summaries(R, t, v['exit'], range(null_seeds)).assign(variant=v['id'], block=b, root=r)
+                    rows = ns.to_dict('records')
                     _write(pd.DataFrame(rows), os.path.join(OUT, 'nulls', f"{v['id']}_{b}_{r}.parquet"))
                 log(r, b, v['id'], f'{nf} trades', f"mean {t[t.status == 'filled'].ret_net.mean() if nf else np.nan:+.4f}" if False else '',
                     f'{time.time()-t1:.0f}s')
