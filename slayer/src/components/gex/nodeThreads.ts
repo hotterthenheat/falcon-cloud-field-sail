@@ -430,7 +430,10 @@ export class ThreadsLook {
         if (y == null || y < 0 || y > H) continue;
         const hex = h.ink.trim().match(/^#([0-9a-f]{6})/i);
         const m = h.ink.match(/\d+(?:\.\d+)?/g);
-        const hi: Rgb = hex ? [parseInt(hex[1].slice(0, 2), 16), parseInt(hex[1].slice(2, 4), 16), parseInt(hex[1].slice(4, 6), 16)] : m && m.length >= 3 ? [+m[0], +m[1], +m[2]] : ink.dim;
+        const h0: Rgb = hex ? [parseInt(hex[1].slice(0, 2), 16), parseInt(hex[1].slice(2, 4), 16), parseInt(hex[1].slice(4, 6), 16)] : m && m.length >= 3 ? [+m[0], +m[1], +m[2]] : ink.dim;
+        /* the host's inks are cut for the black tape (the cone's ends are near white): a pale one on paper reads in the
+           text ink, as the heat's edge column does */
+        const hi: Rgb = ink.light && (0.299 * h0[0] + 0.587 * h0[1] + 0.114 * h0[2]) / 255 > 0.6 ? ink.text : h0;
         pending.push({ price: h.price, y, ty: y, role: h.short, figure: priceText(h.price), value: '', roleInk: hi, valueInk: hi, capX: NaN, ink: hi, prio: Math.min(3, h.rank / 3), foil: false, x: 0 });
       }
     }
