@@ -1,0 +1,302 @@
+From 5bcd8de263650461d384a603f62d3d49779a71cb Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 14:51:25 +0000
+Subject: [PATCH 14/29] Challenger: overnight SPX effect replicated on new
+ sessions; quote checks against XSP
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/LOG.md             |  28 +++++++++
+ .../__pycache__/holdout.cpython-313.pyc       | Bin 0 -> 9861 bytes
+ slayer/research/challenger/build.ts           |   2 +
+ slayer/research/challenger/stale_check.py     |  48 +++++++++++++++
+ slayer/research/challenger/tp_check.py        |  56 ++++++++++++++++++
+ 5 files changed, 134 insertions(+)
+ create mode 100644 slayer/research/challenger/__pycache__/holdout.cpython-313.pyc
+ create mode 100644 slayer/research/challenger/stale_check.py
+ create mode 100644 slayer/research/challenger/tp_check.py
+
+diff --git a/slayer/research/challenger/LOG.md b/slayer/research/challenger/LOG.md
+index f3775bc..c4182cc 100644
+--- a/slayer/research/challenger/LOG.md
++++ b/slayer/research/challenger/LOG.md
+@@ -123,3 +123,31 @@ of ~100: in-sample, multiple-comparison-inflated.** It goes to the locked holdou
+ adds overnight calls to the current book (the session the current trees cannot score).
+ 
+ Data: two more builders (oldest first: the regime samples) and a second fetch pass (2025 H2, two in flight).
++
++## Development round 2: the overnight SPX effect, replicated and checked (no new hypothesis; holdout untouched)
++
++**Replication on sessions built after the rule was frozen** (25 development sessions, 2025-12-26 and 2026-08-03 ..
++08-31, none of which existed when hypotheses 16-23 were formed): K2b (overnight SPXW rule alone) **+22.4%/call
++[+11.8, +33.7]**, 21 calls, 48% hit, +$151/call [+76, +232], +18.8%/session [+9.3, +29.0], +$127/session [+61, +198].
++K2 (the live Books A/B plus the overnight SPXW rule, one set of seats) against the live books on the same sessions:
+++3.2%/call [-0.0, +6.4], +15.9%/session [-0.1, +32.0], +$19/session [-149, +169]. K1 (always ride): +1.4%/call
++[-4.7, +8.7] — not replicated.
++
++**Is it a quote artefact? Checks on the overnight SPXW quotes against XSP (the same index at a tenth):**
++- SPXW's overnight NBBO changes minute to minute more often than XSP's (unchanged 9-18% of minutes vs 24-35%); its
++  put-call parity forward sits within ±0.3-0.6 bp of 10 x XSP's (p5-p95) with no lead or lag (5-minute changes
++  correlate 0.99-1.00 at the same minute, -0.09 to +0.05 one step apart). Not stale.
++- At the minute a SPXW candidate's bid first reached 1.50x its fill (400 sampled), that bid was 0.65% under
++  10 x XSP's mid (median; p90 0.00%), and XSP's own bid x 10 had also reached 1.50x the SPXW fill in 81% of them
++  (1.40x in 98%). Median bid size 7 contracts; 20% were one-lot bids. The moves are in the index, not in a quote.
++- At matched moneyness both price the same implied vol (e.g. -1 to -0.5 expected moves out: 14.9% vs 15.1%), but
++  XSP's spread is wider (4.3% vs 2.7%) and its premiums are $0.4-0.8 against a $0.01-0.05 tick: XSP's fill sits
++  further above the mid, so the same index move reaches 1.50x less often (46% vs 62%) and its average candidate
++  loses. SPXW is the cheapest way to own the overnight move; the edge is in the instrument's cost as much as in the
++  move.
++- By month (development): positive in every month with more than three sessions (2020-03 +41%, 2024-07 +20%,
++  2025-12 +16%, 2026-08 +9%, 2026-09 +16% a candidate, |delta| 0.10-0.40); by entry hour strongest after midnight
++  (00:00-03:00 +20 to +24%), fading to +6% at 08:00 and ~0 for the evening marks (20:15-23:55). The rule's calls fire
++  mostly at 00:05, the first mark where a same-side 15-30 delta SPXW contract passes the gates.
++- The ledger's 1-second exits (settle_calls.ts) on the 17 round-1 overnight calls: +26.0%/call against +25.7% on the
++  minute path. The exits do not flatter it.
+diff --git a/slayer/research/challenger/__pycache__/holdout.cpython-313.pyc b/slayer/research/challenger/__pycache__/holdout.cpython-313.pyc
+new file mode 100644
+index 0000000000000000000000000000000000000000..1c989b5165d24841c1b630e7940452cb0e3360f7
+GIT binary patch
+literal 9861
+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
+
+literal 0
+HcmV?d00001
+
+diff --git a/slayer/research/challenger/build.ts b/slayer/research/challenger/build.ts
+index 81237f0..fa489bb 100644
+--- a/slayer/research/challenger/build.ts
++++ b/slayer/research/challenger/build.ts
+@@ -236,6 +236,8 @@ const pending = () => {
+     .filter(d => /^\d{8}$/.test(d) && fs.existsSync(path.join(raw, d, '_done.json')))
+     .map(d => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`)
+     .filter(d => !fs.existsSync(path.join(OUT, `${d}.calls.json`)))
++    /* CHAL_PREFIX=2022: only the days that start with it (one builder on one regime) */
++    .filter(d => !process.env.CHAL_PREFIX || d.startsWith(process.env.CHAL_PREFIX))
+     .sort((a, b) => (args.includes('--oldest') ? (a < b ? -1 : 1) : a < b ? 1 : -1));
+ };
+ const taken = new Set<string>();
+diff --git a/slayer/research/challenger/stale_check.py b/slayer/research/challenger/stale_check.py
+new file mode 100644
+index 0000000..8f5ae53
+--- /dev/null
++++ b/slayer/research/challenger/stale_check.py
+@@ -0,0 +1,48 @@
++"""Overnight quote check, SPXW against XSP (the same index at a tenth): how often each minute's NBBO changes, and how
++far SPXW's put-call parity forward sits from 10 x XSP's, minute by minute, over the overnight session.
++
++  python -I research/challenger/stale_check.py 20260929 20261001 ...
++"""
++import gzip, os, sys
++import numpy as np
++import pandas as pd
++
++DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
++
++
++def chain(day, root):
++    f = os.path.join(DATA, 'raw', day, f'{root}_{day}.csv.gz')
++    df = pd.read_csv(gzip.open(f), header=None, names=['k', 'strike', 'right', 'bid', 'ask', 'bs', 'as'])
++    df['hm'] = df.k.str[11:16]
++    return df[(df.hm >= '20:15') | (df.hm < '09:20')]
++
++
++def forward(g):
++    p = g.pivot_table(index='strike', columns='right', values='mid')
++    p = p.dropna()
++    if p.empty:
++        return np.nan
++    p['gap'] = (p['C'] - p['P']).abs()
++    best = p.sort_values('gap').head(3)
++    return float(np.median(best.index + best['C'] - best['P']))
++
++
++for day in sys.argv[1:]:
++    out = {}
++    for root in ('SPXW', 'XSP'):
++        df = chain(day, root)
++        df['mid'] = (df.bid + df.ask) / 2
++        df = df.sort_values(['strike', 'right', 'k'])
++        same = (df.groupby(['strike', 'right'])[['bid', 'ask']].diff().abs().sum(axis=1) == 0)
++        fw = df.groupby('k').apply(forward, include_groups=False)
++        out[root] = (same.mean(), fw)
++    f1, f2 = out['SPXW'][1], out['XSP'][1] * 10
++    j = pd.concat([f1, f2], axis=1, keys=['spxw', 'xsp10']).dropna()
++    j['diff_bp'] = (j.spxw / j.xsp10 - 1) * 1e4
++    # does SPXW lag XSP? correlation of SPXW's 5-minute change with XSP's change 5 minutes earlier
++    ch = j[['spxw', 'xsp10']].pct_change(5)
++    lag = ch['spxw'].corr(ch['xsp10'].shift(5))
++    co = ch['spxw'].corr(ch['xsp10'])
++    print(f"{day}: unchanged minute-to-minute: SPXW {100 * out['SPXW'][0]:.0f}%, XSP {100 * out['XSP'][0]:.0f}%; "
++          f"forward SPXW vs 10xXSP median {j.diff_bp.median():+.1f} bp (p5 {j.diff_bp.quantile(.05):+.1f}, p95 {j.diff_bp.quantile(.95):+.1f}); "
++          f"5-min change corr same-time {co:.2f}, SPXW vs XSP 5 min earlier {lag:.2f}")
+diff --git a/slayer/research/challenger/tp_check.py b/slayer/research/challenger/tp_check.py
+new file mode 100644
+index 0000000..f07f9d8
+--- /dev/null
++++ b/slayer/research/challenger/tp_check.py
+@@ -0,0 +1,56 @@
++"""At the minute an overnight SPXW candidate's bid first reached 1.50x its fill, was that bid in line with the same
++option on XSP (strike / 10, x 10)? An outlier bid that XSP does not show would be a quote artefact, not a move.
++
++  python -I research/challenger/tp_check.py
++"""
++import gzip, os, sys
++import numpy as np
++import pandas as pd
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++import books as B
++
++DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
++days = [d for d in B.dev_days() if d >= '2026-08']
++S = B.Sessions(days)
++d = S.df
++x = d[(d.session == 'overnight') & (d.ticker == 'SPXW') & (d.c14 >= .1) & (d.c14 <= .4) & (d.sleeve == 'odte') & (d.hit50 == 1) & ((d.strike % 10) == 0)]
++x = x.sample(min(400, len(x)), random_state=1)
++cache = {}
++
++
++def chain(day, root, exp):
++    k = (day, root, exp)
++    if k not in cache:
++        f = os.path.join(DATA, 'raw', day.replace('-', ''), f'{root}_{exp.replace("-", "")}.csv.gz')
++        if not os.path.exists(f):
++            cache[k] = None
++        else:
++            df = pd.read_csv(gzip.open(f), header=None, names=['k', 'strike', 'right', 'bid', 'ask', 'bs', 'as'])
++            cache[k] = df.set_index(['k', 'strike', 'right'])
++    return cache[k]
++
++
++rows = []
++for _, r in x.iterrows():
++    sp = chain(r.day, 'SPXW', r.expiry)
++    xs = chain(r.day, 'XSP', r.expiry)
++    if sp is None or xs is None:
++        continue
++    # the hit minute: the mark + the fill offset + the minutes to +50%, as a NY wall key
++    mk = pd.Timestamp(f'{r.day} {r.mark}') - (pd.Timedelta(days=1) if r.mark >= '20:15' else pd.Timedelta(0))
++    hit = mk + pd.Timedelta(minutes=1 + float(r.min50))
++    key = hit.strftime('%Y-%m-%d %H:%M')
++    try:
++        s = sp.loc[(key, r.strike, r.right)]
++        q = xs.loc[(key, r.strike / 10, r.right)]
++    except KeyError:
++        continue
++    rows.append({'spx_bid': s.bid, 'spx_ask': s.ask, 'spx_bs': s.bs, 'xsp_bid10': q.bid * 10, 'xsp_mid10': (q.bid + q.ask) * 5, 'xsp_ask10': q.ask * 10, 'fill': r.fill})
++t = pd.DataFrame(rows)
++t['bid_vs_xsp_mid'] = t.spx_bid / t.xsp_mid10 - 1
++t['xsp_bid_vs_fill'] = t.xsp_bid10 / t.fill
++print(f'{len(t)} SPXW overnight +50% moments matched to XSP at the same minute')
++print('SPXW bid / (10 x XSP mid) - 1: median %+.2f%%, p10 %+.2f%%, p90 %+.2f%%' % tuple(100 * t.bid_vs_xsp_mid.quantile([.5, .1, .9])))
++print('share where 10 x XSP bid also >= 1.50 x the SPXW fill: %.0f%%' % (100 * (t.xsp_bid_vs_fill >= 1.5).mean()))
++print('share where 10 x XSP bid >= 1.40 x the SPXW fill: %.0f%%' % (100 * (t.xsp_bid_vs_fill >= 1.4).mean()))
++print('SPXW bid size at the moment: median %d, share of 1-lot bids %.0f%%' % (t.spx_bs.median(), 100 * (t.spx_bs <= 1).mean()))
+-- 
+2.43.0
+

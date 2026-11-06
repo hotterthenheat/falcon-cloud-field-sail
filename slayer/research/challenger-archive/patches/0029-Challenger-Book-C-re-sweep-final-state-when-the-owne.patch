@@ -1,0 +1,42 @@
+From 8ae094ad8901b6f2796ddc66845f5854a3c2c6a7 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 1 Nov 2026 01:15:40 +0000
+Subject: [PATCH 29/29] Challenger: Book C re-sweep (final state when the owner
+ stopped the research)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/bookc.sh | 4 ++++
+ slayer/research/challenger/bookc.ts | 4 ++++
+ 2 files changed, 8 insertions(+)
+ create mode 100644 slayer/research/challenger/bookc.sh
+
+diff --git a/slayer/research/challenger/bookc.sh b/slayer/research/challenger/bookc.sh
+new file mode 100644
+index 0000000..77340be
+--- /dev/null
++++ b/slayer/research/challenger/bookc.sh
+@@ -0,0 +1,4 @@
++#!/bin/bash
++# Detached Book C re-sweep:  setsid nohup bash research/challenger/bookc.sh --h2-2022 > /dev/null 2>&1 &
++cd "$(dirname "$0")/../.." || exit 1
++exec npx tsx research/challenger/bookc.ts "$@" >> research/challenger/data/bookc.log 2>&1
+diff --git a/slayer/research/challenger/bookc.ts b/slayer/research/challenger/bookc.ts
+index 7b954c6..c5c8833 100644
+--- a/slayer/research/challenger/bookc.ts
++++ b/slayer/research/challenger/bookc.ts
+@@ -18,6 +18,10 @@ const args = process.argv.slice(2);
+ const built = fs.readdirSync(OUT).filter(f => f.endsWith('.calls.json')).map(f => f.slice(0, 10));
+ const days = args.includes('--h1')
+   ? built.filter(d => (d >= '2026-10-05' && d <= '2026-10-30') || d.startsWith('2022-06') || d.startsWith('2024-08'))
++  : args.includes('--regime')
++    ? built.filter(d => d.startsWith('2022-') || d.startsWith('2024-') || d.startsWith('2020-'))
++  : args.includes('--h2-2022')
++    ? built.filter(d => d >= '2022-07-01' && d <= '2022-09-30')
+   : args.includes('--h2')
+     ? built.filter(d => (d >= '2022-07-01' && d <= '2022-09-30') || (d >= '2025-01-02' && d <= '2025-03-31'))
+     : args.filter(a => /^\d{4}-\d{2}-\d{2}$/.test(a));
+-- 
+2.43.0
+

@@ -1,0 +1,381 @@
+From 2eeb542e045e4a6f6ae51dae038120dc1f902493 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 13:25:43 +0000
+Subject: [PATCH 11/29] Challenger: frozen candidates and one-shot holdout
+ scorer; ledger 1-second settlement of simulated calls; multi-date path reads
+ in the cache host
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ .../__pycache__/candidates.cpython-313.pyc    | Bin 0 -> 4555 bytes
+ slayer/research/challenger/candidates.py      |  58 ++++++++++++
+ slayer/research/challenger/export_calls.py    |  55 +++++++++++
+ slayer/research/challenger/holdout.py         |  88 ++++++++++++++++++
+ slayer/research/challenger/localHost.ts       |   9 +-
+ slayer/research/challenger/settle_calls.ts    |  43 +++++++++
+ 6 files changed, 250 insertions(+), 3 deletions(-)
+ create mode 100644 slayer/research/challenger/__pycache__/candidates.cpython-313.pyc
+ create mode 100644 slayer/research/challenger/candidates.py
+ create mode 100644 slayer/research/challenger/export_calls.py
+ create mode 100644 slayer/research/challenger/holdout.py
+ create mode 100644 slayer/research/challenger/settle_calls.ts
+
+diff --git a/slayer/research/challenger/__pycache__/candidates.cpython-313.pyc b/slayer/research/challenger/__pycache__/candidates.cpython-313.pyc
+new file mode 100644
+index 0000000000000000000000000000000000000000..3b453d0b8d0fb62f8173c113ce40ae4903a527b8
+GIT binary patch
+literal 4555
+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
+
+literal 0
+HcmV?d00001
+
+diff --git a/slayer/research/challenger/candidates.py b/slayer/research/challenger/candidates.py
+new file mode 100644
+index 0000000..5bdaa5a
+--- /dev/null
++++ b/slayer/research/challenger/candidates.py
+@@ -0,0 +1,58 @@
++"""Frozen candidates and the one-shot holdout evaluation.
++
++A candidate is a function of a Sessions object returning (called row labels, exit rule per call). Its spec is frozen
++in this file (and in LOG.md) before it is scored on the locked holdout; `holdout.py <name>` scores it once and
++writes data/holdout/<name>.json; a second run refuses unless --again (which is logged as a second look).
++"""
++import numpy as np
++import common as C
++
++OVERNIGHT_ROOTS_K2 = ('SPXW',)
++
++
++def current(S, days_mask):
++    """The live Books A/B: the Hit score at its line, the Runner score's ride rule."""
++    idx = S.calls(S.df['p1'].values.astype(float), C.P1_MIN, days_mask)
++    return idx, {i: 'prun' for i in idx}
++
++
++def k1_always_ride(S, days_mask):
++    """K1: the Hit score's own calls, Book A always riding the ratchet (Book B rides as live)."""
++    idx = S.calls(S.df['p1'].values.astype(float), C.P1_MIN, days_mask)
++    return idx, {i: 'ride' for i in idx}
++
++
++def overnight_rule(df, roots):
++    """The overnight rule: overnight session, these roots, |delta| 0.15-0.30, 2 h to 11 h 40 into the session, the side
++    the overnight move favours so far (gap vs the prior close > 0, signed by side); the strike nearest 0.225 delta."""
++    d = df
++    el = ((d['session'].values == 'overnight') & np.isin(d['ticker'].values, roots)
++          & (d['c14'].values >= 0.15) & (d['c14'].values <= 0.30)
++          & (d['c1'].values >= 120) & (d['c1'].values <= 700) & (d['c33'].values > 0))
++    return el, 1.0 - np.abs(d['c14'].values - 0.225)
++
++
++def k2_current_plus_overnight_spx(S, days_mask):
++    """K2: one book, one set of seats: the live Books A/B in the regular session (Hit score >= 0.7067, Runner ride) and
++    the overnight rule on SPXW (1.50x take-profit exit, Book A rules). An overnight call holds its root's seat."""
++    d = S.df
++    p1 = d['p1'].values.astype(float)
++    el, s_on = overnight_rule(d, OVERNIGHT_ROOTS_K2)
++    reg = d['session'].values == 'regular'
++    score = np.where(el, s_on, np.where(reg & (p1 + 1e-12 >= C.P1_MIN), p1, np.nan))
++    idx = S.calls(score, 0.0, days_mask)
++    return idx, {i: ('tp' if d.at[i, 'session'] == 'overnight' else 'prun') for i in idx}
++
++
++def k2b_overnight_spx_only(S, days_mask):
++    """K2's overnight calls alone (what the overnight rule adds, as its own book)."""
++    el, s_on = overnight_rule(S.df, OVERNIGHT_ROOTS_K2)
++    idx = S.calls(np.where(el, s_on, np.nan), 0.0, days_mask)
++    return idx, {i: 'tp' for i in idx}
++
++
++REGISTRY = {
++    'K1-always-ride': k1_always_ride,
++    'K2-current+overnight-SPXW': k2_current_plus_overnight_spx,
++    'K2b-overnight-SPXW-only': k2b_overnight_spx_only,
++}
+diff --git a/slayer/research/challenger/export_calls.py b/slayer/research/challenger/export_calls.py
+new file mode 100644
+index 0000000..e4704b0
+--- /dev/null
++++ b/slayer/research/challenger/export_calls.py
+@@ -0,0 +1,55 @@
++"""Export a candidate's calls on the development sessions for the ledger's 1-second settlement (settle_calls.ts), and
++compare the minute-path returns with the 1-second ones.
++
++  python -I research/challenger/export_calls.py K2b-overnight-SPXW-only data/k2b-calls.json
++  npx tsx research/challenger/settle_calls.ts data/k2b-calls.json data/k2b-settled.json
++  python -I research/challenger/export_calls.py --compare data/k2b-calls.json data/k2b-settled.json
++"""
++import datetime as dt, json, os, sys
++import numpy as np
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++import common as C
++import books as B
++import candidates as K
++from zoneinfo import ZoneInfo
++
++NY = ZoneInfo('America/New_York')
++
++
++def mark_ms(day, mark, session):
++    d = dt.date.fromisoformat(day)
++    h, m = int(mark[:2]), int(mark[3:5])
++    if session == 'overnight' and h * 60 + m >= 20 * 60 + 15:
++        d = d - dt.timedelta(days=1)  # the calendar evening before (Sunday night for a Monday session)
++    t = dt.datetime(d.year, d.month, d.day, h, m, tzinfo=NY)
++    return int(t.timestamp() * 1000), t.date().isoformat()
++
++
++if sys.argv[1] == '--compare':
++    calls = json.load(open(sys.argv[2]))
++    got = {o['key'].split('|', 1)[1].rsplit('|', 1)[0] + '|' + str(o['mark']): o for o in json.load(open(sys.argv[3]))}
++    r_min, r_sec = [], []
++    for c in calls:
++        o = got.get(f"{c['contract']}|{c['sleeve']}|{c['mark']}")
++        oc = (o or {}).get('outcome') or {}
++        if oc.get('pnl') is None or not oc.get('fill'):
++            continue
++        r_min.append(c['ret_minute'])
++        r_sec.append(oc['pnl'] / (oc['fill']['ask'] * 100))
++    print(f'{len(r_sec)} calls settled: minute path {100 * np.mean(r_min):+.1f}%/call, 1-second exits {100 * np.mean(r_sec):+.1f}%/call, hit {100 * np.mean(np.array(r_sec) > 0):.0f}%')
++    sys.exit(0)
++
++name, out = sys.argv[1], sys.argv[2]
++S = B.Sessions(B.dev_days())
++idx, ex = K.REGISTRY[name](S, np.ones(len(S.df), bool))
++pnl = {'prun': S.pnl_prun, 'ride': S.pnl_ride, 'tp': S.pnl_tp}
++rows = []
++for i in idx:
++    r = S.df.loc[i]
++    ms, cday = mark_ms(r['day'], r['mark'], r['session'])
++    runner = ex[i] == 'ride' or (ex[i] == 'prun' and (r['bGate'] == 1 and r['aGate'] == 0 or (np.isfinite(r['prun']) and r['prun'] >= 0.5)))
++    rows.append({'day': r['day'], 'callDay': cday, 'ticker': r['ticker'], 'contract': r['contract'], 'strike': float(r['strike']), 'right': r['right'], 'expiry': r['expiry'],
++                 'sleeve': r['sleeve'], 'book': 'B' if (r['bGate'] == 1 and r['aGate'] == 0) else 'A', 'mark': ms, 'bid': float(r['bid']), 'ask': float(r['ask']), 'runner': bool(runner),
++                 'flatAt': ms + int(r['flatAt']) * 60_000, 'ret_minute': float(pnl[ex[i]][i] / (S.fill[i] * 100)) if S.fill[i] > 0 else None})
++json.dump(rows, open(out, 'w'), indent=1)
++print(f'{len(rows)} calls written to {out}')
+diff --git a/slayer/research/challenger/holdout.py b/slayer/research/challenger/holdout.py
+new file mode 100644
+index 0000000..ac25477
+--- /dev/null
++++ b/slayer/research/challenger/holdout.py
+@@ -0,0 +1,88 @@
++"""Score frozen candidates on the development sessions (any number of times) or on the LOCKED holdout (once each).
++
++  python -I research/challenger/holdout.py --dev K1-always-ride K2-current+overnight-SPXW
++  python -I research/challenger/holdout.py --final K1-always-ride            (once; writes data/holdout/<name>.json)
++
++Each table: the candidate against the three current books (Hit score + Runner, the Hit score without the ride, the
++Late sweep) on the same sessions, same seats, same exits, return first, dollars beside; the paired differences; and
++the cut by holdout block / regime and by the session the call was made in.
++"""
++import argparse, json, os, sys
++import numpy as np
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++import common as C
++import books as B
++import candidates as K
++
++
++def per_session(S, idx, exits):
++    out = {d: [] for d in S.days}
++    pnl = {'prun': S.pnl_prun, 'ride': S.pnl_ride, 'tp': S.pnl_tp}
++    for i in idx:
++        p = pnl[exits[i]][i]
++        if np.isfinite(p) and S.fill[i] > 0:
++            out[S.df.at[i, 'day']].append((p / (S.fill[i] * 100), p, i))
++    return out
++
++
++def evaluate(S, name, title, cut):
++    mask = np.ones(len(S.df), bool)
++    cur_idx, cur_ex = K.current(S, mask)
++    books = {
++        'Hit score + Runner (current A/B)': per_session(S, cur_idx, cur_ex),
++        'Hit score, no ride': per_session(S, cur_idx, {i: 'tp' for i in cur_idx}),
++        'Late sweep (Book C)': S.late_sweep(),
++    }
++    idx, ex = K.REGISTRY[name](S, mask)
++    books[f'{name}'] = per_session(S, idx, ex)
++    lines = [f'### {name}: {title}, {len(S.days)} sessions ({S.days[0]} .. {S.days[-1]})', '', B.table([B.summarize(v, k) for k, v in books.items()]), '']
++    mine = books[name]
++    res = {'name': name, 'title': title, 'sessions': S.days, 'rows': [B.summarize(v, k) for k, v in books.items()], 'paired': {}}
++    for k in list(books)[:3]:
++        pt, lo, hi = B.paired(mine, books[k])
++        res['paired'][k] = [pt.tolist(), lo.tolist(), hi.tolist()]
++        lines.append(f'- {name} minus {k}: return/call {100 * pt[0]:+.1f}% [{100 * lo[0]:+.1f}, {100 * hi[0]:+.1f}]; return/session {100 * pt[1]:+.1f}% [{100 * lo[1]:+.1f}, {100 * hi[1]:+.1f}]; $/session {pt[2]:+.0f} [{lo[2]:+.0f}, {hi[2]:+.0f}]')
++    parts = {k: B.split(v, cut) for k, v in books.items()}
++    for g in sorted(set(cut(d) for d in S.days)):
++        lines += ['', f'**{g}**', '', B.table([B.summarize(parts[k].get(g, {}), k) for k in books])]
++    sess = S.df['session'].values
++    for kind in ('overnight', 'pre', 'regular'):
++        rows = [B.summarize({d: [x for x in v if x[2] >= 0 and sess[x[2]] == kind] for d, v in per.items()}, k) for k, per in books.items() if not k.startswith('Late')]
++        lines += ['', f'**calls made in the {kind} session**', '', B.table(rows)]
++    return '\n'.join(lines), res
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument('names', nargs='+')
++    ap.add_argument('--dev', action='store_true')
++    ap.add_argument('--final', action='store_true')
++    ap.add_argument('--again', action='store_true')
++    a = ap.parse_args()
++    if a.dev == a.final:
++        sys.exit('say --dev or --final')
++    if a.dev:
++        S = B.Sessions(B.dev_days())
++        for n in a.names:
++            print(evaluate(S, n, 'development sessions', B.regime)[0], '\n')
++        return
++    hold = B.holdout_days()
++    blocks = sorted(set(B.holdout_block(d) for d in hold))
++    if blocks != ['H-2022', 'H-2024', 'H-recent']:
++        sys.exit(f'the holdout is not fully built yet ({blocks}); a final look waits for every block')
++    S = B.Sessions(hold)
++    os.makedirs(os.path.join(C.DATA, 'holdout'), exist_ok=True)
++    for n in a.names:
++        f = os.path.join(C.DATA, 'holdout', f'{n}.json')
++        if os.path.exists(f) and not a.again:
++            print(f'{n}: already scored on the holdout once ({f}); not looking again')
++            continue
++        text, res = evaluate(S, n, 'LOCKED HOLDOUT', B.holdout_block)
++        res['looks'] = (json.load(open(f))['looks'] + 1) if os.path.exists(f) else 1
++        json.dump(res, open(f, 'w'), indent=1, default=float)
++        open(f.replace('.json', '.md'), 'w').write(text)
++        print(text, '\n')
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/slayer/research/challenger/localHost.ts b/slayer/research/challenger/localHost.ts
+index 2a20849..f2472d7 100644
+--- a/slayer/research/challenger/localHost.ts
++++ b/slayer/research/challenger/localHost.ts
+@@ -149,9 +149,12 @@ export function localTheta(day: string, opts: { net?: boolean; log?: (p: string)
+       const to = (q.get('end_time') ?? '23:59:00').slice(0, 5);
+       const right = (q.get('right') ?? '').toLowerCase();
+       const out = new Map<string, { contract: Record<string, unknown>; data: Record<string, unknown>[] }>();
+-      for (const k of c.keysOn.get(d) ?? []) {
++      /* every date from start_date to end_date (an overnight path runs past midnight), the times on each */
++      const last = iso(q.get('end_date') ?? d);
++      const dates = [...c.keysOn.keys()].filter(x => x >= d && x <= (last >= d ? last : d)).sort();
++      for (const k of dates.flatMap(x => c.keysOn.get(x) ?? [])) {
+         const hm = k.slice(11, 16);
+-        if (hm > to) break;
++        const kd = k.slice(0, 10);
+         const list = c.byMinute.get(k) ?? [];
+         if (hm < from || hm > to) continue;
+         const mm = Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
+@@ -162,7 +165,7 @@ export function localTheta(day: string, opts: { net?: boolean; log?: (p: string)
+           const id = ckey(x.strike, x.right);
+           let row = out.get(id);
+           if (!row) out.set(id, (row = { contract: { symbol: sym, strike: x.strike, right: RIGHT_WORD[x.right], expiration: c.expiry }, data: [] }));
+-          row.data.push({ timestamp: `${d}T${hm}:00.000`, bid: x.bid, ask: x.ask, bid_size: x.bs, ask_size: x.as });
++          row.data.push({ timestamp: `${kd}T${hm}:00.000`, bid: x.bid, ask: x.ask, bid_size: x.bs, ask_size: x.as });
+         }
+       }
+       if (!out.size) return none;
+diff --git a/slayer/research/challenger/settle_calls.ts b/slayer/research/challenger/settle_calls.ts
+new file mode 100644
+index 0000000..6295736
+--- /dev/null
++++ b/slayer/research/challenger/settle_calls.ts
+@@ -0,0 +1,43 @@
++/*
++  Settle a list of simulated calls with the ledger's own settlement (the one-minute path from the cache, the
++  1-second quotes of every stop/target minute from the terminal, cached): the same exits the live record uses.
++
++    npx tsx research/challenger/settle_calls.ts in.json out.json
++  in.json: [{ day, ticker, contract, strike, right, expiry, sleeve, book, mark (epoch ms), bid, ask, runner, flatAt }]
++*/
++import fs from 'node:fs';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const [inFile, outFile] = process.argv.slice(2);
++const calls = JSON.parse(fs.readFileSync(inFile, 'utf8')) as Record<string, unknown>[];
++const { localTheta } = await import('./localHost');
++const { setCompassHost } = await import('../../src/data/compassHost');
++const ledger = await import('../../src/data/compassLedger');
++const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
++const byDay = new Map<string, Record<string, unknown>[]>();
++for (const c of calls) {
++  const l = byDay.get(String(c.day)) ?? [];
++  l.push(c);
++  byDay.set(String(c.day), l);
++}
++const out: unknown[] = [];
++for (const [day, list] of byDay) {
++  const host = localTheta(day, { net: true });
++  setCompassHost({ server: true, theta: host.theta, asset: async p => { const b = fs.readFileSync(path.join(root, 'public', p.replace(/^\/+/, ''))); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer; }, econ: () => [] });
++  ledger.importSignals([]);
++  ledger.importWould(list.map((c, k) => ({
++    key: `${day}|${c.contract}|${c.sleeve}|${k}`, id: `${c.contract}|${c.sleeve}`, day: c.callDay ?? day, book: c.book, ticker: c.ticker, contract: c.contract,
++    right: c.right, strike: c.strike, expiry: c.expiry, sleeve: c.sleeve, firedAt: c.mark, quoteAt: c.mark, bid: c.bid, ask: c.ask, spot: null,
++    p1: null, prun: null, runner: c.runner, outcome: null, pathAt: 0, spark: [], how: 'late', mark: c.mark, flatAt: c.flatAt, would: true,
++  })));
++  const open = () => ledger.wouldSignals().filter(s => !s.outcome || (s.outcome.status !== 'closed' && s.outcome.status !== 'unavailable'));
++  for (let pass = 0; pass < 60 && open().length; pass++) {
++    await ledger.settleOpen(Date.now() + pass * 60_000);
++    if (open().length) await new Promise(res => setTimeout(res, 500));
++  }
++  for (const s of ledger.wouldSignals()) out.push({ key: s.key, contract: s.contract, sleeve: s.sleeve, mark: s.mark, outcome: s.outcome });
++  console.log(`${day}: ${list.length} calls settled`);
++}
++fs.writeFileSync(outFile, JSON.stringify(out, null, 1));
++process.exit(0);
+-- 
+2.43.0
+

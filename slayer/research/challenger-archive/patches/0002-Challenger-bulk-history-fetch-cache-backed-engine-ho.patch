@@ -1,0 +1,1183 @@
+From 5f3fa94b0c7968adab57db29e16d26d2c8d0cf11 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 10:21:35 +0000
+Subject: [PATCH 02/29] Challenger: bulk history fetch, cache-backed engine
+ host, row builder, seat simulation, walk-forward trainer
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/build.ts     | 259 +++++++++++++++++++++
+ slayer/research/challenger/common.py    | 150 ++++++++++++
+ slayer/research/challenger/fetch.ts     | 290 ++++++++++++++++++++++++
+ slayer/research/challenger/localHost.ts | 200 ++++++++++++++++
+ slayer/research/challenger/prof.py      |  16 ++
+ slayer/research/challenger/train.py     | 206 +++++++++++++++++
+ 6 files changed, 1121 insertions(+)
+ create mode 100644 slayer/research/challenger/build.ts
+ create mode 100644 slayer/research/challenger/common.py
+ create mode 100644 slayer/research/challenger/fetch.ts
+ create mode 100644 slayer/research/challenger/localHost.ts
+ create mode 100644 slayer/research/challenger/prof.py
+ create mode 100644 slayer/research/challenger/train.py
+
+diff --git a/slayer/research/challenger/build.ts b/slayer/research/challenger/build.ts
+new file mode 100644
+index 0000000..b05ff09
+--- /dev/null
++++ b/slayer/research/challenger/build.ts
+@@ -0,0 +1,259 @@
++/*
++  Challenger rows: one session day through the engine's own late path (the replay's loop: atMark, scoreBook late,
++  recordPicks, Book C's 15:20 sweep), answered from the bulk cache (localHost.ts). Every row the scan built inputs
++  for (compassModel onFeatureRow) that is a Book A or Book B candidate inside the entry minutes is written with:
++    - its 56 live inputs, Model 1 (Hit score) and Model 2 (Runner score) as the engine scored them (null where they
++      are not scored, e.g. overnight);
++    - the challenger's inputs (src/data/challengerFeatures.ts, the same function the shadow runs live);
++    - the gates the books applied, the batch (one scoring pass) and its order, for the seat simulation;
++    - its outcome under the books' exits on the contract's one-minute NBBO (compassOutcome settleSignal: the fill a
++      full minute after the mark, the 0.5322 stop, the break-even at 1.25x, the 1.50x take-profit or the runner's
++      ratchet, the 0.40% reversal, the session's own flat), both as a non-runner and as a runner;
++    - the move's anatomy (time to +50%, the best bid, the greeks attribution of the mid's change to the +50% or the
++      flat: delta, gamma, vega, theta, residual).
++  The engine's own would-calls (Books A, B and C) are written beside them.
++
++    npx tsx research/challenger/build.ts 2026-10-30 [2026-10-29 …]        (each day in its own process)
++*/
++import fs from 'node:fs';
++import path from 'node:path';
++import zlib from 'node:zlib';
++import { spawn } from 'node:child_process';
++import { fileURLToPath } from 'node:url';
++import { DATA } from './fetch';
++
++const OUT = path.join(DATA, 'rows');
++const VERSION = 'rows/3';
++const args = process.argv.slice(2);
++const days = args.filter(a => /^\d{4}-\d{2}-\d{2}$/.test(a));
++
++async function buildOne(day: string): Promise<void> {
++  const { localTheta, barsOn, ckey } = await import('./localHost');
++  const { setCompassHost } = await import('../../src/data/compassHost');
++  const scan = await import('../../src/data/compassScan');
++  const model = await import('../../src/data/compassModel');
++  const ledger = await import('../../src/data/compassLedger');
++  const params = await import('../../src/data/compassParams');
++  const { optionScanOpen, odteAsleep, sessionDayOpen } = await import('../../src/data/compassSession');
++  const { nyWallTime, nyParts } = await import('../../src/core/nyTime');
++  const { sessionCloseMinOn } = await import('../../src/core/calendar');
++  const { settleSignal } = await import('../../src/data/compassOutcome');
++  const { challengerFeatures, CHALLENGER_N, paritySpot, yearsToExpiry } = await import('../../src/data/challengerFeatures');
++  const { ivStates, bsStates } = await import('../../src/data/compassFeatures');
++
++  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
++  const host = localTheta(day, { net: process.env.CHAL_NET === '1' });
++  setCompassHost({
++    server: true,
++    theta: host.theta,
++    asset: async p => {
++      const b = fs.readFileSync(path.join(root, 'public', p.replace(/^\/+/, '')));
++      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
++    },
++    econ: () => [],
++  });
++  const ymd = day.replace(/-/g, '');
++  const close = sessionCloseMinOn(day);
++  const closeMin = close < 16 * 60 ? close : null;
++  ledger.setSessionClose(closeMin);
++  model.setScoreClose(ymd, closeMin);
++  model.rollModelDay(ymd);
++  ledger.importSignals([]);
++  ledger.importWould([]);
++
++  type Kept = { r: import('../../src/data/compassModel').FeatureRow; f: number[]; order: number };
++  const kept: Kept[] = [];
++  let order = 0;
++  const batches: { batch: number; mark: number; job: number; sym: string; sleeve: string }[] = [];
++  let job = 0;
++  let curJob = { sym: '', sleeve: '' };
++  const off = model.onFeatureRow(r => {
++    if (!r.gates.entryOk || !(r.gates.aGate || r.gates.bGate)) return;
++    const f = challengerFeatures({ ...r, gates: r.gates });
++    /* only what the row file needs: the board, the window and the bars are the mark's, not the row's */
++    const slim = { ...r, list: [], window: null, bars: [], spy: [], prior: null, priorSpy: null, pin: null, x: r.x.slice() };
++    kept.push({ r: slim, f, order: order++ });
++  }, b => {
++    batches.push({ batch: b.batch, mark: b.mark, job, sym: curJob.sym, sleeve: curJob.sleeve });
++  });
++
++  const [y, mo, d] = [Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10))];
++  const endMin = Math.min(15 * 60 + 5, (closeMin ?? 16 * 60) - 5);
++  const endAt = nyWallTime(y, mo, d, Math.floor(endMin / 60), endMin % 60);
++  const t0 = Date.now();
++  let marks = 0;
++  for (let at = scan.sessionOpenAt(day); at <= endAt; at += 60_000) {
++    const p = nyParts(at);
++    if (!(params.sessionScanOpen(p.hour * 60 + p.minute, p.weekday) && sessionDayOpen(at))) continue;
++    const jobs: { sym: string; sleeve: 'odte' | 'weekly' }[] = [
++      ...(odteAsleep(at) ? [] : scan.odteBook(at).filter(n => optionScanOpen(n, 0, at))).map(sym => ({ sym, sleeve: 'odte' as const })),
++      ...scan.WEEKLY_FOCUS.filter(n => optionScanOpen(n, 1, at)).map(sym => ({ sym, sleeve: 'weekly' as const })),
++    ];
++    marks += 1;
++    for (const j of jobs) {
++      const snap = await scan.atMark(j.sym, at, j.sleeve);
++      if (!snap.ok || !snap.setups.length) continue;
++      job += 1;
++      curJob = j;
++      await model.scoreBook(snap.setups, at, true, true).catch(() => 'fault');
++      ledger.recordPicks(at);
++    }
++  }
++  /* Book C: the 15:20 quotes, as the late sweep reads them */
++  const cStart = closeMin != null ? closeMin - 40 : 15 * 60 + 20;
++  {
++    const at = nyWallTime(y, mo, d, Math.floor(cStart / 60), cStart % 60) + 15_000;
++    const names = odteAsleep(at) ? [] : scan.odteBook(at).filter(n => optionScanOpen(n, 0, at));
++    const snaps = await Promise.all(names.map(sym => scan.atMark(sym, at, 'odte')));
++    await model.scoreLottery(snaps.flatMap(s => s.setups), at, true);
++    ledger.recordPicks(at);
++  }
++  off();
++  const calls = ledger.wouldSignals().slice().sort((a, b) => a.firedAt - b.firedAt);
++
++  /* ---- labels: each kept row settled on its contract's one-minute NBBO ---- */
++  const closesOf = new Map<string, { t: number; c: number }[]>();
++  const underCloses = (name: string) => {
++    let c = closesOf.get(name);
++    if (!c) {
++      const pr = scan.INDEX_OF[name] ?? name;
++      c = barsOn(pr, day).map(b => ({ t: nyWallTime(Number(b.key.slice(0, 4)), Number(b.key.slice(5, 7)), Number(b.key.slice(8, 10)), Number(b.key.slice(11, 13)), Number(b.key.slice(14, 16))), c: b.c }));
++      closesOf.set(name, c);
++    }
++    return c;
++  };
++  const batchOf = new Map(batches.map(b => [b.batch, b]));
++  const head = ['day', 'sleeve', 'ticker', 'contract', 'expiry', 'right', 'strike', 'mark', 'batch', 'job', 'order', 'session', 'flatAt', 'bid', 'ask', 'mid', 'aGate', 'bGate', 'burns', 'dist', 'span', 'dte', 'retOpen', 'trained', 'p1', 'prun',
++    ...Array.from({ length: 56 }, (_, i) => `x${i}`), ...Array.from({ length: CHALLENGER_N }, (_, i) => `c${i}`),
++    'fill', 'fillAt', 'exitA', 'whyA', 'pnlA', 'exitR', 'whyR', 'pnlR', 'best', 'hit50', 'min50', 'worstPre', 'flatBid',
++    'atS0', 'atS1', 'atIv0', 'atIv1', 'atMin', 'atDelta', 'atGamma', 'atVega', 'atTheta', 'atResid'];
++  const lines: string[] = [head.join(',')];
++  const num = (v: number | null | undefined, dp = 6) => (v == null || !Number.isFinite(v) ? '' : Number(v.toPrecision(dp)).toString());
++  for (const k of kept) {
++    const r = k.r;
++    const s = r.setup;
++    const chain = host.chainOf(s.ticker, s.expiryDate);
++    const path0 = chain?.byContract.get(ckey(s.strike, s.right)) ?? [];
++    const quotes = path0.map(q => ({ t: q.t, bid: q.bid, ask: q.ask }));
++    const under = underCloses(scan.INDEX_OF[s.ticker] ?? s.ticker);
++    const book = r.gates.aGate ? 'A' : 'B';
++    const sigBase = { book: book as 'A' | 'B', right: s.right, firedAt: r.now, ...(closeMin != null ? { closeMin } : {}), flatAt: r.gates.flatAt };
++    const endNow = r.gates.flatAt + 86_400_000;
++    const a = settleSignal({ ...sigBase, book: 'A', runner: false }, quotes, under, endNow);
++    const run = settleSignal({ ...sigBase, book: 'A', runner: true }, quotes, under, endNow);
++    let best = NaN;
++    let hit50 = 0;
++    let min50 = NaN;
++    let worstPre = NaN;
++    let flatBid = NaN;
++    let att: number[] = Array(11).fill(NaN);
++    if (a.fill) {
++      const fill = a.fill;
++      const after = quotes.filter(q => q.t > fill.at && q.t <= r.gates.flatAt);
++      let mx = 0;
++      let mn = Infinity;
++      let hitAt = NaN;
++      for (const q of after) {
++        if (!(q.ask > 0)) continue;
++        if (q.bid > mx) mx = q.bid;
++        if (!Number.isFinite(hitAt)) {
++          if (q.bid >= fill.ask * 1.5) hitAt = q.t;
++          else mn = Math.min(mn, q.bid);
++        }
++      }
++      best = mx > 0 ? mx / fill.ask : NaN;
++      hit50 = Number.isFinite(hitAt) ? 1 : 0;
++      min50 = Number.isFinite(hitAt) ? (hitAt - fill.at) / 60_000 : NaN;
++      worstPre = Number.isFinite(mn) ? mn / fill.ask : NaN;
++      const lastQ = after[after.length - 1];
++      flatBid = lastQ ? lastQ.bid / fill.ask : NaN;
++      /* the greeks attribution of the mid's change from the mark to the +50% (or the last quote before the flat) */
++      const endQ = Number.isFinite(hitAt) ? after.find(q => q.t === hitAt) : lastQ;
++      if (chain && endQ) {
++        const boardAt = (t: number) => {
++          const key = path0.find(q => q.t === t)?.key;
++          const list = key ? chain.byMinute.get(key) ?? [] : [];
++          return list.map(q => ({ strike: q.strike, right: q.right, mid: (q.bid + q.ask) / 2 }));
++        };
++        const T0 = yearsToExpiry(s.expiryDate, r.now);
++        const T1 = yearsToExpiry(s.expiryDate, endQ.t);
++        const S0 = paritySpot(boardAt(Math.floor(r.now / 60_000) * 60_000), T0);
++        const S1 = paritySpot(boardAt(endQ.t), T1);
++        const m0 = s.mid;
++        const m1 = (endQ.bid + endQ.ask) / 2;
++        const call = s.right === 'C';
++        const iv0 = ivStates(m0, S0, s.strike, T0, call);
++        const iv1 = ivStates(m1, S1, s.strike, T1, call);
++        if (S0 > 0 && S1 > 0 && iv0 > 0.011) {
++          const g = bsStates(S0, s.strike, T0, iv0, call);
++          const dS = S1 - S0;
++          const dSig = iv1 > 0.011 ? iv1 - iv0 : 0;
++          const dtDays = (endQ.t - r.now) / 86_400_000;
++          const dl = g.de * dS;
++          const gm = 0.5 * g.ga * dS * dS;
++          const vg = g.ve * dSig * 100;
++          const th = g.th * dtDays;
++          const res = m1 - m0 - dl - gm - vg - th;
++          att = [S0, S1, iv0, iv1 > 0.011 ? iv1 : NaN, (endQ.t - r.now) / 60_000, dl / m0, gm / m0, vg / m0, th / m0, res / m0];
++        }
++      }
++    }
++    const b = batchOf.get(r.batch);
++    const p = nyParts(r.now);
++    const row = [day, s.sleeve, s.ticker, s.contract, s.expiryDate, s.right, s.strike, `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`, r.batch, b?.job ?? '', k.order, r.gates.session ?? '', Math.round((r.gates.flatAt - r.now) / 60_000), s.bid, s.ask, num(s.mid), r.gates.aGate ? 1 : 0, r.gates.bGate ? 1 : 0, r.gates.burns ? 1 : 0, num(r.gates.dist), num(r.gates.span), num(r.gates.dte), num(r.gates.retOpen), r.gates.trained ? 1 : 0, num(r.p1, 10), num(r.prun, 10),
++      ...r.x.map(v => num(v)), ...k.f.map(v => num(v)),
++      num(a.fill?.ask), a.fill ? Math.round((a.fill.at - r.now) / 1000) : '', num(a.exit?.px), JSON.stringify(a.exit?.why ?? '').replace(/,/g, ';'), num(a.pnl), num(run.exit?.px), JSON.stringify(run.exit?.why ?? '').replace(/,/g, ';'), num(run.pnl), num(best), a.fill ? hit50 : '', num(min50), num(worstPre), num(flatBid),
++      ...att.slice(0, 10).map(v => num(v))];
++    lines.push(row.join(','));
++  }
++  fs.mkdirSync(OUT, { recursive: true });
++  const tmp = path.join(OUT, `${day}.csv.gz.tmp`);
++  fs.writeFileSync(tmp, zlib.gzipSync(lines.join('\n')));
++  fs.renameSync(tmp, path.join(OUT, `${day}.csv.gz`));
++  fs.writeFileSync(path.join(OUT, `${day}.calls.json`), JSON.stringify({ version: VERSION, day, close: closeMin, marks, rows: kept.length, unknown: host.unknown.slice(0, 20), calls }, null, 1));
++  console.log(`${day}: ${marks} marks, ${kept.length} rows, ${calls.length} engine would-calls, ${Math.round((Date.now() - t0) / 1000)} s`);
++}
++
++if (args.includes('--one')) {
++  await buildOne(days[0]);
++  process.exit(0);
++}
++/* the days to build: those named, or (none named) every fetched day not built yet, newest first, picked up as the
++   fetcher lands them until --minutes have passed */
++const stopAt = Date.now() + Number(args[args.indexOf('--minutes') + 1] || 110) * 60_000;
++const named = days.length > 0;
++const pending = () => {
++  if (named) return days.filter(d => args.includes('--force') || !fs.existsSync(path.join(OUT, `${d}.calls.json`)));
++  const raw = path.join(DATA, 'raw');
++  return (fs.existsSync(raw) ? fs.readdirSync(raw) : [])
++    .filter(d => /^\d{8}$/.test(d) && fs.existsSync(path.join(raw, d, '_done.json')))
++    .map(d => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`)
++    .filter(d => !fs.existsSync(path.join(OUT, `${d}.calls.json`)))
++    .sort().reverse();
++};
++const taken = new Set<string>();
++const conc = Math.max(1, Number(process.env.CHAL_BUILD_CONC) || 2);
++await Promise.all(Array.from({ length: conc }, async () => {
++  for (;;) {
++    if (Date.now() > stopAt) return;
++    const d = pending().find(x => !taken.has(x));
++    if (!d) {
++      if (named) return;
++      await new Promise(res => setTimeout(res, 30_000));
++      continue;
++    }
++    taken.add(d);
++    if (!fs.existsSync(path.join(DATA, 'raw', d.replace(/-/g, ''), '_done.json'))) {
++      console.log(`${d}: not fetched yet`);
++      continue;
++    }
++    await new Promise<void>(res => {
++      const child = spawn(process.execPath, ['--max-old-space-size=7000', ...process.execArgv, fileURLToPath(import.meta.url), '--one', d], { stdio: 'inherit', env: process.env });
++      child.on('exit', code => {
++        if (code) console.log(`${d}: build exited ${code}`);
++        res();
++      });
++    });
++  }
++}));
++process.exit(0);
+diff --git a/slayer/research/challenger/common.py b/slayer/research/challenger/common.py
+new file mode 100644
+index 0000000..d533bc3
+--- /dev/null
++++ b/slayer/research/challenger/common.py
+@@ -0,0 +1,150 @@
++"""Challenger research: loading the rows (build.ts) and the books' seat rules, ported from compassModel.scoreRows
++(late path) so any score column can be run through the same seats: five Book A/B seats a session, one call a root,
++one call a contract, a pool per scoring pass (one name and sleeve at one mark), the drive rule (|return from the open|
++>= 0.35% calls only the drive's side), a flat root with both sides clearing calls neither, drive candidates first
++then the highest score. Book C is the engine's own (rows/<day>.calls.json)."""
++import glob, json, os, gzip
++import numpy as np
++import pandas as pd
++
++HERE = os.path.dirname(os.path.abspath(__file__))
++DATA = os.environ.get('CHAL_DATA', os.path.join(HERE, 'data'))
++P1_MIN = 0.7067
++DRIVE = 0.0035
++SEAT_CAP = 5
++
++C_NAMES = None
++
++
++def days_built():
++    return sorted(os.path.basename(f)[:10] for f in glob.glob(os.path.join(DATA, 'rows', '*.calls.json')))
++
++
++def load_day(day, cache=True):
++    pq = os.path.join(DATA, 'rows', f'{day}.parquet')
++    src = os.path.join(DATA, 'rows', f'{day}.csv.gz')
++    if cache and os.path.exists(pq) and os.path.getmtime(pq) >= os.path.getmtime(src):
++        return pd.read_parquet(pq)
++    df = pd.read_csv(src, low_memory=False)
++    for c in ('whyA', 'whyR'):
++        df[c] = df[c].fillna('').astype(str).str.strip('"')
++    df['day'] = df['day'].astype(str)
++    if cache:
++        df.to_parquet(pq)
++    return df
++
++
++def load(days):
++    return pd.concat([load_day(d) for d in days], ignore_index=True)
++
++
++def engine_calls(day):
++    with open(os.path.join(DATA, 'rows', f'{day}.calls.json')) as f:
++        return json.load(f)['calls']
++
++
++def call_pnl(df, runner_rule='prun'):
++    """The P&L of each row as a call under the books' exits: Book B rides the ratchet; Book A rides it when the
++    Runner score cleared 0.50, else takes 1.50x. `runner_rule` 'none' never rides Book A, 'all' always does."""
++    b = df['bGate'].values.astype(bool) & ~df['aGate'].values.astype(bool)
++    if runner_rule == 'prun':
++        ride = df['prun'].fillna(-1).values >= 0.5
++    elif runner_rule == 'all':
++        ride = np.ones(len(df), bool)
++    elif runner_rule == 'none':
++        ride = np.zeros(len(df), bool)
++    else:
++        ride = np.asarray(runner_rule, bool)
++    ride = ride | b
++    return np.where(ride, df['pnlR'].values, df['pnlA'].values), ride
++
++
++def simulate(df, score, line, eligible=None):
++    """Run the score through the seats, one session at a time. `score` is an array aligned with df (NaN: not scored),
++    `line` a scalar or an array (a per-row line). Returns the index of the rows called, in call order."""
++    score = np.asarray(score, float)
++    line = np.broadcast_to(np.asarray(line, float), score.shape)
++    ok = np.isfinite(score) & (score + 1e-12 >= line) & (df['burns'].values == 0)
++    if eligible is not None:
++        ok &= np.asarray(eligible, bool)
++    called = []
++    sub = df.loc[ok, ['day', 'batch', 'order', 'ticker', 'right', 'contract', 'sleeve', 'aGate', 'bGate', 'retOpen']].copy()
++    sub['s'] = score[ok]
++    sub = sub.sort_values(['day', 'batch', 'order'], kind='stable')
++    for day, g in sub.groupby('day', sort=True):
++        roots = set()
++        ids = set()
++        for batch, b in g.groupby('batch', sort=True):
++            if len(roots) >= SEAT_CAP:
++                break
++            cands = []
++            for book_mask in (b['aGate'].values == 1, (b['aGate'].values == 0) & (b['bGate'].values == 1)):
++                pool = b[book_mask]
++                if not len(pool):
++                    continue
++                for ticker, lst in pool.groupby('ticker', sort=False):
++                    ret = lst['retOpen'].values
++                    ret = ret[np.isfinite(ret)]
++                    r0 = ret[0] if len(ret) else np.nan
++                    drive = np.isfinite(r0) and abs(r0) >= DRIVE
++                    if drive:
++                        side = lst[lst['right'] == ('C' if r0 > 0 else 'P')]
++                        if not len(side):
++                            continue
++                        best = side.index[np.argmax(side['s'].values)]
++                    else:
++                        if (lst['right'] == 'C').any() and (lst['right'] == 'P').any():
++                            continue
++                        best = lst.index[np.argmax(lst['s'].values)]
++                    cands.append((1 if drive else 0, b.loc[best, 's'], best))
++            cands.sort(key=lambda c: (-c[0], -c[1]))
++            any_drive = any(c[0] for c in cands)
++            for drive, s, idx in cands:
++                if any_drive and not drive:
++                    continue
++                t = sub.loc[idx, 'ticker']
++                cid = (sub.loc[idx, 'contract'], sub.loc[idx, 'sleeve'])
++                if len(roots) >= SEAT_CAP or t in roots or cid in ids:
++                    continue
++                roots.add(t)
++                ids.add(cid)
++                called.append(idx)
++    return called
++
++
++def block_boot(values_by_day, stat='mean_call', n=2000, seed=7):
++    """Session-block bootstrap: resample whole sessions with replacement. values_by_day: dict day -> array of call
++    P&Ls (an empty array for a session with no call). Returns (point, lo, hi) for the mean P&L per call or per day."""
++    rng = np.random.default_rng(seed)
++    days = sorted(values_by_day)
++    arrs = [np.asarray(values_by_day[d], float) for d in days]
++    def f(sel):
++        if stat == 'mean_call':
++            tot = sum(arrs[i].sum() for i in sel)
++            n_ = sum(len(arrs[i]) for i in sel)
++            return tot / n_ if n_ else np.nan
++        return sum(arrs[i].sum() for i in sel) / len(sel)
++    pt = f(range(len(days)))
++    bs = [f(rng.integers(0, len(days), len(days))) for _ in range(n)]
++    lo, hi = np.nanpercentile(bs, [2.5, 97.5])
++    return pt, lo, hi
++
++
++def paired_boot(a_by_day, b_by_day, stat='mean_call', n=2000, seed=11):
++    """The difference a - b on the same resampled sessions (both books, identical held-out days)."""
++    rng = np.random.default_rng(seed)
++    days = sorted(set(a_by_day) | set(b_by_day))
++    A = [np.asarray(a_by_day.get(d, []), float) for d in days]
++    B = [np.asarray(b_by_day.get(d, []), float) for d in days]
++    def f(arrs, sel):
++        if stat == 'mean_call':
++            n_ = sum(len(arrs[i]) for i in sel)
++            return sum(arrs[i].sum() for i in sel) / n_ if n_ else np.nan
++        return sum(arrs[i].sum() for i in sel) / len(sel)
++    pt = f(A, range(len(days))) - f(B, range(len(days)))
++    bs = []
++    for _ in range(n):
++        sel = rng.integers(0, len(days), len(days))
++        bs.append(f(A, sel) - f(B, sel))
++    lo, hi = np.nanpercentile(bs, [2.5, 97.5])
++    return pt, lo, hi
+diff --git a/slayer/research/challenger/fetch.ts b/slayer/research/challenger/fetch.ts
+new file mode 100644
+index 0000000..17cedf9
+--- /dev/null
++++ b/slayer/research/challenger/fetch.ts
+@@ -0,0 +1,290 @@
++/*
++  Challenger bulk history pipeline: the raw reads, newest session first, resumable, in per-run chunks.
++
++  Per session day D and Compass root:
++    - the 0DTE chain (expiry D) and the weekly chain (the nearest expiry 1-7 sessions out, the weekly roots), each as
++      ONE chain-NBBO request per expiry and calendar date (/option/history/quote, 1-minute, the engine's strike band:
++      16 strikes either side same-day, 17 weekly), over every session the root trades: the index roots' overnight
++      (20:15 the evening before to 09:25), the 07:30 options pre-market, the regular session and the curb to 17:00;
++    - the open interest of that expiry on D (the GEX-core roots, as the engine reads it);
++    - the underlying's, SPY's, QQQ's, IWM's and the sector ETFs' 1-minute bars, one request per symbol and month.
++  Everything lands under research/challenger/data/ (git-ignored), compact and gzipped. A day is done when its
++  _done.json exists; a re-run skips it. At most CONC requests in flight (default 2; the terminal is shared).
++
++    npx tsx research/challenger/fetch.ts [--from 2026-10-30] [--to 2025-01-01] [--minutes 110] [--roots SPY,QQQ]
++*/
++import fs from 'node:fs';
++import path from 'node:path';
++import zlib from 'node:zlib';
++import { fileURLToPath } from 'node:url';
++import { ALL, WEEKLY_FOCUS } from '../../src/data/compassScan';
++import { MARKET_HOLIDAYS } from '../../src/core/calendar';
++
++const here = path.dirname(fileURLToPath(import.meta.url));
++export const DATA = process.env.CHAL_DATA || path.join(here, 'data');
++const BASE = process.env.THETA_BASE || 'http://127.0.0.1:25503/v3';
++const CONC = Math.max(1, Math.min(3, Number(process.env.CHAL_CONC) || 2));
++
++const args = process.argv.slice(2);
++const arg = (k: string, d: string) => {
++  const i = args.indexOf(k);
++  return i >= 0 && args[i + 1] ? args[i + 1] : d;
++};
++const FROM = arg('--from', '2026-10-30');
++const TO = arg('--to', '2012-06-01');
++const MINUTES = Number(arg('--minutes', '110'));
++const ONLY = arg('--roots', '');
++const NO_BARS = args.includes('--no-bars');
++
++/* the same-day roots of the engine's book (VIX's same-day contract is not scored: NO_SAME_DAY) and the weekly roots */
++export const ODTE_ROOTS = ['SPXW', 'NDXP', 'XSP', 'RUTW', 'SPY', 'QQQ', 'IWM', 'GLD', 'XLF', 'SMH', 'AAPL', 'AMD', 'AMZN', 'AVGO', 'GOOGL', 'INTC', 'META', 'MSFT', 'MU', 'NVDA', 'TSLA', 'SLV', 'TLT', 'XLE', 'EEM', 'TQQQ', 'SOXL', 'USO', 'UNG'].filter(r => ALL.includes(r));
++export const WEEKLY_ROOTS = [...WEEKLY_FOCUS];
++export const GEX_CORE = new Set(['SPXW', 'NVDA', 'SPY', 'QQQ', 'NDXP', 'IWM', 'TSLA', 'META', 'XSP', 'AVGO', 'MSFT', 'AAPL', 'TLT', 'RUTW', 'AMZN', 'SLV', 'GOOGL', 'GLD', 'SMH', 'XLF']);
++export const OVERNIGHT = new Set(['SPXW', 'XSP', 'RUTW', 'VIX']);
++export const UNDER_OF: Record<string, string> = { SPXW: 'SPX', NDXP: 'NDX', RUTW: 'RUT' };
++export const INDEX_UNDER = new Set(['SPX', 'NDX', 'RUT', 'XSP', 'VIX']);
++export const EXTRA_BARS = ['SPY', 'QQQ', 'IWM', 'SMH', 'XLF', 'XLE', 'GDX', 'BITO'];
++
++let inFlight = 0;
++const waiters: (() => void)[] = [];
++let asked = 0;
++async function slot<T>(fn: () => Promise<T>): Promise<T> {
++  while (inFlight >= CONC) await new Promise<void>(res => waiters.push(res));
++  inFlight += 1;
++  try {
++    return await fn();
++  } finally {
++    inFlight -= 1;
++    waiters.shift()?.();
++  }
++}
++
++/** One REST read; a transient answer (empty 200, 5xx, 429, a dropped socket) is asked again with backoff. 472 (no
++    data) comes back as an empty body with status 472. */
++export async function get(p: string): Promise<{ status: number; body: string }> {
++  for (let i = 0; ; i++) {
++    try {
++      const r = await slot(() => fetch(`${BASE}${p}`, { signal: AbortSignal.timeout(180_000) }));
++      const body = await r.text();
++      asked += 1;
++      if (r.status === 472 || /No data found/i.test(body.slice(0, 200))) return { status: 472, body: '' };
++      /* a busy terminal (429: its request slots are shared with other clients) is waited out; an empty 200 or a 5xx
++         is asked again a few times */
++      if (r.status === 429 && i < 60) {
++        await new Promise(res => setTimeout(res, 1500 + Math.random() * 2500));
++        continue;
++      }
++      if ((r.status === 200 && !body.trim()) || r.status >= 500) {
++        if (i < 6) {
++          await new Promise(res => setTimeout(res, 1000 * 2 ** i));
++          continue;
++        }
++      }
++      return { status: r.status, body };
++    } catch {
++      if (i >= 6) return { status: 503, body: '' };
++      await new Promise(res => setTimeout(res, 2000 * 2 ** i));
++    }
++  }
++}
++
++const ymd = (iso: string) => iso.replace(/-/g, '');
++const iso = (d: Date) => d.toISOString().slice(0, 10);
++const addDays = (s: string, n: number) => iso(new Date(Date.parse(`${s}T12:00:00Z`) + n * 86_400_000));
++
++function writeGz(file: string, text: string): void {
++  fs.mkdirSync(path.dirname(file), { recursive: true });
++  const tmp = `${file}.tmp`;
++  fs.writeFileSync(tmp, zlib.gzipSync(text, { level: 6 }));
++  fs.renameSync(tmp, file);
++}
++
++export function readGz(file: string): string {
++  return zlib.gunzipSync(fs.readFileSync(file)).toString('utf8');
++}
++
++/* ---- the calendar: SPY's daily bars name the sessions ---- */
++
++async function sessions(year: number): Promise<string[]> {
++  const file = path.join(DATA, 'meta', `sessions_${year}.json`);
++  if (fs.existsSync(file) && year < 2026) return JSON.parse(fs.readFileSync(file, 'utf8'));
++  const today = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10).replace(/-/g, '');
++  if (`${year}0101` > today) return [];
++  const end = `${year}1231` < today ? `${year}1231` : today;
++  const got = await get(`/stock/history/eod?symbol=SPY&start_date=${year}0101&end_date=${end}&format=csv`);
++  const days = got.body.split('\n').slice(1).map(l => l.split(',')[0]?.slice(0, 10)).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
++  fs.mkdirSync(path.dirname(file), { recursive: true });
++  fs.writeFileSync(file, JSON.stringify(days));
++  return days;
++}
++
++async function expirations(root: string): Promise<Set<string>> {
++  const file = path.join(DATA, 'meta', `exp_${root}.json`);
++  const fresh = fs.existsSync(file) && Date.now() - fs.statSync(file).mtimeMs < 7 * 86_400_000;
++  if (fresh) return new Set(JSON.parse(fs.readFileSync(file, 'utf8')));
++  const got = await get(`/option/list/expirations?symbol=${root}&format=csv`);
++  const list = got.body.split('\n').slice(1).map(l => (l.split(',')[1] ?? '').replace(/"/g, '').slice(0, 10)).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
++  fs.mkdirSync(path.dirname(file), { recursive: true });
++  fs.writeFileSync(file, JSON.stringify(list));
++  return new Set(list);
++}
++
++/* ---- one chain read, kept compact: minute (NY wall, "YYYY-MM-DD HH:MM"), strike, C/P, bid, ask, bid size, ask size ---- */
++
++function compactQuotes(csv: string): { text: string; rows: number } {
++  const out: string[] = [];
++  const lines = csv.split('\n');
++  const head = lines[0]?.split(',') ?? [];
++  const ix = (k: string) => head.indexOf(k);
++  const [iK, iR, iT, iBs, iB, iAs, iA] = ['strike', 'right', 'timestamp', 'bid_size', 'bid', 'ask_size', 'ask'].map(ix);
++  if (iK < 0 || iT < 0) return { text: '', rows: 0 };
++  for (let i = 1; i < lines.length; i++) {
++    const c = lines[i].split(',');
++    if (c.length < head.length) continue;
++    const ask = Number(c[iA]);
++    const bid = Number(c[iB]);
++    if (!(ask > 0) || !(bid >= 0) || ask < bid) continue;
++    const ts = c[iT];
++    out.push(`${ts.slice(0, 10)} ${ts.slice(11, 16)},${Number(c[iK])},${c[iR].replace(/"/g, '')[0]},${bid},${ask},${c[iBs]},${c[iAs]}`);
++  }
++  return { text: out.join('\n'), rows: out.length };
++}
++
++async function chain(root: string, expiry: string, day: string, band: number): Promise<{ rows: number; status: number }> {
++  const file = path.join(DATA, 'raw', ymd(day), `${root}_${ymd(expiry)}.csv.gz`);
++  if (fs.existsSync(file)) return { rows: -1, status: 200 };
++  const parts: string[] = [];
++  let rows = 0;
++  let status = 200;
++  const windows: [string, string, string][] = [];
++  if (OVERNIGHT.has(root)) {
++    /* the overnight session opens 20:15 on the calendar day before the session's first night (Sunday for Monday) */
++    windows.push([addDays(day, new Date(`${day}T12:00:00Z`).getUTCDay() === 1 ? -1 : -1), '20:15:00', '23:59:00']);
++    windows.push([day, '00:00:00', '17:00:00']);
++  } else windows.push([day, '07:30:00', '17:00:00']);
++  for (const [date, s, e] of windows) {
++    const got = await get(`/option/history/quote?symbol=${root}&expiration=${ymd(expiry)}&date=${ymd(date)}&interval=1m&strike_range=${band}&start_time=${s}&end_time=${e}&format=csv`);
++    if (got.status !== 200 && got.status !== 472) status = got.status;
++    if (got.status !== 200) continue;
++    const c = compactQuotes(got.body);
++    rows += c.rows;
++    if (c.text) parts.push(c.text);
++  }
++  if (status !== 200) return { rows: 0, status };
++  writeGz(file, parts.join('\n'));
++  return { rows, status };
++}
++
++async function openInterest(root: string, expiry: string, day: string): Promise<void> {
++  const file = path.join(DATA, 'raw', ymd(day), `${root}_${ymd(expiry)}.oi.csv.gz`);
++  if (fs.existsSync(file)) return;
++  const got = await get(`/option/history/open_interest?symbol=${root}&expiration=${ymd(expiry)}&date=${ymd(day)}&format=csv`);
++  if (got.status !== 200 && got.status !== 472) throw new Error(`oi ${root} ${day}: ${got.status}`);
++  const lines = got.body.split('\n');
++  const head = lines[0]?.split(',') ?? [];
++  const [iK, iR, iO] = ['strike', 'right', 'open_interest'].map(k => head.indexOf(k));
++  const out = iK < 0 ? [] : lines.slice(1).map(l => l.split(',')).filter(c => c.length >= head.length).map(c => `${Number(c[iK])},${c[iR].replace(/"/g, '')[0]},${Number(c[iO])}`);
++  writeGz(file, out.join('\n'));
++}
++
++/* ---- bars: one request per symbol and month ---- */
++
++const barJobs = new Map<string, Promise<void>>();
++export function barFile(sym: string, month: string): string {
++  return path.join(DATA, 'bars', sym, `${month}.csv.gz`);
++}
++function bars(sym: string, month: string): Promise<void> {
++  const key = `${sym}|${month}`;
++  let job = barJobs.get(key);
++  if (job) return job;
++  job = (async () => {
++    const file = barFile(sym, month);
++    const current = month >= '2026-10';
++    if (fs.existsSync(file) && !(current && Date.now() - fs.statSync(file).mtimeMs > 6 * 3600_000)) return;
++    const start = `${month}-01`;
++    const end = addDays(iso(new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1))), -1);
++    const kind = INDEX_UNDER.has(sym) ? 'index' : 'stock';
++    const got = await get(`/${kind}/history/ohlc?symbol=${sym}&start_date=${ymd(start)}&end_date=${ymd(end)}&interval=1m&format=csv`);
++    if (got.status !== 200 && got.status !== 472) throw new Error(`bars ${sym} ${month}: ${got.status}`);
++    const lines = got.body.split('\n');
++    const head = lines[0]?.split(',') ?? [];
++    const [iT, iO, iH, iL, iC, iV] = ['timestamp', 'open', 'high', 'low', 'close', 'volume'].map(k => head.indexOf(k));
++    const out = iT < 0 ? [] : lines.slice(1).map(l => l.split(',')).filter(c => c.length >= head.length && Number(c[iC]) > 0).map(c => `${c[iT].slice(0, 10)} ${c[iT].slice(11, 16)},${Number(c[iO])},${Number(c[iH])},${Number(c[iL])},${Number(c[iC])},${iV >= 0 ? Number(c[iV]) : 0}`);
++    writeGz(file, out.join('\n'));
++  })();
++  barJobs.set(key, job);
++  return job;
++}
++
++/* ---- one session ---- */
++
++export function sessionsAhead(list: string[], day: string, expiry: string): number {
++  return list.filter(d => d > day && d <= expiry).length;
++}
++
++async function oneDay(day: string, cal: string[], exps: Map<string, Set<string>>): Promise<void> {
++  const dir = path.join(DATA, 'raw', ymd(day));
++  const done = path.join(dir, '_done.json');
++  if (fs.existsSync(done)) return;
++  const t0 = Date.now();
++  const odte = ODTE_ROOTS.filter(r => (!ONLY || ONLY.split(',').includes(r)) && exps.get(r)?.has(day));
++  const weekly: [string, string][] = [];
++  for (const r of WEEKLY_ROOTS) {
++    if (ONLY && !ONLY.split(',').includes(r)) continue;
++    const list = [...(exps.get(r) ?? [])].filter(e => e > day).sort();
++    const e = list.find(x => {
++      const n = sessionsAhead(cal, day, x);
++      return n >= 1 && n <= 7;
++    });
++    if (e && sessionsAhead(cal, day, e) <= 7) weekly.push([r, e]);
++  }
++  const month = day.slice(0, 7);
++  const prevMonth = iso(new Date(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 2, 1))).slice(0, 7);
++  const unders = [...new Set([...odte, ...weekly.map(w => w[0])].map(r => UNDER_OF[r] ?? r).concat(EXTRA_BARS))];
++  const jobs: Promise<unknown>[] = [];
++  const summary: Record<string, number> = {};
++  for (const r of odte) jobs.push(chain(r, day, day, 16).then(x => { summary[`${r}:0`] = x.rows; if (x.status !== 200) throw new Error(`${r} 0DTE ${day}: ${x.status}`); }));
++  for (const [r, e] of weekly) jobs.push(chain(r, e, day, 17).then(x => { summary[`${r}:${e}`] = x.rows; if (x.status !== 200) throw new Error(`${r} ${e} ${day}: ${x.status}`); }));
++  for (const r of odte) if (GEX_CORE.has(r)) jobs.push(openInterest(r, day, day));
++  for (const [r, e] of weekly) if (GEX_CORE.has(r)) jobs.push(openInterest(r, e, day));
++  if (!NO_BARS) for (const u of unders) for (const m of [month, prevMonth]) jobs.push(bars(u, m));
++  const res = await Promise.allSettled(jobs);
++  const bad = res.filter(r => r.status === 'rejected').map(r => String((r as PromiseRejectedResult).reason));
++  if (bad.length) {
++    console.log(`${day}: ${bad.length} reads failed (${bad.slice(0, 3).join('; ')}); not marked done`);
++    return;
++  }
++  fs.mkdirSync(dir, { recursive: true });
++  fs.writeFileSync(done, JSON.stringify({ day, odte, weekly, summary, at: Date.now() }));
++  console.log(`${day}: ${odte.length} same-day, ${weekly.length} weekly chains, ${Math.round((Date.now() - t0) / 1000)} s, ${asked} asks so far`);
++}
++
++async function main(): Promise<void> {
++  const stopAt = Date.now() + MINUTES * 60_000;
++  const years: number[] = [];
++  for (let y = Number(FROM.slice(0, 4)); y >= Number(TO.slice(0, 4)); y--) years.push(y);
++  const cal: string[] = [];
++  for (const y of years.slice().reverse()) cal.push(...(await sessions(y)));
++  /* the sessions after FROM too (a weekly expiry's count of sessions ahead): the weekdays that are not holidays */
++  cal.push(...(await sessions(Number(FROM.slice(0, 4)) + 1).catch(() => [])));
++  const last = cal[cal.length - 1];
++  for (let d = addDays(last, 1); d <= addDays(last, 14); d = addDays(d, 1)) {
++    const wd = new Date(`${d}T12:00:00Z`).getUTCDay();
++    if (wd !== 0 && wd !== 6 && !MARKET_HOLIDAYS.has(d)) cal.push(d);
++  }
++  const exps = new Map<string, Set<string>>();
++  for (const r of [...new Set([...ODTE_ROOTS, ...WEEKLY_ROOTS])]) exps.set(r, await expirations(r));
++  const days = cal.filter(d => d <= FROM && d >= TO).sort().reverse();
++  console.log(`${days.length} sessions ${days[days.length - 1]} … ${days[0]}, conc ${CONC}`);
++  for (const d of days) {
++    if (Date.now() > stopAt) {
++      console.log('time box reached; resume to continue');
++      break;
++    }
++    await oneDay(d, cal, exps);
++  }
++}
++
++if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
++  main().then(() => process.exit(0), e => { console.error(e); process.exit(1); });
++}
+diff --git a/slayer/research/challenger/localHost.ts b/slayer/research/challenger/localHost.ts
+new file mode 100644
+index 0000000..b1177c9
+--- /dev/null
++++ b/slayer/research/challenger/localHost.ts
+@@ -0,0 +1,200 @@
++/*
++  The engine's terminal, answered from the challenger's bulk cache (fetch.ts): the same requests the scan's late path
++  makes (option/at_time/quote, the 30-minute option/history/quote window, the day's 1-minute bars, the expirations,
++  the open interest), so the engine's own code builds every row, exactly as the replay does, with no request.
++  One-second quotes (the ledger's stop/target minutes, Book C's sweep) are not in the bulk cache: they are read from
++  the terminal once and kept under data/cache1s/ (only when CHAL_NET=1; otherwise answered "no data").
++*/
++import fs from 'node:fs';
++import path from 'node:path';
++import { DATA, readGz, barFile, get } from './fetch';
++import { nyWallTime } from '../../src/core/nyTime';
++import type { ThetaAnswer } from '../../src/data/compassHost';
++
++export interface Q { strike: number; right: 'C' | 'P'; bid: number; ask: number; bs: number; as: number }
++export interface Chain { root: string; expiry: string; byMinute: Map<string, Q[]>; byContract: Map<string, { t: number; key: string; bid: number; ask: number }[]>; keysOn: Map<string, string[]> }
++
++const ymd = (s: string) => s.replace(/-/g, '');
++const iso = (s: string) => (/^\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : s);
++export const ckey = (strike: number, right: string) => `${strike}|${right}`;
++export const minuteMs = (key: string) => nyWallTime(Number(key.slice(0, 4)), Number(key.slice(5, 7)), Number(key.slice(8, 10)), Number(key.slice(11, 13)), Number(key.slice(14, 16)));
++
++export function loadChain(day: string, root: string, expiry: string): Chain | null {
++  const file = path.join(DATA, 'raw', ymd(day), `${root}_${ymd(expiry)}.csv.gz`);
++  if (!fs.existsSync(file)) return null;
++  const byMinute = new Map<string, Q[]>();
++  const byContract = new Map<string, { t: number; key: string; bid: number; ask: number }[]>();
++  const ms = new Map<string, number>();
++  for (const line of readGz(file).split('\n')) {
++    if (!line) continue;
++    const [k, strike, right, bid, ask, bs, as] = line.split(',');
++    const q: Q = { strike: Number(strike), right: right === 'C' ? 'C' : 'P', bid: Number(bid), ask: Number(ask), bs: Number(bs), as: Number(as) };
++    let l = byMinute.get(k);
++    if (!l) byMinute.set(k, (l = []));
++    l.push(q);
++    let t = ms.get(k);
++    if (t == null) ms.set(k, (t = minuteMs(k)));
++    const ck = ckey(q.strike, q.right);
++    let p = byContract.get(ck);
++    if (!p) byContract.set(ck, (p = []));
++    p.push({ t, key: k, bid: q.bid, ask: q.ask });
++  }
++  for (const p of byContract.values()) p.sort((a, b) => a.t - b.t);
++  const keysOn = new Map<string, string[]>();
++  for (const k of byMinute.keys()) {
++    const d = k.slice(0, 10);
++    let l = keysOn.get(d);
++    if (!l) keysOn.set(d, (l = []));
++    l.push(k);
++  }
++  for (const l of keysOn.values()) l.sort();
++  return { root, expiry: iso(expiry), byMinute, byContract, keysOn };
++}
++
++export interface BarRow { key: string; o: number; h: number; l: number; c: number; v: number }
++const barCache = new Map<string, Map<string, BarRow[]>>();
++export function barsOn(sym: string, day: string): BarRow[] {
++  const month = iso(day).slice(0, 7);
++  const ck = `${sym}|${month}`;
++  let byDay = barCache.get(ck);
++  if (!byDay) {
++    byDay = new Map();
++    const file = barFile(sym, month);
++    if (fs.existsSync(file)) {
++      for (const line of readGz(file).split('\n')) {
++        if (!line) continue;
++        const [k, o, h, l, c, v] = line.split(',');
++        const d = k.slice(0, 10);
++        let list = byDay.get(d);
++        if (!list) byDay.set(d, (list = []));
++        list.push({ key: k, o: Number(o), h: Number(h), l: Number(l), c: Number(c), v: Number(v) });
++      }
++    }
++    barCache.set(ck, byDay);
++  }
++  return byDay.get(iso(day)) ?? [];
++}
++
++function oiOf(day: string, root: string, expiry: string): { strike: number; right: string; oi: number }[] | null {
++  const file = path.join(DATA, 'raw', ymd(day), `${root}_${ymd(expiry)}.oi.csv.gz`);
++  if (!fs.existsSync(file)) return null;
++  return readGz(file).split('\n').filter(Boolean).map(l => {
++    const [k, r, o] = l.split(',');
++    return { strike: Number(k), right: r, oi: Number(o) };
++  });
++}
++
++const RIGHT_WORD = { C: 'CALL', P: 'PUT' } as const;
++const ok = (data: unknown): ThetaAnswer => ({ status: 200, data, error: null });
++const none: ThetaAnswer = { status: 472, data: null, error: 'no_data' };
++
++/** A host for one session day. `chains` is filled lazily from the cache. */
++export function localTheta(day: string, opts: { net?: boolean; log?: (p: string) => void } = {}) {
++  const chains = new Map<string, Chain | null>();
++  const chainOf = (root: string, expiry: string) => {
++    const k = `${root}|${ymd(expiry)}`;
++    if (!chains.has(k)) chains.set(k, loadChain(day, root, expiry));
++    return chains.get(k) ?? null;
++  };
++  const unknown: string[] = [];
++  const theta = async (p: string): Promise<ThetaAnswer> => {
++    const [route, qs] = p.split('?');
++    const q = new URLSearchParams(qs ?? '');
++    const sym = (q.get('symbol') ?? '').toUpperCase();
++    if (route === '/option/list/expirations') {
++      const file = path.join(DATA, 'meta', `exp_${sym}.json`);
++      if (!fs.existsSync(file)) return none;
++      return ok((JSON.parse(fs.readFileSync(file, 'utf8')) as string[]).map(e => ({ symbol: sym, expiration: e })));
++    }
++    if (route === '/stock/history/ohlc' || route === '/index/history/ohlc') {
++      const d = q.get('start_date') ?? q.get('date') ?? '';
++      const rows = barsOn(sym, d);
++      if (!rows.length) return none;
++      return ok(rows.map(b => ({ timestamp: `${b.key.slice(0, 10)}T${b.key.slice(11, 16)}:00.000`, open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v })));
++    }
++    if (route === '/option/snapshot/open_interest') {
++      const rows = oiOf(day, sym, q.get('expiration') ?? '');
++      if (!rows || !rows.length) return none;
++      return ok(rows.map(r => ({ symbol: sym, strike: r.strike, right: r.right === 'C' ? 'CALL' : 'PUT', open_interest: r.oi })));
++    }
++    if (route === '/option/at_time/quote') {
++      const secs = (q.get('time_of_day') ?? '').slice(6, 8);
++      if (secs && secs !== '00') return opts.net ? cachedNet(p) : none;
++      const c = chainOf(sym, q.get('expiration') ?? '');
++      if (!c) return none;
++      const d = iso(q.get('start_date') ?? '');
++      const tod = (q.get('time_of_day') ?? '').slice(0, 5);
++      const list = c.byMinute.get(`${d} ${tod}`);
++      if (!list?.length) return none;
++      const stamp = `${d}T${tod}:00.000`;
++      return ok(list.map(x => ({ contract: { symbol: sym, strike: x.strike, right: RIGHT_WORD[x.right], expiration: c.expiry }, data: [{ timestamp: stamp, bid: x.bid, ask: x.ask, bid_size: x.bs, ask_size: x.as }] })));
++    }
++    if (route === '/option/history/quote') {
++      const interval = q.get('interval') ?? '1m';
++      const strike = q.get('strike');
++      const d = iso(q.get('start_date') ?? q.get('date') ?? '');
++      if (interval === '1s') {
++        if (!opts.net) return none;
++        return cachedNet(p);
++      }
++      const c = chainOf(sym, q.get('expiration') ?? '');
++      if (!c) return none;
++      const step = interval === '5m' ? 5 : 1;
++      const from = (q.get('start_time') ?? '00:00:00').slice(0, 5);
++      const to = (q.get('end_time') ?? '23:59:00').slice(0, 5);
++      const right = (q.get('right') ?? '').toLowerCase();
++      const out = new Map<string, { contract: Record<string, unknown>; data: Record<string, unknown>[] }>();
++      for (const k of c.keysOn.get(d) ?? []) {
++        const hm = k.slice(11, 16);
++        if (hm > to) break;
++        const list = c.byMinute.get(k) ?? [];
++        if (hm < from || hm > to) continue;
++        const mm = Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
++        if (mm % step) continue;
++        for (const x of list) {
++          if (strike != null && strike !== '*' && Math.abs(Number(strike) - x.strike) > 1e-6) continue;
++          if (right && right !== 'both' && RIGHT_WORD[x.right].toLowerCase() !== right) continue;
++          const id = ckey(x.strike, x.right);
++          let row = out.get(id);
++          if (!row) out.set(id, (row = { contract: { symbol: sym, strike: x.strike, right: RIGHT_WORD[x.right], expiration: c.expiry }, data: [] }));
++          row.data.push({ timestamp: `${d}T${hm}:00.000`, bid: x.bid, ask: x.ask, bid_size: x.bs, ask_size: x.as });
++        }
++      }
++      if (!out.size) return none;
++      for (const r of out.values()) r.data.sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));
++      return ok([...out.values()]);
++    }
++    if (/\/snapshot\//.test(route)) return { status: 404, data: null, error: 'a replay reads no live snapshot' };
++    unknown.push(p);
++    opts.log?.(p);
++    return none;
++  };
++  return { theta, chainOf, unknown };
++}
++
++/** One-second quotes for one contract window, from the terminal once, then from disk. */
++async function cachedNet(p: string): Promise<ThetaAnswer> {
++  const key = p.replace(/[^A-Za-z0-9]+/g, '_').slice(0, 200);
++  const file = path.join(DATA, 'cache1s', `${key}.json`);
++  if (fs.existsSync(file)) {
++    const doc = JSON.parse(fs.readFileSync(file, 'utf8')) as { status: number; body: string };
++    return answer(doc.status, doc.body);
++  }
++  const got = await get(p.replace('format=json', 'format=json'));
++  if (got.status === 200 || got.status === 472) {
++    fs.mkdirSync(path.dirname(file), { recursive: true });
++    fs.writeFileSync(file, JSON.stringify(got));
++  }
++  return answer(got.status, got.body);
++}
++
++function answer(status: number, body: string): ThetaAnswer {
++  if (status === 472 || !body) return none;
++  if (status !== 200) return { status, data: null, error: `unavailable ${status}` };
++  try {
++    const doc = JSON.parse(body) as { response?: unknown };
++    return ok(doc.response ?? doc);
++  } catch {
++    return { status: 500, data: null, error: 'parse' };
++  }
++}
+diff --git a/slayer/research/challenger/prof.py b/slayer/research/challenger/prof.py
+new file mode 100644
+index 0000000..85c1b64
+--- /dev/null
++++ b/slayer/research/challenger/prof.py
+@@ -0,0 +1,16 @@
++"""Self-time hotspots of the largest .cpuprofile in a folder (the builder's profile)."""
++import json, glob, collections, os, sys
++f = sorted(glob.glob(os.path.join(sys.argv[1], '*.cpuprofile')), key=os.path.getsize)[-1]
++p = json.load(open(f))
++nodes = {n['id']: n for n in p['nodes']}
++self_t = collections.Counter()
++for s, d in zip(p['samples'], p['timeDeltas']):
++    self_t[s] += d
++agg = collections.Counter()
++for nid, t in self_t.items():
++    cf = nodes[nid]['callFrame']
++    agg[(cf['functionName'], os.path.basename(cf['url']), cf['lineNumber'])] += t
++tot = sum(agg.values())
++print(f'total {tot / 1e6:.0f} s')
++for k, v in agg.most_common(30):
++    print(f'{v / tot * 100:5.1f}% {k}')
+diff --git a/slayer/research/challenger/train.py b/slayer/research/challenger/train.py
+new file mode 100644
+index 0000000..e296d51
+--- /dev/null
++++ b/slayer/research/challenger/train.py
+@@ -0,0 +1,206 @@
++"""Challenger walk-forward: train, calibrate, choose the line, call through the seats, on held-out sessions only.
++
++  python -I research/challenger/train.py [--block 10] [--embargo 5] [--min-train 30] [--tag v1] [--final]
++
++Protocol (fixed before looking at any test session):
++  - Two machines: the same-day sleeve (0DTE) and the weekly sleeve (1-7 DTE), one LightGBM binary classifier each,
++    on the challenger inputs (c0..c59, src/data/challengerFeatures.ts), label = the 1.50x take-profit reached
++    before the stop under Book A's non-runner rules (the books' own exit, one-minute NBBO).
++  - Walk-forward by session: the held-out sessions come in consecutive blocks (`--block` sessions); a block's
++    models see only sessions that end `--embargo` sessions before it starts (purge: every label closes inside its
++    own session, so no training label overlaps a test session; the embargo keeps the slow inputs, e.g. the 15-session
++    HAR and the prior session, from straddling the boundary).
++  - Hyper-parameters fixed a priori (PARAMS below), never tuned on a test block.
++  - Inside each fold's training sessions, the last 25% (by date) are its calibration sessions: the trees are fit on
++    the first 75%; an isotonic map per time-of-day bucket is fit on the calibration sessions' raw scores; the line
++    (one number for both machines) is the one on a fixed grid that maximises the expected P&L per session of the
++    calls the seats make on the calibration sessions (no fees). Then the test block is scored, calibrated and called.
++  - The current book on the same sessions: the Hit score through the same seats at its own line (0.7067), with the
++    Runner score's ride rule; the Late sweep from the engine's own record. Exits identical (call_pnl).
++"""
++import argparse, json, os, sys, time
++import numpy as np
++import pandas as pd
++import lightgbm as lgb
++from sklearn.isotonic import IsotonicRegression
++
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++import common as C
++
++PARAMS = dict(objective='binary', learning_rate=0.03, num_leaves=31, min_data_in_leaf=400, feature_fraction=0.8,
++              bagging_fraction=0.7, bagging_freq=1, lambda_l2=5.0, max_bin=255, verbose=-1, num_threads=4, seed=20261031,
++              deterministic=True, force_row_wise=True)
++ROUNDS = 400
++LINES = np.round(np.arange(0.30, 0.92, 0.02), 2)
++FEATS = [f'c{i}' for i in range(60)]
++
++
++def bucket(df):
++    """Time-of-day buckets the calibration is fit in: overnight, pre-market, and four regular-session windows."""
++    k = df['c0'].values
++    t = df['c3'].values
++    b = np.full(len(df), 9)
++    b[k == 0] = 0
++    b[k == 1] = 1
++    reg = k == 2
++    b[reg & (t < 60)] = 2
++    b[reg & (t >= 60) & (t < 150)] = 3
++    b[reg & (t >= 150) & (t < 270)] = 4
++    b[reg & (t >= 270)] = 5
++    return b
++
++
++def label(df):
++    return df['whyA'].str.startswith('Take profit').astype(int).values
++
++
++def fit(train):
++    ds = lgb.Dataset(train[FEATS].values.astype(np.float32), label=label(train), feature_name=FEATS, free_raw_data=True)
++    return lgb.train(PARAMS, ds, num_boost_round=ROUNDS)
++
++
++class Calib:
++    def __init__(self):
++        self.maps = {}
++
++    def fit(self, raw, y, b):
++        glob = IsotonicRegression(out_of_bounds='clip', y_min=0, y_max=1).fit(raw, y)
++        self.maps['all'] = glob
++        for k in np.unique(b):
++            m = b == k
++            if m.sum() >= 2000 and y[m].sum() >= 100:
++                self.maps[int(k)] = IsotonicRegression(out_of_bounds='clip', y_min=0, y_max=1).fit(raw[m], y[m])
++        return self
++
++    def __call__(self, raw, b):
++        out = self.maps['all'].predict(raw)
++        for k, m in self.maps.items():
++            if k == 'all':
++                continue
++            sel = b == k
++            if sel.any():
++                out[sel] = m.predict(raw[sel])
++        return out
++
++    def dump(self):
++        def one(m):
++            return {'x': [float(v) for v in m.X_thresholds_], 'y': [float(v) for v in m.y_thresholds_]}
++        return {str(k): one(m) for k, m in self.maps.items()}
++
++
++def machine_scores(df, models, calibs):
++    """Each row scored by its own sleeve's machine, raw and calibrated."""
++    raw = np.full(len(df), np.nan)
++    cal = np.full(len(df), np.nan)
++    b = bucket(df)
++    for sleeve in ('odte', 'weekly'):
++        m = (df['sleeve'] == sleeve).values
++        if not m.any() or sleeve not in models:
++            continue
++        r = models[sleeve].predict(df.loc[m, FEATS].values.astype(np.float32))
++        raw[m] = r
++        cal[m] = calibs[sleeve](r, b[m])
++    return raw, cal
++
++
++def per_day(df, idx, pnl):
++    out = {d: [] for d in df['day'].unique()}
++    for i in idx:
++        out[df.at[i, 'day']].append(pnl[i])
++    return out
++
++
++def choose_line(df, cal, pnl):
++    best = (-np.inf, None, 0)
++    days = df['day'].nunique()
++    for line in LINES:
++        idx = C.simulate(df, cal, line)
++        if len(idx) < max(10, days // 2):
++            continue
++        per_session = sum(pnl[i] for i in idx) / days
++        if per_session > best[0]:
++            best = (per_session, float(line), len(idx))
++    return best
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument('--block', type=int, default=10)
++    ap.add_argument('--embargo', type=int, default=5)
++    ap.add_argument('--min-train', type=int, default=30)
++    ap.add_argument('--tag', default='v1')
++    ap.add_argument('--final', action='store_true')
++    a = ap.parse_args()
++    days = C.days_built()
++    print(f'{len(days)} sessions built: {days[0]} .. {days[-1]}', flush=True)
++    t0 = time.time()
++    df = C.load(days)
++    df = df[df['fill'].notna()].reset_index(drop=True)
++    pnl, ride = C.call_pnl(df)
++    print(f'{len(df)} rows with a fill, {time.time() - t0:.0f} s', flush=True)
++    out_dir = os.path.join(C.DATA, 'wf', a.tag)
++    os.makedirs(out_dir, exist_ok=True)
++    folds = []
++    test_days = days[a.min_train + a.embargo:]
++    blocks = [test_days[i:i + a.block] for i in range(0, len(test_days), a.block)]
++    held = []
++    for bi, block in enumerate(blocks):
++        first = days.index(block[0])
++        train_days = days[:max(0, first - a.embargo)]
++        n_cal = max(5, len(train_days) // 4)
++        fit_days, cal_days = train_days[:-n_cal], train_days[-n_cal:]
++        tr = df[df['day'].isin(fit_days)]
++        ca = df[df['day'].isin(cal_days)]
++        te = df[df['day'].isin(block)]
++        models, calibs = {}, {}
++        for sleeve in ('odte', 'weekly'):
++            trs = tr[tr['sleeve'] == sleeve]
++            cas = ca[ca['sleeve'] == sleeve]
++            if len(trs) < 5000 or len(cas) < 2000:
++                continue
++            models[sleeve] = fit(trs)
++            raw = models[sleeve].predict(cas[FEATS].values.astype(np.float32))
++            calibs[sleeve] = Calib().fit(raw, label(cas), bucket(cas))
++        _, ca_cal = machine_scores(ca, models, calibs)
++        ca = ca.copy()
++        gain, line, n = choose_line(ca, ca_cal, pnl[ca.index.values] if False else C.call_pnl(ca)[0])
++        _, te_cal = machine_scores(te, models, calibs)
++        te = te.copy()
++        te['chal'] = te_cal
++        held.append(te[['day', 'sleeve', 'contract', 'mark', 'p1', 'prun', 'chal', 'session']].assign(line=line))
++        folds.append({'block': block, 'train': [fit_days[0], fit_days[-1]], 'cal': [cal_days[0], cal_days[-1]], 'line': line, 'cal_gain_per_day': gain, 'cal_calls': n})
++        print(f'fold {bi}: test {block[0]}..{block[-1]} train {fit_days[0]}..{fit_days[-1]} cal {cal_days[0]}..{cal_days[-1]} line {line} ({n} calls, ${gain:.0f}/day on calibration) {time.time() - t0:.0f} s', flush=True)
++    if held:
++        h = pd.concat(held)
++        h.to_parquet(os.path.join(out_dir, 'heldout_scores.parquet'))
++        with open(os.path.join(out_dir, 'folds.json'), 'w') as f:
++            json.dump({'params': PARAMS, 'rounds': ROUNDS, 'lines': LINES.tolist(), 'block': a.block, 'embargo': a.embargo, 'min_train': a.min_train, 'folds': folds}, f, indent=1)
++    if a.final:
++        final(df, days, out_dir, a)
++
++
++def final(df, days, out_dir, a):
++    """The shadow models: fit on every session but the last 25% (calibration and the line on those)."""
++    n_cal = max(5, len(days) // 4)
++    fit_days, cal_days = days[:-n_cal], days[-n_cal:]
++    tr = df[df['day'].isin(fit_days)]
++    ca = df[df['day'].isin(cal_days)].copy()
++    models, calibs, meta = {}, {}, {}
++    for sleeve in ('odte', 'weekly'):
++        models[sleeve] = fit(tr[tr['sleeve'] == sleeve])
++        cas = ca[ca['sleeve'] == sleeve]
++        raw = models[sleeve].predict(cas[FEATS].values.astype(np.float32))
++        calibs[sleeve] = Calib().fit(raw, label(cas), bucket(cas))
++        models[sleeve].save_model(os.path.join(out_dir, f'challenger-{sleeve}.txt'))
++        meta[sleeve] = {'trees': models[sleeve].num_trees(), 'calibration': calibs[sleeve].dump()}
++    _, ca_cal = machine_scores(ca, models, calibs)
++    gain, line, n = choose_line(ca, ca_cal, C.call_pnl(ca)[0])
++    doc = {'format': 'compass-challenger/1', 'inputs': len(FEATS), 'line': line, 'fit': [fit_days[0], fit_days[-1]], 'calibration_days': [cal_days[0], cal_days[-1]],
++           'buckets': 'c0 0 overnight, 1 pre-market; regular c3 <60, 60-150, 150-270, >=270', 'machines': meta, 'params': PARAMS, 'rounds': ROUNDS}
++    with open(os.path.join(out_dir, 'challenger-meta.json'), 'w') as f:
++        json.dump(doc, f, separators=(',', ':'))
++    print(f'final: fit {fit_days[0]}..{fit_days[-1]}, line {line} ({n} calls, ${gain:.0f}/day on calibration)')
++
++
++if __name__ == '__main__':
++    main()
+-- 
+2.43.0
+

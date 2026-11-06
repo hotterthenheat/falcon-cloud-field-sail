@@ -1,0 +1,37 @@
+From 4da612a5fe36353bff117b0d5b25643c2e89cf4b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 14:21:38 +0000
+Subject: [PATCH 13/29] =?UTF-8?q?Challenger:=20replay=20proof=20=E2=80=94?=
+ =?UTF-8?q?=202026-10-30=20before=20and=20after=20the=20challenger:=20the?=
+ =?UTF-8?q?=20same=20calls,=20marks=20and=20funnels?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/LOG.md | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/slayer/research/challenger/LOG.md b/slayer/research/challenger/LOG.md
+index 66b77a0..f3775bc 100644
+--- a/slayer/research/challenger/LOG.md
++++ b/slayer/research/challenger/LOG.md
+@@ -70,6 +70,13 @@ machine (OpenMP spin-wait); `OMP_WAIT_POLICY=PASSIVE` and two threads: ~60 s a f
+ 2020-02-18..04-30, 2022-01-03..10-31, 2024-07-15..08-30 for SPY, QQQ, IWM, SPXW), 38 built. A detached supervisor
+ (`keepgoing.sh`) keeps fetching (newest first, back to 2025-01) and building (newest-first and oldest-first).
+ 
++**Live path unchanged: the replay proof.** `replay_proof.sh`: `scripts/compass-replay.ts 2026-10-30` (09:30-15:05)
++run with the code before the challenger (a git archive of 6657dad) and with this branch, through a caching relay so
++both read byte-identical answers (8,970 terminal reads, the second run all from the relay). The same 10 calls
++(GOOGL 280C, AMZN 232.50C, AMD 507.50C, AAPL 345P, GLD 362P in Book A at 09:45; IWM 278C, QQQ 686C, SPY 752C,
++XSP 755C, SPXW 7580C in Book C), the same scores, runner flags and P&L, and every mark and gate funnel identical.
++CHECKS: none.
++
+ ## LOCKED FINAL HOLDOUT (set 2026-10-31 13:15 UTC, before any of the tests below)
+ 
+ Nothing is fit, calibrated, lined or chosen on these sessions. Each candidate is scored on them once, after its
+-- 
+2.43.0
+

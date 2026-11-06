@@ -1,0 +1,39 @@
+From c9dae8e2dbb01fbf759d48a13d449d9bd80aa8d6 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 17:43:34 +0000
+Subject: [PATCH 24/29] =?UTF-8?q?Challenger:=20research=20log=20=E2=80=94?=
+ =?UTF-8?q?=20removal,=20naming,=20descriptive=20scans?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/LOG.md | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/slayer/research/challenger/LOG.md b/slayer/research/challenger/LOG.md
+index 2acc47e..faebdbf 100644
+--- a/slayer/research/challenger/LOG.md
++++ b/slayer/research/challenger/LOG.md
+@@ -234,6 +234,16 @@ break-even move, flat 09:20), SPXW overnight candidates after midnight at |delta
+ 
+ K5 is scored on the second holdout (H2: 2022-07..09, 2025-01..03) once, when it is built.
+ 
++**Removed from the branch (coordinator, 2026-10-31):** the v1 machines and their meta (below the bar). The shadow
++is off until a machine passes; its display name is "Model 4 · shadow" (the owner's naming: a number, never a score
++or a percentage). The golden now proves the "calling shadow changes nothing live" property with a test-only
++rules machine (CHALLENGER_TEST_META), so it holds with nothing shipped.
++
++**Descriptive scans on development (not candidates):** under the hard-stop exit the regular session's best cells
++(index roots, 0DTE, 40-60 delta, first two hours) win 46-48% and lose 3-5% a candidate: no pocket near 60% there.
++Overnight after midnight, SPXW wins 64-97% a candidate below 0.30 delta in both sleeves (weekly 0.20-0.25: 91%);
++XSP 50-67% (weekly 0.10-0.20 best); RUTW 11-37% and loses.
++
+ **Pipeline v2.** The terminal was restarted or down several times this afternoon and the builders, which read Book
+ C's 15:20:15 board and the 1-second exits from it, stalled. Now the fetcher keeps Book C's board with the raw cache,
+ the builders need no terminal (~70 s a regime session, ~5 min a full one), and the 1-second exits are settled
+-- 
+2.43.0
+

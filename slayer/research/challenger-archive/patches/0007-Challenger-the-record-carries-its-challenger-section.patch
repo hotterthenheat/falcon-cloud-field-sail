@@ -1,0 +1,92 @@
+From 0d2f50ec3e601c4bbc4245a46983b9965ff7e163 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 12:14:53 +0000
+Subject: [PATCH 07/29] Challenger: the record carries its challenger section
+ only once the shadow runs (a reader's record is unchanged)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/LOG.md       | 11 +++++++++++
+ slayer/research/challenger/keepgoing.sh |  3 ++-
+ slayer/src/data/compassServer.ts        |  7 ++++++-
+ 3 files changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/slayer/research/challenger/LOG.md b/slayer/research/challenger/LOG.md
+index 5fe9131..2bea1e2 100644
+--- a/slayer/research/challenger/LOG.md
++++ b/slayer/research/challenger/LOG.md
+@@ -49,6 +49,17 @@ NDXP/SPXW contracts at $30-120 (one NDXP call: +$6,090, another -$4,870): five s
+ return target with a dollar line chose exactly those contracts and lost (-$8,230 worst). The Runner score never
+ mattered: every current call fired at 09:45-09:50, before Model 2 can be scored (10:30), so no Book A call rode.
+ 
++**v2: stack the live Hit and Runner scores as inputs** (same protocol, 16 held-out sessions): challenger 70 calls,
++27% hit, -$90/call [-347, +143], -$394/session; the Hit score's book +$55/call [-185, +293] on the same sessions.
++Paired difference per call -$145 [-446, +149]. No edge.
++
++**Exit hypothesis (one fixed rule, no fitting): Book A always rides the ratchet** (instead of the Runner score's
++ride, which never fires before 10:30, i.e. never for these calls). On the Hit score's own 147 calls over 30 built
++sessions: +$159/call [-126, +466] against +$82 [-124, +276]; paired difference +$77/call [-56, +261], +$377/session
++[-278, +1279]. Riding is worse on 31 of the 43 calls where it differs, better on 12, and two NDXP calls (+$8,500
++and +$8,700 more) carry the mean. Suggestive, not shown. To be re-tested on the sessions still to be built (it was
++formed after seeing these).
++
+ Next: (a) more sessions (the binding constraint: ~7 min of CPU a session on a shared machine); (b) stack the live
+ Hit and Runner scores as inputs (the challenger should then do at least what the Hit score does, plus what the
+ session-relative inputs add); (c) report P&L per call also as return (scale-free) beside dollars; (d) the regime
+diff --git a/slayer/research/challenger/keepgoing.sh b/slayer/research/challenger/keepgoing.sh
+index 440c203..6086952 100644
+--- a/slayer/research/challenger/keepgoing.sh
++++ b/slayer/research/challenger/keepgoing.sh
+@@ -5,7 +5,8 @@
+ #   setsid nohup bash research/challenger/keepgoing.sh > research/challenger/data/keepgoing.log 2>&1 &
+ cd "$(dirname "$0")/../.." || exit 1
+ echo $$ > research/challenger/data/keepgoing.pid
+-export CHAL_NET=1 CHAL_CONC=2 OMP_WAIT_POLICY=PASSIVE
++export CHAL_NET=1 CHAL_CONC=1 OMP_WAIT_POLICY=PASSIVE
++sleep ${KEEP_DELAY:-0}
+ for round in $(seq 1 12); do
+   echo "round $round $(date -u +%FT%TZ)"
+   npx tsx research/challenger/fetch.ts --from 2026-10-30 --to 2025-01-01 --minutes 105 >> research/challenger/data/fetch.log 2>&1 &
+diff --git a/slayer/src/data/compassServer.ts b/slayer/src/data/compassServer.ts
+index cbd881a..9f29ac6 100644
+--- a/slayer/src/data/compassServer.ts
++++ b/slayer/src/data/compassServer.ts
+@@ -369,7 +369,9 @@ export function startCompassEngine(o: EngineOptions): Engine {
+       lottery: lotterySwept() === day,
+       state: exportModelState(),
+       meta: { spots: m.spots, sparks: m.sparks, line: m.line, theta: m.theta, downSince: m.downSince },
+-      ...(shadowOn ? { challenger: exportChallenger(day) } : {}),
++      /* only once the shadow runs in this process, or the session already holds its calls: a record written without
++         it (a reader, the shadow off, the files missing) is the record it always was */
++      ...(shadowOn && (shadowRunning || exportChallenger(day).calls.length) ? { challenger: exportChallenger(day) } : {}),
+     };
+   };
+ 
+@@ -472,6 +474,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
+   let rowOff: (() => void) | null = null;
+   /* the shadow challenger: scores beside the live books in the scanner process, settles its own would-calls */
+   let shadowTimer: ReturnType<typeof setInterval> | null = null;
++  let shadowRunning = false;
+   let shadowOff: (() => void) | null = null;
+   const clearRoleTimers = () => {
+     for (const t of [lockTimer, reloadTimer, rowTimer, reviewTimer, shadowTimer]) if (t) clearInterval(t);
+@@ -480,6 +483,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
+     rowOff = null;
+     shadowOff?.();
+     shadowOff = null;
++    shadowRunning = false;
+     stopChallenger();
+   };
+ 
+@@ -532,6 +536,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
+     if (shadowOn) {
+       shadowOff = onChallengerChange(changed);
+       void startChallenger(log).then(on => {
++        shadowRunning = on;
+         if (on && !readOnly) shadowTimer = setInterval(() => void settleChallenger().catch(e => log(`[compass] challenger settlement failed: ${(e as Error).message}`)), 60_000);
+       });
+     }
+-- 
+2.43.0
+

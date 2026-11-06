@@ -1,0 +1,56 @@
+From 44d96ab2145bd5a73084d3c985562940a134be55 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 14:54:52 +0000
+Subject: [PATCH 15/29] Challenger: the builder can run the shipped shadow
+ beside the engine for a parity check
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/build.ts | 23 ++++++++++++++++++++---
+ 1 file changed, 20 insertions(+), 3 deletions(-)
+
+diff --git a/slayer/research/challenger/build.ts b/slayer/research/challenger/build.ts
+index fa489bb..499051c 100644
+--- a/slayer/research/challenger/build.ts
++++ b/slayer/research/challenger/build.ts
+@@ -77,6 +77,13 @@ async function buildOne(day: string): Promise<void> {
+     batches.push({ batch: b.batch, mark: b.mark, job, sym: curJob.sym, sleeve: curJob.sleeve });
+   });
+ 
++  /* CHAL_SHADOW=1: the shipped shadow challenger runs beside the engine (its calls are written beside the engine's,
++     for the parity check against research/challenger/candidates.py) */
++  const shadow = process.env.CHAL_SHADOW === '1' ? await import('../../src/data/compassChallenger') : null;
++  if (shadow) {
++    shadow.resetChallenger(day);
++    if (!(await shadow.startChallenger(line => console.log(line)))) console.log(`${day}: the shadow did not start`);
++  }
+   const [y, mo, d] = [Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10))];
+   const endMin = Math.min(15 * 60 + 5, (closeMin ?? 16 * 60) - 5);
+   const endAt = nyWallTime(y, mo, d, Math.floor(endMin / 60), endMin % 60);
+@@ -214,9 +221,19 @@ async function buildOne(day: string): Promise<void> {
+     lines.push(row.join(','));
+   }
+   fs.mkdirSync(OUT, { recursive: true });
+-  const tmp = path.join(OUT, `${day}.csv.gz.tmp`);
+-  fs.writeFileSync(tmp, zlib.gzipSync(lines.join('\n')));
+-  fs.renameSync(tmp, path.join(OUT, `${day}.csv.gz`));
++  if (process.env.CHAL_SHADOW !== '1') {
++    const tmp = path.join(OUT, `${day}.csv.gz.tmp`);
++    fs.writeFileSync(tmp, zlib.gzipSync(lines.join('\n')));
++    fs.renameSync(tmp, path.join(OUT, `${day}.csv.gz`));
++  }
++  const shadowOut = shadow ? shadow.shadowCalls().map(c => ({ contract: c.contract, sleeve: c.sleeve, book: c.book, mark: c.mark, pc: c.pc, runner: c.runner, session: c.tapeSession ?? null })) : undefined;
++  if (shadow) shadow.stopChallenger();
++  if (process.env.CHAL_SHADOW === '1') {
++    /* a parity run writes only its shadow calls, beside the built day */
++    fs.writeFileSync(path.join(OUT, `${day}.shadow.json`), JSON.stringify({ day, shadow: shadowOut }, null, 1));
++    console.log(`${day}: ${shadowOut?.length ?? 0} shadow calls`);
++    return;
++  }
+   fs.writeFileSync(path.join(OUT, `${day}.calls.json`), JSON.stringify({ version: VERSION, day, close: closeMin, marks, rows: kept.length, unknown: host.unknown.slice(0, 20), calls }, null, 1));
+   console.log(`${day}: ${marks} marks, ${kept.length} rows, ${calls.length} engine would-calls, ${Math.round((Date.now() - t0) / 1000)} s`);
+ }
+-- 
+2.43.0
+

@@ -1,0 +1,80 @@
+From e9cf915885613e1aaf1060ff78847b13a2767013 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 18:37:41 +0000
+Subject: [PATCH 26/29] Challenger: priority fetch loop for the second
+ holdout's 2025 sessions; the supervisor can leave the terminal to it
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/extra_fetch.sh   |  2 +-
+ slayer/research/challenger/fetch_loop.sh    |  8 ++++++++
+ slayer/research/challenger/keepgoing2.sh    | 12 ++++++++----
+ slayer/research/challenger/stop_pipeline.py |  2 +-
+ 4 files changed, 18 insertions(+), 6 deletions(-)
+ create mode 100644 slayer/research/challenger/fetch_loop.sh
+
+diff --git a/slayer/research/challenger/extra_fetch.sh b/slayer/research/challenger/extra_fetch.sh
+index 89ad1e6..97ec15e 100644
+--- a/slayer/research/challenger/extra_fetch.sh
++++ b/slayer/research/challenger/extra_fetch.sh
+@@ -2,5 +2,5 @@
+ # One more fetch pass (two requests in flight) for ~105 minutes, newest first from FROM back to TO.
+ #   FROM=2026-08-31 TO=2025-01-01 setsid nohup bash research/challenger/extra_fetch.sh > /dev/null 2>&1 &
+ cd "$(dirname "$0")/../.." || exit 1
+-export CHAL_CONC=2
++export CHAL_CONC=${CONC:-2}
+ exec npx tsx research/challenger/fetch.ts --from "${FROM:-2026-10-30}" --to "${TO:-2025-01-01}" --minutes "${MINUTES:-105}" >> research/challenger/data/fetch2.log 2>&1
+diff --git a/slayer/research/challenger/fetch_loop.sh b/slayer/research/challenger/fetch_loop.sh
+new file mode 100644
+index 0000000..ca11b9b
+--- /dev/null
++++ b/slayer/research/challenger/fetch_loop.sh
+@@ -0,0 +1,8 @@
++#!/bin/bash
++# A priority fetch, repeated in ~100-minute passes until its range is done (each pass resumes): FROM, TO, CONC.
++#   CONC=2 FROM=2025-03-31 TO=2025-02-14 setsid nohup bash research/challenger/fetch_loop.sh > /dev/null 2>&1 &
++cd "$(dirname "$0")/../.." || exit 1
++export CHAL_CONC=${CONC:-1}
++for pass in $(seq 1 8); do
++  npx tsx research/challenger/fetch.ts --from "$FROM" --to "$TO" --minutes 100 >> research/challenger/data/fetch2.log 2>&1
++done
+diff --git a/slayer/research/challenger/keepgoing2.sh b/slayer/research/challenger/keepgoing2.sh
+index 161f18c..1871845 100644
+--- a/slayer/research/challenger/keepgoing2.sh
++++ b/slayer/research/challenger/keepgoing2.sh
+@@ -13,10 +13,14 @@ unset CHAL_NET
+ D=research/challenger/data
+ for round in $(seq 1 20); do
+   echo "round $round $(date -u +%FT%TZ)"
+-  CHAL_CONC=1 npx tsx research/challenger/fetch.ts --from 2026-10-30 --to 2025-01-01 --minutes 100 >> $D/fetch.log 2>&1 &
+-  f1=$!
+-  CHAL_CONC=1 npx tsx research/challenger/fetch.ts --sweeps --minutes 100 >> $D/fetch-sweeps.log 2>&1 &
+-  f2=$!
++  f1=; f2=
++  # NO_FETCH=1: the terminal's three slots are left to a priority fetch (extra_fetch.sh)
++  if [ -z "$NO_FETCH" ]; then
++    CHAL_CONC=1 npx tsx research/challenger/fetch.ts --from 2026-10-30 --to 2025-01-01 --minutes 100 >> $D/fetch.log 2>&1 &
++    f1=$!
++    CHAL_CONC=1 npx tsx research/challenger/fetch.ts --sweeps --minutes 100 >> $D/fetch-sweeps.log 2>&1 &
++    f2=$!
++  fi
+   CHAL_PREFIX=${B1_PREFIX:-} CHAL_BUILD_CONC=1 npx tsx research/challenger/build.ts --minutes 100 >> $D/build.log 2>&1 &
+   b1=$!
+   CHAL_BUILD_CONC=1 npx tsx research/challenger/build.ts --oldest --minutes 100 >> $D/build2.log 2>&1 &
+diff --git a/slayer/research/challenger/stop_pipeline.py b/slayer/research/challenger/stop_pipeline.py
+index 857b543..401fbd6 100644
+--- a/slayer/research/challenger/stop_pipeline.py
++++ b/slayer/research/challenger/stop_pipeline.py
+@@ -8,7 +8,7 @@ import os, signal, subprocess, sys
+ me = {os.getpid(), os.getppid()}
+ out = subprocess.run(['ps', '-eo', 'pid,ppid,args'], capture_output=True, text=True).stdout.splitlines()[1:]
+ keys = ('research/challenger/build.ts', 'research/challenger/fetch.ts', 'research/challenger/keepgoing.sh', 'research/challenger/keepgoing2.sh',
+-        'research/challenger/extra_builder.sh', 'research/challenger/extra_fetch.sh')
++        'research/challenger/extra_builder.sh', 'research/challenger/extra_fetch.sh', 'research/challenger/fetch_loop.sh')
+ hit = []
+ for line in out:
+     pid, ppid, args = line.strip().split(None, 2)
+-- 
+2.43.0
+

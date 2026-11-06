@@ -1,0 +1,211 @@
+From 5371d2d1ea494a1d785ab27dd687a031e9a08f67 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 15:51:25 +0000
+Subject: [PATCH 20/29] Challenger: categorical text columns (memory); seat
+ simulation matches the engine on 207 of 207 sessions
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ .../__pycache__/common.cpython-313.pyc        | Bin 17671 -> 18634 bytes
+ slayer/research/challenger/candidates.py      |   6 ++---
+ slayer/research/challenger/common.py          |  24 +++++++++++++-----
+ slayer/research/challenger/holdout.py         |   2 +-
+ slayer/research/challenger/overfit.py         |   2 +-
+ slayer/research/challenger/sim_check.py       |   5 ++--
+ 6 files changed, 26 insertions(+), 13 deletions(-)
+
+diff --git a/slayer/research/challenger/__pycache__/common.cpython-313.pyc b/slayer/research/challenger/__pycache__/common.cpython-313.pyc
+index bd811464107f4bf0c60a75c5fb6b4d0a3e69427c..e80d1578d4bc151c7bf2c2ab0e8b7ee046555e7c 100644
+GIT binary patch
+delta 2708
+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
+b11>$wG7S7N(q-CvV1hHUru#g7=YZ!Qr0t3O
+
+delta 1871
+zcmZvdZA@EL7{~8vZ=tL}X-i>mtiT4L<z?+)DiqBGYMBOvA!bSpyQQ_Tl>+CMAjS#m
+zoEt7medgv|GCOtI*cYAs;FPGF)46Pmaz_-rI=A@}ogb!gpY+4x^W5$wW;Qv$`@EfV
+z&-tHoZcoSA3ll8+YF5?)0e{nHe%ZLB@JO~l$7DoTkL~J40gk5?j};4@f=zgs$-0$-
+ztg{Kt*@6&dT?Xn#zfQKArK~nxOO7CzghH%~vJTdvtJSSQJLNwvIQ6X$IhmT-7mg0_
+zP<LN67<$5~=Wgt+ru7U&d!!g|M8~O9#h^4Qt1Kw%+AvU9$nm9uDn<sRAYY4S6*k$4
+z7#F@bWxZTGQ9D&LYj+>6Nk}_;UmM!BX{tuCyN|{cQ`3yt^!GWtTNbhURlD1moUoNJ
+zwie#abs1VQwkmlcw?s4q(7Y2e7F`o7aP@GdC=ZGjzb$qO9eRi_UTCe+-&kf;->KKa
+zmV#yQ{E}j-5dj@C3}`r(rqwm0FhWN<snlVtM532LUL{y^^WnnM1I!FVb{orqJq2E<
+zUSWe@3)<r&Hh5s!d!BYI<YfdMfizIlc_{YaU?{2@0>eBiJ54-DIR_yGRgV1P4OFJb
+zGTuj)AtD7rk;}B7PLrzZ3-T@qI||a)V}RGdPKS#H;S)#6f+sO>KQ?&_TyeCF9n&3K
+zeLQ1sO`Ec&Z6?2cHgny$@1iAd-fWpH**-dFb|_{?!l0N-=PkBLe|*WDWw~Nmp71Fa
+z*Ss}%a(%pF&RU{aOA;Z)T5)^Lp&rHJna{CK*2S|EHYI08f*&f||CEwbJ!keRX0PF>
+zPcb(n%|#O#ep+GJ@_Xeodv*`qt*xr{`hsZ<nm`?76%jTPHW4C(4TOF|6fU~nVf|of
+zvcrM$0=5-Sly5U{#?%z!!}!2MI0lbatYJG~Z$%j!fqjjO;Cw~(DyrdmRH)~fWRD?K
+zeV^PT(-kQ!9M=veH&bpL@e(vtj+$<E<J<71d4^QxQsqc$z-O_LUWpG?ACY7HIkZv(
+zj$a?}d5rL_h)I~JdU3%`_Z4ug+^vlVFuk(0lD3Z55gsGN5Nc+C<2C7#<XCrXfOk>+
+zX~H9r?OtV6)1*N>MM3bn`<Wk-?rIllrs~2Hwg65@Ldc;o$0Lk~s7HzhWmODIu@H)s
+z<8c>kr@?j*G<9k6d<#OR{Q$}1fI*K4;~u-=V+;h7uY2ax3sP$1z{CCj(NdH+mtlW{
+z4c@GEvV(B8c6(N;HZ}9lH37fCfeyjux_C<36X^0=nZr=yEzLiL!6}h{MmbH9J!Eyk
+zkT;i|gst8hb^xZm`>eNwGH@vx4q?fr`l`ETv07zORg^=aAl{;AnEPn}Qh{etQa2dm
+zA8AHFR&|j9RoC0cPl8fkX80MyZzQkP-(e7sqY3}icBN)|8a-{Mc1Sjqn?4}-4B;%E
+zvEJKO^Bbl<gptNlcIyA~F3L|+_b&;wV*VAvDe{wK&k)WLW}&^QioFlxO?_iuQ{Wqf
+zGb<&`90leHRss+-RXAC6hWNJx?dYgv?IL`Ka9UKO)EyY@#_zLg3|zN3iO0_qejr>R
+z+)&Rc@VC%cS%W4czeveT1QIhf=O4-X3F5vA!yjlKNq*|Pk1bzE(ai|FEF|mYnREoU
+z8v*_&l=~O47V!DkGY<RwdA)n7&rXDz-q_uGZ;P*kFQiZ-f&Mu-ee*ee?fDQvyFqkN
+uIc*}R*K0SP=aZF<P>uEd1Hs`)=pKFzU4~6Q2uqvC(iroxzl@M*cKr)UJ?vEg
+
+diff --git a/slayer/research/challenger/candidates.py b/slayer/research/challenger/candidates.py
+index 50eda66..8e9e771 100644
+--- a/slayer/research/challenger/candidates.py
++++ b/slayer/research/challenger/candidates.py
+@@ -26,7 +26,7 @@ def overnight_rule(df, roots):
+     """The overnight rule: overnight session, these roots, |delta| 0.15-0.30, 2 h to 11 h 40 into the session, the side
+     the overnight move favours so far (gap vs the prior close > 0, signed by side); the strike nearest 0.225 delta."""
+     d = df
+-    el = ((d['session'].values == 'overnight') & np.isin(d['ticker'].values, roots)
++    el = ((np.asarray(d['session'].astype(str)) == 'overnight') & np.isin(np.asarray(d['ticker'].astype(str)), roots)
+           & (d['c14'].values >= 0.15) & (d['c14'].values <= 0.30)
+           & (d['c1'].values >= 120) & (d['c1'].values <= 700) & (d['c33'].values > 0))
+     return el, 1.0 - np.abs(d['c14'].values - 0.225)
+@@ -38,7 +38,7 @@ def k2_current_plus_overnight_spx(S, days_mask):
+     d = S.df
+     p1 = d['p1'].values.astype(float)
+     el, s_on = overnight_rule(d, OVERNIGHT_ROOTS_K2)
+-    reg = d['session'].values == 'regular'
++    reg = np.asarray(d['session'].astype(str)) == 'regular'
+     score = np.where(el, s_on, np.where(reg & (p1 + 1e-12 >= C.P1_MIN), p1, np.nan))
+     idx = S.calls(score, 0.0, days_mask)
+     return idx, {i: ('tp' if d.at[i, 'session'] == 'overnight' else 'prun') for i in idx}
+@@ -59,7 +59,7 @@ def k4_overnight_spx_otm(S, days_mask):
+     delta; the 1.50x take-profit exit (Book A non-runner rules), its own flat 09:20. One call a night at most (one
+     root, one seat)."""
+     d = S.df
+-    el = ((d['session'].values == 'overnight') & (d['ticker'].values == 'SPXW')
++    el = ((np.asarray(d['session'].astype(str)) == 'overnight') & (np.asarray(d['ticker'].astype(str)) == 'SPXW')
+           & (d['c14'].values >= 0.10) & (d['c14'].values <= 0.20)
+           & (d['c1'].values >= 120) & (d['c1'].values <= 700) & (d['c33'].values < 0))
+     idx = S.calls(np.where(el, 1.0 - np.abs(d['c14'].values - 0.15), np.nan), 0.0, days_mask)
+diff --git a/slayer/research/challenger/common.py b/slayer/research/challenger/common.py
+index 27cdb42..032c0a3 100644
+--- a/slayer/research/challenger/common.py
++++ b/slayer/research/challenger/common.py
+@@ -44,7 +44,19 @@ def load_day(day, cache=True):
+ 
+ 
+ def load(days):
+-    return pd.concat([load_day(d) for d in days], ignore_index=True)
++    """Many sessions at once, the text columns as categories (the object strings were most of the memory)."""
++    parts = []
++    for d in days:
++        x = load_day(d)
++        for c in ('day', 'sleeve', 'ticker', 'contract', 'expiry', 'right', 'mark', 'session', 'whyA', 'whyR'):
++            if c in x.columns:
++                x[c] = x[c].astype('category')
++        parts.append(x)
++    df = pd.concat(parts, ignore_index=True)
++    for c in ('day', 'sleeve', 'ticker', 'contract', 'expiry', 'right', 'mark', 'session', 'whyA', 'whyR'):
++        if c in df.columns and df[c].dtype != 'category':
++            df[c] = df[c].astype('category')
++    return df
+ 
+ 
+ def engine_calls(day):
+@@ -77,14 +89,14 @@ def _sim_arrays(df):
+     hit = _SIM.get(key)
+     if hit is not None:
+         return hit
+-    order = np.lexsort((df['order'].values, df['batch'].values, df['day'].values))
++    order = np.lexsort((df['order'].values, df['batch'].values, np.asarray(df['day'].astype(str))))
+     arr = {
+         'order': order,
+-        'day': df['day'].values[order],
++        'day': np.asarray(df['day'].astype(str))[order],
+         'batch': df['batch'].values[order],
+-        'ticker': df['ticker'].values[order],
+-        'call': (df['right'].values[order] == 'C'),
+-        'cid': (df['contract'] + '|' + df['sleeve']).values[order],
++        'ticker': np.asarray(df['ticker'].astype(str))[order],
++        'call': (np.asarray(df['right'].astype(str))[order] == 'C'),
++        'cid': (df['contract'].astype(str) + '|' + df['sleeve'].astype(str)).values[order],
+         'a': df['aGate'].values[order] == 1,
+         'b': (df['aGate'].values[order] == 0) & (df['bGate'].values[order] == 1),
+         'ret': df['retOpen'].values[order].astype(float),
+diff --git a/slayer/research/challenger/holdout.py b/slayer/research/challenger/holdout.py
+index 0e0adec..a922432 100644
+--- a/slayer/research/challenger/holdout.py
++++ b/slayer/research/challenger/holdout.py
+@@ -45,7 +45,7 @@ def evaluate(S, name, title, cut):
+     parts = {k: B.split(v, cut) for k, v in books.items()}
+     for g in sorted(set(cut(d) for d in S.days)):
+         lines += ['', f'**{g}**', '', B.table([B.summarize(parts[k].get(g, {}), k) for k in books])]
+-    sess = S.df['session'].values
++    sess = np.asarray(S.df['session'].astype(str))
+     for kind in ('overnight', 'pre', 'regular'):
+         rows = [B.summarize({d: [x for x in v if x[2] >= 0 and sess[x[2]] == kind] for d, v in per.items()}, k) for k, per in books.items() if not k.startswith('Late')]
+         lines += ['', f'**calls made in the {kind} session**', '', B.table(rows)]
+diff --git a/slayer/research/challenger/overfit.py b/slayer/research/challenger/overfit.py
+index 2592b70..0c7f99a 100644
+--- a/slayer/research/challenger/overfit.py
++++ b/slayer/research/challenger/overfit.py
+@@ -91,7 +91,7 @@ def overnight_family(S):
+     bands = [(0.10, 0.20), (0.10, 0.25), (0.15, 0.25), (0.15, 0.30), (0.20, 0.35), (0.10, 0.30)]
+     windows = [(225, 464, '00:00-03:59'), (120, 700, '22:15-07:55'), (225, 700, '00:00-07:55'), (345, 585, '02:00-05:59'), (0, 224, '20:15-23:59')]
+     sides = [('gap', 1), ('against', -1)]
+-    base = (d['session'].values == 'overnight') & (d['ticker'].values == 'SPXW')
++    base = (np.asarray(d['session'].astype(str)) == 'overnight') & (np.asarray(d['ticker'].astype(str)) == 'SPXW')
+     for (lo, hi), (w0, w1, wl), (sl, sg) in itertools.product(bands, windows, sides):
+         el = base & (d['c14'].values >= lo) & (d['c14'].values <= hi) & (d['c1'].values >= w0) & (d['c1'].values <= w1) & (sg * d['c33'].values > 0)
+         score = np.where(el, 1.0 - np.abs(d['c14'].values - (lo + hi) / 2), np.nan)
+diff --git a/slayer/research/challenger/sim_check.py b/slayer/research/challenger/sim_check.py
+index 93b5345..0b96825 100644
+--- a/slayer/research/challenger/sim_check.py
++++ b/slayer/research/challenger/sim_check.py
+@@ -8,13 +8,14 @@ ok = bad = 0
+ for d in C.days_built():
+     df = C.load_day(d)
+     idx = C.simulate(df, df['p1'].values, C.P1_MIN)
+-    mine = sorted((df.at[i, 'contract'], df.at[i, 'sleeve'], df.at[i, 'mark']) for i in idx)
++    mine = sorted((str(df.at[i, 'contract']), str(df.at[i, 'sleeve']), str(df.at[i, 'mark'])) for i in idx)
+     eng = []
+     for c in C.engine_calls(d):
+         if c['book'] == 'C':
+             continue
+         import datetime as dt
+-        t = dt.datetime.fromtimestamp(c['mark'] / 1000, dt.timezone(dt.timedelta(hours=-4 if d < '2026-11-01' and d > '2026-03-08' else -5)))
++        from zoneinfo import ZoneInfo
++        t = dt.datetime.fromtimestamp(c['mark'] / 1000, ZoneInfo('America/New_York'))
+         eng.append((c['contract'], c['sleeve'], t.strftime('%H:%M')))
+     eng.sort()
+     same = mine == eng
+-- 
+2.43.0
+

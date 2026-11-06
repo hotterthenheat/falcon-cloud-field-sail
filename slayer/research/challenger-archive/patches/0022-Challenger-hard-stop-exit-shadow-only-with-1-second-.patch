@@ -1,0 +1,851 @@
+From 0e1dc51dac6472f185bb6eb59a7d5d0b89cf48fd Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 17:32:07 +0000
+Subject: [PATCH 22/29] Challenger: hard-stop exit (shadow only) with 1-second
+ settlement; family F2 and K5 frozen; two builders at 3 GB each
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/LOG.md             |  26 +++++++
+ .../__pycache__/books.cpython-313.pyc         | Bin 14899 -> 16798 bytes
+ .../__pycache__/candidates.cpython-313.pyc    | Bin 6620 -> 8364 bytes
+ .../__pycache__/common.cpython-313.pyc        | Bin 19154 -> 20120 bytes
+ slayer/research/challenger/books.py           |  15 +++-
+ slayer/research/challenger/build.ts           |   2 +-
+ slayer/research/challenger/candidates.py      |  16 +++++
+ slayer/research/challenger/common.py          |  10 +++
+ slayer/research/challenger/export_calls.py    |   2 +-
+ slayer/research/challenger/holdout.py         |  27 +++++---
+ slayer/research/challenger/keepgoing2.sh      |  14 ++--
+ slayer/research/challenger/ml.py              |  33 +++++++--
+ slayer/research/challenger/overfit.py         |  20 ++++++
+ slayer/research/challenger/settle_hard.ts     |  40 +++++++++++
+ slayer/src/data/challengerExit.ts             |  65 ++++++++++++++++++
+ slayer/src/data/compassChallenger.ts          |  49 ++++++++++---
+ 16 files changed, 282 insertions(+), 37 deletions(-)
+ create mode 100644 slayer/research/challenger/settle_hard.ts
+ create mode 100644 slayer/src/data/challengerExit.ts
+
+diff --git a/slayer/research/challenger/LOG.md b/slayer/research/challenger/LOG.md
+index 94c3166..2acc47e 100644
+--- a/slayer/research/challenger/LOG.md
++++ b/slayer/research/challenger/LOG.md
+@@ -208,6 +208,32 @@ holdout is now spent for these candidates; a new candidate needs fresh sessions
+ **Next holdout (H2), locked now, not built when locked:** 2022-07-01 .. 2022-09-30 (SPY, QQQ, IWM, SPXW) and 2025-01-02
+ .. 2025-03-31 (all roots, when fetched). Nothing is tuned on them.
+ 
++## After the first holdout: the break-even stop is what kept the overnight calls under 60%
++
++In the holdout list of K4/K2b calls, many ended "Stop" at exactly their own price: the bid reached 1.25x (the
++break-even move), fell back to the ask paid, and the call closed flat, though the bid went on to 1.50x later that
++night (hit50 = 1). The row data hold the path facts to test another exit: hit50, the worst bid before the first
++1.50x (worstPre) and the last bid before the flat. With the hard-stop exit (1.50x take-profit or the 0.5322 stop, no
++break-even move, flat 09:20), SPXW overnight candidates after midnight at |delta| 0.10-0.20 win 79-97% a candidate
++(development, 23-59 sessions a cell), and the evening marks still lose.
++
++- **M5** (hypothesis 102: an ML win-classifier on SPXW overnight rows under the books' exits, walk-forward, blocks
++  of 20): no line ever reached 62% on its calibration sessions; no calls. (Killed by the machine's memory later.)
++- **Family F2** (hypotheses 103-152: the overnight SPXW rule with the hard-stop exit, 5 delta bands x 5 entry
++  windows x 2 sides), on 273 development sessions (the spent first holdout now included): **PBO 0.04** (win rate),
++  0.17 (return per call); the best configurations win 79-92% on 19-59 calls at +33 to +42% a call; deflated Sharpe
++  (N = 155 trials) 0.65-0.94.
++- **K5 frozen** by the a-priori rule "the highest development win rate among F2's configurations with at least 40
++  development calls": SPXW, overnight, |delta| 0.10-0.20, 00:00-05:59, the side the overnight move favours, strike
++  nearest 0.15 delta, hard-stop exit. Development: 49 calls, 86% win, +38.6% a call; DSR 0.94.
++- **The exit checked to the second:** the challenger's hard-stop exit is written in TypeScript
++  (`src/data/challengerExit.ts`: the same fill and flat as the books, a fixed stop, the 1-second quotes of every
++  minute that crossed the stop or the target) and the shadow settles its hard-exit calls with it. On K5's 49
++  development calls (`settle_hard.ts`, the terminal's 1-second quotes): **42 wins (86%), +38.2% a call**, the same
++  42 wins as the minute path. The exits do not flatter it.
++
++K5 is scored on the second holdout (H2: 2022-07..09, 2025-01..03) once, when it is built.
++
+ **Pipeline v2.** The terminal was restarted or down several times this afternoon and the builders, which read Book
+ C's 15:20:15 board and the 1-second exits from it, stalled. Now the fetcher keeps Book C's board with the raw cache,
+ the builders need no terminal (~70 s a regime session, ~5 min a full one), and the 1-second exits are settled
+diff --git a/slayer/research/challenger/__pycache__/books.cpython-313.pyc b/slayer/research/challenger/__pycache__/books.cpython-313.pyc
+index 5177e4531ef03dda70783219803b5e621391da99..ccf7ad49c9e956185ebda38d0b9bafa7e8a454f2 100644
+GIT binary patch
+delta 3904
+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
+
+delta 2355
+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
+bQ_mAOSvXZ~Cjl~9kVd?BJSLK9%%=YU=inx;
+
+diff --git a/slayer/research/challenger/__pycache__/candidates.cpython-313.pyc b/slayer/research/challenger/__pycache__/candidates.cpython-313.pyc
+index 1bb4d45324358cd0d28617ee04ff7258b4f36b5e..77ee8289311ec547f50fa4632fdadfa24c66f8c1 100644
+GIT binary patch
+delta 809
+zcmZWnOHUI~6rLeGWN1lDOUon5!PJyVI%PU#M1}xXuqi>5SbR4jW9OERv~%md(+Vs^
+zjSF|i+{8qGfh4*xtPBe`ZZ&b&7&pd5;tplyLgStC*mxFS&ikJ8o%<#EDiz)J`z3+P
+zyU6$3Ljghf<{1aly07eBc^XaiW~E+%_;S8nN3Jc`o|Cd2@fPA=YLb0#*5*Re_KWA9
+zyq(-;pF+C0!P>$}j$`4pIJNmO922EouitycH$A@j;pj_Ie8g&j-|I6?f-tMYV1eK@
+z<bbAXr<8=MBolBiF=7m>aCu=W24=xU1l%Hmf=#FkMO?CQ)rGqz1zJIlI|lh8rn~`m
+zz(O@t!j&?2!=N^j0E#HJu|s3he;s^L3bvCkRV`%6Y$G@l0JDspB`BC>yR-^vElMT!
+zH#ji_>D1iJ`Rn6pO*SAqf9)!Ns<aww425fmIQCM}J$Nc6F|#X>R8>P&6;(I%Q9g;L
+zEBfhSDBDieMRb2BO*Im_yw`@>7GfW}`iz2E!&O2XUWvNIUPj;`lOVpj8c*na#gc38
+z6=hPFrj_i%#d$z0w#)ALgE#RWRcc&MY8p@%S7P8`xJ8h;tZ;H1DD#QOpinYhNgXvb
+zRgOb8j|s9o{ydT>%45em<asco$vl)t>~*MjolNpek~1C*aQN|+gPq}rBoWWY6@i@e
+z06fq*d~Pn9#3CurKFfi6e*qdof?m99SzkP4agkP578?Z_9y{mdgD431g`G~JU3$Wv
+zh5xX8b6-E1<{`OdEi|huhsBC_8^x<;TirRalXdr`TBmp-$*>ze5$OU~c{717u*W^d
+kiC@QkqPzn_|8V_Sq8^IW2PW$M`p=G5U(<slWQZsJ0~>GWV*mgE
+
+delta 176
+zcmZ4Ec*j`%GcPX}0}%N0J<B@5$H4Fy#DM`;DC4u=M0H1@815MM7|s~3U@kqDBA#?6
+zP410NzG7VIvu1+8PW$x9H^odDH7E0n8v{vaaW_W$&0XR;jJ(BcKy!}h^0?TtX|hbN
+zlaFEKoqSu~k<os#l7b4CD^QXVh>LwD2PjxceNbSKGrA$BazoMXhP>%VPF5bKMvfwV
+GpaK92btz*2
+
+diff --git a/slayer/research/challenger/__pycache__/common.cpython-313.pyc b/slayer/research/challenger/__pycache__/common.cpython-313.pyc
+index 95a323ad2c274587b39413d00ed951d90ddd6645..7288b48d5406b2990ba1961ccb9e8feee472d816 100644
+GIT binary patch
+delta 3967
+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
+
+delta 3359
+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
+
+diff --git a/slayer/research/challenger/books.py b/slayer/research/challenger/books.py
+index d89360c..eea3aee 100644
+--- a/slayer/research/challenger/books.py
++++ b/slayer/research/challenger/books.py
+@@ -69,16 +69,27 @@ class Sessions:
+         self.engine = {d: C.engine_calls(d) for d in self.days}
+         # a win: the bid reached 1.50x the ask paid before the stop (Book A's take-profit came first)
+         self.win = df['whyA'].astype(str).str.startswith('Take profit').values
++        # the hard-stop exit (no break-even move at 1.25x): 1.50x before the 0.5322 stop, else the stop, else the flat.
++        # From the one-minute path (hit50, the worst bid before the first 1.50x, the last bid before the flat).
++        if 'worstPre' in df.columns:
++            stop = 1 - 0.5322
++            h50 = df['hit50'].values == 1
++            wp = df['worstPre'].values.astype(float)
++            fb = df['flatBid'].values.astype(float)
++            self.win_hard = h50 & (wp > stop)
++            r = np.where(self.win_hard, 0.5, np.where(wp <= stop, -0.5322, fb - 1))
++            self.pnl_hard = r * self.fill * 100
+ 
+     def calls(self, score, line, eligible=None):
+         return C.simulate(self.df, score, line, eligible)
+ 
+     def per_session(self, idx, exit='prun'):
+-        pnl = {'prun': self.pnl_prun, 'ride': self.pnl_ride, 'tp': self.pnl_tp}[exit]
++        pnl = {'prun': self.pnl_prun, 'ride': self.pnl_ride, 'tp': self.pnl_tp, 'hard': getattr(self, 'pnl_hard', None)}[exit]
++        win = self.win_hard if exit == 'hard' else self.win
+         out = {d: [] for d in self.days}
+         for i in idx:
+             if np.isfinite(pnl[i]) and self.fill[i] > 0:
+-                out[self.df.at[i, 'day']].append((pnl[i] / (self.fill[i] * 100), pnl[i], i, bool(self.win[i])))
++                out[self.df.at[i, 'day']].append((pnl[i] / (self.fill[i] * 100), pnl[i], i, bool(win[i])))
+         return out
+ 
+     def late_sweep(self):
+diff --git a/slayer/research/challenger/build.ts b/slayer/research/challenger/build.ts
+index 0507edf..89c09e2 100644
+--- a/slayer/research/challenger/build.ts
++++ b/slayer/research/challenger/build.ts
+@@ -289,7 +289,7 @@ await Promise.all(Array.from({ length: conc }, async () => {
+       continue;
+     }
+     await new Promise<void>(res => {
+-      const child = spawn(process.execPath, ['--max-old-space-size=7000', ...process.execArgv, fileURLToPath(import.meta.url), '--one', d], { stdio: 'inherit', env: process.env });
++      const child = spawn(process.execPath, ['--max-old-space-size=3000', ...process.execArgv, fileURLToPath(import.meta.url), '--one', d], { stdio: 'inherit', env: process.env });
+       child.on('exit', code => {
+         if (code) console.log(`${d}: build exited ${code}`);
+         res();
+diff --git a/slayer/research/challenger/candidates.py b/slayer/research/challenger/candidates.py
+index 8e9e771..1ed000f 100644
+--- a/slayer/research/challenger/candidates.py
++++ b/slayer/research/challenger/candidates.py
+@@ -66,7 +66,23 @@ def k4_overnight_spx_otm(S, days_mask):
+     return idx, {i: 'tp' for i in idx}
+ 
+ 
++def k5_overnight_spx_hard(S, days_mask):
++    """K5 (frozen 2026-10-31 ~17:40 UTC, after the first holdout was spent; chosen on development (271 sessions,
++    the first holdout's included) by the a-priori rule "the highest development win rate among family F2's
++    configurations with at least 40 development calls", overfit.py FAMILY=F2): SPXW only, the overnight session,
++    |delta| 0.10-0.20, 00:00-05:59 (225-584 minutes after 20:15), the side the overnight move so far favours, the
++    strike nearest 0.15 delta, the HARD-STOP exit (1.50x take-profit or the 0.5322 stop, no break-even move; flat
++    09:20). Scored on the second holdout (H2) once."""
++    d = S.df
++    el = ((np.asarray(d['session'].astype(str)) == 'overnight') & (np.asarray(d['ticker'].astype(str)) == 'SPXW')
++          & (d['c14'].values >= 0.10) & (d['c14'].values <= 0.20)
++          & (d['c1'].values >= 225) & (d['c1'].values <= 584) & (d['c33'].values > 0))
++    idx = S.calls(np.where(el, 1.0 - np.abs(d['c14'].values - 0.15), np.nan), 0.0, days_mask)
++    return idx, {i: 'hard' for i in idx}
++
++
+ REGISTRY = {
++    'K5-overnight-SPXW-hard': k5_overnight_spx_hard,
+     'K4-overnight-SPXW-otm': k4_overnight_spx_otm,
+     'K1-always-ride': k1_always_ride,
+     'K2-current+overnight-SPXW': k2_current_plus_overnight_spx,
+diff --git a/slayer/research/challenger/common.py b/slayer/research/challenger/common.py
+index ee73e8e..9a68794 100644
+--- a/slayer/research/challenger/common.py
++++ b/slayer/research/challenger/common.py
+@@ -26,6 +26,9 @@ def load_day(day, cache=True):
+     src = os.path.join(DATA, 'rows', f'{day}.csv.gz')
+     if os.path.exists(pq) and (not os.path.exists(src) or os.path.getmtime(pq) >= os.path.getmtime(src)):
+         cols = os.environ.get('CHAL_COLS')
++        if cols == 'ml':
++            cols = ','.join(['day', 'sleeve', 'ticker', 'contract', 'expiry', 'right', 'strike', 'mark', 'batch', 'order', 'session', 'flatAt', 'bid', 'ask',
++                             'aGate', 'bGate', 'burns', 'retOpen', 'p1', 'prun', 'fill', 'pnlA', 'pnlR', 'whyA', 'whyR', 'dte', 'hit50', 'worstPre', 'flatBid', 'best'] + [f'c{i}' for i in range(60)])
+         if cols:
+             have = set(pd.read_parquet(pq, columns=None).columns) if False else None
+             import pyarrow.parquet as pqm
+@@ -52,8 +55,15 @@ def load_day(day, cache=True):
+ def load(days):
+     """Many sessions at once, the text columns as categories (the object strings were most of the memory)."""
+     parts = []
++    roots = os.environ.get('CHAL_ROOTS')
++    sess = os.environ.get('CHAL_SESSION')
+     for d in days:
+         x = load_day(d)
++        # a machine on some roots or one session never reads the others' rows (their seats are their own)
++        if roots:
++            x = x[x['ticker'].astype(str).isin(roots.split(','))]
++        if sess:
++            x = x[x['session'].astype(str) == sess]
+         for c in ('day', 'sleeve', 'ticker', 'contract', 'expiry', 'right', 'mark', 'session', 'whyA', 'whyR'):
+             if c in x.columns:
+                 x[c] = x[c].astype('category')
+diff --git a/slayer/research/challenger/export_calls.py b/slayer/research/challenger/export_calls.py
+index e4704b0..08f9f57 100644
+--- a/slayer/research/challenger/export_calls.py
++++ b/slayer/research/challenger/export_calls.py
+@@ -42,7 +42,7 @@ if sys.argv[1] == '--compare':
+ name, out = sys.argv[1], sys.argv[2]
+ S = B.Sessions(B.dev_days())
+ idx, ex = K.REGISTRY[name](S, np.ones(len(S.df), bool))
+-pnl = {'prun': S.pnl_prun, 'ride': S.pnl_ride, 'tp': S.pnl_tp}
++pnl = {'prun': S.pnl_prun, 'ride': S.pnl_ride, 'tp': S.pnl_tp, 'hard': getattr(S, 'pnl_hard', None)}
+ rows = []
+ for i in idx:
+     r = S.df.loc[i]
+diff --git a/slayer/research/challenger/holdout.py b/slayer/research/challenger/holdout.py
+index a922432..50273a8 100644
+--- a/slayer/research/challenger/holdout.py
++++ b/slayer/research/challenger/holdout.py
+@@ -17,11 +17,12 @@ import candidates as K
+ 
+ def per_session(S, idx, exits):
+     out = {d: [] for d in S.days}
+-    pnl = {'prun': S.pnl_prun, 'ride': S.pnl_ride, 'tp': S.pnl_tp}
++    pnl = {'prun': S.pnl_prun, 'ride': S.pnl_ride, 'tp': S.pnl_tp, 'hard': getattr(S, 'pnl_hard', None)}
+     for i in idx:
+         p = pnl[exits[i]][i]
++        w = S.win_hard[i] if exits[i] == 'hard' else S.win[i]
+         if np.isfinite(p) and S.fill[i] > 0:
+-            out[S.df.at[i, 'day']].append((p / (S.fill[i] * 100), p, i, bool(S.win[i])))
++            out[S.df.at[i, 'day']].append((p / (S.fill[i] * 100), p, i, bool(w)))
+     return out
+ 
+ 
+@@ -58,6 +59,7 @@ def main():
+     ap.add_argument('--dev', action='store_true')
+     ap.add_argument('--final', action='store_true')
+     ap.add_argument('--again', action='store_true')
++    ap.add_argument('--h2', action='store_true', help='the second locked holdout (2022-07..09, 2025-01..03)')
+     a = ap.parse_args()
+     if a.dev == a.final:
+         sys.exit('say --dev or --final')
+@@ -66,18 +68,25 @@ def main():
+         for n in a.names:
+             print(evaluate(S, n, 'development sessions', B.regime)[0], '\n')
+         return
+-    hold = B.holdout_days()
+-    blocks = sorted(set(B.holdout_block(d) for d in hold))
+-    if blocks != ['H-2022', 'H-2024', 'H-recent']:
+-        sys.exit(f'the holdout is not fully built yet ({blocks}); a final look waits for every block')
++    if a.h2:
++        hold = B.holdout2_days()
++        cut = lambda d: 'H2-2022Q3' if d.startswith('2022') else 'H2-2025Q1'
++        sub = 'holdout2'
++    else:
++        hold = B.holdout_days()
++        blocks = sorted(set(B.holdout_block(d) for d in hold))
++        if blocks != ['H-2022', 'H-2024', 'H-recent']:
++            sys.exit(f'the holdout is not fully built yet ({blocks}); a final look waits for every block')
++        cut = B.holdout_block
++        sub = 'holdout'
+     S = B.Sessions(hold)
+-    os.makedirs(os.path.join(C.DATA, 'holdout'), exist_ok=True)
++    os.makedirs(os.path.join(C.DATA, sub), exist_ok=True)
+     for n in a.names:
+-        f = os.path.join(C.DATA, 'holdout', f'{n}.json')
++        f = os.path.join(C.DATA, sub, f'{n}.json')
+         if os.path.exists(f) and not a.again:
+             print(f'{n}: already scored on the holdout once ({f}); not looking again')
+             continue
+-        text, res = evaluate(S, n, 'LOCKED HOLDOUT', B.holdout_block)
++        text, res = evaluate(S, n, 'LOCKED HOLDOUT' + (' H2' if a.h2 else ''), cut)
+         res['looks'] = (json.load(open(f))['looks'] + 1) if os.path.exists(f) else 1
+         json.dump(res, open(f, 'w'), indent=1, default=float)
+         open(f.replace('.json', '.md'), 'w').write(text)
+diff --git a/slayer/research/challenger/keepgoing2.sh b/slayer/research/challenger/keepgoing2.sh
+index 9c0bf14..161f18c 100644
+--- a/slayer/research/challenger/keepgoing2.sh
++++ b/slayer/research/challenger/keepgoing2.sh
+@@ -1,9 +1,9 @@
+ #!/bin/bash
+-# The challenger's data supervisor (v2): rounds of ~105 minutes, each resumable.
++# The challenger's data supervisor (v2): rounds of ~100 minutes, each resumable.
+ #   - fetch, newest first (2026-10 back to 2025-01), one request in flight; and once a round, Book C's 15:20:15 boards
+ #     for every fetched day still missing one (one request in flight);
+-#   - five row builders that need no terminal (CHAL_NET unset): two newest first, one oldest first, one on 2022, one
+-#     on 2024 (the day locks keep them apart);
++#   - TWO row builders at most (the machine is shared: coordinator, 2026-10-31), each child at --max-old-space-size
++#     3000, needing no terminal (CHAL_NET unset): one newest first, one oldest first (the day locks keep them apart);
+ #   - then the ledger's 1-second settlement of every day built without the terminal (resettle.ts).
+ #   setsid nohup bash research/challenger/keepgoing2.sh > research/challenger/data/keepgoing2.log 2>&1 &
+ cd "$(dirname "$0")/../.." || exit 1
+@@ -17,14 +17,10 @@ for round in $(seq 1 20); do
+   f1=$!
+   CHAL_CONC=1 npx tsx research/challenger/fetch.ts --sweeps --minutes 100 >> $D/fetch-sweeps.log 2>&1 &
+   f2=$!
+-  CHAL_BUILD_CONC=2 npx tsx research/challenger/build.ts --minutes 100 >> $D/build.log 2>&1 &
++  CHAL_PREFIX=${B1_PREFIX:-} CHAL_BUILD_CONC=1 npx tsx research/challenger/build.ts --minutes 100 >> $D/build.log 2>&1 &
+   b1=$!
+   CHAL_BUILD_CONC=1 npx tsx research/challenger/build.ts --oldest --minutes 100 >> $D/build2.log 2>&1 &
+   b2=$!
+-  CHAL_PREFIX=2022 CHAL_BUILD_CONC=1 npx tsx research/challenger/build.ts --oldest --minutes 100 >> $D/build3.log 2>&1 &
+-  b3=$!
+-  CHAL_PREFIX=2024 CHAL_BUILD_CONC=1 npx tsx research/challenger/build.ts --oldest --minutes 100 >> $D/build3.log 2>&1 &
+-  b4=$!
+-  wait $f1 $f2 $b1 $b2 $b3 $b4
++  wait $f1 $f2 $b1 $b2
+   timeout 1800 npx tsx research/challenger/resettle.ts >> $D/resettle.log 2>&1
+ done
+diff --git a/slayer/research/challenger/ml.py b/slayer/research/challenger/ml.py
+index a2e19da..556bee2 100644
+--- a/slayer/research/challenger/ml.py
++++ b/slayer/research/challenger/ml.py
+@@ -32,10 +32,16 @@ def target(S, idx_rows, a):
+     return np.clip(np.nan_to_num(r, nan=0.0), -1, 3)
+ 
+ 
++def root_mask(S, a):
++    if not a.roots:
++        return np.ones(len(S.df), bool)
++    return np.isin(np.asarray(S.df['ticker'].astype(str)), a.roots.split(','))
++
++
+ def mask_rows(S, days, a):
+-    m = S.df['day'].isin(days).values & np.isfinite(S.fill)
++    m = S.df['day'].isin(days).values & np.isfinite(S.fill) & root_mask(S, a)
+     if a.only:
+-        m &= (S.df['session'].values == a.only)
++        m &= (np.asarray(S.df['session'].astype(str)) == a.only)
+     return m
+ 
+ 
+@@ -72,9 +78,9 @@ def score_rows(S, rows, models, calibs, a):
+     out = np.full(len(S.df), np.nan)
+     b = bucket(S.df)
+     for sleeve in ('odte', 'weekly'):
+-        m = rows & (S.df['sleeve'].values == sleeve)
++        m = rows & (np.asarray(S.df['sleeve'].astype(str)) == sleeve) & root_mask(S, a)
+         if a.only:
+-            m &= (S.df['session'].values == a.only)
++            m &= (np.asarray(S.df['session'].astype(str)) == a.only)
+         if not m.any() or sleeve not in models:
+             continue
+         r = models[sleeve].predict(S.df.loc[m, FEATS].values.astype(np.float32))
+@@ -88,6 +94,17 @@ LINES_TP = np.round(np.arange(0.2, 0.9, 0.04), 2)
+ 
+ def choose_line(S, sc, days, a):
+     lines = LINES_TP if a.target == 'tp' else LINES_RET
++    if a.objective == 'win':
++        # the lowest line whose calls on the calibration sessions win at least 62% with a positive mean return
++        for ln in lines:
++            idx = S.calls(sc, ln)
++            if len(idx) < max(5, len(days) // 10):
++                continue
++            per = S.per_session(idx, a.exit)
++            xs = [x for v in per.values() for x in v]
++            if xs and np.mean([x[3] for x in xs]) >= 0.62 and np.mean([x[0] for x in xs]) > 0:
++                return (float(np.mean([x[3] for x in xs])), float(ln), len(idx))
++        return (-np.inf, None, 0)
+     best = (-np.inf, None, 0)
+     for ln in lines:
+         idx = S.calls(sc, ln)
+@@ -106,8 +123,8 @@ def train_fold(S, fit_days, cal_days, a):
+     cm = mask_rows(S, cal_days, a)
+     b = bucket(S.df)
+     for sleeve in ('odte', 'weekly'):
+-        f_ = fm & (S.df['sleeve'].values == sleeve)
+-        c_ = cm & (S.df['sleeve'].values == sleeve)
++        f_ = fm & (np.asarray(S.df['sleeve'].astype(str)) == sleeve)
++        c_ = cm & (np.asarray(S.df['sleeve'].astype(str)) == sleeve)
+         if f_.sum() < 3000 or c_.sum() < 1000:
+             continue
+         models[sleeve] = fit_machine(S, f_, a)
+@@ -129,6 +146,8 @@ def main():
+     ap.add_argument('--embargo', type=int, default=1)
+     ap.add_argument('--min-train', type=int, default=12)
+     ap.add_argument('--holdout', action='store_true')
++    ap.add_argument('--roots', default='', help='only these roots (comma list)')
++    ap.add_argument('--objective', default='ret', choices=['ret', 'win'])
+     a = ap.parse_args()
+     out = os.path.join(C.DATA, 'ml', a.name)
+     os.makedirs(out, exist_ok=True)
+@@ -197,7 +216,7 @@ def report(S, chal, line, days, a, title):
+             print(f'\n{label} {g}:')
+             print(B.table([B.summarize(parts[k].get(g, {}), k) for k in books]))
+     # by the session the call was made in
+-    sess = S.df['session'].values
++    sess = np.asarray(S.df['session'].astype(str))
+     for kind in ('overnight', 'pre', 'regular'):
+         rows = []
+         for k, per in books.items():
+diff --git a/slayer/research/challenger/overfit.py b/slayer/research/challenger/overfit.py
+index 0c7f99a..98bf945 100644
+--- a/slayer/research/challenger/overfit.py
++++ b/slayer/research/challenger/overfit.py
+@@ -99,6 +99,22 @@ def overnight_family(S):
+     return out
+ 
+ 
++def overnight_hard_family(S):
++    """Family F2 (formed after the first holdout was spent): the overnight SPXW rule with the hard-stop exit (no
++    break-even move): |delta| band x entry window x side."""
++    d = S.df
++    out = []
++    bands = [(0.10, 0.20), (0.10, 0.25), (0.15, 0.25), (0.15, 0.30), (0.20, 0.30)]
++    windows = [(225, 464, '00:00-03:59'), (225, 344, '00:00-01:59'), (345, 464, '02:00-03:59'), (225, 584, '00:00-05:59'), (120, 700, '22:15-07:55')]
++    sides = [('gap', 1), ('against', -1)]
++    base = (np.asarray(d['session'].astype(str)) == 'overnight') & (np.asarray(d['ticker'].astype(str)) == 'SPXW')
++    for (lo, hi), (w0, w1, wl), (sl, sg) in itertools.product(bands, windows, sides):
++        el = base & (d['c14'].values >= lo) & (d['c14'].values <= hi) & (d['c1'].values >= w0) & (d['c1'].values <= w1) & (sg * d['c33'].values > 0)
++        score = np.where(el, 1.0 - np.abs(d['c14'].values - (lo + hi) / 2), np.nan)
++        out.append((f'SPXW overnight hard stop |delta| {lo:.2f}-{hi:.2f}, {wl}, {sl} side', score, 'hard'))
++    return out
++
++
+ def hit_family(S):
+     d = S.df
+     p1 = d['p1'].values.astype(float)
+@@ -141,6 +157,10 @@ def run_family(S, fam, line, title, n_trials):
+ if __name__ == '__main__':
+     trials = int(os.environ.get('TRIALS', '0') or 0)
+     S = B.Sessions(B.dev_days())
++    if os.environ.get('FAMILY') == 'F2':
++        fam = overnight_hard_family(S)
++        run_family(S, fam, 0.0, 'F2: overnight SPXW, hard-stop exit', trials or (101 + 4 + len(fam)))
++        sys.exit(0)
+     fam_on = overnight_family(S)
+     fam_hit = hit_family(S)
+     n = trials or (23 + len(fam_on) + len(fam_hit))
+diff --git a/slayer/research/challenger/settle_hard.ts b/slayer/research/challenger/settle_hard.ts
+new file mode 100644
+index 0000000..7f5e126
+--- /dev/null
++++ b/slayer/research/challenger/settle_hard.ts
+@@ -0,0 +1,40 @@
++/*
++  Settle simulated calls by the challenger's hard-stop exit (src/data/challengerExit.ts) on the contract's minute path
++  and the 1-second quotes of every minute that crossed the stop or the target — the shadow's own settlement.
++
++    npx tsx research/challenger/settle_hard.ts in.json out.json        (in.json from export_calls.py)
++*/
++import fs from 'node:fs';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const [inFile, outFile] = process.argv.slice(2);
++const calls = JSON.parse(fs.readFileSync(inFile, 'utf8')) as Record<string, unknown>[];
++const { localTheta } = await import('./localHost');
++const { setCompassHost } = await import('../../src/data/compassHost');
++const { contractPath } = await import('../../src/data/compassLedger');
++const { hardPath } = await import('../../src/data/compassChallenger');
++const { settleHard } = await import('../../src/data/challengerExit');
++const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
++const out: unknown[] = [];
++for (const c of calls) {
++  const host = localTheta(String(c.day), { net: true });
++  setCompassHost({ server: true, theta: host.theta, asset: async p => { const b = fs.readFileSync(path.join(root, 'public', p.replace(/^\/+/, ''))); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer; }, econ: () => [] });
++  const sig = { key: `${c.day}|${c.contract}`, id: String(c.contract), day: String(c.callDay ?? c.day), book: 'A' as const, ticker: String(c.ticker), contract: String(c.contract), right: c.right as 'C' | 'P', strike: Number(c.strike), expiry: String(c.expiry), sleeve: c.sleeve as 'odte' | 'weekly', firedAt: Number(c.mark), quoteAt: Number(c.mark), bid: Number(c.bid), ask: Number(c.ask), spot: null, p1: null, prun: null, runner: false, outcome: null, pathAt: 0, spark: [], mark: Number(c.mark), flatAt: Number(c.flatAt), shadow: 'challenger' as const, machine: 'odte' as const, pc: 0, raw: 0, line: 0, exitRule: 'hard' as const };
++  const minute = await contractPath(sig, null);
++  if (!minute) {
++    out.push({ ...c, outcome: null });
++    continue;
++  }
++  const full = await hardPath(sig, minute);
++  const sec = settleHard(sig, full, Date.now());
++  const min = settleHard(sig, minute, Date.now());
++  out.push({ ...c, outcome: sec, minuteOutcome: min });
++}
++fs.writeFileSync(outFile, JSON.stringify(out, null, 1));
++const done = (out as { outcome: { pnl: number | null; fill: { ask: number } | null; exit: { why: string } | null } | null; minuteOutcome?: { exit: { why: string } | null } }[]).filter(o => o.outcome?.fill && o.outcome.pnl != null);
++const win = done.filter(o => /^Take profit/.test(o.outcome!.exit?.why ?? '')).length;
++const winMin = done.filter(o => /^Take profit/.test(o.minuteOutcome?.exit?.why ?? '')).length;
++const ret = done.reduce((a, o) => a + o.outcome!.pnl! / (o.outcome!.fill!.ask * 100), 0) / Math.max(1, done.length);
++console.log(`${done.length} calls: 1-second hard exit ${win} wins (${((100 * win) / Math.max(1, done.length)).toFixed(0)}%), minute path ${winMin}; ${(100 * ret).toFixed(1)}%/call`);
++process.exit(0);
+diff --git a/slayer/src/data/challengerExit.ts b/slayer/src/data/challengerExit.ts
+new file mode 100644
+index 0000000..4bb7424
+--- /dev/null
++++ b/slayer/src/data/challengerExit.ts
+@@ -0,0 +1,65 @@
++/* The challenger's hard-stop exit (shadow only; the live books never read this): the fill and the flat as the books'
++   (compassOutcome settleSignal), the 1.50x take-profit, and the 0.5322 stop that never moves — no break-even at
++   1.25x, no ratchet, no reversal. Its 1-second minutes are the ones whose bid range crosses the stop or the target.
++   research/challenger/LOG.md: on the overnight SPX calls the break-even move stopped many calls at their own price
++   before they reached 1.50x. */
++
++import { STOP_KEEP } from './compassParams';
++import type { Outcome, PathQuote, SignalCore } from './compassOutcome';
++
++const FILL_WAIT_MS = 3 * 60_000;
++const TP = 1.5;
++const valid = (q: PathQuote) => q.ask > 0 && q.bid >= 0 && q.ask >= q.bid;
++
++/** Settle on the quotes printed after the call (minute quotes, plus any 1-second quotes inside them). */
++export function settleHard(sig: SignalCore, quotes: readonly PathQuote[], now: number): Outcome {
++  const rows = quotes.filter(q => Number.isFinite(q.t) && q.t > sig.firedAt).slice().sort((a, b) => a.t - b.t);
++  const base: Outcome = { status: 'waiting', fill: null, exit: null, peak: 0, stop: 0, last: null, ret: null, pnl: null, heldMin: null };
++  const due = Math.floor(sig.firedAt / 60_000) * 60_000 + 60_000;
++  const at = rows.findIndex(q => q.t >= due);
++  if (at < 0 || rows[at].t > sig.firedAt + FILL_WAIT_MS) return now > sig.firedAt + FILL_WAIT_MS ? { ...base, status: 'unavailable' } : base;
++  const fill = rows[at];
++  if (!valid(fill)) return { ...base, status: 'unavailable' };
++  const paid = fill.ask;
++  const stop = paid * STOP_KEEP;
++  const flat = sig.flatAt ?? Infinity;
++  const done = (q: PathQuote, px: number, why: string, peak: number): Outcome => ({
++    status: 'closed', fill: { at: fill.t, bid: fill.bid, ask: fill.ask }, exit: { at: q.t, px, why }, peak, stop, last: q,
++    ret: Number(((px / paid - 1) * 100).toFixed(1)), pnl: Number(((px - paid) * 100).toFixed(2)), heldMin: Math.max(0, Math.round((q.t - fill.t) / 60_000)),
++  });
++  let peak = 0;
++  let last = fill;
++  for (let i = at + 1; i < rows.length; i++) {
++    const q = rows[i];
++    if (!valid(q)) continue;
++    if (q.t >= flat) return done(q, q.bid, 'Flat', peak);
++    if (q.bid <= stop) return done(q, q.bid, 'Stop', peak);
++    if (q.bid >= paid * TP) return done(q, Number((paid * TP).toFixed(2)), 'Take profit 1.50×', peak);
++    peak = Math.max(peak, q.bid);
++    last = q;
++  }
++  if (now >= flat + 10 * 60_000) return done(last, last.bid, 'Last quote', peak);
++  return { status: 'open', fill: { at: fill.t, bid: fill.bid, ask: fill.ask }, exit: null, peak, stop, last, ret: null, pnl: null, heldMin: null };
++}
++
++/** The minutes whose 1-second quotes decide the hard exit: each minute (after the fill, up to the minute-path exit)
++    whose bid range crosses the stop or the 1.50x target. At most `max`, the exit's own minute first. */
++export function hardWindows(sig: SignalCore, quotes: readonly PathQuote[], max = 12): [number, number][] {
++  const minute = quotes.filter(q => q.t % 60_000 === 0);
++  const out = settleHard(sig, minute, Number.MAX_SAFE_INTEGER);
++  if (!out.fill) return [];
++  const paid = out.fill.ask;
++  const levels = [paid * STOP_KEEP, paid * TP];
++  const end = out.exit?.at ?? Infinity;
++  const rows = minute.filter(q => q.t > out.fill!.at && q.t <= end && valid(q)).sort((a, b) => a.t - b.t);
++  const found: [number, number][] = [];
++  let prev: PathQuote = { t: out.fill.at, bid: out.fill.bid, ask: out.fill.ask };
++  for (const q of rows) {
++    const lo = Math.min(prev.bid, q.bid);
++    const hi = Math.max(prev.bid, q.bid);
++    if (levels.some(L => L >= lo && L <= hi)) found.push([prev.t, q.t]);
++    prev = q;
++  }
++  if (found.length <= max) return found;
++  return [found[found.length - 1], ...found.slice(0, max - 1)];
++}
+diff --git a/slayer/src/data/compassChallenger.ts b/slayer/src/data/compassChallenger.ts
+index 33ab9ca..d7d4ff9 100644
+--- a/slayer/src/data/compassChallenger.ts
++++ b/slayer/src/data/compassChallenger.ts
+@@ -14,8 +14,9 @@ import { firstNaN, nanUnsafeColumns, parseBoosters, predict, type Tree } from '.
+ import { compassHost } from './compassHost';
+ import { onFeatureRow, underCloses, type FeatureBatch, type FeatureRow } from './compassModel';
+ import { challengerFeatures, CHALLENGER_N } from './challengerFeatures';
+-import { contractPath, withFineExits, type Signal } from './compassLedger';
+-import { settleSignal } from './compassOutcome';
++import { contractPath, readQuotes, withFineExits, type Signal } from './compassLedger';
++import { settleSignal, type PathQuote } from './compassOutcome';
++import { hardWindows, settleHard } from './challengerExit';
+ import { DRIVE, P1_MIN, SEAT_CAP, runnerFlag } from './compassParams';
+ import { CHALLENGER_META_SHA, CHALLENGER_ODTE_SHA, CHALLENGER_WEEKLY_SHA, CHALLENGER_NAME } from './challengerParams';
+ import { sessionIso } from './compassSession';
+@@ -31,6 +32,8 @@ export interface ShadowCall extends Signal {
+   pc: number;
+   raw: number;
+   line: number;
++  /** settled by the challenger's hard-stop exit (challengerExit.ts) rather than the books' */
++  exitRule?: 'hard';
+ }
+ 
+ export interface ChallengerRecord {
+@@ -66,9 +69,13 @@ export interface ShadowRule {
+   roots: string[];
+   delta: [number, number];
+   since: [number, number];
+-  gapSide: boolean;
++  /** the side the overnight move so far favours (gap vs the prior close, signed by side, > 0), the side against it
++      (< 0), or either */
++  side: 'gap' | 'against' | 'any';
+   target: number;
+   runner: boolean;
++  /** 'hard': the challenger's hard-stop exit (challengerExit.ts: 1.50x or the 0.5322 stop, no break-even); else the books' */
++  exit?: 'books' | 'hard';
+ }
+ 
+ /** The rule a row falls under (inputs in CHALLENGER_INPUTS order), and its score (nearer the target delta is higher). */
+@@ -80,7 +87,8 @@ export function ruleScore(rules: readonly ShadowRule[], ticker: string, session:
+     /* the bounds as float32, as the training rows compared them (numpy compares a float32 column in float32) */
+     const f = Math.fround;
+     if (!(d >= f(r.delta[0]) && d <= f(r.delta[1])) || !(since >= f(r.since[0]) && since <= f(r.since[1]))) continue;
+-    if (r.gapSide && !(c[33] > 0)) continue;
++    if (r.side === 'gap' && !(c[33] > 0)) continue;
++    if (r.side === 'against' && !(c[33] < 0)) continue;
+     return { rule: r, score: 1 - Math.abs(d - r.target) };
+   }
+   return null;
+@@ -189,7 +197,7 @@ export function scoreChallenger(machine: Machine, c: readonly number[], ask = Na
+ 
+ /* ---- the shadow book: one session at a time ---- */
+ 
+-interface Cand { row: FeatureRow; machine: Machine; raw: number; pc: number; runner?: boolean }
++interface Cand { row: FeatureRow; machine: Machine; raw: number; pc: number; runner?: boolean; hard?: boolean }
+ let day = '';
+ let calls: ShadowCall[] = [];
+ let older: ShadowCall[] = [];
+@@ -231,7 +239,7 @@ function onRow(r: FeatureRow): void {
+   const ruled = meta.rules ? ruleScore(meta.rules, r.setup.ticker, r.gates.session, c) : null;
+   if (ruled) {
+     scoredRows += 1;
+-    add({ row: r, machine, raw: ruled.score, pc: ruled.score, runner: ruled.rule.runner });
++    add({ row: r, machine, raw: ruled.score, pc: ruled.score, runner: ruled.rule.runner, hard: ruled.rule.exit === 'hard' });
+     return;
+   }
+   if (meta.regular === 'hit' && r.gates.session === 'regular') {
+@@ -329,6 +337,7 @@ function onBatch(b: FeatureBatch): void {
+       pc: Number(c.pc.toFixed(6)),
+       raw: Number(c.raw.toFixed(6)),
+       line: meta.line,
++      ...(c.hard ? { exitRule: 'hard' as const } : {}),
+     };
+     calls = [sig, ...calls];
+   }
+@@ -401,8 +410,9 @@ export async function settleChallenger(): Promise<void> {
+       const quotes = await contractPath(sig, sig.outcome?.fill?.at ?? null);
+       if (!quotes) continue;
+       const under = await underCloses(sig.ticker, sig.day.replace(/-/g, ''));
+-      const path = await withFineExits(sig, quotes);
+-      const out = settleSignal(sig, path, under, Date.now());
++      const out = sig.exitRule === 'hard'
++        ? settleHard(sig, await hardPath(sig, quotes), Date.now())
++        : settleSignal(sig, await withFineExits(sig, quotes), under, Date.now());
+       const after = quotes.filter(q => q.t > sig.firedAt && q.t % 60_000 === 0 && (!out.exit || q.t <= out.exit.at));
+       const next: ShadowCall = { ...sig, outcome: out, pathAt: Date.now(), spark: after.map(q => q.bid).filter(b => b >= 0) };
+       calls = calls.map(r => (r.key === sig.key ? next : r));
+@@ -414,6 +424,29 @@ export async function settleChallenger(): Promise<void> {
+   }
+ }
+ 
++const two = (v: number) => String(v).padStart(2, '0');
++const clockOf = (ms: number) => {
++  const p = nyParts(ms);
++  return `${two(p.hour)}:${two(p.minute)}:${two(p.second)}`;
++};
++const isoOf = (ms: number) => {
++  const p = nyParts(ms);
++  return `${p.year}${two(p.month)}${two(p.day)}`;
++};
++
++/** A hard-exit call's minute path with the 1-second quotes of every minute that crossed its stop or target. */
++export async function hardPath(sig: ShadowCall, minute: PathQuote[]): Promise<PathQuote[]> {
++  const extra: PathQuote[] = [];
++  for (const [after, through] of hardWindows(sig, minute)) {
++    const d = isoOf(through);
++    const from = isoOf(after + 1_000) === d ? clockOf(after + 1_000) : '00:00:00';
++    const got = await compassHost().theta(`/option/history/quote?symbol=${encodeURIComponent(sig.ticker)}&expiration=${sig.expiry.replace(/-/g, '')}&strike=${sig.strike}&right=${sig.right === 'C' ? 'call' : 'put'}&start_date=${d}&end_date=${d}&interval=1s&start_time=${from}&end_time=${clockOf(through)}&format=json`);
++    if (got.error) continue;
++    extra.push(...readQuotes(got.data).filter(q => q.t > after && q.t <= through && q.t % 60_000 !== 0));
++  }
++  return [...minute, ...extra].sort((a, b) => a.t - b.t);
++}
++
+ /** For the proofs and the replay: the shadow's state reset to an empty session. */
+ export function resetChallenger(forDay = ''): void {
+   importChallenger(forDay, null, []);
+-- 
+2.43.0
+

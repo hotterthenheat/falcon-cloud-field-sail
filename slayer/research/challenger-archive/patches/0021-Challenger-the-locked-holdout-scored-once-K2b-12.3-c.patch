@@ -1,0 +1,266 @@
+From 3e14149af562b6b87e7ae9c1183ff4a12c9bbcd2 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 17:07:04 +0000
+Subject: [PATCH 21/29] =?UTF-8?q?Challenger:=20the=20locked=20holdout=20sc?=
+ =?UTF-8?q?ored=20once=20=E2=80=94=20K2b=20+12.3%/call=20but=2045%=20win;?=
+ =?UTF-8?q?=20no=20candidate=20reaches=20the=2060%=20bar;=20second=20holdo?=
+ =?UTF-8?q?ut=20locked?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/LOG.md             |  28 ++++++++++++++++++
+ .../__pycache__/candidates.cpython-313.pyc    | Bin 4555 -> 6620 bytes
+ .../__pycache__/common.cpython-313.pyc        | Bin 18634 -> 19154 bytes
+ slayer/research/challenger/books.py           |  14 ++++++++-
+ slayer/research/challenger/common.py          |   6 ++++
+ slayer/research/challenger/k4-meta.json       |   1 +
+ slayer/research/challenger/resettle.ts        |   6 +++-
+ 7 files changed, 53 insertions(+), 2 deletions(-)
+ create mode 100644 slayer/research/challenger/k4-meta.json
+
+diff --git a/slayer/research/challenger/LOG.md b/slayer/research/challenger/LOG.md
+index 79c6eb9..94c3166 100644
+--- a/slayer/research/challenger/LOG.md
++++ b/slayer/research/challenger/LOG.md
+@@ -180,6 +180,34 @@ family's configurations with at least 40 development calls":** SPXW, overnight,
+ (its calls fire from 00:05), the side against the overnight move so far, strike nearest 0.15 delta, 1.50x
+ take-profit, flat 09:20. Development: 53 calls, 72% win, +29.6% a call.
+ 
++## LOCKED HOLDOUT, scored once (2026-10-31 17:10 UTC): 63 sessions (H-2022 21, H-2024 22, H-recent 20)
++
++Every engine call settled with the ledger's 1-second exits first (`resettle.ts --holdout`). Win = the bid reached
++1.50x the ask paid before the stop (Book C: a closed gain, it has no stop). Hypotheses tried before this look: 101.
++
++| book | calls | win [95%] | return/call [95%] | $/call [95%] | return/session [95%] | $/session [95%] |
++|---|---:|---:|---:|---:|---:|---:|
++| Hit score + Runner (current A/B) | 256 | 25% [19, 31] | -5.6% [-10.7, -0.6] | -22 [-124, +85] | -22.8% [-43.0, -2.6] | -87 [-499, +355] |
++| Hit score, no ride | 256 | 25% [19, 31] | -5.6% [-10.7, -0.6] | -22 [-124, +85] | -22.8% [-43.0, -2.6] | -87 [-499, +355] |
++| Late sweep (Book C) | 96 | 44% [29, 60] | -3.4% [-22.6, +19.3] | +1 [-19, +23] | -5.2% [-35.1, +27.4] | +2 [-28, +34] |
++| **K2b** overnight SPXW, 15-30 delta, gap side | 51 | **45% [32, 59]** | **+12.3% [+1.4, +23.0]** | +152 [+46, +261] | +9.9% [+1.2, +18.6] | +123 [+37, +211] |
++| K4 overnight SPXW, 10-20 delta, against side | 29 | 38% [21, 56] | +11.2% [-1.3, +23.8] | +66 [-17, +150] | +5.2% [-0.6, +11.0] | +30 [-7, +70] |
++| K2 live books + K2b, one set of seats | 259 | 27% [22, 33] | -2.5% [-7.3, +2.4] | +34 [-51, +124] | -10.3% [-29.6, +10.1] | +140 [-210, +517] |
++| K1 Hit score, always ride | 256 | 25% [19, 31] | -5.9% [-11.7, +0.0] | -10 [-134, +152] | -23.9% [-47.2, +0.2] | -42 [-545, +631] |
++
++Paired against the live books (same sessions): K2b +17.9%/call [+6.1, +29.8], +32.7% return/session [+12.0, +54.8],
+++$211/session [-221, +650]; against the Late sweep +$121/session [+21, +218]. K2 +3.1%/call [-0.2, +6.7], +$228/session
++[-18, +501]. By block, K2b: H-2022 64% win (14 calls, +25.6%/call), H-2024 47% (19, +16.9%), **H-recent 28% (18,
++-3.0%)**; K4: 62% (8), 55% (11), **0% (10)**.
++
++**Verdict.** The overnight SPXW effect is real out of sample in return (K2b's interval excludes zero, per call and
++per session, and it beats all three current books per call) but **no candidate reaches the 60% win bar**: K2b's 45%
++[32, 59] is the best, and it failed in the most recent block. The always-ride exit (K1) did not hold up. The
++holdout is now spent for these candidates; a new candidate needs fresh sessions (below).
++
++**Next holdout (H2), locked now, not built when locked:** 2022-07-01 .. 2022-09-30 (SPY, QQQ, IWM, SPXW) and 2025-01-02
++.. 2025-03-31 (all roots, when fetched). Nothing is tuned on them.
++
+ **Pipeline v2.** The terminal was restarted or down several times this afternoon and the builders, which read Book
+ C's 15:20:15 board and the 1-second exits from it, stalled. Now the fetcher keeps Book C's board with the raw cache,
+ the builders need no terminal (~70 s a regime session, ~5 min a full one), and the 1-second exits are settled
+diff --git a/slayer/research/challenger/__pycache__/candidates.cpython-313.pyc b/slayer/research/challenger/__pycache__/candidates.cpython-313.pyc
+index 3b453d0b8d0fb62f8173c113ce40ae4903a527b8..1bb4d45324358cd0d28617ee04ff7258b4f36b5e 100644
+GIT binary patch
+delta 2293
+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
+
+delta 750
+zcmY+CO=uHA6vt;a+1>8WCQZ_YO{$HUP};5b%Mfj7NgHdGP`qT#p%94JN@!`4I-v)>
+zSfPi+n>_TOmwFO!wh^r0Nf3o<A$n+7MFjEUDJ3^4=**@)_~8BKKY!-E`Plsy-Hr6O
+zTrL%{`1||Ua+0Z^d~zJlBhkA2pnt-Xm9t7#HI-opC3(S6x9&U@4T&vruxwQ@LJv^}
+z6@`poVv$+tqw4kmX<y9szw<}x#Rvj&A7jGiqRsm@U&s+692cY|*zEEvg6V8`t{uul
+z80TS7={dLbhAp!k3(+X$>+|iJ=2ZUEM?0nrC*^mvgyO2@Tq-XWp{m3$8q5l^EblU`
+zqo#xuvYu=ZtukMo+$W(r32mOKlcATsSNgWT<J}p5ePTa8SC7wq$b1<y>#7Mq^jq*q
+zofh^mG}H}|U0e`hOVVMRbU~i@!6GhuJR}PCz;|*I!kQm<!?dTz9plf&q9|ujT8Hae
+z90zKTwJg?MRAIh-W=goyI1F&P12_Vs?h(?@4gL~z0G8dRdY;J$%kn#T@4nz`sHBpr
+zp50e_>uT?2u&xe5sB=SnI}w=)*PeCG;N%dm9cD0O${(V=;|NzB9K0DF<rrfyB<kVX
+z%Q3(ag{yi9Qr-X_ha27%!EnIm!0cVkl5@Gm(n2n0iN&?T>TSD`B`uT+g;J67?@#Sb
+z{9N^L*t_%d({To?BRzX1WnN3qKSy+syWO@sStu>8t=vq|1e>xy4V5o3G#wb@13|>j
+gmWFWGS9lT(>rD^R`x>VcjZ?7$*{KQlI_yUO0HW5WzyJUM
+
+diff --git a/slayer/research/challenger/__pycache__/common.cpython-313.pyc b/slayer/research/challenger/__pycache__/common.cpython-313.pyc
+index e80d1578d4bc151c7bf2c2ab0e8b7ee046555e7c..95a323ad2c274587b39413d00ed951d90ddd6645 100644
+GIT binary patch
+delta 3003
+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
+KTiJ_!_5TIUt;awB
+
+delta 2429
+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
+
+diff --git a/slayer/research/challenger/books.py b/slayer/research/challenger/books.py
+index 11d6dbd..d89360c 100644
+--- a/slayer/research/challenger/books.py
++++ b/slayer/research/challenger/books.py
+@@ -13,6 +13,11 @@ def is_holdout(day):
+     return ('2026-10-05' <= day <= '2026-10-30') or day.startswith('2022-06') or day.startswith('2024-08')
+ 
+ 
++def is_holdout2(day):
++    """The second locked holdout (H2), for candidates formed after the first holdout was spent."""
++    return ('2022-07-01' <= day <= '2022-09-30') or ('2025-01-02' <= day <= '2025-03-31')
++
++
+ def holdout_block(day):
+     if day.startswith('2022-06'):
+         return 'H-2022'
+@@ -36,7 +41,14 @@ def regime(day):
+ 
+ 
+ def dev_days():
+-    return [d for d in C.days_built() if not is_holdout(d)]
++    """Development: every built session outside both locked holdouts. (After the first holdout was spent, its
++    sessions may be used for development of new candidates: DEV_WITH_H1=1.)"""
++    h1 = os.environ.get('DEV_WITH_H1') == '1'
++    return [d for d in C.days_built() if not is_holdout2(d) and (h1 or not is_holdout(d))]
++
++
++def holdout2_days():
++    return [d for d in C.days_built() if is_holdout2(d)]
+ 
+ 
+ def holdout_days():
+diff --git a/slayer/research/challenger/common.py b/slayer/research/challenger/common.py
+index 032c0a3..ee73e8e 100644
+--- a/slayer/research/challenger/common.py
++++ b/slayer/research/challenger/common.py
+@@ -25,6 +25,12 @@ def load_day(day, cache=True):
+     pq = os.path.join(DATA, 'rows', f'{day}.parquet')
+     src = os.path.join(DATA, 'rows', f'{day}.csv.gz')
+     if os.path.exists(pq) and (not os.path.exists(src) or os.path.getmtime(pq) >= os.path.getmtime(src)):
++        cols = os.environ.get('CHAL_COLS')
++        if cols:
++            have = set(pd.read_parquet(pq, columns=None).columns) if False else None
++            import pyarrow.parquet as pqm
++            names = set(pqm.read_schema(pq).names)
++            return pd.read_parquet(pq, columns=[c for c in cols.split(',') if c in names])
+         return pd.read_parquet(pq)
+     df = pd.read_csv(src, low_memory=False)
+     for c in ('whyA', 'whyR'):
+diff --git a/slayer/research/challenger/k4-meta.json b/slayer/research/challenger/k4-meta.json
+new file mode 100644
+index 0000000..4d89607
+--- /dev/null
++++ b/slayer/research/challenger/k4-meta.json
+@@ -0,0 +1 @@
++{"format":"compass-challenger/1","inputs":60,"target":"tp","line":0,"note":"K4 (research/challenger/candidates.py k4_overnight_spx_otm): a rules-only machine, no trees","rules":[{"name":"Overnight SPX, far out of the money","session":"overnight","roots":["SPXW"],"delta":[0.1,0.2],"since":[120,700],"side":"against","target":0.15,"runner":false}]}
+diff --git a/slayer/research/challenger/resettle.ts b/slayer/research/challenger/resettle.ts
+index 948810f..a89268f 100644
+--- a/slayer/research/challenger/resettle.ts
++++ b/slayer/research/challenger/resettle.ts
+@@ -11,7 +11,11 @@ import { DATA } from './fetch';
+ 
+ const OUT = path.join(DATA, 'rows');
+ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+-const named = process.argv.slice(2).filter(a => /^\d{4}-\d{2}-\d{2}$/.test(a));
++const fileArg = process.argv.indexOf('--holdout');
++const named = fileArg >= 0
++  ? fs.readdirSync(path.join(DATA, 'rows')).filter(f => f.endsWith('.calls.json')).map(f => f.slice(0, 10))
++    .filter(d => (d >= '2026-10-05' && d <= '2026-10-30') || d.startsWith('2022-06') || d.startsWith('2024-08'))
++  : process.argv.slice(2).filter(a => /^\d{4}-\d{2}-\d{2}$/.test(a));
+ const isOpen = (c: { outcome?: { status?: string } | null }) => !c.outcome || (c.outcome.status !== 'closed' && c.outcome.status !== 'unavailable');
+ const days = named.length ? named : fs.readdirSync(OUT).filter(f => f.endsWith('.calls.json')).map(f => f.slice(0, 10)).filter(d => {
+   const doc = JSON.parse(fs.readFileSync(path.join(OUT, `${d}.calls.json`), 'utf8')) as { netless?: boolean; calls: { outcome?: { status?: string } | null }[] };
+-- 
+2.43.0
+

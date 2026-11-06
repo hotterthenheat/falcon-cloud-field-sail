@@ -1,0 +1,36 @@
+From da9aff1b8642fb57ac947d6ee6a749be911e4ea0 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 15:44:51 +0000
+Subject: [PATCH 18/29] =?UTF-8?q?Challenger:=20research=20log=20=E2=80=94?=
+ =?UTF-8?q?=202022=20development=20check,=20pipeline=20v2?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/LOG.md | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/slayer/research/challenger/LOG.md b/slayer/research/challenger/LOG.md
+index c4182cc..6f88d22 100644
+--- a/slayer/research/challenger/LOG.md
++++ b/slayer/research/challenger/LOG.md
+@@ -151,3 +151,13 @@ K2 (the live Books A/B plus the overnight SPXW rule, one set of seats) against t
+   mostly at 00:05, the first mark where a same-side 15-30 delta SPXW contract passes the gates.
+ - The ledger's 1-second exits (settle_calls.ts) on the 17 round-1 overnight calls: +26.0%/call against +25.7% on the
+   minute path. The exits do not flatter it.
++
++**2022 (bear market) development sessions, first 41 (Feb-Apr, Oct):** K2b +2.0%/call [-18.2, +20.5] on 19 calls
++(42% hit): not significant. The Hit score's book had a bad stretch there (-8.6%/call [-16.1, -0.5], -$309/session),
++the Late sweep worse (-48.9%/call). K2 against the live books: +0.7%/call [-2.4, +3.6], +$78/session [-167, +306].
++The overnight effect is a 2024-2026 (and 2020) effect so far, not every regime's.
++
++**Pipeline v2.** The terminal was restarted or down several times this afternoon and the builders, which read Book
++C's 15:20:15 board and the 1-second exits from it, stalled. Now the fetcher keeps Book C's board with the raw cache,
++the builders need no terminal (~70 s a regime session, ~5 min a full one), and the 1-second exits are settled
++afterwards (`resettle.ts`). Days built while the terminal did not answer are not written and are built again.
+-- 
+2.43.0
+

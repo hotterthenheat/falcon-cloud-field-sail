@@ -1,0 +1,426 @@
+From 1a3bf96b257bae858ee4eaca9e10a47df8228934 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 15:48:49 +0000
+Subject: [PATCH 19/29] Challenger: win rate (+50% before the stop) in every
+ table; PBO by CSCV and the deflated Sharpe (own implementation); K4 frozen
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/LOG.md             |  23 +++
+ .../__pycache__/books.cpython-313.pyc         | Bin 13376 -> 14899 bytes
+ slayer/research/challenger/books.py           |  22 ++-
+ slayer/research/challenger/candidates.py      |  16 ++
+ slayer/research/challenger/holdout.py         |   2 +-
+ slayer/research/challenger/overfit.py         | 148 ++++++++++++++++++
+ 6 files changed, 202 insertions(+), 9 deletions(-)
+ create mode 100644 slayer/research/challenger/overfit.py
+
+diff --git a/slayer/research/challenger/LOG.md b/slayer/research/challenger/LOG.md
+index 6f88d22..79c6eb9 100644
+--- a/slayer/research/challenger/LOG.md
++++ b/slayer/research/challenger/LOG.md
+@@ -157,6 +157,29 @@ K2 (the live Books A/B plus the overnight SPXW rule, one set of seats) against t
+ the Late sweep worse (-48.9%/call). K2 against the live books: +0.7%/call [-2.4, +3.6], +$78/session [-167, +306].
+ The overnight effect is a 2024-2026 (and 2020) effect so far, not every regime's.
+ 
++## The 60% bar (owner, 2026-10-31): a win = the bid reached 1.50x the ask paid before the stop
++
++On 166 development sessions the average Book A/B candidate wins 14.8% of the time; the Hit score's book about 28-34%.
++The overnight SPXW cells (development, descriptive): marks 00:00-03:59 with |delta| 0.10-0.25 win 62-80% (+26 to
+++40% a candidate), consistent hour by hour and over 21-112 sessions a cell; the evening marks (20:15-23:59) win
++12-35% and lose.
++
++**Overfitting checks (overfit.py; my own implementation of Bailey et al. 2015 CSCV and Bailey & López de Prado
++2014):** on the 171 development sessions, 16 blocks, 12,864-12,870 symmetric splits.
++- Overnight SPXW family (60 configurations: 6 delta bands x 5 entry windows x 2 sides): **PBO 0.03** (win rate) and
++  0.04 (return per call): the in-sample best stays above the out-of-sample median in 97% of splits. Best
++  configurations: |delta| 0.10-0.20 win 63-79% on 24-53 calls, +27 to +33% a call. Deflated Sharpe (N = 101
++  trials, the trials' Sharpe variance): 0.01-0.41 — **below 0.95: with 24-53 calls a call-level Sharpe of 0.7-1.1
++  cannot yet be told from the best of 101 noisy trials.**
++- Hit-score filter family (18 configurations): PBO 0.03 / 0.09; every configuration wins 28-34%: none near the bar.
++
++Hypotheses tried so far: 101 (23 individual + 60 + 18 family configurations).
++
++**K4 frozen (before any holdout look), by the a-priori rule "the highest development win rate among the overnight
++family's configurations with at least 40 development calls":** SPXW, overnight, |delta| 0.10-0.20, 22:15-07:55
++(its calls fire from 00:05), the side against the overnight move so far, strike nearest 0.15 delta, 1.50x
++take-profit, flat 09:20. Development: 53 calls, 72% win, +29.6% a call.
++
+ **Pipeline v2.** The terminal was restarted or down several times this afternoon and the builders, which read Book
+ C's 15:20:15 board and the 1-second exits from it, stalled. Now the fetcher keeps Book C's board with the raw cache,
+ the builders need no terminal (~70 s a regime session, ~5 min a full one), and the 1-second exits are settled
+diff --git a/slayer/research/challenger/__pycache__/books.cpython-313.pyc b/slayer/research/challenger/__pycache__/books.cpython-313.pyc
+index f03eaf0bc9b1808692ac941be42d3ab4122f1513..5177e4531ef03dda70783219803b5e621391da99 100644
+GIT binary patch
+delta 4112
+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
+
+delta 3055
+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
+
+diff --git a/slayer/research/challenger/books.py b/slayer/research/challenger/books.py
+index c766411..11d6dbd 100644
+--- a/slayer/research/challenger/books.py
++++ b/slayer/research/challenger/books.py
+@@ -55,6 +55,8 @@ class Sessions:
+         self.pnl_ride, _ = C.call_pnl(df, 'all')
+         self.pnl_tp, _ = C.call_pnl(df, 'none')
+         self.engine = {d: C.engine_calls(d) for d in self.days}
++        # a win: the bid reached 1.50x the ask paid before the stop (Book A's take-profit came first)
++        self.win = df['whyA'].astype(str).str.startswith('Take profit').values
+ 
+     def calls(self, score, line, eligible=None):
+         return C.simulate(self.df, score, line, eligible)
+@@ -64,7 +66,7 @@ class Sessions:
+         out = {d: [] for d in self.days}
+         for i in idx:
+             if np.isfinite(pnl[i]) and self.fill[i] > 0:
+-                out[self.df.at[i, 'day']].append((pnl[i] / (self.fill[i] * 100), pnl[i], i))
++                out[self.df.at[i, 'day']].append((pnl[i] / (self.fill[i] * 100), pnl[i], i, bool(self.win[i])))
+         return out
+ 
+     def late_sweep(self):
+@@ -73,28 +75,32 @@ class Sessions:
+             for c in calls:
+                 o = c.get('outcome') or {}
+                 if c['book'] == 'C' and o.get('pnl') is not None and o.get('fill'):
+-                    out[d].append((o['pnl'] / (o['fill']['ask'] * 100), o['pnl'], -1))
++                    # Book C has no stop: a win is a closed call with a gain (the record's "won")
++                    out[d].append((o['pnl'] / (o['fill']['ask'] * 100), o['pnl'], -1, o['pnl'] > 0))
+         return out
+ 
+ 
+ def summarize(per, name, n_boot=2000, seed=5):
+-    """Return per call, $ per call, return-sum and $ per session, each with a session-block 95% interval."""
++    """Win rate (the bid at 1.50x the ask paid before the stop), return per call, $ per call, return-sum and $ per
++    session, each with a session-block 95% interval."""
+     days = sorted(per)
+     R = [np.array([x[0] for x in per[d]], float) for d in days]
+     P = [np.array([x[1] for x in per[d]], float) for d in days]
++    W = [np.array([x[3] if len(x) > 3 else x[0] > 0 for x in per[d]], float) for d in days]
+     n = sum(len(r) for r in R)
+     def stats(sel):
+         nr = sum(len(R[i]) for i in sel)
+         sr = sum(R[i].sum() for i in sel)
+         sp = sum(P[i].sum() for i in sel)
+-        return (sr / nr if nr else np.nan, sp / nr if nr else np.nan, sr / len(sel), sp / len(sel))
++        sw = sum(W[i].sum() for i in sel)
++        return (sr / nr if nr else np.nan, sp / nr if nr else np.nan, sr / len(sel), sp / len(sel), sw / nr if nr else np.nan)
+     pt = stats(range(len(days)))
+     rng = np.random.default_rng(seed)
+-    bs = np.array([stats(rng.integers(0, len(days), len(days))) for _ in range(n_boot)])
++    bs = np.array([stats(rng.integers(0, len(days), len(days))) for _ in range(n_boot)]) if days else np.full((1, 5), np.nan)
+     lo = np.nanpercentile(bs, 2.5, axis=0)
+     hi = np.nanpercentile(bs, 97.5, axis=0)
+     flat = np.concatenate(R) if n else np.array([])
+-    return {'book': name, 'sessions': len(days), 'calls': n, 'hit': float((flat > 0).mean()) if n else np.nan,
++    return {'book': name, 'sessions': len(days), 'calls': n, 'win': pt[4], 'win_lo': lo[4], 'win_hi': hi[4], 'hit': float((flat > 0).mean()) if n else np.nan,
+             'ret': pt[0], 'ret_lo': lo[0], 'ret_hi': hi[0], 'usd': pt[1], 'usd_lo': lo[1], 'usd_hi': hi[1],
+             'ret_day': pt[2], 'ret_day_lo': lo[2], 'ret_day_hi': hi[2], 'usd_day': pt[3], 'usd_day_lo': lo[3], 'usd_day_hi': hi[3],
+             'worst_ret': float(flat.min()) if n else np.nan}
+@@ -118,12 +124,12 @@ def paired(a, b, n_boot=2000, seed=9):
+ 
+ 
+ def table(rows):
+-    out = ['| book | sessions | calls | hit | return/call [95%] | $/call [95%] | return/session [95%] | $/session [95%] |', '|---|---:|---:|---:|---:|---:|---:|---:|']
++    out = ['| book | sessions | calls | win (+50% before stop) [95%] | return/call [95%] | $/call [95%] | return/session [95%] | $/session [95%] |', '|---|---:|---:|---:|---:|---:|---:|---:|']
+     for r in rows:
+         if not r['calls']:
+             out.append(f"| {r['book']} | {r['sessions']} | 0 | | | | | |")
+             continue
+-        out.append(f"| {r['book']} | {r['sessions']} | {r['calls']} | {100 * r['hit']:.0f}% | {100 * r['ret']:+.1f}% [{100 * r['ret_lo']:+.1f}, {100 * r['ret_hi']:+.1f}] | "
++        out.append(f"| {r['book']} | {r['sessions']} | {r['calls']} | **{100 * r['win']:.0f}%** [{100 * r['win_lo']:.0f}, {100 * r['win_hi']:.0f}] | {100 * r['ret']:+.1f}% [{100 * r['ret_lo']:+.1f}, {100 * r['ret_hi']:+.1f}] | "
+                    f"{r['usd']:+.0f} [{r['usd_lo']:+.0f}, {r['usd_hi']:+.0f}] | {100 * r['ret_day']:+.1f}% [{100 * r['ret_day_lo']:+.1f}, {100 * r['ret_day_hi']:+.1f}] | "
+                    f"{r['usd_day']:+.0f} [{r['usd_day_lo']:+.0f}, {r['usd_day_hi']:+.0f}] |")
+     return '\n'.join(out)
+diff --git a/slayer/research/challenger/candidates.py b/slayer/research/challenger/candidates.py
+index 5bdaa5a..50eda66 100644
+--- a/slayer/research/challenger/candidates.py
++++ b/slayer/research/challenger/candidates.py
+@@ -51,7 +51,23 @@ def k2b_overnight_spx_only(S, days_mask):
+     return idx, {i: 'tp' for i in idx}
+ 
+ 
++def k4_overnight_spx_otm(S, days_mask):
++    """K4 (frozen 2026-10-31 16:10 UTC, chosen on development by the a-priori rule "the highest development win rate
++    among the overnight family's configurations with at least 40 development calls", overfit.py): SPXW only, the
++    overnight session, |delta| 0.10-0.20, 2 h to 11 h 40 into the session (22:15-07:55; its calls fire from 00:05),
++    the side AGAINST the overnight move so far (gap vs the prior close < 0, signed by side), the strike nearest 0.15
++    delta; the 1.50x take-profit exit (Book A non-runner rules), its own flat 09:20. One call a night at most (one
++    root, one seat)."""
++    d = S.df
++    el = ((d['session'].values == 'overnight') & (d['ticker'].values == 'SPXW')
++          & (d['c14'].values >= 0.10) & (d['c14'].values <= 0.20)
++          & (d['c1'].values >= 120) & (d['c1'].values <= 700) & (d['c33'].values < 0))
++    idx = S.calls(np.where(el, 1.0 - np.abs(d['c14'].values - 0.15), np.nan), 0.0, days_mask)
++    return idx, {i: 'tp' for i in idx}
++
++
+ REGISTRY = {
++    'K4-overnight-SPXW-otm': k4_overnight_spx_otm,
+     'K1-always-ride': k1_always_ride,
+     'K2-current+overnight-SPXW': k2_current_plus_overnight_spx,
+     'K2b-overnight-SPXW-only': k2b_overnight_spx_only,
+diff --git a/slayer/research/challenger/holdout.py b/slayer/research/challenger/holdout.py
+index ac25477..0e0adec 100644
+--- a/slayer/research/challenger/holdout.py
++++ b/slayer/research/challenger/holdout.py
+@@ -21,7 +21,7 @@ def per_session(S, idx, exits):
+     for i in idx:
+         p = pnl[exits[i]][i]
+         if np.isfinite(p) and S.fill[i] > 0:
+-            out[S.df.at[i, 'day']].append((p / (S.fill[i] * 100), p, i))
++            out[S.df.at[i, 'day']].append((p / (S.fill[i] * 100), p, i, bool(S.win[i])))
+     return out
+ 
+ 
+diff --git a/slayer/research/challenger/overfit.py b/slayer/research/challenger/overfit.py
+new file mode 100644
+index 0000000..2592b70
+--- /dev/null
++++ b/slayer/research/challenger/overfit.py
+@@ -0,0 +1,148 @@
++"""Overfitting checks, written here from the papers (Bailey, Borwein, López de Prado & Zhu, "The Probability of
++Backtest Overfitting", 2015; Bailey & López de Prado, "The Deflated Sharpe Ratio", 2014). Nothing vendored.
++
++- PBO by combinatorially symmetric cross-validation (CSCV): the development sessions, in time order, are cut into S
++  equal blocks; for every way of choosing S/2 blocks as in-sample (the rest out-of-sample), the configuration of a
++  family that is best in-sample is ranked among the family out-of-sample; omega = rank / (N + 1), lambda =
++  logit(omega); PBO = the share of splits where lambda <= 0 (the in-sample winner is at or below the out-of-sample
++  median).
++- Deflated Sharpe ratio of a candidate's per-call returns: the probability that its true Sharpe exceeds the
++  expected maximum Sharpe of N independent trials with the trials' Sharpe variance, corrected for the returns' skew
++  and kurtosis and the sample length.
++
++  python -I research/challenger/overfit.py            (the overnight family and the Hit-score filter family)
++"""
++import itertools, math, os, sys
++import numpy as np
++from statistics import NormalDist
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++import common as C
++import books as B
++
++N01 = NormalDist()
++EULER = 0.5772156649015329
++
++
++def per_session_stats(S, idx, exit_rule):
++    """Per session: calls, wins (+50% before the stop), sum of returns."""
++    per = S.per_session(idx, exit_rule)
++    days = S.days
++    calls = np.array([len(per[d]) for d in days], float)
++    wins = np.array([sum(1 for x in per[d] if x[3]) for d in days], float)
++    rets = np.array([sum(x[0] for x in per[d]) for d in days], float)
++    allr = np.array([x[0] for d in days for x in per[d]], float)
++    return calls, wins, rets, allr
++
++
++def pbo(mats, metric='win', blocks=16, min_calls=5):
++    """mats: list of (calls, wins, rets) per configuration, each an array over sessions in time order.
++    metric 'win' (pooled win rate) or 'ret' (pooled mean return per call). Returns (pbo, n_splits, lambdas)."""
++    T = len(mats[0][0])
++    N = len(mats)
++    edges = np.linspace(0, T, blocks + 1).astype(int)
++    blk = [np.arange(edges[i], edges[i + 1]) for i in range(blocks)]
++    def perf(sel):
++        out = np.full(N, -np.inf)
++        for j, (c, w, r) in enumerate(mats):
++            n = c[sel].sum()
++            if n >= min_calls:
++                out[j] = (w[sel].sum() if metric == 'win' else r[sel].sum()) / n
++        return out
++    lams = []
++    for combo in itertools.combinations(range(blocks), blocks // 2):
++        ins = np.concatenate([blk[i] for i in combo])
++        oos = np.concatenate([blk[i] for i in range(blocks) if i not in combo])
++        pi, po = perf(ins), perf(oos)
++        if not np.isfinite(pi).any():
++            continue
++        best = int(np.argmax(pi))
++        valid = np.isfinite(po)
++        if not valid[best] or valid.sum() < 2:
++            continue
++        # rank of the in-sample winner among the out-of-sample performances (1 = worst)
++        rank = 1 + np.sum(po[valid] < po[best]) + 0.5 * (np.sum(po[valid] == po[best]) - 1)
++        omega = rank / (valid.sum() + 1)
++        lams.append(math.log(omega / (1 - omega)))
++    lams = np.array(lams)
++    return float(np.mean(lams <= 0)) if len(lams) else np.nan, len(lams), lams
++
++
++def deflated_sharpe(returns, n_trials, sr_var):
++    """DSR of per-call returns given the number of trials and the variance of the trials' Sharpe ratios."""
++    r = np.asarray(returns, float)
++    T = len(r)
++    if T < 3 or r.std(ddof=1) == 0:
++        return np.nan, np.nan, np.nan
++    sr = r.mean() / r.std(ddof=1)
++    z = (r - r.mean()) / r.std(ddof=0)
++    skew = float(np.mean(z ** 3))
++    kurt = float(np.mean(z ** 4))
++    n = max(2, int(n_trials))
++    sr0 = math.sqrt(max(sr_var, 0.0)) * ((1 - EULER) * N01.inv_cdf(1 - 1 / n) + EULER * N01.inv_cdf(1 - 1 / (n * math.e)))
++    den = math.sqrt(max(1e-12, 1 - skew * sr + (kurt - 1) / 4 * sr * sr))
++    dsr = N01.cdf((sr - sr0) * math.sqrt(T - 1) / den)
++    return dsr, sr, sr0
++
++
++def overnight_family(S):
++    """The overnight SPXW rule's grid: |delta| band x entry window (minutes since 20:15) x side."""
++    d = S.df
++    out = []
++    bands = [(0.10, 0.20), (0.10, 0.25), (0.15, 0.25), (0.15, 0.30), (0.20, 0.35), (0.10, 0.30)]
++    windows = [(225, 464, '00:00-03:59'), (120, 700, '22:15-07:55'), (225, 700, '00:00-07:55'), (345, 585, '02:00-05:59'), (0, 224, '20:15-23:59')]
++    sides = [('gap', 1), ('against', -1)]
++    base = (d['session'].values == 'overnight') & (d['ticker'].values == 'SPXW')
++    for (lo, hi), (w0, w1, wl), (sl, sg) in itertools.product(bands, windows, sides):
++        el = base & (d['c14'].values >= lo) & (d['c14'].values <= hi) & (d['c1'].values >= w0) & (d['c1'].values <= w1) & (sg * d['c33'].values > 0)
++        score = np.where(el, 1.0 - np.abs(d['c14'].values - (lo + hi) / 2), np.nan)
++        out.append((f'SPXW overnight |delta| {lo:.2f}-{hi:.2f}, {wl}, {sl} side', score, 'tp'))
++    return out
++
++
++def hit_family(S):
++    d = S.df
++    p1 = d['p1'].values.astype(float)
++    f = np.isfinite
++    fl = {'none': np.ones(len(d), bool), 'gap with': f(d.c33.values) & (d.c33.values > 0.0009), 'spread<=1.6%': f(d.c11.values) & (d.c11.values <= 0.0159),
++          'rv/iv<=0.7': f(d.c26.values) & (d.c26.values <= 0.7), 'delta 0.3-0.7': f(d.c14.values) & (d.c14.values >= 0.3) & (d.c14.values <= 0.7),
++          'prem>=0.3EM': f(d.c18.values) & (d.c18.values >= 0.3), 'shock>=1': f(d.c49.values) & (d.c49.values >= 1), '0DTE': d.dte.values == 0, '1-7DTE': d.dte.values >= 1}
++    out = []
++    for k, m in fl.items():
++        for ex in ('prun', 'ride'):
++            out.append((f'Hit score, {k}, {ex}', np.where(m, p1, np.nan), ex))
++    return out
++
++
++def run_family(S, fam, line, title, n_trials):
++    mats, srs, best = [], [], None
++    rows = []
++    for name, score, ex in fam:
++        idx = S.calls(score, line)
++        c, w, r, allr = per_session_stats(S, idx, ex)
++        mats.append((c, w, r))
++        if len(allr) >= 5 and allr.std(ddof=1) > 0:
++            srs.append(allr.mean() / allr.std(ddof=1))
++        n = c.sum()
++        rows.append((name, int(n), w.sum() / n if n else np.nan, r.sum() / n if n else np.nan, allr))
++    p_win, ns, _ = pbo(mats, 'win')
++    p_ret, _, _ = pbo(mats, 'ret')
++    print(f'\n## {title}: {len(fam)} configurations, {len(S.days)} development sessions, CSCV 16 blocks ({ns} splits)')
++    print(f'PBO (win rate) {p_win:.2f}; PBO (return per call) {p_ret:.2f}')
++    rows.sort(key=lambda x: -(x[2] if np.isfinite(x[2]) else -1))
++    sr_var = float(np.var(srs, ddof=1)) if len(srs) > 1 else 0.0
++    print('| configuration | calls | win | return/call | DSR (N = %d trials) |' % n_trials)
++    print('|---|---:|---:|---:|---:|')
++    for name, n, wr, rr, allr in rows[:8]:
++        dsr, sr, sr0 = deflated_sharpe(allr, n_trials, sr_var)
++        print(f'| {name} | {n} | {100 * wr:.0f}% | {100 * rr:+.1f}% | {dsr:.2f} (SR {sr:.2f} vs {sr0:.2f}) |')
++    return p_win, p_ret, rows
++
++
++if __name__ == '__main__':
++    trials = int(os.environ.get('TRIALS', '0') or 0)
++    S = B.Sessions(B.dev_days())
++    fam_on = overnight_family(S)
++    fam_hit = hit_family(S)
++    n = trials or (23 + len(fam_on) + len(fam_hit))
++    run_family(S, fam_on, 0.0, 'Overnight SPXW rule family', n)
++    run_family(S, fam_hit, C.P1_MIN, 'Hit-score filter family', n)
+-- 
+2.43.0
+

@@ -1,0 +1,65 @@
+From 25444e151ef553312a1c6a64fc569a0b1870f4c7 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 12:40:04 +0000
+Subject: [PATCH 08/29] Challenger: serve the engine the expirations listed
+ around the session (a 2020 build spent 93% of its time in weekdayDte), replay
+ proof script
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/localHost.ts    |  7 ++++++-
+ slayer/research/challenger/replay_proof.sh | 23 ++++++++++++++++++++++
+ 2 files changed, 29 insertions(+), 1 deletion(-)
+ create mode 100644 slayer/research/challenger/replay_proof.sh
+
+diff --git a/slayer/research/challenger/localHost.ts b/slayer/research/challenger/localHost.ts
+index b1177c9..2a20849 100644
+--- a/slayer/research/challenger/localHost.ts
++++ b/slayer/research/challenger/localHost.ts
+@@ -104,7 +104,12 @@ export function localTheta(day: string, opts: { net?: boolean; log?: (p: string)
+     if (route === '/option/list/expirations') {
+       const file = path.join(DATA, 'meta', `exp_${sym}.json`);
+       if (!fs.existsSync(file)) return none;
+-      return ok((JSON.parse(fs.readFileSync(file, 'utf8')) as string[]).map(e => ({ symbol: sym, expiration: e })));
++      /* the expirations listed around the session (the scan only reads the nearest 1-7 sessions out): the whole list
++         to 2029 made every weekly mark of a 2020 session walk years of weekdays (weekdayDte), and it held
++         expirations not yet listed then */
++      const lo = new Date(Date.parse(`${iso(day)}T12:00:00Z`) - 7 * 86_400_000).toISOString().slice(0, 10);
++      const hi = new Date(Date.parse(`${iso(day)}T12:00:00Z`) + 60 * 86_400_000).toISOString().slice(0, 10);
++      return ok((JSON.parse(fs.readFileSync(file, 'utf8')) as string[]).filter(e => e >= lo && e <= hi).map(e => ({ symbol: sym, expiration: e })));
+     }
+     if (route === '/stock/history/ohlc' || route === '/index/history/ohlc') {
+       const d = q.get('start_date') ?? q.get('date') ?? '';
+diff --git a/slayer/research/challenger/replay_proof.sh b/slayer/research/challenger/replay_proof.sh
+new file mode 100644
+index 0000000..82794b9
+--- /dev/null
++++ b/slayer/research/challenger/replay_proof.sh
+@@ -0,0 +1,23 @@
++#!/bin/bash
++# The before/after replay proof for 2026-10-30 (09:30-15:05): the replay harness with the code before the challenger
++# (a git archive of 6657dad in $BASE) and with this branch, both through the caching relay on :25599 so they read
++# byte-identical answers, then the two call lists compared. Run detached:
++#   BASE=/tmp/chal_base/slayer setsid nohup bash research/challenger/replay_proof.sh > research/challenger/data/replay-proof.log 2>&1 &
++HERE="$(cd "$(dirname "$0")/../.." && pwd)"
++D="$HERE/research/challenger/data"
++export REPLAY_FROM=09:30 REPLAY_CONC=3 THETA_BASE=http://127.0.0.1:25599/v3
++(cd "$BASE" && REPLAY_OUT="$D/replay-before" npx tsx scripts/compass-replay.ts 2026-10-30 > "$D/replay-before.log" 2>&1)
++(cd "$HERE" && REPLAY_OUT="$D/replay-after" npx tsx scripts/compass-replay.ts 2026-10-30 > "$D/replay-after.log" 2>&1)
++python3 - "$D" <<'EOF'
++import json, sys
++d = sys.argv[1]
++def calls(tag):
++    doc = json.load(open(f'{d}/replay-{tag}/2026-10-30.json'))
++    return [(c['book'], c['contract'], c['sleeve'], c.get('mark'), c.get('p1'), c.get('prun'), c['runner'], (c.get('outcome') or {}).get('pnl')) for c in doc['calls']], doc['marks']
++a, ma = calls('before')
++b, mb = calls('after')
++print('before', len(a), 'calls;', 'after', len(b), 'calls')
++for x in a: print('  ', x)
++same_marks = json.dumps(ma, sort_keys=True) == json.dumps(mb, sort_keys=True)
++print('SAME CALLS' if a == b else 'CALLS DIFFER', '| marks and funnels', 'identical' if same_marks else 'differ')
++EOF
+-- 
+2.43.0
+

@@ -1,0 +1,164 @@
+From 7b40fed202050a53e4c2422b08c195738b2774bc Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 13:59:45 +0000
+Subject: [PATCH 12/29] Challenger: rule machines in the shadow scorer
+ (session, roots, delta band, time in session, side of the move), and the live
+ Hit score's own regular-session rows
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/src/data/compassChallenger.ts | 80 ++++++++++++++++++++++------
+ 1 file changed, 65 insertions(+), 15 deletions(-)
+
+diff --git a/slayer/src/data/compassChallenger.ts b/slayer/src/data/compassChallenger.ts
+index 86ba637..33ab9ca 100644
+--- a/slayer/src/data/compassChallenger.ts
++++ b/slayer/src/data/compassChallenger.ts
+@@ -16,7 +16,7 @@ import { onFeatureRow, underCloses, type FeatureBatch, type FeatureRow } from '.
+ import { challengerFeatures, CHALLENGER_N } from './challengerFeatures';
+ import { contractPath, withFineExits, type Signal } from './compassLedger';
+ import { settleSignal } from './compassOutcome';
+-import { DRIVE, SEAT_CAP, runnerFlag } from './compassParams';
++import { DRIVE, P1_MIN, SEAT_CAP, runnerFlag } from './compassParams';
+ import { CHALLENGER_META_SHA, CHALLENGER_ODTE_SHA, CHALLENGER_WEEKLY_SHA, CHALLENGER_NAME } from './challengerParams';
+ import { sessionIso } from './compassSession';
+ import { nyParts } from '../core/nyTime';
+@@ -50,8 +50,40 @@ interface Meta {
+   target?: 'tp' | 'ret' | 'ev';
+   /** the live Hit score and Runner score (NaN where not scored) follow the 60 inputs */
+   stack?: boolean;
++  /** rule machines (research/challenger/candidates.py), checked before the trees: a row a rule takes is scored by it */
++  rules?: ShadowRule[];
++  /** 'hit': the regular session's rows are the live Hit score's own (>= its line, the Runner score's ride) */
++  regular?: 'hit';
+   line: number;
+-  machines: Record<Machine, { trees: number; calibration: Record<string, Iso> }>;
++  machines?: Record<Machine, { trees: number; calibration: Record<string, Iso> }>;
++}
++
++/** A rule machine: a session, roots, a |delta| band, minutes since the session opened, the side the move favours
++    so far, the strike nearest a target delta; its own exit (runner false: the 1.50x take-profit). */
++export interface ShadowRule {
++  name: string;
++  session: 'overnight' | 'pre' | 'regular';
++  roots: string[];
++  delta: [number, number];
++  since: [number, number];
++  gapSide: boolean;
++  target: number;
++  runner: boolean;
++}
++
++/** The rule a row falls under (inputs in CHALLENGER_INPUTS order), and its score (nearer the target delta is higher). */
++export function ruleScore(rules: readonly ShadowRule[], ticker: string, session: string | null, c: readonly number[]): { rule: ShadowRule; score: number } | null {
++  for (const r of rules) {
++    if (session !== r.session || !r.roots.includes(ticker)) continue;
++    const d = c[14];
++    const since = c[1];
++    /* the bounds as float32, as the training rows compared them (numpy compares a float32 column in float32) */
++    const f = Math.fround;
++    if (!(d >= f(r.delta[0]) && d <= f(r.delta[1])) || !(since >= f(r.since[0]) && since <= f(r.since[1]))) continue;
++    if (r.gapSide && !(c[33] > 0)) continue;
++    return { rule: r, score: 1 - Math.abs(d - r.target) };
++  }
++  return null;
+ }
+ 
+ let trees: Record<Machine, Tree[]> | null = null;
+@@ -74,7 +106,7 @@ export async function loadChallenger(): Promise<boolean> {
+   if (loadState === 'loading' || loadState === 'off') return false;
+   loadState = 'loading';
+   try {
+-    const want: [string, string][] = [['/models/challenger-meta.json', CHALLENGER_META_SHA], ['/models/challenger-odte.txt', CHALLENGER_ODTE_SHA], ['/models/challenger-weekly.txt', CHALLENGER_WEEKLY_SHA]];
++    const want: [string, string][] = [['/models/challenger-meta.json', CHALLENGER_META_SHA], ['/models/challenger-odte.txt', CHALLENGER_ODTE_SHA], ['/models/challenger-weekly.txt', CHALLENGER_WEEKLY_SHA]].filter(([, sha]) => sha) as [string, string][];
+     const bytes: ArrayBuffer[] = [];
+     for (const [url, sha] of want) {
+       const b = await compassHost().asset(url);
+@@ -86,11 +118,14 @@ export async function loadChallenger(): Promise<boolean> {
+     const dec = new TextDecoder();
+     const m = JSON.parse(dec.decode(bytes[0])) as Meta;
+     if (m.inputs !== CHALLENGER_N) throw new Error(`the meta file is for ${m.inputs} inputs, not ${CHALLENGER_N}`);
+-    const t0 = parseBoosters(dec.decode(bytes[1]), m.machines.odte.trees);
+-    const t1 = parseBoosters(dec.decode(bytes[2]), m.machines.weekly.trees);
+-    if (!t0 || !t1) throw new Error('a challenger model is not the trees its meta file names');
+-    trees = { odte: t0, weekly: t1 };
+-    unsafe = { odte: nanUnsafeColumns(dec.decode(bytes[1])), weekly: nanUnsafeColumns(dec.decode(bytes[2])) };
++    /* a rules-only machine ships no trees (its meta names none and its tree hashes are empty) */
++    if (m.machines && bytes.length === 3) {
++      const t0 = parseBoosters(dec.decode(bytes[1]), m.machines.odte.trees);
++      const t1 = parseBoosters(dec.decode(bytes[2]), m.machines.weekly.trees);
++      if (!t0 || !t1) throw new Error('a challenger model is not the trees its meta file names');
++      trees = { odte: t0, weekly: t1 };
++      unsafe = { odte: nanUnsafeColumns(dec.decode(bytes[1])), weekly: nanUnsafeColumns(dec.decode(bytes[2])) };
++    } else if (!m.rules && !m.regular) throw new Error('the meta file names neither trees nor rules');
+     /* the golden's own lower line, to make the shadow call (CHALLENGER_LINE_TEST); never set in a server */
+     const test = typeof process !== 'undefined' ? Number(process.env?.CHALLENGER_LINE_TEST) : NaN;
+     meta = Number.isFinite(test) && process.env?.CHALLENGER_LINE_TEST !== '' ? { ...m, line: test } : m;
+@@ -146,7 +181,7 @@ export function scoreChallenger(machine: Machine, c: readonly number[], ask = Na
+   if (!trees || !meta) return null;
+   if (firstNaN(c, unsafe[machine]) >= 0) return null;
+   const raw = predict(trees[machine], c);
+-  const cal = meta.machines[machine].calibration;
++  const cal = meta.machines?.[machine]?.calibration ?? {};
+   const m = cal[String(bucketOf(c))] ?? cal.all;
+   const v = m ? isotonic(m, raw) : raw;
+   return { raw, pc: meta.target === 'ret' ? v * ask * 100 : v };
+@@ -154,7 +189,7 @@ export function scoreChallenger(machine: Machine, c: readonly number[], ask = Na
+ 
+ /* ---- the shadow book: one session at a time ---- */
+ 
+-interface Cand { row: FeatureRow; machine: Machine; raw: number; pc: number }
++interface Cand { row: FeatureRow; machine: Machine; raw: number; pc: number; runner?: boolean }
+ let day = '';
+ let calls: ShadowCall[] = [];
+ let older: ShadowCall[] = [];
+@@ -184,17 +219,32 @@ function rollTo(next: string): void {
+ }
+ 
+ function onRow(r: FeatureRow): void {
+-  if (!trees || !meta) return;
++  if (!meta || (!trees && !meta.rules && !meta.regular)) return;
+   if (!r.gates.entryOk || !(r.gates.aGate || r.gates.bGate) || r.gates.burns) return;
+   const machine: Machine = r.setup.sleeve === 'weekly' ? 'weekly' : 'odte';
+   const c = challengerFeatures(r);
++  const add = (cand: Cand) => {
++    const list = pending.get(r.batch) ?? [];
++    list.push(cand);
++    pending.set(r.batch, list);
++  };
++  const ruled = meta.rules ? ruleScore(meta.rules, r.setup.ticker, r.gates.session, c) : null;
++  if (ruled) {
++    scoredRows += 1;
++    add({ row: r, machine, raw: ruled.score, pc: ruled.score, runner: ruled.rule.runner });
++    return;
++  }
++  if (meta.regular === 'hit' && r.gates.session === 'regular') {
++    scoredRows += 1;
++    if (r.p1 != null && r.p1 + 1e-12 >= P1_MIN) add({ row: r, machine, raw: r.p1, pc: r.p1 });
++    return;
++  }
++  if (!trees) return;
+   if (meta.stack) c.push(r.p1 == null ? NaN : Math.fround(r.p1), r.prun == null ? NaN : Math.fround(r.prun));
+   const s = scoreChallenger(machine, c, r.setup.ask);
+   if (s) scoredRows += 1;
+   if (!s || !(s.pc + 1e-12 >= meta.line)) return;
+-  const list = pending.get(r.batch) ?? [];
+-  list.push({ row: r, machine, raw: s.raw, pc: s.pc });
+-  pending.set(r.batch, list);
++  add({ row: r, machine, raw: s.raw, pc: s.pc });
+ }
+ 
+ /** The scan's seat rules over one scoring pass (compassModel scoreRows; research/challenger/common.py simulate). */
+@@ -246,7 +296,7 @@ function onBatch(b: FeatureBatch): void {
+   for (const c of picked) {
+     const s = c.row.setup;
+     const book: 'A' | 'B' = c.row.gates.aGate ? 'A' : 'B';
+-    const runner = book === 'B' || (c.row.prun != null && runnerFlag(c.row.prun));
++    const runner = c.runner != null ? c.runner || book === 'B' : book === 'B' || (c.row.prun != null && runnerFlag(c.row.prun));
+     const p = nyParts(b.mark);
+     const sig: ShadowCall = {
+       key: `${day}|${s.id}|challenger`,
+-- 
+2.43.0
+

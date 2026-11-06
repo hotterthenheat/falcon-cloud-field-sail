@@ -1,0 +1,183 @@
+From b66699d4a2ca17de0766c85ce0e1b9abcf0d515c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 22:52:05 +0000
+Subject: [PATCH 27/29] Challenger: Book C swept again where its board was
+ missing (bookc.ts); H2 status and re-settlement; supervisor can hold its
+ 1-second settlement
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/LOG.md        |  7 +++
+ slayer/research/challenger/bookc.ts      | 77 ++++++++++++++++++++++++
+ slayer/research/challenger/h2_status.py  | 18 ++++++
+ slayer/research/challenger/keepgoing2.sh |  3 +-
+ slayer/research/challenger/resettle.ts   | 13 ++--
+ 5 files changed, 112 insertions(+), 6 deletions(-)
+ create mode 100644 slayer/research/challenger/bookc.ts
+ create mode 100644 slayer/research/challenger/h2_status.py
+
+diff --git a/slayer/research/challenger/LOG.md b/slayer/research/challenger/LOG.md
+index faebdbf..d1eacf9 100644
+--- a/slayer/research/challenger/LOG.md
++++ b/slayer/research/challenger/LOG.md
+@@ -244,6 +244,13 @@ rules machine (CHALLENGER_TEST_META), so it holds with nothing shipped.
+ Overnight after midnight, SPXW wins 64-97% a candidate below 0.30 delta in both sleeves (weekly 0.20-0.25: 91%);
+ XSP 50-67% (weekly 0.10-0.20 best); RUTW 11-37% and loses.
+ 
++**Correction (found 2026-10-31 22:55 UTC): the Late sweep is missing on the regime blocks.** The regime sessions
++(2020, 2022, 2024) were fetched before the fetcher kept Book C's 15:20:15 board, and built without the terminal, so
++the engine's sweep read no board there: H1's Late sweep row (96 calls) is H-recent only; H-2022 and H-2024 had none.
++The candidates' and the Hit score's numbers are unaffected (they are read off the rows). `bookc.ts` sweeps those
++days again (the board from the terminal, the engine's own scoreLottery, the ledger's 1-second settlement); H2's 2022
++quarter gets the same before it is scored, and H1's Late sweep row is restated with it.
++
+ **Pipeline v2.** The terminal was restarted or down several times this afternoon and the builders, which read Book
+ C's 15:20:15 board and the 1-second exits from it, stalled. Now the fetcher keeps Book C's board with the raw cache,
+ the builders need no terminal (~70 s a regime session, ~5 min a full one), and the 1-second exits are settled
+diff --git a/slayer/research/challenger/bookc.ts b/slayer/research/challenger/bookc.ts
+new file mode 100644
+index 0000000..7b954c6
+--- /dev/null
++++ b/slayer/research/challenger/bookc.ts
+@@ -0,0 +1,77 @@
++/*
++  Book C (the Late sweep) again for built days whose sweep was missing its 15:20:15 board (built before the fetcher
++  kept it): the engine's own sweep (compassScan atMark at the sweep's instant, compassModel scoreLottery, the
++  ledger), alone — Book C's seats do not depend on Books A and B — then settled by the ledger with the terminal's
++  1-second quotes, and written back in place of the day's Book C calls.
++
++    npx tsx research/challenger/bookc.ts --h1 | --h2 | YYYY-MM-DD …
++*/
++import fs from 'node:fs';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++import { spawnSync } from 'node:child_process';
++import { DATA, sweepBoard } from './fetch';
++
++const OUT = path.join(DATA, 'rows');
++const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
++const args = process.argv.slice(2);
++const built = fs.readdirSync(OUT).filter(f => f.endsWith('.calls.json')).map(f => f.slice(0, 10));
++const days = args.includes('--h1')
++  ? built.filter(d => (d >= '2026-10-05' && d <= '2026-10-30') || d.startsWith('2022-06') || d.startsWith('2024-08'))
++  : args.includes('--h2')
++    ? built.filter(d => (d >= '2022-07-01' && d <= '2022-09-30') || (d >= '2025-01-02' && d <= '2025-03-31'))
++    : args.filter(a => /^\d{4}-\d{2}-\d{2}$/.test(a));
++days.sort();
++
++if (!args.includes('--one')) {
++  for (const day of days) {
++    const done = JSON.parse(fs.readFileSync(path.join(DATA, 'raw', day.replace(/-/g, ''), '_done.json'), 'utf8')) as { odte: string[] };
++    /* the sweep's boards first (one terminal read a same-day root, kept with the raw cache) */
++    for (const r of done.odte) await sweepBoard(r, day);
++    spawnSync(process.execPath, [...process.execArgv, fileURLToPath(import.meta.url), '--one', day], { stdio: 'inherit', env: { ...process.env, CHAL_NET: '1' } });
++  }
++  process.exit(0);
++}
++
++if (args.includes('--one')) {
++  const day = args[args.indexOf('--one') + 1];
++  const { localTheta } = await import('./localHost');
++  const { setCompassHost } = await import('../../src/data/compassHost');
++  const scan = await import('../../src/data/compassScan');
++  const model = await import('../../src/data/compassModel');
++  const ledger = await import('../../src/data/compassLedger');
++  const { optionScanOpen, odteAsleep } = await import('../../src/data/compassSession');
++  const { nyWallTime } = await import('../../src/core/nyTime');
++  const { sessionCloseMinOn } = await import('../../src/core/calendar');
++  const host = localTheta(day, { net: true });
++  setCompassHost({ server: true, theta: host.theta, asset: async p => { const b = fs.readFileSync(path.join(root, 'public', p.replace(/^\/+/, ''))); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer; }, econ: () => [] });
++  const ymd = day.replace(/-/g, '');
++  const close = sessionCloseMinOn(day);
++  const closeMin = close < 16 * 60 ? close : null;
++  ledger.setSessionClose(closeMin);
++  model.setScoreClose(ymd, closeMin);
++  model.rollModelDay(ymd);
++  ledger.importSignals([]);
++  ledger.importWould([]);
++  const [y, mo, d] = [Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10))];
++  const cStart = closeMin != null ? closeMin - 40 : 15 * 60 + 20;
++  const at = nyWallTime(y, mo, d, Math.floor(cStart / 60), cStart % 60) + 15_000;
++  const names = odteAsleep(at) ? [] : scan.odteBook(at).filter(n => optionScanOpen(n, 0, at));
++  const snaps = await Promise.all(names.map(sym => scan.atMark(sym, at, 'odte')));
++  await model.scoreLottery(snaps.flatMap(s => s.setups), at, true);
++  ledger.recordPicks(at);
++  const open = () => ledger.wouldSignals().filter(c => !c.outcome || (c.outcome.status !== 'closed' && c.outcome.status !== 'unavailable'));
++  for (let pass = 0; pass < 60 && open().length; pass++) {
++    await ledger.settleOpen(Date.now() + pass * 60_000);
++    if (open().length) await new Promise(res => setTimeout(res, 500));
++  }
++  const file = path.join(OUT, `${day}.calls.json`);
++  const doc = JSON.parse(fs.readFileSync(file, 'utf8')) as { calls: { book: string; firedAt: number }[]; bookC?: string };
++  const c = ledger.wouldSignals().filter(s => s.book === 'C');
++  doc.calls = [...doc.calls.filter(x => x.book !== 'C'), ...(c as unknown as typeof doc.calls)].sort((a, b) => a.firedAt - b.firedAt);
++  doc.bookC = 'swept again with its 15:20:15 board (bookc.ts)';
++  fs.writeFileSync(file, JSON.stringify(doc, null, 1));
++  console.log(`${day}: Book C ${c.length} calls, ${c.filter(x => x.outcome?.status === 'closed').length} settled`);
++  process.exit(0);
++}
++process.exit(0);
+diff --git a/slayer/research/challenger/h2_status.py b/slayer/research/challenger/h2_status.py
+new file mode 100644
+index 0000000..70a8434
+--- /dev/null
++++ b/slayer/research/challenger/h2_status.py
+@@ -0,0 +1,18 @@
++"""How much of the second holdout (H2: 2022-07..09, 2025-01..03) is fetched and built. Prints 'H2 READY' when every
++session of it is built.
++
++  python3 research/challenger/h2_status.py
++"""
++import json, os
++
++DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
++sess = []
++for y in (2022, 2025):
++    sess += json.load(open(os.path.join(DATA, 'meta', f'sessions_{y}.json')))
++h2 = [d for d in sess if ('2022-07-01' <= d <= '2022-09-30') or ('2025-01-02' <= d <= '2025-03-31')]
++fetched = [d for d in h2 if os.path.exists(os.path.join(DATA, 'raw', d.replace('-', ''), '_done.json'))]
++built = [d for d in h2 if os.path.exists(os.path.join(DATA, 'rows', f'{d}.calls.json'))]
++missing = [d for d in h2 if d not in built]
++print(f'H2: {len(h2)} sessions, {len(fetched)} fetched, {len(built)} built; not built: {" ".join(missing[:30])}')
++if not missing:
++    print('H2 READY')
+diff --git a/slayer/research/challenger/keepgoing2.sh b/slayer/research/challenger/keepgoing2.sh
+index 1871845..89793d0 100644
+--- a/slayer/research/challenger/keepgoing2.sh
++++ b/slayer/research/challenger/keepgoing2.sh
+@@ -26,5 +26,6 @@ for round in $(seq 1 20); do
+   CHAL_BUILD_CONC=1 npx tsx research/challenger/build.ts --oldest --minutes 100 >> $D/build2.log 2>&1 &
+   b2=$!
+   wait $f1 $f2 $b1 $b2
+-  timeout 1800 npx tsx research/challenger/resettle.ts >> $D/resettle.log 2>&1
++  # NO_RESETTLE=1: the 1-second settlement waits (it reads the terminal; a priority fetch has its slots)
++  [ -z "$NO_RESETTLE" ] && timeout 1800 npx tsx research/challenger/resettle.ts >> $D/resettle.log 2>&1
+ done
+diff --git a/slayer/research/challenger/resettle.ts b/slayer/research/challenger/resettle.ts
+index a89268f..f49b01d 100644
+--- a/slayer/research/challenger/resettle.ts
++++ b/slayer/research/challenger/resettle.ts
+@@ -11,11 +11,14 @@ import { DATA } from './fetch';
+ 
+ const OUT = path.join(DATA, 'rows');
+ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+-const fileArg = process.argv.indexOf('--holdout');
+-const named = fileArg >= 0
+-  ? fs.readdirSync(path.join(DATA, 'rows')).filter(f => f.endsWith('.calls.json')).map(f => f.slice(0, 10))
+-    .filter(d => (d >= '2026-10-05' && d <= '2026-10-30') || d.startsWith('2022-06') || d.startsWith('2024-08'))
+-  : process.argv.slice(2).filter(a => /^\d{4}-\d{2}-\d{2}$/.test(a));
++const h1 = process.argv.includes('--holdout');
++const h2 = process.argv.includes('--h2');
++const built = () => fs.readdirSync(path.join(DATA, 'rows')).filter(f => f.endsWith('.calls.json')).map(f => f.slice(0, 10));
++const named = h1
++  ? built().filter(d => (d >= '2026-10-05' && d <= '2026-10-30') || d.startsWith('2022-06') || d.startsWith('2024-08'))
++  : h2
++    ? built().filter(d => (d >= '2022-07-01' && d <= '2022-09-30') || (d >= '2025-01-02' && d <= '2025-03-31'))
++    : process.argv.slice(2).filter(a => /^\d{4}-\d{2}-\d{2}$/.test(a));
+ const isOpen = (c: { outcome?: { status?: string } | null }) => !c.outcome || (c.outcome.status !== 'closed' && c.outcome.status !== 'unavailable');
+ const days = named.length ? named : fs.readdirSync(OUT).filter(f => f.endsWith('.calls.json')).map(f => f.slice(0, 10)).filter(d => {
+   const doc = JSON.parse(fs.readFileSync(path.join(OUT, `${d}.calls.json`), 'utf8')) as { netless?: boolean; calls: { outcome?: { status?: string } | null }[] };
+-- 
+2.43.0
+

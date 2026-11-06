@@ -1,0 +1,623 @@
+From e7a0cd86f7bce9fab4274a25b3980f1d762b229b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 10:21:35 +0000
+Subject: [PATCH 01/29] Challenger: read-only feature-row hook in the scorer
+ and the challenger's session-relative inputs
+
+The scan emits every row it built inputs for (scored or not) with its gates and reads, only when a
+listener is registered; a listener's fault is swallowed. Nothing the scan decides changes.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/.gitignore                     |   3 +
+ slayer/src/data/challengerFeatures.ts | 406 ++++++++++++++++++++++++++
+ slayer/src/data/compassModel.ts       | 140 +++++++++
+ 3 files changed, 549 insertions(+)
+ create mode 100644 slayer/src/data/challengerFeatures.ts
+
+diff --git a/slayer/.gitignore b/slayer/.gitignore
+index 1ceb9de..a9f06ee 100644
+--- a/slayer/.gitignore
++++ b/slayer/.gitignore
+@@ -74,3 +74,6 @@ theta/creds.txt
+ theta/*.log
+ .cache/
+ scripts/**/_*
++
++# challenger research data (bulk history, rows, fold models)
++research/challenger/data/
+diff --git a/slayer/src/data/challengerFeatures.ts b/slayer/src/data/challengerFeatures.ts
+new file mode 100644
+index 0000000..7dc6d9f
+--- /dev/null
++++ b/slayer/src/data/challengerFeatures.ts
+@@ -0,0 +1,406 @@
++/* The shadow challenger's inputs: pure functions of what the scan already read for a row (the board at the mark, its
++   quotes 30 minutes back, the bars, the prior session, the open interest). Nothing here reads a feed or the clock.
++
++   Every input is session-relative or scale-free, so a row of the overnight index session or the 07:30 options
++   pre-market is scored on the same footing as a regular one:
++     - the underlying is the chain's own put-call parity forward (every session has option quotes; the cash index has
++       no overnight print), and its path is read from the same chain 5, 10, 15 and 30 minutes back;
++     - time is minutes since the row's own session opened and minutes to its own flat, with the true time to expiry
++       (not the live trees' "today's minutes only");
++     - dollar inputs are divided by the premium or the spot (theta/mid, vega/mid, gamma*S^2/mid, mid/S).
++   Inputs only the regular session has (the day's bars: return from the open, range, realised vol, VWAP, volume
++   curve) are NaN outside it; the trees were trained with NaN as a missing value there.
++
++   The column order is the challenger trees' (public/models/challenger-*.txt). Changing it is a retrain. */
++
++import { bsStates, ivStates, stdev, CLS_HIGH_SET, CLS_INDEX_SET, type Bar, type PinBook } from './compassFeatures';
++import { nyParts, nyWallTime } from '../core/nyTime';
++import type { Setup } from '../types/compass';
++
++export const CHALLENGER_INPUTS = [
++  'session kind', 'minutes since session open', 'minutes to own flat', 't (minutes after 09:30)', 'weekday', 'sessions to expiry',
++  'days to expiry (true)', 'side', 'signed log moneyness', 'moneyness in expected moves', 'mid / spot', 'spread / mid',
++  'contract IV', 'contract IV - ATM IV', '|delta|', 'gamma S^2 / mid', 'theta / mid', 'vega / mid', 'premium / expected move',
++  'mid 5-min log change', 'mid 15-min log change', 'mid 30-min log change',
++  'forward 5-min return (signed)', 'forward 15-min return (signed)', 'forward 30-min return (signed)', 'forward 30-min realised vol',
++  'realised / implied (30 min)', 'efficiency ratio 30 min', 'ATM IV', 'ATM IV 15-min change', 'ATM IV 30-min change',
++  'skew (put - call)', 'skew 30-min change',
++  'gap vs prior close (signed)', 'vs prior high (signed)', 'vs prior low (signed)', 'prior day range / close',
++  'regular: return from open (signed)', 'regular: place in day range (signed)', 'regular: day range / open', 'regular: rv30 / ATM IV',
++  'regular: VWAP z (signed)', 'regular: volume vs curve', 'regular: opening-range break (signed)',
++  'HAR rv 1 day', 'HAR rv 5 days', 'HAR rv 15 days', 'ATM IV / HAR forecast',
++  'SPY 15-min return (signed)', 'SPY vol shock (15 min / day)', 'SPY HAR forecast',
++  'net / gross gamma', 'gamma flip distance (expected moves)', 'call wall distance (expected moves)', 'put wall distance (expected moves)', 'contract OI share',
++  'index class', 'high-beta class', 'book (1 A, 2 B)', 'ask / ask 30 min back',
++] as const;
++export const CHALLENGER_N = CHALLENGER_INPUTS.length;
++
++const R = 0.042;
++const SESSION_KIND: Record<string, number> = { overnight: 0, pre: 1, regular: 2, curb: 3 };
++const MIN_T = 1 / (365 * 1440);
++
++export interface ChallengerInput {
++  setup: Setup;
++  minute: number;
++  now: number;
++  list: readonly Setup[];
++  window: ReadonlyMap<string, ReadonlyMap<number, { bid: number; ask: number }>> | null;
++  bars: readonly Bar[];
++  spy: readonly Bar[];
++  pd: { h: number; l: number; c: number } | null;
++  prior: readonly Bar[] | null;
++  priorSpy: readonly Bar[] | null;
++  pin: PinBook | null;
++  x: readonly number[];
++  tape: { tt: number; S: number; op: number };
++  gates: { aGate: boolean; bGate: boolean; dte: number; session: string | null; flatAt: number; priorAsk: number };
++}
++
++/** Years from `now` to the expiry's 16:00 ET close (calendar time). */
++export function yearsToExpiry(expiryIso: string, now: number): number {
++  const [y, m, d] = expiryIso.slice(0, 10).split('-').map(Number);
++  const at = nyWallTime(y, m, d, 16, 0);
++  return Math.max(MIN_T, (at - now) / (365 * 86_400_000));
++}
++
++const midOf = (q: { bid: number; ask: number } | null | undefined) => (q && q.ask > 0 && q.bid >= 0 && q.ask >= q.bid ? (q.bid + q.ask) / 2 : NaN);
++
++/** The put-call parity forward's spot from one board: K + (C - P) e^{rT}, discounted, the median over the three
++    strikes where C - P is smallest (where the pair is most liquid and least sensitive to the carry). */
++export function paritySpot(quotes: { strike: number; right: 'C' | 'P'; mid: number }[], T: number): number {
++  const byK = new Map<number, { c: number; p: number }>();
++  for (const q of quotes) {
++    if (!(q.mid > 0)) continue;
++    const row = byK.get(q.strike) ?? { c: NaN, p: NaN };
++    if (q.right === 'C') row.c = q.mid;
++    else row.p = q.mid;
++    byK.set(q.strike, row);
++  }
++  const pairs = [...byK].filter(([, v]) => v.c > 0 && v.p > 0).map(([k, v]) => ({ k, gap: Math.abs(v.c - v.p), f: k + (v.c - v.p) * Math.exp(R * T) }));
++  if (!pairs.length) return NaN;
++  pairs.sort((a, b) => a.gap - b.gap);
++  const near = pairs.slice(0, 3).map(p => p.f).sort((a, b) => a - b);
++  const f = near[Math.floor(near.length / 2)];
++  return f * Math.exp(-R * T);
++}
++
++function boardAt(list: readonly Setup[], window: ChallengerInput['window'], minute: number | null): { strike: number; right: 'C' | 'P'; mid: number; id: string }[] {
++  return list.map(s => ({
++    strike: s.strike,
++    right: s.right,
++    id: s.id,
++    mid: minute == null ? midOf(s) : midOf(window?.get(s.id)?.get(minute)),
++  }));
++}
++
++function nearestStrike(strikes: number[], x: number): number {
++  let best = NaN;
++  let d = Infinity;
++  for (const k of strikes) {
++    const e = Math.abs(k - x);
++    if (e < d - 1e-9 || (Math.abs(e - d) <= 1e-9 && k < best)) {
++      d = e;
++      best = k;
++    }
++  }
++  return best;
++}
++
++function atmIvOf(board: ReturnType<typeof boardAt>, S: number, T: number): number {
++  if (!(S > 0)) return NaN;
++  const k = nearestStrike([...new Set(board.filter(b => b.mid > 0).map(b => b.strike))], S);
++  if (!Number.isFinite(k)) return NaN;
++  const ivs = board.filter(b => b.strike === k && b.mid > 0).map(b => ivStates(b.mid, S, k, T, b.right === 'C')).filter(v => v > 0.011);
++  return ivs.length ? ivs.reduce((a, b) => a + b, 0) / ivs.length : NaN;
++}
++
++function skewOf(board: ReturnType<typeof boardAt>, S: number, T: number, iv: number): number {
++  if (!(S > 0) || !(iv > 0)) return NaN;
++  const em = S * iv * Math.sqrt(T);
++  const strikes = [...new Set(board.filter(b => b.mid > 0).map(b => b.strike))];
++  const kp = nearestStrike(strikes.filter(k => k <= S), S - em / 2);
++  const kc = nearestStrike(strikes.filter(k => k >= S), S + em / 2);
++  const p = board.find(b => b.strike === kp && b.right === 'P' && b.mid > 0);
++  const c = board.find(b => b.strike === kc && b.right === 'C' && b.mid > 0);
++  if (!p || !c) return NaN;
++  const ip = ivStates(p.mid, S, kp, T, false);
++  const ic = ivStates(c.mid, S, kc, T, true);
++  return ip > 0.011 && ic > 0.011 ? ip - ic : NaN;
++}
++
++/** Daily realised vol (annualised) of each prior session, from its 5-minute closes. */
++export function dailyRv(bars: readonly Bar[]): number[] {
++  const days = new Map<string, Bar[]>();
++  for (const b of bars) {
++    const l = days.get(b.d);
++    if (l) l.push(b);
++    else days.set(b.d, [b]);
++  }
++  const out: number[] = [];
++  for (const [, list] of [...days].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
++    const closes = list.filter(b => b.m >= 570 && b.m < 960 && (b.m - 570) % 5 === 4).map(b => b.c);
++    let ss = 0;
++    let n = 0;
++    for (let i = 1; i < closes.length; i++) {
++      if (closes[i] > 0 && closes[i - 1] > 0) {
++        const r = Math.log(closes[i] / closes[i - 1]);
++        ss += r * r;
++        n += 1;
++      }
++    }
++    if (n >= 20) out.push(Math.sqrt(ss * (78 / n) * 252));
++  }
++  return out;
++}
++
++/** The three HAR horizons (1, 5 and 15 sessions) and a fixed-weight forecast (0.4 / 0.35 / 0.25, set a priori). */
++export function har(bars: readonly Bar[] | null): { d: number; w: number; m: number; f: number } {
++  const rv = bars ? dailyRv(bars) : [];
++  if (rv.length < 3) return { d: NaN, w: NaN, m: NaN, f: NaN };
++  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
++  const d = rv[rv.length - 1];
++  const w = mean(rv.slice(-5));
++  const m = mean(rv.slice(-15));
++  return { d, w, m, f: 0.4 * d + 0.35 * w + 0.25 * m };
++}
++
++function netGamma(pin: PinBook, S: number, T: number, iv: number): { net: number; gross: number } {
++  let net = 0;
++  let gross = 0;
++  for (const n of pin.nodes) {
++    const g = bsStates(S, n.strike, T, iv, true).ga;
++    if (!Number.isFinite(g)) continue;
++    net += (n.call - n.put) * g;
++    gross += (n.call + n.put) * g;
++  }
++  return { net, gross };
++}
++
++function minuteBars(bars: readonly Bar[], day: string): Map<number, Bar> {
++  const out = new Map<number, Bar>();
++  for (const b of bars) if (b.d === day) out.set(b.m, b);
++  return out;
++}
++
++function rvOfCloses(closes: number[]): number {
++  const r: number[] = [];
++  for (let i = 1; i < closes.length; i++) if (closes[i] > 0 && closes[i - 1] > 0) r.push(Math.log(closes[i] / closes[i - 1]));
++  return r.length >= 5 ? stdev(r) : NaN;
++}
++
++type Board = ReturnType<typeof boardAt>;
++interface Stats {
++  board: Board;
++  b5: { b: Board; S: number };
++  b15: { b: Board; S: number };
++  b30: { b: Board; S: number };
++  S: number;
++  iv: number;
++  iv15: number;
++  iv30: number;
++  skew: number;
++  skew30: number;
++  rv30: number;
++  absSum: number;
++  har: ReturnType<typeof har>;
++  harSpy: ReturnType<typeof har>;
++  gamma: { ratio: number; flip: number; callWall: number; putWall: number; total: number } | null;
++}
++/* the board-level reads are the same for every contract of one board (one name, expiry and mark): kept per board */
++const statsMemo = new WeakMap<object, Map<string, Stats>>();
++const harMemo = new WeakMap<object, ReturnType<typeof har>>();
++function harOf(bars: readonly Bar[] | null): ReturnType<typeof har> {
++  if (!bars) return har(null);
++  let h = harMemo.get(bars);
++  if (!h) harMemo.set(bars, (h = har(bars)));
++  return h;
++}
++
++function boardStats(inp: ChallengerInput, T: number): Stats {
++  const key = `${inp.setup.expiryDate}|${inp.minute}|${inp.now}`;
++  let byKey = statsMemo.get(inp.list);
++  if (!byKey) statsMemo.set(inp.list, (byKey = new Map()));
++  const hit = byKey.get(key);
++  if (hit) return hit;
++  const board = boardAt(inp.list, inp.window, null);
++  const parity = paritySpot(board, T);
++  const S = parity > 0 ? parity : inp.tape.S;
++  const back = (n: number) => {
++    const b = boardAt(inp.list, inp.window, inp.minute - n);
++    return { b, S: paritySpot(b, T + n / (365 * 1440)) };
++  };
++  const b5 = back(5);
++  const b10 = back(10);
++  const b15 = back(15);
++  const b20 = back(20);
++  const b25 = back(25);
++  const b30 = back(30);
++  const iv = atmIvOf(board, S, T);
++  const path = [b30.S, b25.S, b20.S, b15.S, b10.S, b5.S, S];
++  const rets: number[] = [];
++  let absSum = 0;
++  for (let i = 1; i < path.length; i++) if (path[i] > 0 && path[i - 1] > 0) {
++    const r = Math.log(path[i] / path[i - 1]);
++    rets.push(r);
++    absSum += Math.abs(r);
++  }
++  const rv30 = rets.length >= 4 ? Math.sqrt(rets.reduce((a, r) => a + r * r, 0) / rets.length) * Math.sqrt(252 * 78) : NaN;
++  const iv15 = atmIvOf(b15.b, b15.S, T + 15 / (365 * 1440));
++  const iv30 = atmIvOf(b30.b, b30.S, T + 30 / (365 * 1440));
++  const skew = skewOf(board, S, T, iv);
++  const skew30 = skewOf(b30.b, b30.S, T + 30 / (365 * 1440), iv30);
++  let gamma: Stats['gamma'] = null;
++  if (inp.pin && iv > 0 && S > 0) {
++    const em = iv * Math.sqrt(T);
++    const ng = netGamma(inp.pin, S, T, iv);
++    /* the nearest sign change of net gamma within three expected moves either side (unsigned by side here) */
++    let flip = NaN;
++    const sign0 = Math.sign(ng.net);
++    for (let i = 1; i <= 24 && !Number.isFinite(flip); i++) {
++      for (const sgn of [1, -1]) {
++        const z = (sgn * i) / 8;
++        if (Math.sign(netGamma(inp.pin, S * Math.exp(z * em), T, iv).net) !== sign0) {
++          flip = z;
++          break;
++        }
++      }
++    }
++    let cK = NaN;
++    let cOi = -1;
++    let pK = NaN;
++    let pOi = -1;
++    let total = 0;
++    for (const n of inp.pin.nodes) {
++      total += n.call + n.put;
++      if (n.strike >= S && n.call > cOi) { cOi = n.call; cK = n.strike; }
++      if (n.strike <= S && n.put > pOi) { pOi = n.put; pK = n.strike; }
++    }
++    gamma = {
++      ratio: ng.gross > 0 ? ng.net / ng.gross : NaN,
++      flip,
++      callWall: cK > 0 && em > 0 ? Math.log(cK / S) / em : NaN,
++      putWall: pK > 0 && em > 0 ? Math.log(S / pK) / em : NaN,
++      total,
++    };
++  }
++  const out: Stats = { board, b5, b15, b30, S, iv, iv15, iv30, skew, skew30, rv30, absSum, har: harOf(inp.prior), harSpy: harOf(inp.priorSpy), gamma };
++  byKey.set(key, out);
++  return out;
++}
++
++/** The challenger's row, in CHALLENGER_INPUTS order. */
++export function challengerFeatures(inp: ChallengerInput): number[] {
++  const x = Array.from({ length: CHALLENGER_N }, () => NaN);
++  const s = inp.setup;
++  const dir = s.right === 'C' ? 1 : -1;
++  const T = yearsToExpiry(s.expiryDate, inp.now);
++  const mid = s.mid > 0 ? s.mid : (s.bid + s.ask) / 2;
++  const bs = boardStats(inp, T);
++  const { board, b5, b15, b30 } = bs;
++  const S = bs.S;
++  if (!(S > 0) || !(mid > 0)) return x;
++  const minute = inp.minute;
++  const iv = bs.iv;
++  const ivc = ivStates(mid, S, s.strike, T, s.right === 'C');
++  const g = bsStates(S, s.strike, T, ivc > 0.011 ? ivc : iv > 0.011 ? iv : 0.3, s.right === 'C');
++  const em = iv > 0 ? iv * Math.sqrt(T) : NaN;
++  const sk = inp.gates.session;
++  const kind = sk != null ? SESSION_KIND[sk] ?? NaN : NaN;
++  const toFlat = (inp.gates.flatAt - Math.floor(inp.now / 60_000) * 60_000) / 60_000;
++  const open = sk === 'overnight' ? 20 * 60 + 15 : sk === 'pre' ? 7 * 60 + 30 : sk === 'curb' ? 16 * 60 : 9 * 60 + 30;
++  const since = sk === 'overnight' && minute < open ? minute + 1440 - open : minute - open;
++  /* the session's weekday (an overnight mark from 20:15 belongs to the next session: Sunday night is Monday) */
++  const wall = nyParts(inp.now);
++  const weekday = (wall.weekday + (sk === 'overnight' && minute >= 20 * 60 + 15 ? 1 : 0)) % 7;
++  x[0] = kind;
++  x[1] = since;
++  x[2] = toFlat;
++  x[3] = minute - 570;
++  x[4] = weekday;
++  x[5] = inp.gates.dte;
++  x[6] = T * 365;
++  x[7] = dir;
++  x[8] = dir * Math.log(S / s.strike);
++  x[9] = em > 0 ? (dir * Math.log(S / s.strike)) / em : NaN;
++  x[10] = mid / S;
++  x[11] = (s.ask - s.bid) / mid;
++  x[12] = ivc > 0.011 ? ivc : NaN;
++  x[13] = ivc > 0.011 && iv > 0 ? ivc - iv : NaN;
++  x[14] = Math.abs(g.de);
++  x[15] = Number.isFinite(g.ga) ? (g.ga * S * S * 0.01) / mid : NaN;
++  x[16] = Number.isFinite(g.th) ? g.th / mid : NaN;
++  x[17] = Number.isFinite(g.ve) ? g.ve / mid : NaN;
++  x[18] = em > 0 ? mid / (S * em) : NaN;
++  const mine = (b: typeof b5) => b.b.find(q => q.id === s.id)?.mid ?? NaN;
++  const lch = (a: number, b: number) => (a > 0 && b > 0 ? Math.log(a / b) : NaN);
++  x[19] = lch(mid, mine(b5));
++  x[20] = lch(mid, mine(b15));
++  x[21] = lch(mid, mine(b30));
++  x[22] = dir * lch(S, b5.S);
++  x[23] = dir * lch(S, b15.S);
++  x[24] = dir * lch(S, b30.S);
++  const { rv30, absSum } = bs;
++  x[25] = rv30;
++  x[26] = rv30 >= 0 && iv > 0 ? rv30 / iv : NaN;
++  x[27] = absSum > 0 && b30.S > 0 ? Math.abs(Math.log(S / b30.S)) / absSum : NaN;
++  x[28] = iv;
++  const { iv15, iv30 } = bs;
++  x[29] = iv > 0 && iv15 > 0 ? iv - iv15 : NaN;
++  x[30] = iv > 0 && iv30 > 0 ? iv - iv30 : NaN;
++  const { skew, skew30 } = bs;
++  x[31] = skew;
++  x[32] = Number.isFinite(skew) && Number.isFinite(skew30) ? skew - skew30 : NaN;
++  const pd = inp.pd;
++  if (pd && pd.c > 0) {
++    x[33] = dir * Math.log(S / pd.c);
++    x[34] = pd.h > 0 ? dir * Math.log(S / pd.h) : NaN;
++    x[35] = pd.l > 0 ? dir * Math.log(S / pd.l) : NaN;
++    x[36] = pd.h > 0 && pd.l > 0 ? (pd.h - pd.l) / pd.c : NaN;
++  }
++  /* the regular session's own inputs, from the live row (NaN outside it, as the scan built them) */
++  const regular = sk === 'regular';
++  const lx = inp.x;
++  if (regular) {
++    x[37] = Number.isFinite(lx[1]) ? dir * lx[1] : NaN;
++    x[38] = Number.isFinite(lx[5]) ? (dir > 0 ? lx[5] : 1 - lx[5]) : NaN;
++    x[39] = lx[6];
++    x[40] = lx[7] > 0 && iv > 0 ? (lx[7] * Math.sqrt(390 * 252)) / iv : NaN;
++    x[41] = Number.isFinite(lx[16]) ? dir * lx[16] : NaN;
++    x[42] = lx[17];
++    x[43] = Number.isFinite(lx[11]) ? dir * lx[11] : NaN;
++  }
++  const h = bs.har;
++  x[44] = h.d;
++  x[45] = h.w;
++  x[46] = h.m;
++  x[47] = h.f > 0 && iv > 0 ? iv / h.f : NaN;
++  if (regular) {
++    const day = inp.spy.length ? inp.spy[inp.spy.length - 1].d : '';
++    const spyM = minuteBars(inp.spy, day);
++    const at = (m: number) => spyM.get(m)?.o ?? NaN;
++    const now = at(minute) > 0 ? at(minute) : spyM.get(minute - 1)?.c ?? NaN;
++    x[48] = now > 0 && at(minute - 15) > 0 ? dir * Math.log(now / at(minute - 15)) : NaN;
++    const closes = (from: number, to: number) => {
++      const out: number[] = [];
++      for (let m = from; m < to; m++) out.push(spyM.get(m)?.c ?? NaN);
++      return out.filter(v => v > 0);
++    };
++    const r15 = rvOfCloses(closes(minute - 16, minute));
++    const rday = rvOfCloses(closes(570, minute));
++    x[49] = r15 > 0 && rday > 0 ? r15 / rday : NaN;
++  }
++  x[50] = bs.harSpy.f;
++  if (bs.gamma) {
++    x[51] = bs.gamma.ratio;
++    x[52] = Number.isFinite(bs.gamma.flip) ? dir * bs.gamma.flip : NaN;
++    x[53] = bs.gamma.callWall;
++    x[54] = bs.gamma.putWall;
++    const oi = inp.pin ? inp.pin.oi(s.strike, s.right) : NaN;
++    x[55] = bs.gamma.total > 0 && Number.isFinite(oi) ? oi / bs.gamma.total : NaN;
++  }
++  x[56] = CLS_INDEX_SET.has(s.ticker) ? 1 : 0;
++  x[57] = CLS_HIGH_SET.has(s.ticker) ? 1 : 0;
++  x[58] = inp.gates.aGate ? 1 : inp.gates.bGate ? 2 : 0;
++  x[59] = inp.gates.priorAsk > 0 ? s.ask / inp.gates.priorAsk : NaN;
++  return x.map(v => (Number.isFinite(v) ? Math.fround(v) : NaN));
++}
+diff --git a/slayer/src/data/compassModel.ts b/slayer/src/data/compassModel.ts
+index 71cee9b..4a017c8 100644
+--- a/slayer/src/data/compassModel.ts
++++ b/slayer/src/data/compassModel.ts
+@@ -48,6 +48,7 @@ import {
+   sessionKindOf,
+   OVERNIGHT_ROOTS,
+   OUTSIDE_TRAINED_WORD,
++  type TapeSession,
+ } from './compassParams';
+ import { COMPASS_TICKERS } from './compassUniverse';
+ import { optionScanOpen, sessionDayOpen, sessionIso, sessionYmd } from './compassSession';
+@@ -520,6 +521,99 @@ export function onScoredRow(fn: (row: ScoredRow) => void): () => void {
+   return () => rowFns.delete(fn);
+ }
+ 
++/** Every row whose inputs the scan built (Model 1 scored or not), with what the books' gates said and the reads it was
++    built from: the shadow challenger's input (compassChallenger.ts). Read only: a listener changes nothing the scan
++    does, a listener's fault is swallowed, and with no listener nothing is computed. */
++export interface FeatureRow {
++  batch: number;
++  setup: Setup;
++  minute: number;
++  now: number;
++  late: boolean;
++  x: number[];
++  p1: number | null;
++  prun: number | null;
++  /** the slot's whole board at the mark, and its quotes 30 minutes back (contract id -> minute -> bid/ask) */
++  list: readonly Setup[];
++  window: ReadonlyMap<string, ReadonlyMap<number, { bid: number; ask: number }>> | null;
++  bars: readonly Bar[];
++  spy: readonly Bar[];
++  pd: { h: number; l: number; c: number } | null;
++  /** the prior sessions' bars this name's volume curve was built from (non-index names), if read */
++  prior: readonly Bar[] | null;
++  priorSpy: readonly Bar[] | null;
++  pin: PinBook | null;
++  tape: { tt: number; S: number; op: number };
++  gates: {
++    entryOk: boolean;
++    burns: boolean;
++    called: boolean;
++    dist: number;
++    span: number;
++    dte: number;
++    aGate: boolean;
++    bGate: boolean;
++    priorAsk: number;
++    retOpen: number;
++    session: TapeSession | null;
++    flatAt: number;
++    trained: boolean;
++    overnightRoot: boolean;
++  };
++}
++export interface FeatureBatch { batch: number; now: number; late: boolean; mark: number; done: boolean }
++const featureFns = new Set<(row: FeatureRow) => void>();
++const batchFns = new Set<(b: FeatureBatch) => void>();
++let batchSeq = 0;
++
++/** Every row the scan built inputs for (see FeatureRow), and the end of each scoring pass (done: its seats chosen). */
++export function onFeatureRow(fn: (row: FeatureRow) => void, end?: (b: FeatureBatch) => void): () => void {
++  featureFns.add(fn);
++  if (end) batchFns.add(end);
++  return () => {
++    featureFns.delete(fn);
++    if (end) batchFns.delete(end);
++  };
++}
++
++function emitFeature(make: () => FeatureRow): void {
++  if (!featureFns.size) return;
++  try {
++    const row = make();
++    for (const fn of featureFns) {
++      try {
++        fn(row);
++      } catch {
++        /* a listener never touches the scan */
++      }
++    }
++  } catch {
++    /* nor does building its row */
++  }
++}
++
++function emitBatch(b: FeatureBatch): void {
++  for (const fn of batchFns) {
++    try {
++      fn(b);
++    } catch {
++      /* a listener never touches the scan */
++    }
++  }
++}
++
++/** The prior sessions' bars a name's curve was built from, from the memo only (no read). */
++function priorBarsOf(symbol: string, now: number): Bar[] | null {
++  if (INDEX.has(symbol)) return null;
++  const first = ymd(now - 21 * 86400000);
++  const out: Bar[] = [];
++  for (let d = priorSessionYmd(sessionYmd(now)); d >= first; d = priorSessionYmd(d)) {
++    const hit = barMemo.get(`${symbol}|${d}`);
++    if (hit) out.unshift(...hit.bars);
++  }
++  return out.length ? out : null;
++}
++
+ const seenAsks = new Map<string, { minute: number; bid: number; ask: number }[]>();
+ const seenMids = new Map<string, { minute: number; mid: number }[]>();
+ 
+@@ -1241,6 +1335,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
+     for (const [key, pick] of picks) if (sleeves.has(pick.sleeve) && !seen.has(pick.id)) next.delete(key);
+     for (const [key, pick] of wingPicks) if (sleeves.has(pick.sleeve) && !seen.has(key)) wingNext.delete(key);
+   }
++  const batchId = ++batchSeq;
+   const aPool: { setup: Setup; p1: number; prun: number | null; gex: number; retOpen: number }[] = [];
+   const bPool: { setup: Setup; p1: number; prun: number | null; gex: number; retOpen: number }[] = [];
+   for (const [, list] of bySlot) {
+@@ -1298,6 +1393,50 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
+       if (!raw) continue;
+       const x = f32(raw);
+       const scored = scoreRow(x);
++      emitFeature(() => {
++        const dteRow = weekdayDte(day, s.expiryDate);
++        const strikes = list.map(row => row.strike);
++        const distRow = strikeDistance(strikes, tape.S, s.strike);
++        const spanRow = strikeSpan(tape.S, strikes, SPAN_INDEX.includes(s.ticker as typeof SPAN_INDEX[number]));
++        const priorQ = seeded(s, minute - BOOK_B_LOOKBACK) ?? quoteAt(s.id, minute - BOOK_B_LOOKBACK);
++        const dtRow = Math.max(0, left - 1) / (SESSION_MIN * YEAR_SESSIONS);
++        const winRow = windows.get(`${s.ticker}|${s.expiryDate}`) ?? null;
++        return {
++          batch: batchId,
++          setup: { ...s, mid },
++          minute,
++          now,
++          late,
++          x,
++          p1: scored.p1,
++          prun: scored.prun,
++          list,
++          window: winRow,
++          bars: book.get(under) ?? [],
++          spy,
++          pd: pd.get(under) ?? null,
++          prior: priorBarsOf(under, now),
++          priorSpy: priorBarsOf('SPY', now),
++          pin: pins.get(`${s.ticker}|${s.expiryDate}`) ?? null,
++          tape: { tt: tape.tt, S: tape.S, op: tape.op },
++          gates: {
++            entryOk: entryTimeOk(tape.tt, flatT, overnightRoot),
++            burns: thetaBurns(x[39], x[38], s.ask, dtRow),
++            called: calledBy(s.id),
++            dist: distRow,
++            span: spanRow,
++            dte: dteRow,
++            aGate: bookAPass(tape.tt, distRow, spanRow, dteRow, s.bid, s.ask, 1, flatT, overnightRoot),
++            bGate: !!priorQ && bookBPass(tape.tt, distRow, spanRow, dteRow, s.bid, s.ask, priorQ.bid, priorQ.ask, 1, flatT, overnightRoot),
++            priorAsk: priorQ ? priorQ.ask : NaN,
++            retOpen: tape.op > 0 && tape.S > 0 ? tape.S / tape.op - 1 : NaN,
++            session: session ?? null,
++            flatAt: mark + left * 60_000,
++            trained,
++            overnightRoot,
++          },
++        };
++      });
+       if (scored.p1 == null) {
+         notes.push(`${word} ${scored.why}`);
+         continue;
+@@ -1484,6 +1623,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
+   for (const [key, pick] of wingNext) wingPicks.set(key, pick);
+   stampPassed();
+   persistCalls();
++  if (batchFns.size) emitBatch({ batch: batchId, now, late, mark, done: true });
+   return 'scored';
+ }
+ 
+-- 
+2.43.0
+

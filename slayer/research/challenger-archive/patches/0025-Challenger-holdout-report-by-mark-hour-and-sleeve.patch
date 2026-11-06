@@ -1,0 +1,32 @@
+From a5c97fd4dba36d4fdd5a87bfe9fdb18981c6414d Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 17:43:56 +0000
+Subject: [PATCH 25/29] Challenger: holdout report by mark hour and sleeve
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/holdout.py | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/slayer/research/challenger/holdout.py b/slayer/research/challenger/holdout.py
+index 50273a8..50a941f 100644
+--- a/slayer/research/challenger/holdout.py
++++ b/slayer/research/challenger/holdout.py
+@@ -46,6 +46,13 @@ def evaluate(S, name, title, cut):
+     parts = {k: B.split(v, cut) for k, v in books.items()}
+     for g in sorted(set(cut(d) for d in S.days)):
+         lines += ['', f'**{g}**', '', B.table([B.summarize(parts[k].get(g, {}), k) for k in books])]
++    # the candidate's calls by the hour of their mark (New York), and by sleeve
++    hrs = np.asarray(S.df['mark'].astype(str).str[:2])
++    slv = np.asarray(S.df['sleeve'].astype(str))
++    for label, key in (('hour of the mark', hrs), ('sleeve', slv)):
++        vals = sorted(set(key[x[2]] for v in mine.values() for x in v))
++        rows = [B.summarize({d: [x for x in v if key[x[2]] == h] for d, v in mine.items()}, f'{name}, {label} {h}') for h in vals]
++        lines += ['', f'**{name} by {label}**', '', B.table(rows)]
+     sess = np.asarray(S.df['session'].astype(str))
+     for kind in ('overnight', 'pre', 'regular'):
+         rows = [B.summarize({d: [x for x in v if x[2] >= 0 and sess[x[2]] == kind] for d, v in per.items()}, k) for k, per in books.items() if not k.startswith('Late')]
+-- 
+2.43.0
+

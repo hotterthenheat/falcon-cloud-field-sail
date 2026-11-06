@@ -1,0 +1,656 @@
+From 96d56406ba8de9def1cf3f672f1586529a0aafd4 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 13:18:20 +0000
+Subject: [PATCH 10/29] Challenger: locked holdout, return-first book metrics,
+ development exploration and ML walk-forward tools
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/LOG.md             |  42 ++++
+ .../__pycache__/books.cpython-313.pyc         | Bin 0 -> 13376 bytes
+ slayer/research/challenger/books.py           | 138 ++++++++++++
+ slayer/research/challenger/explore.py         |  39 ++++
+ slayer/research/challenger/extra_builder.sh   |   7 +
+ slayer/research/challenger/extra_fetch.sh     |   6 +
+ slayer/research/challenger/ml.py              | 212 ++++++++++++++++++
+ 7 files changed, 444 insertions(+)
+ create mode 100644 slayer/research/challenger/__pycache__/books.cpython-313.pyc
+ create mode 100644 slayer/research/challenger/books.py
+ create mode 100644 slayer/research/challenger/explore.py
+ create mode 100644 slayer/research/challenger/extra_builder.sh
+ create mode 100644 slayer/research/challenger/extra_fetch.sh
+ create mode 100644 slayer/research/challenger/ml.py
+
+diff --git a/slayer/research/challenger/LOG.md b/slayer/research/challenger/LOG.md
+index e9c2116..66b77a0 100644
+--- a/slayer/research/challenger/LOG.md
++++ b/slayer/research/challenger/LOG.md
+@@ -70,7 +70,49 @@ machine (OpenMP spin-wait); `OMP_WAIT_POLICY=PASSIVE` and two threads: ~60 s a f
+ 2020-02-18..04-30, 2022-01-03..10-31, 2024-07-15..08-30 for SPY, QQQ, IWM, SPXW), 38 built. A detached supervisor
+ (`keepgoing.sh`) keeps fetching (newest first, back to 2025-01) and building (newest-first and oldest-first).
+ 
++## LOCKED FINAL HOLDOUT (set 2026-10-31 13:15 UTC, before any of the tests below)
++
++Nothing is fit, calibrated, lined or chosen on these sessions. Each candidate is scored on them once, after its
++specification is frozen on the development sessions, and the result is reported with the running count of
++hypotheses tried.
++
++- **H-recent:** the 20 most recent sessions, 2026-10-05 .. 2026-10-30 (all Compass roots).
++- **H-2022:** June 2022, 2022-06-01 .. 2022-06-30 (SPY, QQQ, IWM, SPXW; the bear market's CPI selloff).
++- **H-2024:** August 2024, 2024-08-01 .. 2024-08-30 (SPY, QQQ, IWM, SPXW; the 5 August vol shock).
++
++Honest caveat: H-recent is not virgin. v1, v2 (walk-forward test blocks in 2026-10) and the always-ride observation
++(all built sessions) were looked at on part of it before the lock. H-2022 and H-2024 were never built or looked at.
++Results are reported for each holdout block separately so the unseen blocks can be read on their own.
++
++Development sessions: every other built session (2026-08/09, 2025 as it lands, 2020-02..04, 2022 except June,
++2024-07). Hypothesis count before the lock: 4 (v1 tp, v1 ret, v2 stack, always-ride).
++
++Metrics from here on: per call, the scale-free return (exit ÷ fill − 1) first, dollars a contract beside it; per
++session, the sum of the calls' returns (one contract each) and the dollars. Intervals: 95%, whole-session bootstrap.
++
+ Next: (a) more sessions (the binding constraint: ~7 min of CPU a session on a shared machine); (b) stack the live
+ Hit and Runner scores as inputs (the challenger should then do at least what the Hit score does, plus what the
+ session-relative inputs add); (c) report P&L per call also as return (scale-free) beside dollars; (d) the regime
+ samples (2020, 2022, 2024) are fetched for SPY/QQQ/IWM/SPXW and build fast.
++
++## Development round 1 (27-31 development sessions: 2026-09-03..10-02 and 2020-02; holdout untouched)
++
++Hypotheses 5-13 (`explore.py`, rules on the Hit score's own candidates, same seats): always-ride exit +5.9%/call
++[-9.5, +26.5] vs the current -2.8% [-11.0, +5.3]; gap in the call's direction +4.9% [-7.0, +17.2] (hit 43%);
++|delta| 0.30-0.70, premium >= 0.3 expected move, realised/implied >= 0.35, SPY vol shock >= 1, 0DTE only, 1-7 DTE
++only: all within a point or two of the current book or worse. Nothing separates on 27 sessions.
++
++Hypotheses 14-15 (`ml.py`, walk-forward inside development, blocks of 4, embargo 1, 14 test sessions, target =
++return under the always-ride exit): M1 (all sessions) -7.9%/call [-21.1, +5.9] (hit 14%) vs the current -0.1%
++[-10.7, +9.3]; M2 (overnight only) -16.5%/call [-32.6, +3.4]. Both worse: the models learn on 12-26 sessions.
++
++Hypotheses 16-23 (descriptive scan of mean candidate return by sleeve x delta x time x gap, then 8 overnight rules):
++the only cells with a positive mean return are **overnight, |delta| 0.15-0.30** (+6 to +18% a candidate under the
++books' exits, both sleeves), and inside them **SPXW** (+21% TP / +37% ride) while XSP is flat and RUTW loses
++(-47 to -69%). A one-call-a-night rule (overnight, |delta| 0.15-0.30, 2-11.7 h into the session, the side of the
++overnight move so far, the strike nearest 0.225 delta): SPXW+XSP +15.1%/call [+1.6, +28.2], 38 calls in 31
++sessions, +18.5%/session [+1.8, +36.4]; SPXW alone +24.1% [+4.7, +40.8] on 16 calls. **This is a best cell picked out
++of ~100: in-sample, multiple-comparison-inflated.** It goes to the locked holdout once, frozen, as a candidate that
++adds overnight calls to the current book (the session the current trees cannot score).
++
++Data: two more builders (oldest first: the regime samples) and a second fetch pass (2025 H2, two in flight).
+diff --git a/slayer/research/challenger/__pycache__/books.cpython-313.pyc b/slayer/research/challenger/__pycache__/books.cpython-313.pyc
+new file mode 100644
+index 0000000000000000000000000000000000000000..f03eaf0bc9b1808692ac941be42d3ab4122f1513
+GIT binary patch
+literal 13376
+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
+Reo$_vOJ|A=wEV38{{bz#fG_|6
+
+literal 0
+HcmV?d00001
+
+diff --git a/slayer/research/challenger/books.py b/slayer/research/challenger/books.py
+new file mode 100644
+index 0000000..c766411
+--- /dev/null
++++ b/slayer/research/challenger/books.py
+@@ -0,0 +1,138 @@
++"""Books on a set of sessions, through the same seats and exits, measured in return (exit / fill - 1) and dollars.
++
++  from books import Sessions, HOLDOUT, is_holdout
++"""
++import os, sys
++import numpy as np
++import pandas as pd
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++import common as C
++
++
++def is_holdout(day):
++    return ('2026-10-05' <= day <= '2026-10-30') or day.startswith('2022-06') or day.startswith('2024-08')
++
++
++def holdout_block(day):
++    if day.startswith('2022-06'):
++        return 'H-2022'
++    if day.startswith('2024-08'):
++        return 'H-2024'
++    if '2026-10-05' <= day <= '2026-10-30':
++        return 'H-recent'
++    return None
++
++
++def regime(day):
++    if day < '2021':
++        return '2020 crash'
++    if day < '2023':
++        return '2022 bear'
++    if day < '2025':
++        return '2024'
++    if day < '2026':
++        return '2025'
++    return '2026'
++
++
++def dev_days():
++    return [d for d in C.days_built() if not is_holdout(d)]
++
++
++def holdout_days():
++    return [d for d in C.days_built() if is_holdout(d)]
++
++
++class Sessions:
++    """The rows of a set of sessions, with each row's P&L under the books' exits."""
++
++    def __init__(self, days):
++        self.days = list(days)
++        df = C.load(self.days).reset_index(drop=True)
++        self.df = df
++        self.fill = df['fill'].values.astype(float)
++        self.pnl_prun, _ = C.call_pnl(df, 'prun')
++        self.pnl_ride, _ = C.call_pnl(df, 'all')
++        self.pnl_tp, _ = C.call_pnl(df, 'none')
++        self.engine = {d: C.engine_calls(d) for d in self.days}
++
++    def calls(self, score, line, eligible=None):
++        return C.simulate(self.df, score, line, eligible)
++
++    def per_session(self, idx, exit='prun'):
++        pnl = {'prun': self.pnl_prun, 'ride': self.pnl_ride, 'tp': self.pnl_tp}[exit]
++        out = {d: [] for d in self.days}
++        for i in idx:
++            if np.isfinite(pnl[i]) and self.fill[i] > 0:
++                out[self.df.at[i, 'day']].append((pnl[i] / (self.fill[i] * 100), pnl[i], i))
++        return out
++
++    def late_sweep(self):
++        out = {d: [] for d in self.days}
++        for d, calls in self.engine.items():
++            for c in calls:
++                o = c.get('outcome') or {}
++                if c['book'] == 'C' and o.get('pnl') is not None and o.get('fill'):
++                    out[d].append((o['pnl'] / (o['fill']['ask'] * 100), o['pnl'], -1))
++        return out
++
++
++def summarize(per, name, n_boot=2000, seed=5):
++    """Return per call, $ per call, return-sum and $ per session, each with a session-block 95% interval."""
++    days = sorted(per)
++    R = [np.array([x[0] for x in per[d]], float) for d in days]
++    P = [np.array([x[1] for x in per[d]], float) for d in days]
++    n = sum(len(r) for r in R)
++    def stats(sel):
++        nr = sum(len(R[i]) for i in sel)
++        sr = sum(R[i].sum() for i in sel)
++        sp = sum(P[i].sum() for i in sel)
++        return (sr / nr if nr else np.nan, sp / nr if nr else np.nan, sr / len(sel), sp / len(sel))
++    pt = stats(range(len(days)))
++    rng = np.random.default_rng(seed)
++    bs = np.array([stats(rng.integers(0, len(days), len(days))) for _ in range(n_boot)])
++    lo = np.nanpercentile(bs, 2.5, axis=0)
++    hi = np.nanpercentile(bs, 97.5, axis=0)
++    flat = np.concatenate(R) if n else np.array([])
++    return {'book': name, 'sessions': len(days), 'calls': n, 'hit': float((flat > 0).mean()) if n else np.nan,
++            'ret': pt[0], 'ret_lo': lo[0], 'ret_hi': hi[0], 'usd': pt[1], 'usd_lo': lo[1], 'usd_hi': hi[1],
++            'ret_day': pt[2], 'ret_day_lo': lo[2], 'ret_day_hi': hi[2], 'usd_day': pt[3], 'usd_day_lo': lo[3], 'usd_day_hi': hi[3],
++            'worst_ret': float(flat.min()) if n else np.nan}
++
++
++def paired(a, b, n_boot=2000, seed=9):
++    """a - b on the same resampled sessions: return per call, return per session, $ per session."""
++    days = sorted(set(a) | set(b))
++    def st(per, sel):
++        r = [x[0] for i in sel for x in per.get(days[i], [])]
++        p = [x[1] for i in sel for x in per.get(days[i], [])]
++        return (np.mean(r) if r else np.nan, sum(r) / len(sel), sum(p) / len(sel))
++    pt = np.subtract(st(a, range(len(days))), st(b, range(len(days))))
++    rng = np.random.default_rng(seed)
++    bs = []
++    for _ in range(n_boot):
++        sel = rng.integers(0, len(days), len(days))
++        bs.append(np.subtract(st(a, sel), st(b, sel)))
++    bs = np.array(bs)
++    return pt, np.nanpercentile(bs, 2.5, axis=0), np.nanpercentile(bs, 97.5, axis=0)
++
++
++def table(rows):
++    out = ['| book | sessions | calls | hit | return/call [95%] | $/call [95%] | return/session [95%] | $/session [95%] |', '|---|---:|---:|---:|---:|---:|---:|---:|']
++    for r in rows:
++        if not r['calls']:
++            out.append(f"| {r['book']} | {r['sessions']} | 0 | | | | | |")
++            continue
++        out.append(f"| {r['book']} | {r['sessions']} | {r['calls']} | {100 * r['hit']:.0f}% | {100 * r['ret']:+.1f}% [{100 * r['ret_lo']:+.1f}, {100 * r['ret_hi']:+.1f}] | "
++                   f"{r['usd']:+.0f} [{r['usd_lo']:+.0f}, {r['usd_hi']:+.0f}] | {100 * r['ret_day']:+.1f}% [{100 * r['ret_day_lo']:+.1f}, {100 * r['ret_day_hi']:+.1f}] | "
++                   f"{r['usd_day']:+.0f} [{r['usd_day_lo']:+.0f}, {r['usd_day_hi']:+.0f}] |")
++    return '\n'.join(out)
++
++
++def split(per, key):
++    """The same calls cut by a session property (regime, holdout block) or a call property (session kind)."""
++    out = {}
++    for d, xs in per.items():
++        k = key(d)
++        out.setdefault(k, {})[d] = xs
++    return out
+diff --git a/slayer/research/challenger/explore.py b/slayer/research/challenger/explore.py
+new file mode 100644
+index 0000000..44334a2
+--- /dev/null
++++ b/slayer/research/challenger/explore.py
+@@ -0,0 +1,39 @@
++"""Development-only exploration (never the locked holdout): rule candidates on top of the Hit score's own candidates,
++through the same seats and exits, in return and dollars. Every configuration printed here counts as a hypothesis.
++
++  python -I research/challenger/explore.py
++"""
++import os, sys
++import numpy as np
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++import common as C
++import books as B
++
++S = B.Sessions(B.dev_days())
++df = S.df
++p1 = df['p1'].values.astype(float)
++delta = df['c14'].values
++cheap = df['c18'].values      # premium / expected move
++rvi = df['c26'].values        # realised / implied, 30 min
++gap = df['c33'].values        # gap vs prior close, signed by side
++shock = df['c49'].values      # SPY vol shock
++dte = df['dte'].values
++f = np.isfinite
++CONFIGS = [
++    ('current (Hit score, Runner ride)', p1, C.P1_MIN, None, 'prun'),
++    ('Hit score, always ride', p1, C.P1_MIN, None, 'ride'),
++    ('Hit score, |delta| 0.30-0.70', p1, C.P1_MIN, f(delta) & (delta >= 0.3) & (delta <= 0.7), 'prun'),
++    ('Hit score, premium >= 0.3 EM (no cheap)', p1, C.P1_MIN, f(cheap) & (cheap >= 0.3), 'prun'),
++    ('Hit score, realised/implied >= 0.35', p1, C.P1_MIN, f(rvi) & (rvi >= 0.35), 'prun'),
++    ('Hit score, gap in the call\'s direction', p1, C.P1_MIN, f(gap) & (gap > 0), 'prun'),
++    ('Hit score, SPY vol shock >= 1', p1, C.P1_MIN, f(shock) & (shock >= 1), 'prun'),
++    ('Hit score, 0DTE only', p1, C.P1_MIN, dte == 0, 'prun'),
++    ('Hit score, 1-7 DTE only', p1, C.P1_MIN, dte >= 1, 'prun'),
++]
++rows = [B.summarize(S.late_sweep(), 'Late sweep (Book C)')]
++for name, score, line, elig, ex in CONFIGS:
++    idx = S.calls(score, line, elig)
++    rows.append(B.summarize(S.per_session(idx, ex), name))
++print(f'Development sessions: {len(S.days)} ({S.days[0]} .. {S.days[-1]}), {len(df):,} rows\n')
++print(B.table(rows))
++print(f'\nconfigurations evaluated: {len(CONFIGS)}')
+diff --git a/slayer/research/challenger/extra_builder.sh b/slayer/research/challenger/extra_builder.sh
+new file mode 100644
+index 0000000..97aff6c
+--- /dev/null
++++ b/slayer/research/challenger/extra_builder.sh
+@@ -0,0 +1,7 @@
++#!/bin/bash
++# One more row builder for ~105 minutes (the day locks keep it off the days the others are on). ORDER=--oldest for
++# oldest first (the regime samples), newest first otherwise.
++#   ORDER=--oldest setsid nohup bash research/challenger/extra_builder.sh > /dev/null 2>&1 &
++cd "$(dirname "$0")/../.." || exit 1
++export CHAL_NET=1 CHAL_BUILD_CONC=1
++exec npx tsx research/challenger/build.ts ${ORDER:-} --minutes "${MINUTES:-105}" >> research/challenger/data/build3.log 2>&1
+diff --git a/slayer/research/challenger/extra_fetch.sh b/slayer/research/challenger/extra_fetch.sh
+new file mode 100644
+index 0000000..89ad1e6
+--- /dev/null
++++ b/slayer/research/challenger/extra_fetch.sh
+@@ -0,0 +1,6 @@
++#!/bin/bash
++# One more fetch pass (two requests in flight) for ~105 minutes, newest first from FROM back to TO.
++#   FROM=2026-08-31 TO=2025-01-01 setsid nohup bash research/challenger/extra_fetch.sh > /dev/null 2>&1 &
++cd "$(dirname "$0")/../.." || exit 1
++export CHAL_CONC=2
++exec npx tsx research/challenger/fetch.ts --from "${FROM:-2026-10-30}" --to "${TO:-2025-01-01}" --minutes "${MINUTES:-105}" >> research/challenger/data/fetch2.log 2>&1
+diff --git a/slayer/research/challenger/ml.py b/slayer/research/challenger/ml.py
+new file mode 100644
+index 0000000..a2e19da
+--- /dev/null
++++ b/slayer/research/challenger/ml.py
+@@ -0,0 +1,212 @@
++"""Challenger machines, walk-forward on the development sessions only (the locked holdout is never read here), or
++frozen and scored once on the holdout (--holdout).
++
++  python -I research/challenger/ml.py --name M1 [--exit ride] [--target ret] [--only overnight] [--block 4] [--embargo 1]
++  python -I research/challenger/ml.py --name M1 ... --holdout      (fit on every development session, score the holdout)
++
++Spec (fixed before any test session): one LightGBM per sleeve on c0..c59; target 'ret' = the row's return as a call
++under the chosen exit (exit / fill - 1, clipped to [-1, 3]), or 'tp' = the 1.50x before the stop; the last quarter of
++each fold's training sessions calibrates an isotonic map per time-of-day bucket (score -> realised return, or
++-> hit rate); the line is the grid value that maximises the calibration sessions' return per session through the
++seats (at least one call per two sessions). Seats, gates and exits as the live books.
++"""
++import argparse, json, os, sys, time
++os.environ.setdefault('OMP_WAIT_POLICY', 'PASSIVE')
++import numpy as np
++import pandas as pd
++import lightgbm as lgb
++from sklearn.isotonic import IsotonicRegression
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++import common as C
++import books as B
++from train import PARAMS, ROUNDS, bucket
++
++FEATS = [f'c{i}' for i in range(60)]
++
++
++def target(S, idx_rows, a):
++    pnl = {'prun': S.pnl_prun, 'ride': S.pnl_ride, 'tp': S.pnl_tp}[a.exit][idx_rows]
++    if a.target == 'tp':
++        return np.array([str(w).startswith('Take profit') for w in S.df['whyA'].values[idx_rows]], int)
++    r = pnl / (S.fill[idx_rows] * 100)
++    return np.clip(np.nan_to_num(r, nan=0.0), -1, 3)
++
++
++def mask_rows(S, days, a):
++    m = S.df['day'].isin(days).values & np.isfinite(S.fill)
++    if a.only:
++        m &= (S.df['session'].values == a.only)
++    return m
++
++
++def fit_machine(S, rows, a):
++    X = S.df.loc[rows, FEATS].values.astype(np.float32)
++    y = target(S, np.flatnonzero(rows), a)
++    p = dict(PARAMS)
++    p['objective'] = 'binary' if a.target == 'tp' else 'regression'
++    return lgb.train(p, lgb.Dataset(X, label=y, free_raw_data=True), num_boost_round=ROUNDS)
++
++
++class Calib:
++    def fit(self, raw, y, b):
++        self.maps = {'all': IsotonicRegression(out_of_bounds='clip').fit(raw, y)}
++        for k in np.unique(b):
++            m = b == k
++            if m.sum() >= 1500:
++                self.maps[int(k)] = IsotonicRegression(out_of_bounds='clip').fit(raw[m], y[m])
++        return self
++
++    def __call__(self, raw, b):
++        out = self.maps['all'].predict(raw)
++        for k, mp in self.maps.items():
++            if k != 'all' and (b == k).any():
++                out[b == k] = mp.predict(raw[b == k])
++        return out
++
++    def dump(self):
++        return {str(k): {'x': [float(v) for v in m.X_thresholds_], 'y': [float(v) for v in m.y_thresholds_]} for k, m in self.maps.items()}
++
++
++def score_rows(S, rows, models, calibs, a):
++    """Calibrated score for the given rows (NaN elsewhere and where the sleeve has no machine)."""
++    out = np.full(len(S.df), np.nan)
++    b = bucket(S.df)
++    for sleeve in ('odte', 'weekly'):
++        m = rows & (S.df['sleeve'].values == sleeve)
++        if a.only:
++            m &= (S.df['session'].values == a.only)
++        if not m.any() or sleeve not in models:
++            continue
++        r = models[sleeve].predict(S.df.loc[m, FEATS].values.astype(np.float32))
++        out[m] = calibs[sleeve](r, b[m])
++    return out
++
++
++LINES_RET = np.array([-0.2, -0.1, -0.05, 0, 0.02, 0.05, 0.08, 0.1, 0.15, 0.2, 0.3, 0.4, 0.6])
++LINES_TP = np.round(np.arange(0.2, 0.9, 0.04), 2)
++
++
++def choose_line(S, sc, days, a):
++    lines = LINES_TP if a.target == 'tp' else LINES_RET
++    best = (-np.inf, None, 0)
++    for ln in lines:
++        idx = S.calls(sc, ln)
++        if len(idx) < max(5, len(days) // 2):
++            continue
++        per = S.per_session(idx, a.exit)
++        tot = sum(x[0] for v in per.values() for x in v) / len(days)
++        if tot > best[0]:
++            best = (tot, float(ln), len(idx))
++    return best
++
++
++def train_fold(S, fit_days, cal_days, a):
++    models, calibs = {}, {}
++    fm = mask_rows(S, fit_days, a)
++    cm = mask_rows(S, cal_days, a)
++    b = bucket(S.df)
++    for sleeve in ('odte', 'weekly'):
++        f_ = fm & (S.df['sleeve'].values == sleeve)
++        c_ = cm & (S.df['sleeve'].values == sleeve)
++        if f_.sum() < 3000 or c_.sum() < 1000:
++            continue
++        models[sleeve] = fit_machine(S, f_, a)
++        raw = models[sleeve].predict(S.df.loc[c_, FEATS].values.astype(np.float32))
++        calibs[sleeve] = Calib().fit(raw, target(S, np.flatnonzero(c_), a), b[c_])
++    cal_rows = S.df['day'].isin(cal_days).values
++    sc = score_rows(S, cal_rows, models, calibs, a)
++    gain, line, n = choose_line(S, sc, cal_days, a)
++    return models, calibs, line, gain, n
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument('--name', required=True)
++    ap.add_argument('--exit', default='ride', choices=['prun', 'ride', 'tp'])
++    ap.add_argument('--target', default='ret', choices=['ret', 'tp'])
++    ap.add_argument('--only', default='', help='a session kind to train and call in (overnight, pre, regular)')
++    ap.add_argument('--block', type=int, default=4)
++    ap.add_argument('--embargo', type=int, default=1)
++    ap.add_argument('--min-train', type=int, default=12)
++    ap.add_argument('--holdout', action='store_true')
++    a = ap.parse_args()
++    out = os.path.join(C.DATA, 'ml', a.name)
++    os.makedirs(out, exist_ok=True)
++    t0 = time.time()
++    dev = B.dev_days()
++    if not a.holdout:
++        S = B.Sessions(dev)
++        chal = np.full(len(S.df), np.nan)
++        folds = []
++        test = dev[a.min_train + a.embargo:]
++        for i in range(0, len(test), a.block):
++            block = test[i:i + a.block]
++            train_days = dev[:max(0, dev.index(block[0]) - a.embargo)]
++            n_cal = max(3, len(train_days) // 4)
++            fit_days, cal_days = train_days[:-n_cal], train_days[-n_cal:]
++            models, calibs, line, gain, n = train_fold(S, fit_days, cal_days, a)
++            if line is None:
++                print(f'block {block[0]}: no line cleared on calibration; no calls', flush=True)
++                continue
++            rows = S.df['day'].isin(block).values
++            sc = score_rows(S, rows, models, calibs, a)
++            sc[rows & ~(sc + 1e-12 >= line)] = np.nan
++            chal[rows] = sc[rows] - line  # >= 0 calls (one line per fold)
++            folds.append({'block': [block[0], block[-1]], 'line': line, 'cal_ret_per_session': gain, 'cal_calls': n})
++            print(f'block {block[0]}..{block[-1]} line {line} ({n} cal calls, {100 * gain:+.1f}%/session on calibration) {time.time() - t0:.0f} s', flush=True)
++        tested = sorted(set(d for f in folds for d in S.days if f['block'][0] <= d <= f['block'][1]))
++        np.save(os.path.join(out, 'chal.npy'), chal)
++        json.dump({'args': vars(a), 'folds': folds, 'tested': tested}, open(os.path.join(out, 'folds.json'), 'w'), indent=1)
++        report(S, chal, 0.0, tested, a, 'walk-forward on development sessions')
++    else:
++        S = B.Sessions(dev + B.holdout_days())
++        n_cal = max(3, len(dev) // 4)
++        models, calibs, line, gain, n = train_fold(S, dev[:-n_cal], dev[-n_cal:], a)
++        hold = B.holdout_days()
++        rows = S.df['day'].isin(hold).values
++        sc = score_rows(S, rows, models, calibs, a)
++        for sleeve, m in models.items():
++            m.save_model(os.path.join(out, f'challenger-{sleeve}.txt'))
++        json.dump({'format': 'compass-challenger/1', 'inputs': 60, 'target': a.target, 'exit': a.exit, 'only': a.only, 'line': line,
++                   'machines': {k: {'trees': models[k].num_trees(), 'calibration': calibs[k].dump()} for k in models}},
++                  open(os.path.join(out, 'challenger-meta.json'), 'w'), separators=(',', ':'))
++        print(f'frozen: fit on {len(dev) - n_cal} development sessions, line {line} on the last {n_cal}')
++        report(S, sc - line, 0.0, hold, a, 'LOCKED HOLDOUT (scored once)')
++
++
++def report(S, chal, line, days, a, title):
++    days = sorted(days)
++    sub = S.df['day'].isin(days).values
++    cur = S.calls(S.df['p1'].values.astype(float), C.P1_MIN, sub)
++    mine = S.calls(np.where(sub, chal, np.nan), line)
++    keep = lambda per: {d: per[d] for d in days}
++    books = {
++        'Hit score + Runner (current A/B)': keep(S.per_session(cur, 'prun')),
++        'Late sweep (Book C)': keep(S.late_sweep()),
++        f'Challenger {a.name} ({a.exit} exit{", " + a.only if a.only else ""})': keep(S.per_session(mine, a.exit)),
++    }
++    print(f'\n### {a.name}: {title}, {len(days)} sessions\n')
++    print(B.table([B.summarize(v, k) for k, v in books.items()]))
++    ch = list(books.values())[2]
++    for k in list(books)[:2]:
++        pt, lo, hi = B.paired(ch, books[k])
++        print(f'- challenger minus {k}: return/call {100 * pt[0]:+.1f}% [{100 * lo[0]:+.1f}, {100 * hi[0]:+.1f}], return/session {100 * pt[1]:+.1f}% [{100 * lo[1]:+.1f}, {100 * hi[1]:+.1f}], $/session {pt[2]:+.0f} [{lo[2]:+.0f}, {hi[2]:+.0f}]')
++    for label, key in (('regime', B.regime), ('holdout block', lambda d: B.holdout_block(d) or 'dev')):
++        parts = {k: B.split(v, key) for k, v in books.items()}
++        for g in sorted(next(iter(parts.values())).keys()):
++            print(f'\n{label} {g}:')
++            print(B.table([B.summarize(parts[k].get(g, {}), k) for k in books]))
++    # by the session the call was made in
++    sess = S.df['session'].values
++    for kind in ('overnight', 'pre', 'regular'):
++        rows = []
++        for k, per in books.items():
++            if k.startswith('Late'):
++                continue
++            rows.append(B.summarize({d: [x for x in v if x[2] >= 0 and sess[x[2]] == kind] for d, v in per.items()}, k))
++        print(f'\ncalls made in the {kind} session:')
++        print(B.table(rows))
++
++
++if __name__ == '__main__':
++    main()
+-- 
+2.43.0
+

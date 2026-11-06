@@ -1,0 +1,39 @@
+From c029871f73a82d4f57ccf47ffbe4ab2716fdea70 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 12:53:21 +0000
+Subject: [PATCH 09/29] =?UTF-8?q?Challenger:=20research=20log=20=E2=80=94?=
+ =?UTF-8?q?=20throughput=20fixes=20and=20coverage?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/LOG.md | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/slayer/research/challenger/LOG.md b/slayer/research/challenger/LOG.md
+index 2bea1e2..e9c2116 100644
+--- a/slayer/research/challenger/LOG.md
++++ b/slayer/research/challenger/LOG.md
+@@ -60,6 +60,16 @@ sessions: +$159/call [-126, +466] against +$82 [-124, +276]; paired difference +
+ and +$8,700 more) carry the mean. Suggestive, not shown. To be re-tested on the sessions still to be built (it was
+ formed after seeing these).
+ 
++**Throughput.** A 2020 regime session took ~30 min to build: 93% of it in `weekdayDte`, because the cache served the
++engine the whole expirations list to 2029 (each weekly mark walked years of weekdays, and the list held expirations
++not yet listed then). The host now serves the expirations within a week before to 60 days after the session (the
++nearest 1-7 sessions out is unchanged): 140 s a regime session. LightGBM fits stalled for minutes on the shared
++machine (OpenMP spin-wait); `OMP_WAIT_POLICY=PASSIVE` and two threads: ~60 s a fold.
++
++**Coverage at 12:55 UTC 2026-10-31:** 307 sessions fetched (2026-09-14..10-30 every Compass root; regime samples
++2020-02-18..04-30, 2022-01-03..10-31, 2024-07-15..08-30 for SPY, QQQ, IWM, SPXW), 38 built. A detached supervisor
++(`keepgoing.sh`) keeps fetching (newest first, back to 2025-01) and building (newest-first and oldest-first).
++
+ Next: (a) more sessions (the binding constraint: ~7 min of CPU a session on a shared machine); (b) stack the live
+ Hit and Runner scores as inputs (the challenger should then do at least what the Hit score does, plus what the
+ session-relative inputs add); (c) report P&L per call also as return (scale-free) beside dollars; (d) the regime
+-- 
+2.43.0
+

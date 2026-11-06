@@ -1,0 +1,113 @@
+From 9a5cfdec916779553963d090ff0e972e1873f764 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 23:15:18 +0000
+Subject: [PATCH 28/29] Challenger: integrity check after the full disk
+ (nothing broken); log
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MshbhmXwtP12E5EwN7jDwQ
+---
+ slayer/research/challenger/LOG.md       |  6 ++
+ slayer/research/challenger/integrity.py | 73 +++++++++++++++++++++++++
+ 2 files changed, 79 insertions(+)
+ create mode 100644 slayer/research/challenger/integrity.py
+
+diff --git a/slayer/research/challenger/LOG.md b/slayer/research/challenger/LOG.md
+index d1eacf9..315930d 100644
+--- a/slayer/research/challenger/LOG.md
++++ b/slayer/research/challenger/LOG.md
+@@ -251,6 +251,12 @@ The candidates' and the Hit score's numbers are unaffected (they are read off th
+ days again (the board from the terminal, the engine's own scoreLottery, the ledger's 1-second settlement); H2's 2022
+ quarter gets the same before it is scored, and H1's Late sweep row is restated with it.
+ 
++**Disk full (~23:00 UTC).** The machine's disk filled for a few minutes; the fetcher's writes failed (ENOSPC) and
++those days were not marked done. `integrity.py --fix`: every raw chain, sweep board, bar month, built row file,
++parquet, calls file and 1-second cache parses (0 broken of all); the leftover .tmp files were removed (their days are
++fetched again). The relay cache of the replay proof (418 MB, its result is recorded above) was deleted. Research
++data: 4.6 GB.
++
+ **Pipeline v2.** The terminal was restarted or down several times this afternoon and the builders, which read Book
+ C's 15:20:15 board and the 1-second exits from it, stalled. Now the fetcher keeps Book C's board with the raw cache,
+ the builders need no terminal (~70 s a regime session, ~5 min a full one), and the 1-second exits are settled
+diff --git a/slayer/research/challenger/integrity.py b/slayer/research/challenger/integrity.py
+new file mode 100644
+index 0000000..e3c8265
+--- /dev/null
++++ b/slayer/research/challenger/integrity.py
+@@ -0,0 +1,73 @@
++"""After the disk filled: every cache file must parse. A broken raw file is deleted with its day's _done.json (the
++fetcher reads the day again); a broken built file is deleted with the rest of its day (the builders build it
++again); a broken 1-second or sweep cache is deleted (read again from the terminal).
++
++  python3 research/challenger/integrity.py [--fix]
++"""
++import glob, gzip, json, os, sys
++
++D = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
++fix = '--fix' in sys.argv
++bad = []
++
++
++def ok_gz(f):
++    try:
++        with gzip.open(f, 'rb') as g:
++            while g.read(1 << 20):
++                pass
++        return True
++    except Exception:
++        return False
++
++
++def ok_json(f):
++    try:
++        json.load(open(f))
++        return True
++    except Exception:
++        return False
++
++
++def ok_parquet(f):
++    try:
++        import pyarrow.parquet as pq
++        pq.read_metadata(f)
++        return True
++    except Exception:
++        return False
++
++
++checks = [('raw/*/*.csv.gz', ok_gz, 'raw'), ('raw/*/*.sweep.json', ok_json, 'cache'), ('raw/*/_done.json', ok_json, 'raw'),
++          ('bars/*/*.csv.gz', ok_gz, 'bars'), ('rows/*.csv.gz', ok_gz, 'rows'), ('rows/*.parquet', ok_parquet, 'rows'),
++          ('rows/*.calls.json', ok_json, 'rows'), ('cache1s/*.json', ok_json, 'cache'), ('meta/*.json', ok_json, 'cache')]
++for pat, fn, kind in checks:
++    files = glob.glob(os.path.join(D, pat))
++    nbad = 0
++    for f in files:
++        if not fn(f):
++            bad.append((kind, f))
++            nbad += 1
++    print(f'{pat}: {len(files)} files, {nbad} broken')
++for kind, f in bad:
++    print('BROKEN', f)
++    if not fix:
++        continue
++    if kind == 'raw':
++        day = os.path.dirname(f)
++        for x in (f, os.path.join(day, '_done.json')):
++            if os.path.exists(x):
++                os.remove(x)
++    elif kind == 'rows':
++        day = os.path.basename(f)[:10]
++        for ext in ('.csv.gz', '.parquet', '.calls.json', '.lock'):
++            p = os.path.join(D, 'rows', day + ext)
++            if os.path.exists(p):
++                os.remove(p)
++    else:
++        os.remove(f)
++for tmp in glob.glob(os.path.join(D, '**', '*.tmp'), recursive=True):
++    print('leftover', tmp)
++    if fix:
++        os.remove(tmp)
++print(f'{len(bad)} broken files' + (' removed (their days will be fetched or built again)' if fix else ''))
+-- 
+2.43.0
+
