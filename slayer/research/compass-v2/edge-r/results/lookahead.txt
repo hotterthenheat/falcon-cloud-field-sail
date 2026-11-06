@@ -1,0 +1,7 @@
+EDGE-R look-ahead test on 120 cached sessions (R0 tickets)
+entry identical with later bars+boards noised: 1111/1111
+exit decision identical with bars after the exit bar noised: 1111/1111
+fill+exit price identical with quotes after the sale noised: 1110/1110
+CANARY forming-bar trigger changed by the noise (caught): 1013/1111
+CANARY exit priced 60 s after the sale changed by the noise (caught): 14/14 (only where a cached window reaches +60 s)
+CANARY exit priced 8 s after the sale changed by the noise (caught): 1109/1109

@@ -1,0 +1,91 @@
+# EDGE-R log (2026-11-05): Compass Model Risk (book R) on history
+
+Protocol /tmp/qa/V2_PROTOCOL.md incl. anti-bias 10-14. Pre-registration `specs/PREREG.md` (R0, R1, R2), committed before
+any EDGE-R terminal request or outcome.
+
+## Timeline
+- 15:03 ET: read protocol, README, FINAL-REPORT, edge-t/edge-m, modelRisk.ts/modelRiskScan.ts, the live 2026-11-05
+  record (book R). Wrote PREREG. No terminal request before 16:05 ET.
+- 15:05 ET: PREREG committed @ 74ad403 (ledger: 3 PREREG lines, 1 variant each).
+- 15:12 ET: code committed @ 3f3930f before any data: `rmodel.py` (rules ported from modelRisk.ts / modelRiskScan.ts),
+  `sim_r.py` (seat sequencing, fills, exits, R1/R2), `synth_r.py`, `tests_lookahead_r.py`, `analyze_r.py`, `probe_r.py`,
+  `term.py` (terminal gate: refuses before 16:05 ET; disk and 700 MB guards). Offline smoke test on cached EDGE data only
+  (no outcome table looked at; one SPXW ticket priced from an EDGE-T cache file to check the plumbing).
+
+- 16:05 ET: probes (`probe_r.py`, 9 requests, one at a time), on 2024-04-17, 2023-10-27, 2022-03-08:
+  (a) SPY 0DTE 1-minute NBBO 08:00-09:29: 720 rows a day, **0 with bid > 0 and ask > 0** (2022-03-08: no data). The
+  terminal's history holds no pre-open option quotes, so under PREREG 7 pre-open decisions get no contract
+  (`EDGE_R_PREOPEN=0`); the live 09:24:39 fill on a pre-open quote cannot be reproduced on history, and R0's pre-open
+  clause is empty in the backtest (R0 and R2 differ only by the stop, plus the 09:30:00 decision on the 09:29 bar, which
+  also has no contract because the 09:30 board is empty, EDGE-T A1). (b) SPX index bars: close > 0 on 570-962
+  (09:30-16:02; 3-4 post-close prints a day), nothing before 09:30. Used as returned (SPX month bars fetched 00:00-23:59).
+  (c) SPY stock bars 04:00-19:59 (950-960 bars a day).
+- 16:08-16:25 ET: month bars (SPY, QQQ, SPX) 2 processes, 1 request each. Incident: the next-session month 2025-01
+  (for 2024-12-31) was requested for QQQ by the first rule (skip only wholly locked months); its locked days were
+  dropped before writing, the file (1 day) was deleted unread, and the rule now refuses any month that holds a LOCKED
+  day. Nothing from 2025-01 was looked at.
+- 16:20 ET: `fetch_month_bars` extended to SPX index bars 00:00-23:59 (PREREG 2) and to refuse any month holding a
+  LOCKED day (the incident above). Uncommitted edits made before any data (15:14-15:15 ET, after 3f3930f): `sim_r._bid_from`
+  returns the last quote when the sale second falls past the priced window's end (a stop in the last 2 s before the
+  contract's close); `synth_r` gained a no-cost calibration switch (`EDGE_R_SYN_NOCOST=1`). No rule changed.
+- 16:24 ET: two simulation workers (`sim_r.py run 0 2`, `run 1 2`; 1 request in flight each). 16:28 ET: a 10-session
+  pipeline check of `analyze_r.py` wrote an interim results/DEV.md (overwritten by the full run); no code that decides
+  a signal, contract, fill or exit was edited after it (file times: rmodel 16:20, sim_r 15:15, synth_r 15:14 ET).
+- 16:49 ET: look-ahead test on the 60 sessions then cached: 673/673 identical on all three checks; forming-bar canary
+  caught 636/673; the 60-s peek canary reached only 14 windows (caught 14/14), so an 8-s peek canary was added
+  (inside every priced window; test-only change).
+- ~16:58 ET: a container restart killed both workers after 102 sessions (all 102 JSONs, 2,822 q1s files and 411
+  parquets re-read cleanly at resume; logs show 0 quote misses). 91 MB used.
+- 17:05 ET (resume, new run): committed the above as found (the stray `edge/__pycache__` .pyc change restored, not
+  committed). `sim_r.run` now refuses to write a session in which any terminal request failed (a failed board or quote
+  fetch would otherwise be stored as "no contract" / "no quotes"); it waits 60 s and re-runs that session (6 tries),
+  and writes each session JSON atomically. Terminal answered (one 2-minute SPY bar request, 0.7 s); workers restarted
+  17:07 ET (PIDs 1069, 1070), 1 request in flight each.
+- 17:12 ET: no-cost calibration of the synthetic null on the 102 cached sessions (2 runs, `EDGE_R_SYN_NOCOST=1`):
+  R0 +0.9%, R1 +0.8%, R2 +0.6% mean, FDR 0/2 (zero drift and zero cost give ~0, as it should). `synth_r` can now run
+  in parallel chunks (`synth_r.py RUNS PART`, seed 20261105 + 1000 (PART + 1); `synth_r.py merge`).
+  Look-ahead test re-run on the first 60 sessions (sorted): 637/637 identical on all three checks; canaries caught:
+  forming bar 596/637, 60-s peek 15/15, 8-s peek 637/637.
+- ~17:25 ET: second container restart killed workers 1069/1070 at 166 sessions (all files re-read cleanly; 0 misses).
+  The q1s/board/bar cache writes are now atomic too (`.part` + rename; `.part` files are never read). Terminal
+  answered; workers restarted 17:30 ET (PIDs 978, 980).
+- 18:11 ET: interim analysis at 300 of 651 sessions committed (results/DEV.md, summary.json; no synthetic null yet),
+  as a restart safeguard. Nothing in the rules, fills or analysis changes because of it; the run continues to 651.
+- 19:52 ET: simulation complete, 651/651 DEV sessions (no time cut), 0 failed terminal requests over both resumes;
+  v2data/edge-r 480 MB (budget 700). 19:53-20:24 ET: synthetic null 100 runs (4 chunks x 25, merged). 20:25 ET:
+  analysis (`analyze_r.py`; FDR display bug for a 0.0 synthetic FDR fixed, execution-artefact table added; DSR N read
+  from the branch ledger via `V2_LEDGER`, N = 640). Look-ahead test on 120 sessions: entry 1111/1111, exit 1111/1111,
+  prices 1110/1110 identical; canaries caught 1013/1111 (forming bar), 14/14 (60-s peek), 1109/1109 (8-s peek).
+
+## Result (DEV, 651 sessions; full tables in results/DEV.md)
+| variant | n | win | net exp [95% session CI] | gross | payoff | $ (1 lot) | beats shuffle | beats synthetic |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| R0 | 7367 | 57% | -2.5% [-2.9, -2.1] | -1.7% | 0.44 | -$124,169 | 96% | 6% |
+| R1 | 7308 | 57% | -2.6% [-2.9, -2.2] | -1.7% | 0.44 | -$120,648 | 96% | 5% |
+| R2 | 7381 | 57% | -2.7% [-3.1, -2.3] | -1.8% | 0.45 | -$138,381 | 89% | 4% |
+
+Null FDR 0% (shuffle and synthetic); synthetic null mean -2.2% (no-cost calibration +0.6..+0.9%). PBO 0.70, DSR 0.000.
+Every DEV year (2020 -4.1%, 2022 -2.0%, 2023 -2.5%, 2024 -2.5% for R0) and every day type (< 0.5% -2.3%,
+0.5-1.5% -2.5%, > 1.5% -3.8%) is negative with the CI below 0; so is every ticker, book and side. The shape: 81% of
+tickets exit "back" (+3.7%, 71% win) and 19% are "held" 30 minutes (-29%, 1% win); the held losses outweigh the backs.
+Beating the shuffle only says buying the breakout side at the same instants is worse still (-2.9%); the rule loses
+more than a zero-drift martingale with the same costs. R1's filter removes 0.8% of tickets and changes nothing; R2's
+stop cuts the held losses to -16% but stops 865 tickets at -37% that would partly have come back: worse overall.
+The book fires on ~11.3 of the 12 possible keys every session: a close outside a 30-close range is an everyday event,
+not a tail. No variant meets the bar (n >= 150 and CI > 0 and >= 95% of both nulls): nothing fetched for VALIDATION,
+nothing frozen, LOCKED never opened.
+
+Execution artefacts: no pre-open fills possible on history (no pre-open option quotes); 0 fills at 09:30:02; 3 expiry
+holds, 4 next-session sells, 0 skipped fills, 0 flagged. Live-ledger pricing (board ask at the decision, bid at the
+START of the exit bar, ~60 s before the exit decision) understates the real round trip by 5.6 pts per ticket
+[-5.7, -5.4] (live -7.3% vs real -1.7% gross): the live ledger books exits on a stale bid. Separately, the live stale-bar
+bug (above) produced 16 of 29 live tickets as <= 5-s spread round trips; neither artefact is the rule's own merit.
+
+Verdict: switch the book off. Neither pre-registered change rescues it.
+
+## Live record 2026-11-05 (motivation; execution artefacts only, not a test)
+Book R closed 29 tickets on 23 names (−$1,691 at 15:12 ET). 16 of 29 were held ≤ 5 s (−$259): the live scan reads bars
+for 4 of 458 names per pass, so a name's closes can be ~2 minutes old; the entry fires on a stale break, the next pass
+refreshes that name first (open tickets are prioritised), the exit rule is already met, and the ticket is a spread round
+trip. 5 tickets held ≥ 10 min lost −$1,449 (SPX 7500C −$920, SPY 766C −$255 pre-open, RUTW −$260). The 3-root backtest
+cannot reproduce the stale-bar round trips (its bars are current); it measures the rule itself.
