@@ -78,6 +78,7 @@ const PROOFS = [
   'vol-regime-proof.mjs',
   'oi-change-proof.mjs',
   'skew-proof',
+  'expected-move-proof',
   'charm-drift-proof',
   'overnight-proof',
   'wind-proof',

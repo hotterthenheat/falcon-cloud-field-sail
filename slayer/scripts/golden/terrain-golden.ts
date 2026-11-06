@@ -260,16 +260,18 @@ if (!(existsSync(openDir) && readdirSync(openDir).some(f => f.endsWith('.json.gz
    implied_move 5.09247441828498; spot 772.31 (the Oct 28 close). */
 const { forwardCone, sigmaMove } = await import('../../src/data/terrainCone');
 const { vendorIvOnTradingClock } = await import('../../src/core/volClock');
-const { sigmaFromStraddle } = await import('../../src/data/expectedMove');
-const CONE_HAND = { sigmaNext: 6.546328040734399, pinpoint: 6.382470182354093, mid: { today: 2.6015889068380207, next: 6.352619861882894, move: 4.18834402202155 } };
+const CONE_HAND = { sigmaNext: 6.546328040734399, pinpoint: 6.546328040734399, mid: { today: 2.6015889068380207, next: 6.352619861882894, move: 4.18834402202155 } };
 const atClose = Date.parse('2026-10-28T20:00:00Z');
 const fc = forwardCone([{ expiry: '2026-10-29', iv: 0.1619394046561459 }], 772.31, atClose, null)!;
 expectNear('cone: 1σ to the Oct 29 close, S·IV·√(1/365)', fc.sigmaNext, CONE_HAND.sigmaNext, 1e-9);
 expectNear('cone: the same as S × IV_trade × √(1/252)', sigmaMove(772.31, vendorIvOnTradingClock(0.1619394046561459, '2026-10-29', atClose), 390), fc.sigmaNext, 1e-12);
 expectNear('cone: the curve ends at ±1σ and ±2σ', fc.points[fc.points.length - 1].up2 - 772.31, 2 * fc.sigmaNext, 1e-9);
-const pin = sigmaFromStraddle(5.09247441828498);
-expectNear("Pinpoint's 1σ for the same session: straddle × √(π/2)", pin, CONE_HAND.pinpoint, 1e-9);
-expectEqual('the two 1σ agree within 3% (ThetaData-style vol against the vendor straddle)', Math.abs(fc.sigmaNext / pin - 1) < 0.03, true);
+/* Pinpoint's 1σ for the same session is the row's own vol on the row's clock, S·σ·√(dte/365) with dte 1 (data/book/move.ts
+   vendorSigma; audit 2026-11-05 — it once read the implied move as a straddle, implied × √(π/2) = 6.382, but that move is
+   ~0.85 of the straddle), so the two pages print one 1σ */
+const pin = 772.31 * 0.1619394046561459 * Math.sqrt(1 / 365);
+expectNear("Pinpoint's 1σ for the same session: S·σ·√(1/365) off the row", pin, CONE_HAND.pinpoint, 1e-9);
+expectEqual('the two 1σ agree within 3% (ThetaData-style vol against the vendor row)', Math.abs(fc.sigmaNext / pin - 1) < 0.03, true);
 console.log(`  (cone vs Pinpoint, SPY Oct 29: ${fc.sigmaNext.toFixed(4)} against ${pin.toFixed(4)}, ${((fc.sigmaNext / pin - 1) * 100).toFixed(2)}%)`);
 /* mid-session: 13:30 ET, 150 minutes left; today's vol 20%, the next session's 15% (round inputs, hand-priced) */
 const mid = forwardCone([{ expiry: '2026-10-29', iv: 0.2 }, { expiry: '2026-10-30', iv: 0.15 }], 770, Date.parse('2026-10-29T17:30:00Z'), 768.79)!;

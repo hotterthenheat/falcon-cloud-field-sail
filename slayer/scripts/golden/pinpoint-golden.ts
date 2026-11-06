@@ -9,7 +9,7 @@
 import { done, expectEqual, expectNear, freezeClock, installUwFixtures, recordedAt, settleOn } from './uwFixtures';
 import { pruneSet } from './pinpointRaw';
 import { dealerOf } from '../../src/core/dealerSign';
-import { bsVanna, bsVega, byStrike, contractRow, contractOi, contractVols, exposureRows, impliedMove, levelsOfRows, oiChangeRows, phiCdf, pricedFlip, pricedFlowTo, pricedLegs, pricedNet, rawAnswers, terminalOiDiffs, termVols, vendorOiDiffs, yearsTrading } from './pinpointRaw';
+import { bsVanna, bsVega, byStrike, contractRow, contractOi, contractVols, exposureRows, impliedMove, levelsOfRows, oiChangeRows, phiCdf, pricedFlip, pricedFlowTo, pricedLegs, pricedNet, rawAnswers, straddleMid, terminalOiDiffs, termSigma, termVols, vendorOiDiffs, yearsTrading } from './pinpointRaw';
 
 const SET = 'pinpoint-2026-10-29';
 const NAMES = ['SPY', 'NVDA'] as const;
@@ -162,12 +162,33 @@ for (const t of NAMES) {
 
   /* the expected move, and the odds read off it */
   const straddle = impliedMove(raw, t, gold.front);
-  expectNear(`${t}: the vendor's straddle into ${gold.front}`, straddle, gold.straddle, 1e-12);
+  expectNear(`${t}: the vendor's implied move into ${gold.front}`, straddle, gold.straddle, 1e-12);
   const move = book.peekScopeMove(t)!;
-  expectNear(`${t}: 1σ = straddle × √(π/2)`, move.move, gold.straddle * SQRT_PI_2, 1e-9);
+  /* audit 2026-11-05: the vendor's implied move is k·S·σ·√(dte/365), k ≈ 0.68 — about 0.85 of the at-the-money straddle,
+     not the straddle. 1σ is S·σ·√(dte/365) off the date's own row (it once read implied move × √(π/2), 0.85× the market's) */
+  const sigmaHand = termSigma(raw, t, gold.front, spot)!;
+  expectNear(`${t}: 1σ = S·σ·√(dte/365) off the ${gold.front} row (${sigmaHand.toFixed(3)}; the implied move × √(π/2) would be ${(gold.straddle * SQRT_PI_2).toFixed(3)})`, move.move, sigmaHand, 1e-9);
+  /* …and the straddle that 1σ prices is the market's: the page's straddle into every expiry against the at-the-money
+     call + put mid off the contracts (at the price the quotes stood at), within 7% (SPY 0.93–0.99, NVDA 1.00–1.03) — the
+     implied move ran 0.82–0.89 of it on every one */
+  {
+    const dated = [...termVols(raw, t).keys()].filter(d => d > '2026-10-29' && termSigma(raw, t, d, spot) != null);
+    const off: string[] = [];
+    let n = 0;
+    for (const d of dated) {
+      const mid = straddleMid(raw, t, d, marked);
+      const page = book.peekScopeMove(t, d)?.straddle;
+      if (mid == null || page == null) continue;
+      n++;
+      const ratio = (page * (marked / spot)) / mid;
+      if (process.env.GOLDEN_SHOW) console.log(`    ${t} ${d} page straddle ÷ mid ${ratio.toFixed(3)}, implied move ÷ mid ${(impliedMove(raw, t, d) / mid).toFixed(3)}`);
+      if (Math.abs(ratio - 1) > 0.07) off.push(`${d} ${ratio.toFixed(3)} (implied ${(impliedMove(raw, t, d) / mid).toFixed(3)})`);
+    }
+    expectEqual(`${t}: the page's straddle is the market's on all ${n} quoted expiries (none over 7% off: ${off.slice(0, 3).join(', ') || 'none'})`, [n > 10, off.length], [true, 0]);
+  }
   const iv = book.peekIv(t) ?? 0;
   const ss = scopeSigma(snap, clock.minutesLeft, iv);
-  expectNear(`${t}: the odds' σ left is that 1σ (before the open, the whole horizon)`, ss.sigmaLeft, gold.straddle * SQRT_PI_2, 1e-9);
+  expectNear(`${t}: the odds' σ left is that 1σ (before the open, the whole horizon)`, ss.sigmaLeft, sigmaHand, 1e-9);
   const reach = (k: number) => 2 * (1 - phiCdf(Math.abs(Math.log(k / spot)) / (ss.sigmaLeft / spot)));
   for (const k of [lv0.callWall!, lv0.putWall!]) expectNear(`${t}: reach odds to ${k} = 2(1 − Φ(|ln K/S| ÷ σ/S))`, touchOdds(spot, k, ss.sigmaLeft), reach(k), 1e-6);
   const agenda = deskAgenda(snap, '0DTE', clock)!;

@@ -323,10 +323,45 @@ export function phiCdf(x: number): number {
   return x >= 0 ? 0.5 * (1 + erf) : 0.5 * (1 - erf);
 }
 
-/** The vendor's implied move (its ATM straddle) into an expiry, dollars */
+/** The vendor's implied move into an expiry, dollars — k·S·σ·√(dte/365) with k ≈ 0.68, about 0.85 of the straddle */
 export function impliedMove(raw: Map<string, unknown>, t: string, expiry: string): number {
   const rows = raw.get(`/stock/${t}/volatility/term-structure`) as Row[];
   return n(rows.find(r => r.expiry === expiry)?.implied_move);
+}
+
+/** One standard move into an expiry off its term-structure row: S·σ·√(dte/365), dollars — null without vol or dte */
+export function termSigma(raw: Map<string, unknown>, t: string, expiry: string, spot: number): number | null {
+  const r = ((raw.get(`/stock/${t}/volatility/term-structure`) as Row[]) ?? []).find(x => x.expiry === expiry);
+  const v = n(r?.volatility);
+  const dte = n(r?.dte);
+  return v > 0 && dte > 0 ? spot * v * Math.sqrt(dte / 365) : null;
+}
+
+/** The at-the-money straddle mid into an expiry at `price`, dollars: call + put mid at the strikes either side of price,
+    interpolated (a pair needs both legs quoted, ask ≥ bid > 0) — null when no pair brackets the price */
+export function straddleMid(raw: Map<string, unknown>, t: string, expiry: string, price: number): number | null {
+  const by = new Map<number, { C?: number; P?: number }>();
+  for (const [p, d] of raw) {
+    if (!p.startsWith(`/stock/${t}/option-contracts?`)) continue;
+    for (const r of d as Row[]) {
+      const tail = String(r.option_symbol).slice(-15);
+      if (`20${tail.slice(0, 2)}-${tail.slice(2, 4)}-${tail.slice(4, 6)}` !== expiry) continue;
+      const bid = n(r.nbbo_bid);
+      const ask = n(r.nbbo_ask);
+      if (!(bid > 0) || ask < bid) continue;
+      const k = Number(tail.slice(7)) / 1000;
+      const cur = by.get(k) ?? {};
+      cur[tail[6] as 'C' | 'P'] = (bid + ask) / 2;
+      by.set(k, cur);
+    }
+  }
+  const ks = [...by].filter(([, v]) => v.C != null && v.P != null).map(([k]) => k).sort((a, b) => a - b);
+  const lo = ks.filter(k => k <= price).pop();
+  const hi = ks.find(k => k >= price);
+  if (lo == null || hi == null) return null;
+  const s = (k: number) => by.get(k)!.C! + by.get(k)!.P!;
+  const u = hi === lo ? 0 : (price - lo) / (hi - lo);
+  return s(lo) * (1 - u) + s(hi) * u;
 }
 
 /** The term structure's vol per expiry (calendar-year fraction), keyed YYYY-MM-DD */
