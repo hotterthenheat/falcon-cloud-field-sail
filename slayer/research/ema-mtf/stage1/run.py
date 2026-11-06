@@ -265,10 +265,18 @@ def perm(n_runs=200, seed=20261106):
             print('perm', run + 1, 'any_holm share', np.mean([d['any_holm'] for d in done]), flush=True)
 
 
-def synth(seeds):
+SYN_PARTS = os.environ.get('EMA_SYN_PARTS', '/tmp/claude-0/-home-user/f71fb141-33a0-5344-9573-1a2ad4706812/scratchpad/synth_parts')
+
+
+def synth(seeds, blocks=BLOCKS, analyse_seed=True):
+    """Synthetic zero-drift null: per seed, the S1A event tables of every (block, root) built on SynthSource (cached
+    per part outside the data budget, resumable), then the full S1A rule on the pooled table."""
     from stage1.synth import SynthSource
     d = os.path.join(OUT, 'synth')
     os.makedirs(d, exist_ok=True)
+    os.makedirs(SYN_PARTS, exist_ok=True)
+    keep = ['root', 'block', 'session', 'm', 'bucket', 'right', 'status_ok', 'Y15', 'Y30', 'Y60', 'Ymid30'] + \
+           [f'f_{F}_{tf}' for F, tf in S1A_TESTS] + [f'ust_{tf}' for tf in TFS]
     ses = eval_sessions()
     for seed in seeds:
         p = os.path.join(d, f'seed_{seed:03d}.pkl')
@@ -276,11 +284,21 @@ def synth(seeds):
             continue
         t0 = time.time()
         parts = []
-        for b in BLOCKS:
+        for b in blocks:
             for r in ROOTS:
-                ev = build(r, b, src=SynthSource(r, seed), full=False, log=lambda *a: None)
-                parts.append(ev[[c for c in ev.columns if not c.startswith('kms_')]])
-        ev = pd.concat(parts, ignore_index=True)
+                pp = os.path.join(SYN_PARTS, f'seed{seed:03d}_{b}_{r}.parquet')
+                if not os.path.exists(pp):
+                    ev = build(r, b, src=SynthSource(r, seed), full=False, log=lambda *a: None)
+                    ev = ev[keep]
+                    ev.to_parquet(pp + '.tmp')
+                    os.replace(pp + '.tmp', pp)
+                    print('synth part', seed, b, r, f'{time.time()-t0:.0f}s', flush=True)
+                parts.append(pp)
+        if not analyse_seed or not all(os.path.exists(os.path.join(SYN_PARTS, f'seed{seed:03d}_{b}_{r}.parquet'))
+                                       for b in BLOCKS for r in ROOTS):
+            continue
+        ev = pd.concat([pd.read_parquet(os.path.join(SYN_PARTS, f'seed{seed:03d}_{b}_{r}.parquet'))
+                        for b in BLOCKS for r in ROOTS], ignore_index=True)
         ev = ev[ev.status_ok].reset_index(drop=True)
         D = Design(ev, ses)
         res = null_family(D, ev, {(F, tf): ev[f'f_{F}_{tf}'].to_numpy(float) for F, tf in S1A_TESTS})
@@ -288,7 +306,7 @@ def synth(seeds):
                     'seconds': time.time() - t0})
         pickle.dump(res, open(p + '.tmp', 'wb'))
         os.replace(p + '.tmp', p)
-        print('synth seed', seed, 'any_holm', res['any_holm'], 'any_pass', res['any_pass'], f"{res['seconds']:.0f}s", flush=True)
+        print('synth seed', seed, 'any_holm', res['any_holm'], 'any_pass', res['any_pass'], flush=True)
 
 
 def main():
@@ -296,6 +314,7 @@ def main():
     ap.add_argument('what', choices=['analyse', 'perm', 'synth'])
     ap.add_argument('--seeds', default='0-19')
     ap.add_argument('--runs', type=int, default=200)
+    ap.add_argument('--blocks', default='A,B')
     a = ap.parse_args()
     if a.what == 'analyse':
         analyse()
@@ -303,7 +322,7 @@ def main():
         perm(a.runs)
     else:
         lo, hi = map(int, a.seeds.split('-'))
-        synth(range(lo, hi + 1))
+        synth(range(lo, hi + 1), blocks=tuple(a.blocks.split(',')))
 
 
 if __name__ == '__main__':

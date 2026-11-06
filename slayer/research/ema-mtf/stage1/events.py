@@ -50,6 +50,7 @@ TFS = (1, 5, 15, 30, 60)
 TARGET, BAND, MAX_SPREAD = 0.40, (0.30, 0.50), 0.08
 DRIFT_BUY, DRIFT_SELL = 0.0017, 0.0005
 M0 = 570
+CHUNK = int(os.environ.get('EMA_S1_CHUNK', '700'))     # contracts per feature chunk (memory)
 
 
 def dec_ms_of(m):
@@ -622,26 +623,41 @@ def build(root: str, block: str, src: Source | None = None, full: bool = True, l
     ivf = frozen_iv(cm, u1) if full else None
     qsess = cm[['exp', 'strike', 'right', 'session']].drop_duplicates() if full else None
     cols = {}
+    ck_ev = ckey(ev.exp, ev.strike, ev.right)
+    cm_ck = ckey(cm.exp, cm.strike, cm.right)
+    chunks = np.array_split(keys, max(1, -(-len(keys) // CHUNK)))      # contracts are independent: chunk for memory
     for tf in TFS:
-        mt = mid_tables(cm, tf)
-        ft = with_features(mt)
-        j = asof_join(ev, ft, list(FEATURES) + ['state'], 'o')
-        del ft
-        for F in FEATURES:
-            cols[f'f_{F}_{tf}'] = j[f'o{F}'].to_numpy()
-        cols[f'st_{tf}'] = j['ostate'].to_numpy()
-        cols[f'kms_{tf}'] = j['okms'].to_numpy()
+        names = [f'f_{F}_{tf}' for F in FEATURES] + [f'st_{tf}', f'kms_{tf}'] + ([f'p_{F}_{tf}' for F in FEATURES] if full else [])
+        for nm in names:
+            cols[nm] = np.full(len(ev), np.nan)
+        for kc in chunks:
+            se = np.flatnonzero(np.isin(ck_ev, kc))
+            if not len(se):
+                continue
+            evc = ev.iloc[se]
+            mt = mid_tables(cm[np.isin(cm_ck, kc)], tf)
+            ft = with_features(mt)
+            j = asof_join(evc, ft, list(FEATURES) + ['state'], 'o')
+            del ft
+            for F in FEATURES:
+                cols[f'f_{F}_{tf}'][se] = j[f'o{F}'].to_numpy()
+            cols[f'st_{tf}'][se] = j['ostate'].to_numpy()
+            cols[f'kms_{tf}'][se] = j['okms'].to_numpy()
+            if full:
+                rt = reprice_table(mt, ivf, u1, tf)
+                del mt
+                ft = with_features(rt)
+                del rt
+                j = asof_join(evc, ft, list(FEATURES), 'p')
+                del ft
+                for F in FEATURES:
+                    cols[f'p_{F}_{tf}'][se] = j[f'p{F}'].to_numpy()
+            else:
+                del mt
+            gc.collect()
         i = asof_rows(ut[tf], ev.session, ev.dec_ms)
         cols[f'ust_{tf}'] = np.where(i >= 0, ut[tf].state.to_numpy()[np.clip(i, 0, None)], np.nan) * ev.right.to_numpy()
         if full:
-            rt = reprice_table(mt, ivf, u1, tf)
-            del mt
-            ft = with_features(rt)
-            del rt
-            j = asof_join(ev, ft, list(FEATURES), 'p')
-            del ft
-            for F in FEATURES:
-                cols[f'p_{F}_{tf}'] = j[f'p{F}'].to_numpy()
             tt = trade_tables(src, days_all, keys, tf)
             dens = trade_density(ev, tt, qsess, tf, sorted(set(WARM_N.values())))
             if len(tt):
@@ -653,8 +669,6 @@ def build(root: str, block: str, src: Source | None = None, full: bool = True, l
                 cols[f't_{F}_{tf}'] = np.where(dens[WARM_N[F]] >= 0.8, v, np.nan)
             cols[f'tdens21_{tf}'] = dens[21]
             del tt
-        else:
-            del mt
         gc.collect()
         log(root, block, f'tf {tf} done in {time.time()-t0:.0f}s')
     ev = pd.concat([ev, pd.DataFrame(cols, index=ev.index)], axis=1)

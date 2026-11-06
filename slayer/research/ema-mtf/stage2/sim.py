@@ -84,8 +84,8 @@ def exit_rule(name: str, ctx: Ctx, m0: int, entry_px: float, entry_mid: float, u
     """Returns (reason, exit decision bar) or (None, None) if nothing fires by 15:55."""
     mid, t5 = ctx.mid, ctx.t5
     k0 = t5['kms'][m0]
-    if name == 'X3':
-        c, e9, k = t5['c'], t5['ema9'], t5['kms']
+    if name == 'X3' or name.startswith('X3e'):
+        c, e9, k = t5['c'], t5['ema9' if name == 'X3' else f'ema{int(name[3:])}'], t5['kms']
         for m in range(m0 + 1, FLAT_M + 1):
             if e9[m] == e9[m] and c[m] < e9[m] and k[m] > k0:
                 return 'x3_below9', m

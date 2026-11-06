@@ -120,7 +120,7 @@ class SynthSource(Source):
         ask_c = np.round(ask * 100).astype(np.int32)
         q['bid'] = np.where(valid, bid_c, 0).astype(np.int32)
         q['ask'] = np.where(valid, ask_c, q.ask.to_numpy()).astype(np.int32)
-        if len(self._q) > 8:
+        if len(self._q) > 3:
             self._q.clear()
         self._q[D] = q
         return q
