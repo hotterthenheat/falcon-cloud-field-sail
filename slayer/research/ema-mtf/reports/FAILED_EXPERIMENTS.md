@@ -107,3 +107,73 @@ Nothing here was dropped from the record: every Stage-1 test, every Stage-2 vari
 
 Failed tests: ci_gt_0, win_or_payoff, dsr_ge_0.95, both_blocks_gt_0, ge2_daytypes_gt_0.
 
+## Stage 3 — sensitivity / ablation looks (diagnostic, amendment A4): every look negative
+
+| variant | look | n | expectancy net | 95% CI | Δ vs base (pp) |
+|---|---|---|---|---|---|
+| S2C-entryF | lat_L0 | 7746 | -0.70% | [-2.5, +1.8] | +0.22% |
+| S2C-entryF | lat_L60 | 7732 | -0.24% | [-2.2, +2.5] | +0.68% |
+| S2C-entryF | slip1 | 7745 | -1.72% | [-3.5, +0.8] | -0.80% |
+| S2C-entryF | fee065 | 7745 | -0.91% | [-2.8, +1.6] | +0.01% |
+| S2C-entryF | fee165 | 7745 | -0.93% | [-2.8, +1.6] | -0.01% |
+| S2C-entryF | delta030 | 7742 | -0.99% | [-2.9, +1.7] | -0.07% |
+| S2C-entryF | delta050 | 7727 | -0.85% | [-2.6, +1.6] | +0.07% |
+| S2C-entryF | ema_5_21 | 9352 | -1.17% | [-3.0, +1.3] | -0.25% |
+| S2C-entryF | ema_15_21 | 6643 | -1.03% | [-2.9, +1.4] | -0.11% |
+| S2C-entryF | ema_9_20 | 7862 | -1.09% | [-2.9, +1.4] | -0.17% |
+| S2C-entryF | ema_9_50 | 5817 | -1.31% | [-2.7, +0.5] | -0.39% |
+| S2C-entryF | strict | 7687 | -0.90% | [-2.8, +1.6] | +0.02% |
+| S2C-entryF | trade | 4570 | -0.76% | [-3.9, +3.6] | +0.16% |
+| S2C-entryF | exit_ema5 | 7937 | -1.27% | [-2.9, +1.1] | -0.35% |
+| S2C-entryF | exit_ema15 | 7626 | -0.89% | [-2.9, +1.7] | +0.03% |
+| S2C-entryF | ablation:no_vwap | 9227 | -1.25% | [-2.8, +0.9] | -0.33% |
+| S2C-entryF | ablation:no_und_ema21 | 7777 | -0.94% | [-2.8, +1.6] | -0.02% |
+| S2C-entryF | ablation:no_und_legs | 9269 | -1.30% | [-2.9, +0.8] | -0.38% |
+| S2C-entryF | ablation:underlying_only | 5521 | -1.13% | [-3.4, +2.0] | -0.21% |
+| S2C-mtfD | lat_L0 | 1815 | -0.79% | [-2.1, +0.8] | +0.23% |
+| S2C-mtfD | lat_L60 | 1813 | -0.79% | [-2.1, +0.8] | +0.23% |
+| S2C-mtfD | slip1 | 1814 | -1.48% | [-2.8, +0.1] | -0.46% |
+| S2C-mtfD | fee065 | 1814 | -1.02% | [-2.3, +0.5] | +0.01% |
+| S2C-mtfD | fee165 | 1814 | -1.03% | [-2.3, +0.5] | -0.01% |
+| S2C-mtfD | delta030 | 1815 | -1.11% | [-2.5, +0.4] | -0.09% |
+| S2C-mtfD | delta050 | 1812 | -0.92% | [-2.2, +0.6] | +0.10% |
+| S2C-mtfD | ema_5_21 | 2302 | -1.05% | [-2.2, +0.3] | -0.03% |
+| S2C-mtfD | ema_15_21 | 1285 | -1.80% | [-3.0, -0.6] | -0.78% |
+| S2C-mtfD | ema_9_20 | 1846 | -0.96% | [-2.3, +0.6] | +0.06% |
+| S2C-mtfD | ema_9_50 | 823 | -2.54% | [-3.8, -1.2] | -1.52% |
+| S2C-mtfD | strict | 1811 | -1.02% | [-2.3, +0.5] | -0.00% |
+| S2C-mtfD | trade | 794 | -1.09% | [-3.2, +1.5] | -0.07% |
+| S2C-mtfD | exit_ema5 | 1820 | -1.10% | [-2.1, +0.1] | -0.08% |
+| S2C-mtfD | exit_ema15 | 1815 | -0.75% | [-2.3, +1.1] | +0.27% |
+| S2C-mtfD | ablation:no_1m | 1814 | -1.02% | [-2.3, +0.5] | +0.00% |
+| S2C-mtfD | ablation:no_5m | 1787 | -1.09% | [-2.4, +0.5] | -0.07% |
+| S2C-mtfD | ablation:no_15m | 1545 | -1.18% | [-2.5, +0.5] | -0.16% |
+| S2C-mtfD | ablation:no_30m | 1548 | -1.16% | [-2.5, +0.4] | -0.14% |
+| S2C-mtfD | ablation:no_60m | 2611 | -1.19% | [-2.5, +0.3] | -0.17% |
+| S2C-mtfD | ablation:no_mtf | 9269 | -1.30% | [-2.9, +0.8] | -0.27% |
+| S2C-entryG | lat_L0 | 5379 | -1.79% | [-3.0, -0.5] | +0.22% |
+| S2C-entryG | lat_L60 | 5365 | -1.52% | [-2.8, -0.1] | +0.49% |
+| S2C-entryG | slip1 | 5377 | -2.68% | [-3.9, -1.4] | -0.68% |
+| S2C-entryG | fee065 | 5377 | -2.00% | [-3.2, -0.7] | +0.01% |
+| S2C-entryG | fee165 | 5377 | -2.01% | [-3.2, -0.7] | -0.01% |
+| S2C-entryG | delta030 | 5373 | -2.07% | [-3.3, -0.6] | -0.06% |
+| S2C-entryG | delta050 | 5360 | -1.82% | [-3.0, -0.5] | +0.19% |
+| S2C-entryG | ema_5_21 | 6757 | -2.18% | [-3.3, -1.1] | -0.18% |
+| S2C-entryG | ema_15_21 | 4460 | -1.83% | [-3.4, +0.1] | +0.17% |
+| S2C-entryG | ema_9_20 | 5491 | -2.20% | [-3.3, -1.1] | -0.20% |
+| S2C-entryG | ema_9_50 | 3825 | -1.72% | [-2.9, -0.5] | +0.29% |
+| S2C-entryG | strict | 5349 | -2.00% | [-3.2, -0.7] | +0.01% |
+| S2C-entryG | trade | 3045 | -2.49% | [-4.5, -0.2] | -0.49% |
+| S2C-entryG | exit_ema5 | 5525 | -2.30% | [-3.2, -1.3] | -0.29% |
+| S2C-entryG | exit_ema15 | 5276 | -2.11% | [-3.5, -0.6] | -0.10% |
+| S2C-entryG | ablation:no_gex | 6871 | -1.03% | [-2.9, +1.7] | +0.98% |
+| S2C-entryG | ablation:no_wall | 6982 | -1.95% | [-3.1, -0.6] | +0.06% |
+| S2C-entryG | ablation:no_positioning | 9269 | -1.30% | [-2.9, +0.8] | +0.71% |
+| S2C-entryG | ablation:underlying_only | 4277 | -2.52% | [-4.1, -0.9] | -0.51% |
+
+## Null calibrations that failed
+
+* PREREG S1A permutation null: FWER 100% (200/200 runs); diagnosed in STAGE1 (same-day future leak; block confound).
+* PREREG synthetic zero-drift null: 10 of 14 seeds pass a feature; the one-vol Black–Scholes generator is not a martingale at the decision times (STAGE1).
+* Post-hoc S1A-T on that synthetic generator: 6 of 9 seeds (same cause). S1A-T on the leak-free null: calibrated (FWER ≈ 2%).
+

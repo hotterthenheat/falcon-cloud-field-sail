@@ -30,7 +30,7 @@ EMA) and is listed in `reports/FAILED_EXPERIMENTS.md`.
 
 ## 2. Stage 1 — does the option's own chart carry information? (`reports/STAGE1.md`)
 
-* 292,904 decision events: every 5-minute close 09:45–15:00 × root × bucket × right, the tradable contract nearest
+* 309,035 decision events with an executable outcome: every 5-minute close 09:45–15:00 × root × bucket × right, the tradable contract nearest
   |delta| 0.40.
 * Outcome: the executable net return over 30 minutes (15 and 60 secondary).
 * Effects are measured incrementally, holding the underlying's own same-timeframe EMA state fixed.
@@ -50,9 +50,9 @@ TRADE (charting-app print chart, dense subset only), tested as its own family: 0
      gives δ up to +17 pp; shifting it backward gives ≈ 0, like the real features.
   2. The pre-registered strata pool the 2022 and 2024 blocks, so slow regime features (30m/60m EMA200) pick up a
      between-block confound.
-* **The pre-registered synthetic zero-drift null also failed**: SYNTH_PREREG_RESULT.
+* **The pre-registered synthetic zero-drift null also failed**: 10 of 14 seeds have a Holm-passing feature (≤ 1 of 20 is allowed). The run stopped at 14 of the 20 registered seeds to free memory; no remaining seed can change the outcome. The cause is the generator: Black–Scholes at one vol per session, with the real U-shaped intraday vol profile, is not a martingale at the decision times. Synthetic premiums drift +0.9% per 30 min at 09:45 and −0.6% midday, and premium-state features track that drift. A compass-v2-style generator therefore cannot calibrate a screen of premium-chart features; a variance-clock generator would.
 * A corrected design ("S1A-T": strata split by block and half-hour, leak-free cross-session null) is calibrated:
-  TOD_NULL_RESULT. On it the real data also give **0 of 40**. SYNTH_TOD_RESULT
+  FWER 2.4% (4 of 170 leak-free runs). On it the real data also give **0 of 40**. On the flawed synthetic generator it also over-detects (6 of 9 seeds), for the generator reason above.
 * A miscalibrated screen can only create false passes, so the Stage-1 conclusion stands: no option-chart feature has
   incremental, executable value.
 
@@ -115,7 +115,24 @@ What this says:
 * **§7 DEV bar: FAILED.** CI > 0, win/payoff, DSR, both blocks positive and ≥ 2 day types all fail. Only n ≥ 150 and
   PBO < 0.3 pass.
 * **Sensitivity and ablation** were run as a diagnostic (amendment A4; there was no candidate) on entry F, MTF D and
-  entry G: ROBUST_RESULT
+  entry G: **none survives** the §6 rule (expectancy > 0 at +1 tick and at 60 s latency, and > 0 in ≥ 70% of parameter neighbours). Every look of all three variants is negative, and 0% of neighbours are positive.
+
+**Sensitivity:**
+* +1 tick slippage costs 0.5–0.8 pp.
+* SPXW fee $0.65 / $1.65 moves results by ±0.01 pp.
+* |delta| 0.30 / 0.50 moves them by ±0.1 pp.
+* EMA lengths one step either side cost 0–1.5 pp, and none improves.
+* Strict 2N warm-up changes nothing.
+* The TRADE-chart trigger is no better: entry F −0.76% (n = 4,570) against −0.92% on MID.
+* 60 s latency is 0.2–0.7 pp *better* than L0c: premium partly rebounds after a sell-on-weakness exit, as in Phase 1.
+
+**Ablation** (paired, session-clustered):
+* **VWAP** is the only leg that helps even marginally: removing it costs −0.33 pp [−0.8, +0.0]; removing both underlying legs costs −0.38 [−0.9, −0.0].
+* **Option-chart vs underlying trigger**: replacing the option-chart trigger by the underlying's own cross (same legs) costs −0.21 pp [−1.6, +1.1], i.e. no measurable value from the option chart.
+* **Timeframes**: removing any one from MTF D moves results by ≤ 0.17 pp, and removing the MTF filter entirely by −0.27 [−1.8, +1.7].
+* **GEX**: removing the GEX leg *improves* entry G by +0.98 pp [−0.4, +3.4].
+
+Full tables: STAGE3 §"Sensitivity and ablation"; look-level trade logs: `v2data/ema/results/stage3/robust/`.
 
 ## 5. What works, what does not, what is uncertain
 

@@ -68,7 +68,11 @@ def main():
     os.makedirs(ROB, exist_ok=True)
     wanted = a.variants.split(',')
     for b in ('A', 'B'):
-        for r, r0, bks in [(x, x, None) for x in ('SPY', 'QQQ', 'IWM')] + [(f'SPXW_p{i}', 'SPXW', bk) for i, bk in enumerate(PARTS['SPXW'])]:
+        # SPXW in bucket parts (memory); a block already started keeps its split, a new one uses single buckets
+        started = glob.glob(os.path.join(ROB, f'*_{b}_SPXW_p*.parquet'))
+        spx = ([(f'SPXW_p{i}', 'SPXW', bk) for i, bk in enumerate(PARTS['SPXW'])] if started else
+               [(f'SPXW_q{i}', 'SPXW', (bk,)) for i, bk in enumerate(('0', '1-7', '8-30', '31-90', '91-200'))])
+        for r, r0, bks in [(x, x, None) for x in ('SPY', 'QQQ', 'IWM')] + spx:
             todo = []
             for vid in wanted:
                 v = fam[vid]

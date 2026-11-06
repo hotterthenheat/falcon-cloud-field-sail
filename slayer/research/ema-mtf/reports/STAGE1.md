@@ -117,7 +117,7 @@ Events by block × root × DTE bucket:
 
 * **Permutation null**: 200 runs, feature values permuted among warm events within session × root × bucket × right. Share of runs with any feature passing CI > 0 and Holm < 0.05 (family FWER): **100.0%** (must be ≤ 5% for the pipeline to count: **FAILED**); share passing all five rules: 100.0%. Median smallest Holm p per run: 0.010.
 * Observed δ percentile in its own permutation distribution (the 10 largest observed δ): 30m H 1.0%; 1m L50 0.0%; 60m D 34.5%; 15m B 0.0%; 1m L200 0.0%; 60m H 0.0%; 1m C 0.0%; 60m B 2.0%; 60m L200 8.0%; 30m A 0.0%.
-* **Synthetic zero-drift null** (stage1/synth.py; the whole S1A pipeline on re-quoted panels): 9 seeds; share with any CI > 0 & Holm-passing feature: **67%** (6/9; must be ≤ 5%, i.e. ≤ 1 of 20: **FAILED**); all five rules: 67%. Mean synthetic Y30 -2.74%, mid-to-mid -0.20% (costs only, as designed).
+* **Synthetic zero-drift null** (stage1/synth.py; the whole S1A pipeline on re-quoted panels): 14 seeds; share with any CI > 0 & Holm-passing feature: **71%** (10/14; must be ≤ 5%, i.e. ≤ 1 of 20: **FAILED**); all five rules: 71%. Mean synthetic Y30 -2.74%, mid-to-mid -0.20% (costs only, as designed).
 
 ### S1A by root, DTE bucket and right (δ Y30 in pp, 95% CI) — every feature
 
@@ -269,7 +269,7 @@ A feature carrying the outcome window's information is found at +5 to +17 pp, so
 
 **2. Pooling the blocks lets slow regime features confound δ.** A leak-free null permutes feature values across SESSIONS at the same root × bucket × right × decision close, so the time of day is kept and the day's path is broken. Under the pre-registered strata it still has FWER **95%** (19/20 runs). The biased features are L200 at 30m and 60m (null mean +0.16 and +0.36 pp, z ≈ +3 and +9). Their prevalence differs between the 2022 and 2024 regimes, and the strata do not separate the blocks (A2 item 3). Adding the half-hour alone does not fix it (s1_diag_tod_noblock.pkl: 15/20 runs).
 
-**S1A-T (post-hoc)**: the same statistic, rules and Holm, with the strata also split by block and by the half-hour of the decision close. Leak-free null: FWER **0.9%** over 110 runs (≤ 5% needed: OK). Real data: **0 of 40 pass**. Smallest p-values:
+**S1A-T (post-hoc)**: the same statistic, rules and Holm, with the strata also split by block and by the half-hour of the decision close. Leak-free null: FWER **2.6%** over 190 runs (≤ 5% needed: OK). Real data: **0 of 40 pass**. Smallest p-values:
 
 | feature @ tf | δ Y30 (pp) | 95% CI | p | Holm | rules failed |
 |---|---|---|---|---|---|

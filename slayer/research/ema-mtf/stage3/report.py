@@ -123,6 +123,21 @@ def failed_md() -> str:
         t = R['bar']['tests']
         W('\n## Stage 3 — the walk-forward result against the §7 bar\n')
         W('Failed tests: ' + (', '.join(k for k, v in t.items() if not v and k != 'pass') or 'none') + '.\n')
+    rj = os.path.join(S3, 'robust_S2C.json')
+    if os.path.exists(rj):
+        rob = json.load(open(rj))
+        W('## Stage 3 — sensitivity / ablation looks (diagnostic, amendment A4): every look negative\n')
+        W('| variant | look | n | expectancy net | 95% CI | Δ vs base (pp) |')
+        W('|---|---|---|---|---|---|')
+        for vid, blk in rob['variants'].items():
+            for look, s in blk['looks'].items():
+                W(f"| {vid} | {look} | {s['n']} | {f(s['exp'], 2)} | {fci(s['ci'])} | {f(s['delta'], 2)} |")
+        W('')
+    W('## Null calibrations that failed\n')
+    W('* PREREG S1A permutation null: FWER 100% (200/200 runs); diagnosed in STAGE1 (same-day future leak; block '
+      'confound).\n* PREREG synthetic zero-drift null: 10 of 14 seeds pass a feature; the one-vol Black–Scholes generator is '
+      'not a martingale at the decision times (STAGE1).\n* Post-hoc S1A-T on that synthetic generator: 6 of 9 seeds (same '
+      'cause). S1A-T on the leak-free null: calibrated (FWER ≈ 2%).\n')
     return '\n'.join(w) + '\n'
 
 
