@@ -336,6 +336,29 @@ except item 9's reference, which is counted.
     * Ablation and sensitivity are run only for a candidate that passes the §7 DEV-WF bar (other than the
       L2/sensitivity items, which are part of that bar).
 
+## 9d. Amendment A4 (2026-11-06, EMA-2, after the Stage-3 walk-forward and before any sensitivity/ablation look)
+
+What had been seen: Stage 1 (0/40, 0/5, 0/14), the 23 Stage-2-C variants on both blocks (all negative net, no CI > 0)
+and the walk-forward. The WF result fails the §7 DEV bar: OOS CI ≤ 0, DSR ≈ 0, and it is negative in both blocks.
+**So there is no candidate.** §6 runs ablation and sensitivity only for a candidate that passes. The brief still
+asks for an ablation study and a parameter-sensitivity report, so they are run as a **diagnostic, not a
+promotion step**. Nothing found here can create a candidate: a variant would need a new pre-registration and its own
+untouched data.
+
+* **Variants** (fixed by rule, not by results within this step), the three that cover every component §6 names:
+  * S2C-entryF (B + VWAP + underlying EMA21): the best Stage-2-C variant on DEV; VWAP and underlying legs.
+  * S2C-mtfD (weighted MTF over 1/5/15/30/60m): the MTF variant the walk-forward chose; each timeframe.
+  * S2C-entryG (B + GEX + walls): the only positioning variant; GEX and wall legs.
+* **Looks**: the 15 §6 sensitivity looks each (latency 0/60 s, +1 tick, SPXW fee $0.65/$1.65, |delta| 0.30/0.50,
+  entry EMA neighbours 5/15 × 21 and 9 × 20/50, strict warm-up, TRADE trigger, exit-EMA 5/15). Plus the one-component
+  ablations: F: no VWAP, no underlying EMA21, underlying-only; mtfD: each of the 5 timeframes removed; G: no GEX,
+  no wall, underlying-only.
+* An ablation identical to an existing Stage-2 variant (no MTF, no underlying legs, no positioning = the centre) uses
+  that variant's stored trades and is not a new look.
+* That makes 18 + 20 + 18 = **56 looks**, inside the registered S3 cap of 60, each logged.
+* RSI/RVOL legs are in no Stage-2-C variant (they were S1C confirmations, and none passed): not ablated.
+* The overnight variant is defined only for a candidate: not run.
+
 ## 10. Final verdict mapping (fixed now)
 
 * **A — viable edge**: a frozen candidate passes VALIDATION and the single blind LOCKED look at the §7 bar.

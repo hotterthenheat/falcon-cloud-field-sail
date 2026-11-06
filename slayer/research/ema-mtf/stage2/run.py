@@ -43,20 +43,26 @@ def _write(df, p):
     os.replace(p + '.tmp', p)
 
 
+PARTS = {'SPXW': (('0', '1-7'), ('8-30',), ('31-90',), ('91-200',))}   # memory: SPXW in bucket groups (independent)
+
+
 def run(fam: str, blocks, roots, null_seeds: int, log=print, lat='L0c', also_l60=True):
     vs = family(fam)
     tdir = 'trades' if lat == 'L0c' else f'trades_{lat}'
     if lat != 'L0c':
         null_seeds = 0
     for b in blocks:
-        for r in roots:
+        for r0 in roots:
+          whole = os.path.exists(os.path.join(OUT, tdir, f"{vs[0]['id']}_{b}_{r0}.parquet"))
+          parts = [(None, f'{r0}')] if (r0 not in PARTS or whole) else [(bk, f'{r0}_p{i}') for i, bk in enumerate(PARTS[r0])]
+          for bks, r in parts:
             todo = [v for v in vs if not (os.path.exists(os.path.join(OUT, tdir, f"{v['id']}_{b}_{r}.parquet")) and
                                           (v['id'].startswith('REF') or null_seeds == 0 or
                                            os.path.exists(os.path.join(OUT, 'nulls', f"{v['id']}_{b}_{r}.parquet"))))]
             if not todo:
                 continue
             t0 = time.time()
-            data = Stage2Data(r, b, log=log)
+            data = Stage2Data(r0, b, log=log, **({'buckets': bks} if bks else {}))
             R = Runner(data, Cfg(latency=lat))
             log(r, b, f'data in {time.time()-t0:.0f}s')
             for v in todo:
@@ -77,7 +83,7 @@ def run(fam: str, blocks, roots, null_seeds: int, log=print, lat='L0c', also_l60
                         _write(t60, p60)
                 rows = []
                 if null_seeds and not v['id'].startswith('REF') and nf:
-                    ns = null_summaries(R, t, v['exit'], range(null_seeds)).assign(variant=v['id'], block=b, root=r)
+                    ns = null_summaries(R, t, v['exit'], range(null_seeds)).assign(variant=v['id'], block=b, root=r0, part=r)
                     rows = ns.to_dict('records')
                     _write(pd.DataFrame(rows), os.path.join(OUT, 'nulls', f"{v['id']}_{b}_{r}.parquet"))
                 log(r, b, v['id'], f'{nf} trades', f"mean {t[t.status == 'filled'].ret_net.mean() if nf else np.nan:+.4f}" if False else '',

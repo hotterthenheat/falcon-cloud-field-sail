@@ -38,9 +38,9 @@ L5 = (5, 9, 15, 20, 21, 50, 100, 200)        # 5m: every EMA an entry or an exit
 LH = (5, 9, 21)                              # 1/15/30/60m: states and the E5 slope
 
 
-def tradable(src: Source, plan: dict, D: str, u1: pd.Series, ms=ENTRY_M) -> pd.DataFrame:
+def tradable(src: Source, plan: dict, D: str, u1: pd.Series, ms=ENTRY_M, buckets=BUCKETS) -> pd.DataFrame:
     sel = plan['select'][D]
-    exps = {b: [int(e) for e in sel.get(b, [])] for b in BUCKETS}
+    exps = {b: [int(e) for e in sel.get(b, [])] for b in buckets}
     allx = sorted({e for v in exps.values() for e in v})
     q = src.q0(D)
     if not len(q) or not allx:
@@ -105,7 +105,9 @@ def _asof(cand: pd.DataFrame, t: pd.DataFrame, cols) -> pd.DataFrame:
 
 
 class Stage2Data:
-    def __init__(self, root: str, block: str, src: Source | None = None, log=print):
+    def __init__(self, root: str, block: str, src: Source | None = None, log=print, buckets=BUCKETS):
+        """buckets: a subset of the DTE buckets (they are independent in Stage 2: one position per (root, bucket),
+        nulls drawn per (session, bucket), contract tables per contract), so a big root can be run in parts."""
         self.root, self.block = root, block
         src = src or Source(root)
         self.src = src
@@ -117,7 +119,7 @@ class Stage2Data:
         self.u1 = src.und_m1(self.days)
         uc = {int(D): g.set_index('m').c for D, g in self.u1.groupby('session')}
         self.und_last = {D: float(s.iloc[-1]) for D, s in uc.items()}
-        parts = [tradable(src, plan, D, uc[int(D)]) for D in self.eval_days if int(D) in uc]
+        parts = [tradable(src, plan, D, uc[int(D)], buckets=buckets) for D in self.eval_days if int(D) in uc]
         cand = pd.concat([x for x in parts if len(x)], ignore_index=True)
         keys = np.unique(ckey(cand.exp, cand.strike, cand.right))
         self.keys = keys

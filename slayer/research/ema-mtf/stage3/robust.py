@@ -118,15 +118,23 @@ def survival(base_exp: float, looks: dict) -> dict:
 
 
 def ablations(v: dict) -> list[dict]:
-    """One component removed at a time (PREREG section 6). Each returns a variant dict."""
+    """One component removed at a time (PREREG section 6): each timeframe of the MTF set, the whole MTF filter, the
+    VWAP leg, the underlying-EMA21 leg, the GEX leg, the wall leg, and the option-chart trigger (-> the underlying-only
+    version with the same legs). RSI/RVOL legs are in no Stage-2-C variant (S1C confirmations only)."""
+    from stage2.variants import MTF_SETS
     out = []
     if v.get('mtf'):
-        from stage2.variants import MTF_SETS
+        tfs = MTF_SETS[v['mtf']]
+        if len(tfs) > 2:
+            for tf in tfs:
+                out.append({**v, 'mtf_tfs': tuple(x for x in tfs if x != tf), 'id': v['id'] + f'|no_{tf}m'})
         out.append({**v, 'mtf': None, 'id': v['id'] + '|no_mtf'})
     if v['entry'] == 'F':
-        out.append({**v, 'entry': 'B', 'id': v['id'] + '|no_vwap'})
+        out += [{**v, 'entry': 'F_novwap', 'id': v['id'] + '|no_vwap'}, {**v, 'entry': 'F_noema21', 'id': v['id'] + '|no_und_ema21'},
+                {**v, 'entry': 'B', 'id': v['id'] + '|no_und_legs'}, {**v, 'entry': 'BL3F', 'id': v['id'] + '|underlying_only'}]
     if v['entry'] == 'G':
-        out.append({**v, 'entry': 'B', 'id': v['id'] + '|no_gex'})
-    if v['entry'] in ('B', 'F', 'G'):
-        out.append({**v, 'entry': 'BL3', 'mtf': None, 'id': v['id'] + '|underlying_only'})
+        out += [{**v, 'entry': 'G_nogex', 'id': v['id'] + '|no_gex'}, {**v, 'entry': 'G_nowall', 'id': v['id'] + '|no_wall'},
+                {**v, 'entry': 'B', 'id': v['id'] + '|no_positioning'}, {**v, 'entry': 'BL3G', 'id': v['id'] + '|underlying_only'}]
+    if v['entry'] == 'B' and not v.get('mtf'):
+        out.append({**v, 'entry': 'BL3', 'id': v['id'] + '|underlying_only'})
     return out

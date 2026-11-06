@@ -47,6 +47,13 @@ def trigger_mask(cand: pd.DataFrame, v: dict) -> np.ndarray:
         t = cand.sB.to_numpy(bool) & cand.vwap_ok.to_numpy(bool) & cand.ema21_ok.to_numpy(bool)
     elif e == 'BL3':
         t = cand.ucross.to_numpy() == cand.right.to_numpy()          # underlying-only 5m cross, side of the cross
+    elif e in ('F_novwap', 'F_noema21', 'BL3F', 'G_nogex', 'G_nowall', 'BL3G'):   # Stage-3 ablations (one leg removed)
+        und = cand.ucross.to_numpy() == cand.right.to_numpy()
+        b = cand.sB.to_numpy(bool)
+        vw, e21 = cand.vwap_ok.to_numpy(bool), cand.ema21_ok.to_numpy(bool)
+        gx, nw = cand.gex_neg.to_numpy(bool), cand.nowall.to_numpy(bool)
+        t = {'F_novwap': b & e21, 'F_noema21': b & vw, 'BL3F': und & vw & e21,
+             'G_nogex': b & nw, 'G_nowall': b & gx, 'BL3G': und & gx & nw}[e]
     elif e == 'G':
         t = cand.sB.to_numpy(bool) & cand.gex_neg.to_numpy(bool) & cand.nowall.to_numpy(bool)
     else:
@@ -54,7 +61,7 @@ def trigger_mask(cand: pd.DataFrame, v: dict) -> np.ndarray:
     m = v.get('mtf')
     if m is None:
         return t
-    tfs = MTF_SETS[m]
+    tfs = tuple(v.get('mtf_tfs', MTF_SETS[m]))
     st = {tf: cand[f'st{tf}'].to_numpy(float) for tf in tfs}
     if m == 'A':
         age = cand.b15_age.to_numpy(float)
