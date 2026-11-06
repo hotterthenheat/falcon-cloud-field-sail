@@ -90,7 +90,7 @@ export function canonical(p) {
 /**
  * @param {object} o
  * @param {string} o.name                      for logs and the popular-paths file
- * @param {(path: string, lane: 'viewer' | 'refresh' | 'record') => Promise<{status:number, body:Buffer, type:string}>} o.fetch
+ * @param {(path: string, lane: 'viewer' | 'refresh' | 'record' | 'engine') => Promise<{status:number, body:Buffer, type:string}>} o.fetch
  *   'record' is a reader inside this process that must never get ahead of a viewer (the exposure recorder): it rides the
  *   background lane upstream
  * @param {(path: string) => number} o.ttl     ms an answer stays fresh during market hours
@@ -100,7 +100,7 @@ export function canonical(p) {
  * @param {(path?: string) => boolean} [o.hours]  does this path's answer move now (default marketHours; the proof pins it)
  * @param {(path: string, ageMs: number) => boolean} [o.keepOnFail]  may a failed refresh fall back to the last good
  *   answer of this age? (default: never, so a failure shows as one)
- * @param {(path: string) => void} [o.promote]  a viewer is now waiting on this path's background refresh: move it ahead
+ * @param {(path: string, lane: 'viewer' | 'engine') => void} [o.promote]  a viewer (or the engine) is now waiting on this path's job in flight: move it ahead
  * @param {(status: number, path: string) => boolean} [o.keepable]  is an answer with this status about the request
  *   itself (kept like a good one) rather than a fault (default: 200 and 4xx other than 401/403/408/429)
  * @param {string} [o.file]             the popular-paths file (default .cache/hub-<name>.json)
@@ -161,7 +161,7 @@ export function createHub(o) {
   /* key -> { last: ms of the last ask this run, asks: count, pinned: kept warm from the popular list,
      seenAt: ms of the last viewer's ask, across restarts } */
   const wanted = new Map();
-  const stats = { asks: 0, fresh: 0, stale: 0, waited: 0, upstreamViewer: 0, upstreamRefresh: 0, recordAsks: 0, recordReused: 0, upstreamRecord: 0, startedAt: Date.now() };
+  const stats = { asks: 0, fresh: 0, stale: 0, waited: 0, upstreamViewer: 0, upstreamEngine: 0, upstreamRefresh: 0, recordAsks: 0, recordReused: 0, upstreamRecord: 0, startedAt: Date.now() };
 
   /* outside market hours nothing moves: answers stay good ten times longer */
   const hours = o.hours ?? ((key) => marketHours(Date.now(), key));
@@ -194,14 +194,20 @@ export function createHub(o) {
   function upstream(key, lane) {
     const running = inflight.get(key);
     if (running) {
-      if (lane === 'viewer' && laneOf.get(key) !== 'viewer') {
+      /* the engine outranks a viewer, a viewer a background refresh: joining a job in flight moves it up */
+      const was = laneOf.get(key);
+      if (lane === 'engine' && was !== 'engine') {
+        laneOf.set(key, 'engine');
+        o.promote?.(key, 'engine');
+      } else if (lane === 'viewer' && was !== 'viewer' && was !== 'engine') {
         laneOf.set(key, 'viewer');
-        o.promote?.(key);
+        o.promote?.(key, 'viewer');
       }
       return running;
     }
     laneOf.set(key, lane);
     if (lane === 'viewer') stats.upstreamViewer += 1;
+    else if (lane === 'engine') stats.upstreamEngine += 1;
     else if (lane === 'record') stats.upstreamRecord += 1;
     else {
       stats.upstreamRefresh += 1;
@@ -245,7 +251,8 @@ export function createHub(o) {
   /**
    * One answer for a request path.
    * @param {string} p
-   * @param {{ lane?: 'viewer' | 'record', maxAge?: number }} [opt]  `record`: a reader in this process (the exposure
+   * @param {{ lane?: 'viewer' | 'record' | 'engine', maxAge?: number }} [opt]  `engine`: the Compass engine, a viewer whose
+   *   vendor calls go ahead of every other (the terminal's reserved slots, server/thetaSlots.mjs). `record`: a reader in this process (the exposure
    *   recorder). Its asks are not counted as a viewer's (nothing is kept warm on its schedule), it takes any copy younger
    *   than `maxAge` (default: the path's freshness), and a vendor call it needs waits behind every viewer.
    */
@@ -291,7 +298,7 @@ export function createHub(o) {
       }
     }
     stats.waited += 1;
-    return upstream(key, 'viewer');
+    return upstream(key, opt?.lane === 'engine' ? 'engine' : 'viewer');
   }
 
   /* ---- background refresh ---- */

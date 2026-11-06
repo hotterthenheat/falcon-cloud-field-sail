@@ -397,14 +397,32 @@ export const LIVE_FEATURE_VERSION: FeatureVersion = FEATURE_V1;
    COMPASS_GATE_DECAY=1  B2b: off a full regular day the theta-burn gate is the repriced decay to the session's own flat
                          on the trading clock (off: the trained 16:00 theta check everywhere, as before)
    COMPASS_V2_SHADOW=1   the version 2 shadow scorer (compassShadow; inert until version 2 trees ship with their hashes)
+   Strategy choices for the owner (2026-11-06 audit), off unless switched on; each moves which calls are made or how they
+   are managed, with no outcome evidence behind it (Model 1 has none on history either way):
+   COMPASS_REVERSAL_AFTER_ENTRY=1  the reversal exit reads the stock's move since the entry only (off: the last five
+                         minutes, which on the first minutes of a hold are mostly the minutes before the entry)
+   COMPASS_MAX_OPEN=N    at most N official Book A/B calls open at once (off: one a root, no cap; 2026-11-06 fired six in
+                         one mark and three the next, right after the blind window)
    Read through globalThis: vite's define turns a bare process.env into {} (vite.config.ts), server side too. */
-export type GroupBSwitch = 'COMPASS_ATM_FRESH' | 'COMPASS_GATE_DECAY' | 'COMPASS_V2_SHADOW';
+export type GroupBSwitch = 'COMPASS_ATM_FRESH' | 'COMPASS_GATE_DECAY' | 'COMPASS_V2_SHADOW' | 'COMPASS_REVERSAL_AFTER_ENTRY';
 const switchOverride = new Map<GroupBSwitch, boolean>();
 export function groupBOn(name: GroupBSwitch): boolean {
   const forced = switchOverride.get(name);
   if (forced !== undefined) return forced;
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
   return env[name] === '1';
+}
+/** COMPASS_MAX_OPEN: the most official Book A/B calls open at once, or Infinity (off, the default). */
+let maxOpenOverride: number | null = null;
+export function maxOpenCalls(): number {
+  if (maxOpenOverride != null) return maxOpenOverride;
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+  const n = Math.floor(Number(env.COMPASS_MAX_OPEN));
+  return n >= 1 ? n : Infinity;
+}
+/** Proofs only: force COMPASS_MAX_OPEN (null: back to the environment). */
+export function setMaxOpenCalls(n: number | null): void {
+  maxOpenOverride = n;
 }
 /** Proofs only: force a switch on or off (null: back to the environment). */
 export function setGroupBSwitch(name: GroupBSwitch, on: boolean | null): void {

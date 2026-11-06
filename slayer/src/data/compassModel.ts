@@ -30,6 +30,7 @@ import {
   SESSION_MIN,
   YEAR_SESSIONS,
   QUOTE_MAX_AGE_MS,
+  maxOpenCalls,
   inLottery,
   releaseBlocks,
   thetaBurns,
@@ -62,7 +63,7 @@ import { setupIdOf } from './compass';
 import { shadowClears, shadowOn, shadowPick, shadowScore, shadowTrees, type ShadowRow } from './compassShadow';
 import { optionScanOpen, sessionDayOpen, sessionIso, sessionYmd, tapeClockOf } from './compassSession';
 import type { OptionRight, Setup } from '../types/compass';
-import type { PathBar } from './compassOutcome';
+import { frozenTail, type FullQuote, type PathBar } from './compassOutcome';
 import { CORE, INDEX, INPUT_NAMES, NO_DAILY, SECTOR_OF, UNDER, atmPair, atmRows, barsBefore, curveFrom, decayOver, features, tapeOf, yearsLeft, type Bar, type Curve, type PinBook } from './compassFeatures';
 
 let ENTRY: Tree[] = [];
@@ -685,6 +686,39 @@ async function seedQuotes(list: Setup[], now: number, strict = false): Promise<S
     if (strict) throw new InputFault('quotes 30 minutes back');
     return null;
   }
+  const points = new Map<string, FullQuote[]>();
+  if (!got.error) {
+    for (const item of Array.isArray(got.data) ? got.data : []) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as { contract?: Record<string, unknown>; data?: unknown };
+      const contract = row.contract && typeof row.contract === 'object' ? row.contract : (item as Record<string, unknown>);
+      const strike = num(contract.strike);
+      const side = String(contract.right ?? '').toUpperCase().slice(0, 1);
+      const id = byContract.get(`${strike}|${side}`);
+      if (!id) continue;
+      const quotes = Array.isArray(row.data) ? (row.data as Record<string, unknown>[]) : [item as Record<string, unknown>];
+      for (const q of quotes) {
+        const at = nyWallStamp(q.timestamp);
+        const bid = num(q.bid);
+        const ask = num(q.ask);
+        if (!at || !quoteValid(bid, ask)) continue;
+        const bidSize = Number(q.bid_size);
+        const askSize = Number(q.ask_size);
+        const list = points.get(id) ?? [];
+        list.push({ t: at, bid, ask, ...(Number.isFinite(bidSize) && Number.isFinite(askSize) && q.bid_size != null && q.ask_size != null ? { bidSize, askSize } : {}) });
+        points.set(id, list);
+      }
+    }
+  }
+  /* a window that is one frozen copy across the chain (a store behind real time, filled forward: compassOutcome
+     frozenTail) is not the quotes that stood then: the mids 5 and 15 minutes back read from it were the same stale
+     quote (2026-11-06 10:20 ET: MU 710P's "5-minute mid change" +44% against a real −3%, AVGO 305P's +94%, and eight of
+     the nine calls of 10:20–10:25 fired on such rows). Not kept, not noted: the next pass asks again, and a strict
+     (live) one does not score without it. */
+  if (chainFrozen(points)) {
+    if (strict) throw new InputFault('quotes 30 minutes back (a frozen copy)');
+    return null;
+  }
   seededAt.set(key, now);
   const win: SeedWindow = new Map();
   seedWindows.set(key, win);
@@ -694,21 +728,8 @@ async function seedQuotes(list: Setup[], now: number, strict = false): Promise<S
       seedWindows.delete(k);
     }
   }
-  if (got.error) return win;
-  for (const item of Array.isArray(got.data) ? got.data : []) {
-    if (!item || typeof item !== 'object') continue;
-    const row = item as { contract?: Record<string, unknown>; data?: unknown };
-    const contract = row.contract && typeof row.contract === 'object' ? row.contract : (item as Record<string, unknown>);
-    const strike = num(contract.strike);
-    const side = String(contract.right ?? '').toUpperCase().slice(0, 1);
-    const id = byContract.get(`${strike}|${side}`);
-    if (!id) continue;
-    const quotes = Array.isArray(row.data) ? (row.data as Record<string, unknown>[]) : [item as Record<string, unknown>];
-    for (const q of quotes) {
-      const at = nyWallStamp(q.timestamp);
-      const bid = num(q.bid);
-      const ask = num(q.ask);
-      if (!at || !quoteValid(bid, ask)) continue;
+  for (const [id, list] of points) {
+    for (const { t: at, bid, ask } of list) {
       noteAsk(id, minuteOf(at), bid, ask);
       noteMid(id, minuteOf(at), (bid + ask) / 2);
       const mine = win.get(id) ?? new Map<number, { bid: number; ask: number }>();
@@ -717,6 +738,23 @@ async function seedQuotes(list: Setup[], now: number, strict = false): Promise<S
     }
   }
   return win;
+}
+
+/** A chain's seed window is one frozen copy: of its contracts with three or more points, a mid of 0.20 or more and
+    sizes on their rows (at least four of them), three in four end on a run of the same full quote spanning ten
+    minutes or more. Live two-sided quotes across a chain do not repeat their sizes for ten minutes; a few wings may. */
+export function chainFrozen(points: ReadonlyMap<string, readonly FullQuote[]>): boolean {
+  let candidates = 0;
+  let frozen = 0;
+  for (const list of points.values()) {
+    if (list.length < 3) continue;
+    const sorted = list.slice().sort((a, b) => a.t - b.t);
+    const last = sorted[sorted.length - 1];
+    if (!((last.bid + last.ask) / 2 >= 0.2) || !Number.isFinite(last.bidSize)) continue;
+    candidates += 1;
+    if (frozenTail(sorted, 10 * 60_000) != null) frozen += 1;
+  }
+  return candidates >= 4 && frozen >= 0.75 * candidates;
 }
 
 const passed = new Map<string, string[]>();
@@ -1645,6 +1683,9 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
     return bd - ad || b.p1 - a.p1;
   });
   const anyDrive = cands.some(r => Number.isFinite(r.retOpen) && Math.abs(r.retOpen) >= DRIVE);
+  /* COMPASS_MAX_OPEN (off by default): at most N official Book A/B calls open at once; the best go first */
+  const cap = maxOpenCalls();
+  let open = [...next.values(), ...wingNext.values()].filter(p => seen.has(p.id) && !p.late).length;
   for (const row of cands) {
     const drive = Number.isFinite(row.retOpen) && Math.abs(row.retOpen) >= DRIVE;
     if (anyDrive && !drive) continue;
@@ -1668,6 +1709,13 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       if (noted) heldRoots.add(`${row.setup.sleeve}|${row.setup.ticker}`);
       continue;
     }
+    if (open >= cap) {
+      const had = passed.get(row.setup.ticker) ?? [];
+      had.push(`${row.setup.contract} cleared, but ${cap} ${cap === 1 ? 'call is' : 'calls are'} already open (COMPASS_MAX_OPEN).`);
+      passed.set(row.setup.ticker, had.slice(0, 6));
+      continue;
+    }
+    open += 1;
     const seatKey = `${row.setup.sleeve}|${row.setup.ticker}`;
     heldRoots.add(seatKey);
     seenMark.set(row.setup.id, mark);

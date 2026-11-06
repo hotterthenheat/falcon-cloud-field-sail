@@ -37,6 +37,7 @@ import { nyYmd as ymd, sessionCloseMinOn } from '../core/calendar';
 import { REGULAR_OPEN_MIN, nextWindow } from '../core/session';
 import { emptyTail, type TailPublic } from './modelRisk';
 import { tailPass } from './modelRiskScan';
+import { bsStates, ivStates } from './compassFeatures';
 
 export const INDEX_OF: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', XSP: 'XSP', RUT: 'RUT', RUTW: 'RUT', VIX: 'VIX', NDX: 'NDX', NDXP: 'NDX' };
 export const OPTION_OF: Record<string, string> = { SPX: 'SPXW', RUT: 'RUTW', NDX: 'NDXP' };
@@ -107,9 +108,35 @@ export interface ScanMeta {
   line: string;
   /** Model Risk, the tail-risk fade. All day. No session window. */
   tail: TailPublic;
+  /** Whether the live chain's quotes were current at the last mark (FeedHealth) */
+  feed: FeedHealth;
 }
 
-let meta: ScanMeta = { theta: 'unknown', downSince: 0, busy: false, spots: {}, sparks: {}, line: 'Reading the live book.', tail: emptyTail() };
+/** The live chain's freshness at the last mark. The snapshot can answer with rows whose own stamps lag real time by
+    minutes (2026-11-06 09:35–10:15 ET and 2026-11-05 11:45–12:10 ET: every name answered, no quote was inside 90 s,
+    every mark scored nothing and said "quiet"). Such a name is read again from a source that is current (the quote
+    snapshot, else the quotes recorded at this instant, each row with its own stamp, checked the same way); one that
+    has no current source is not scored, and says so. */
+export interface FeedHealth {
+  /** 'fresh': every name's snapshot was current. 'stale': some names' snapshots lagged past FRESH_MS. */
+  state: 'fresh' | 'stale';
+  /** Since when the snapshots have been stale, epoch ms (0 while fresh) */
+  since: number;
+  /** How far the stalest snapshot lagged at the last mark, ms */
+  lagMs: number;
+  /** The names whose snapshot was stale at the last mark */
+  names: string[];
+  /** Of those, the names scored from a current source instead */
+  fallback: string[];
+  /** Of those, the names no current source answered for: not scored */
+  blind: string[];
+  /** The mark this describes, epoch ms */
+  at: number;
+}
+
+export const freshFeed = (): FeedHealth => ({ state: 'fresh', since: 0, lagMs: 0, names: [], fallback: [], blind: [], at: 0 });
+
+let meta: ScanMeta = { theta: 'unknown', downSince: 0, busy: false, spots: {}, sparks: {}, line: 'Reading the live book.', tail: emptyTail(), feed: freshFeed() };
 const metaFns = new Set<() => void>();
 
 export function scanMeta(): ScanMeta {
@@ -325,15 +352,25 @@ interface Snap {
   ok: boolean;
   /** ThetaData had quote rows for the name (fresh or not) */
   rows: number;
+  /** The snapshot's rows were all older than the freshness limit (their own stamps), however the name was then read */
+  stale?: boolean;
+  /** How far the snapshot's newest row lagged the ask, ms (stale only) */
+  lagMs?: number;
+  /** The current source the setups came from when the snapshot was stale: the quote snapshot or the recorded quotes
+      at this instant; absent when the greeks snapshot was current (or nothing current answered) */
+  source?: 'quote' | 'at_time';
 }
 
-function draftOf(item: Record<string, unknown>, symbol: string, now: number, freshMs: number, spotFallback: number): Draft | null {
+/** One row as a draft, or null when it is not a valid quote stamped inside `freshMs` before `now` (the ask). A stamp
+    up to a minute past `receivedAt` (when the answer came in; `now` by default) is not from the future: an answer that
+    waited for a slot is newer than its ask (it was dropped, and a busy terminal read as a quiet book). */
+function draftOf(item: Record<string, unknown>, symbol: string, now: number, freshMs: number, spotFallback: number, receivedAt = now): Draft | null {
   const row = rowOf(item);
   if (!row) return null;
   const bid = num(row.quote.bid);
   const ask = num(row.quote.ask);
   const at = nyWallStamp(row.quote.timestamp);
-  if (!(bid > 0) || !(ask >= bid) || !at || now - at > freshMs || at > now + 60_000) return null;
+  if (!(bid > 0) || !(ask >= bid) || !at || now - at > freshMs || at > Math.max(now, receivedAt) + 60_000) return null;
   const strike = num(row.contract.strike);
   const expiry = String(row.contract.expiration || '').slice(0, 10);
   const rightWord = String(row.contract.right || '').toLowerCase();
@@ -358,6 +395,20 @@ function draftOf(item: Record<string, unknown>, symbol: string, now: number, fre
   return { root, strike, right, exp: expiry, bid, ask, under, at, greeks };
 }
 
+/** A row the snapshot priced without greeks (the quote snapshot, the recorded quotes): its greeks from its own mid
+    on the model's Black-Scholes (compassFeatures bsStates, ivStates: the IV the mid solves for, the time to its
+    expiry in sessions). For the card only: the trees solve their own IV and greeks from the mid, whatever the row
+    carried, so a call does not depend on the vendor's greeks. */
+export function localGreeks(d: Pick<Draft, 'bid' | 'ask' | 'under' | 'strike' | 'right' | 'exp' | 'at'>, now: number): LiveGreeks {
+  const mid = (d.bid + d.ask) / 2;
+  const T = sessionsAhead(d.exp, d.at || now) / 252;
+  const call = d.right === 'C';
+  const iv = ivStates(mid, d.under, d.strike, T, call);
+  if (!(iv > 0)) return NO_GREEKS;
+  const g = bsStates(d.under, d.strike, T, iv, call);
+  return { delta: g.de, gamma: g.ga, theta: g.th, vega: g.ve, iv: iv * 100, rho: NaN, lambda: Number.isFinite(g.de) && mid > 0 ? (g.de * d.under) / mid : NaN, epsilon: NaN };
+}
+
 function build(drafts: Map<string, Draft[]>, expiry: string, sleeve: SleeveKey, listed: number): Setup[] {
   return kept(drafts.get(expiry) ?? []).map(d => toSetup(d.root, d.strike, d.right, d.exp, d.bid, d.ask, d.under, sleeve, d.at, d.greeks, listed));
 }
@@ -371,28 +422,119 @@ export async function once(symbol: string, now: number, only: string, jump = fal
   const weekly = only === '*';
   const range = WEEKLY_STRIKES;
   const exp = weekly ? '*' : only.replace(/-/g, '');
-  const got = await theta(`/option/snapshot/greeks/first_order?symbol=${symbol}&expiration=${exp}&right=both&strike_range=${range}${weekly ? '&max_dte=11' : ''}&format=json`, jump);
+  const chain = `symbol=${symbol}&expiration=${exp}&right=both&strike_range=${range}${weekly ? '&max_dte=11' : ''}&format=json`;
+  const got = await theta(`/option/snapshot/greeks/first_order?${chain}`, jump);
   if (got.error) return { setups: [], spot: 0, ok: terminalAnswered(got), rows: 0 };
-  const drafts = new Map<string, Draft[]>();
-  let spot = 0;
   const items = asRows(got.data);
-  for (const item of items) {
-    const d = draftOf(item, symbol, now, freshMs, 0);
-    if (!d) continue;
-    if (d.under > 0) spot = d.under;
-    const list = drafts.get(d.exp) ?? [];
-    list.push(d);
-    drafts.set(d.exp, list);
+  let read = readChain(items, symbol, now, freshMs, 0, Date.now());
+  let source: Snap['source'];
+  /* every row answered, none current: the snapshot lags (its own stamps), so this name is read from a source that is
+     current, each row checked the same way, never from the stale rows */
+  const stale = read.valid > 0 && read.fresh === 0;
+  const lagMs = stale && read.newest > 0 ? Math.max(0, now - read.newest) : 0;
+  if (stale) {
+    read = { drafts: new Map(), spot: 0, valid: read.valid, fresh: 0, newest: read.newest };
+    const spot = await liveSpot(symbol, now);
+    for (const [kind, path] of fallbackPaths(symbol, now, chain, exp, range)) {
+      const alt = await theta(path, jump);
+      if (alt.error) continue;
+      const r = readChain(asRows(alt.data), symbol, now, freshMs, spot, Date.now(), true);
+      if (r.fresh > 0) {
+        read = r;
+        source = kind;
+        break;
+      }
+    }
   }
+  const tag = { rows: items.length, ...(stale ? { stale: true, lagMs } : {}), ...(source ? { source } : {}) };
+  const { drafts, spot } = read;
   if (!weekly) {
     const sleeve: SleeveKey = only.replace(/-/g, '') === sessionYmd(now) ? 'odte' : 'weekly';
-    return { setups: build(drafts, only.slice(0, 10), sleeve, now), spot, ok: true, rows: items.length };
+    return { setups: build(drafts, only.slice(0, 10), sleeve, now), spot, ok: true, ...tag };
   }
   const nearest = [...drafts.keys()].filter(e => {
     const n = weekdayDte(today, e);
     return n >= 1 && n <= 7;
   }).sort()[0];
-  return { setups: nearest ? build(drafts, nearest, 'weekly', now) : [], spot, ok: true, rows: items.length };
+  return { setups: nearest ? build(drafts, nearest, 'weekly', now) : [], spot, ok: true, ...tag };
+}
+
+interface ChainRead {
+  drafts: Map<string, Draft[]>;
+  spot: number;
+  /** Rows with a valid quote and a stamp, fresh or not */
+  valid: number;
+  /** Rows kept: valid and stamped inside the freshness limit */
+  fresh: number;
+  /** The newest stamp of a valid row, epoch ms (0: none) */
+  newest: number;
+}
+
+/** A chain answer as drafts by expiry. `local`: the rows carry no greeks (the quote snapshot, the recorded quotes), so
+    each is priced on the model's Black-Scholes from its own mid, on `spotFallback` when the row has no underlying. */
+function readChain(items: Record<string, unknown>[], symbol: string, now: number, freshMs: number, spotFallback: number, receivedAt: number, local = false): ChainRead {
+  const drafts = new Map<string, Draft[]>();
+  let spot = 0;
+  let valid = 0;
+  let fresh = 0;
+  let newest = 0;
+  for (const item of items) {
+    const row = rowOf(item);
+    if (row) {
+      const at = nyWallStamp(row.quote.timestamp);
+      const bid = num(row.quote.bid);
+      const ask = num(row.quote.ask);
+      if (at && bid > 0 && ask >= bid) {
+        valid += 1;
+        if (at > newest) newest = at;
+      }
+    }
+    const d = draftOf(item, symbol, now, freshMs, spotFallback, receivedAt);
+    if (!d) continue;
+    if (local && !Number.isFinite(d.greeks.delta) && d.under > 0) d.greeks = localGreeks(d, now);
+    fresh += 1;
+    if (d.under > 0) spot = d.under;
+    const list = drafts.get(d.exp) ?? [];
+    list.push(d);
+    drafts.set(d.exp, list);
+  }
+  return { drafts, spot, valid, fresh, newest };
+}
+
+/** The current sources for a name whose greeks snapshot lags, cheapest first: the quote snapshot (the same chain, no
+    greeks; one ask, about half the bytes), then the quotes recorded at this very instant (option/at_time/quote, two
+    seconds back: every row carries the stamp of its own last quote, so a store that lags shows as old stamps and is
+    refused, never used). A weekly ask of every expiry within 11 days reads the quote snapshot only: the recorded
+    quotes take one expiry. */
+function fallbackPaths(symbol: string, now: number, chain: string, exp: string, range: number): ['quote' | 'at_time', string][] {
+  const out: ['quote' | 'at_time', string][] = [['quote', `/option/snapshot/quote?${chain}`]];
+  if (exp !== '*') {
+    const at = nyParts(now - 2_000);
+    const day = ymd(now);
+    const time = `${two(at.hour)}:${two(at.minute)}:${two(at.second)}.000`;
+    out.push(['at_time', `/option/at_time/quote?symbol=${encodeURIComponent(symbol)}&expiration=${exp}&right=both&strike_range=${range}&start_date=${day}&end_date=${day}&time_of_day=${time}&format=json`]);
+  }
+  return out;
+}
+
+/** The underlying's price now, for chain rows that carry none: an index's snapshot price, a stock's quote mid (its
+    last trade price when the quote has no sides), each only when stamped inside the freshness limit; 0 when none is. */
+async function liveSpot(symbol: string, now: number): Promise<number> {
+  const under = INDEX_OF[symbol] ?? symbol;
+  const index = Object.prototype.hasOwnProperty.call(INDEX_OF, symbol);
+  const got = await theta(index ? `/index/snapshot/price?symbol=${encodeURIComponent(under)}&format=json` : `/stock/snapshot/quote?symbol=${encodeURIComponent(under)}&format=json`);
+  if (got.error) return 0;
+  for (const item of asRows(got.data)) {
+    const row = rowOf(item);
+    if (!row) continue;
+    const at = nyWallStamp(row.quote.timestamp);
+    if (!at || now - at > FRESH_MS) continue;
+    const bid = num(row.quote.bid);
+    const ask = num(row.quote.ask);
+    const px = bid > 0 && ask >= bid ? (bid + ask) / 2 : num(row.quote.price);
+    if (px > 0) return px;
+  }
+  return 0;
 }
 
 const two = (n: number) => String(n).padStart(2, '0');
@@ -462,7 +604,7 @@ export async function atMark(symbol: string, markAt: number, sleeve: 'odte' | 'w
 
 /* ---- the marks ---- */
 
-export type NameMark = 'pending' | 'live' | 'late' | 'quiet' | 'none';
+export type NameMark = 'pending' | 'live' | 'late' | 'quiet' | 'none' | 'stale';
 
 export interface MarkRow {
   /** The mark's minute, epoch ms */
@@ -471,7 +613,8 @@ export interface MarkRow {
   clock: string;
   sleeve: 'odte' | 'weekly' | 'lottery';
   /** What happened to each name at this mark: scored live, scored late from recorded quotes, answered with no quote
-      fresh enough to score, ThetaData had no quotes, or still waiting to be scored */
+      fresh enough to score, ThetaData had no quotes, still waiting to be scored, or 'stale': the snapshot's rows were
+      all older than the freshness limit and no current source answered (not scored: it is not a quiet book) */
   names: Record<string, NameMark>;
   /** Contracts scored */
   scored: number;
@@ -503,13 +646,30 @@ export function importMarks(rows: readonly MarkRow[]): void {
 }
 
 /** One word for how a mark went: every name live, some scored late, none, or still waiting. */
-export function markHow(row: MarkRow): 'live' | 'late' | 'none' | 'pending' | 'quiet' {
+export function markHow(row: MarkRow): 'live' | 'late' | 'none' | 'pending' | 'quiet' | 'stale' {
   const v = Object.values(row.names);
   if (v.includes('pending')) return 'pending';
   if (v.includes('late')) return 'late';
   if (v.includes('live')) return 'live';
   if (v.length && v.every(x => x === 'none')) return 'none';
+  if (v.includes('stale')) return 'stale';
   return 'quiet';
+}
+
+/** The feed's health after a live pass: the names whose snapshot lagged, those a current source scored, those not
+    scored at all. A pass with no stale name is fresh again. */
+export function feedAfter(prev: FeedHealth, at: number, notes: { symbol: string; stale: boolean; lagMs: number; source?: string; scored: boolean }[]): FeedHealth {
+  const stale = notes.filter(n => n.stale);
+  if (!stale.length) return notes.length ? freshFeed() : prev;
+  return {
+    state: 'stale',
+    since: prev.state === 'stale' && prev.since ? prev.since : at,
+    lagMs: Math.max(...stale.map(n => n.lagMs)),
+    names: stale.map(n => n.symbol).sort(),
+    fallback: stale.filter(n => n.source).map(n => n.symbol).sort(),
+    blind: stale.filter(n => !n.source).map(n => n.symbol).sort(),
+    at,
+  };
 }
 
 function markRow(at: number, sleeve: 'odte' | 'weekly' | 'lottery', names: string[]): MarkRow {
@@ -606,6 +766,7 @@ async function liveMark(markAt: number, sleeve: 'odte' | 'weekly'): Promise<void
     const only = sleeve === 'odte' ? sessionIso(at) : '*';
     let answered = false;
     const snaps: { symbol: string; spot: number }[] = [];
+    const notes: { symbol: string; stale: boolean; lagMs: number; source?: string; scored: boolean }[] = [];
     await pool(todo, 6, async symbol => {
       const scanAt = Date.now();
       /* the minute has passed: the quotes now are not the mark's, so the name is scored late */
@@ -616,6 +777,10 @@ async function liveMark(markAt: number, sleeve: 'odte' | 'weekly'): Promise<void
       const snap = await once(symbol, scanAt, exp, true);
       if (!snap.ok) return;
       answered = true;
+      notes.push({ symbol, stale: !!snap.stale, lagMs: snap.lagMs ?? 0, source: snap.source, scored: snap.setups.length > 0 });
+      /* the answer came in after the mark's minute: those are not the mark's quotes, so no call is made on them (they
+         used to be scored at the mark all the same). The name is scored late, from the quotes recorded at the mark. */
+      if (minuteStart(Date.now()) !== markAt) return;
       snaps.push({ symbol, spot: snap.spot });
       if (snap.setups.length) {
         let result: ScoreResult = 'fault';
@@ -628,10 +793,11 @@ async function liveMark(markAt: number, sleeve: 'odte' | 'weekly'): Promise<void
         if (result === 'fault') return;
       }
       recordPicks(scanAt);
-      row.names[symbol] = snap.setups.length ? 'live' : snap.rows ? 'quiet' : 'none';
+      row.names[symbol] = snap.setups.length ? 'live' : snap.stale ? 'stale' : snap.rows ? 'quiet' : 'none';
       row.scored += snap.setups.length;
     });
     row.ranAt = Date.now();
+    if (notes.length) setScanMeta({ feed: feedAfter(meta.feed, markAt, notes) });
     if (answered) {
       commitClosest(sleeve, at);
       noteScanned(sleeve, at);

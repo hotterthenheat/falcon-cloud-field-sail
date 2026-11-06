@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHub, HOT_NAMES, nameOfPath } from './hub.mjs';
+import { createSlots } from './thetaSlots.mjs';
 
 const RELAY = (process.env.THETA_RELAY_URL || '').replace(/\/+$/, '');
 const RELAY_SECRET = process.env.THETA_RELAY_SECRET || '';
@@ -75,49 +76,24 @@ function sendSoftly(req, res, status, body, type) {
 }
 
 /* The terminal answers at most eight requests at once (its log says "Max concurrent requests: 8"); past that it
-   refuses with 429. However many viewers ask, this process sends at most that many, and a live snapshot goes ahead of
-   history so prices never wait behind a long replay. History never holds more than six of the eight. */
+   refuses with 429. However many viewers ask, this process sends at most that many (server/thetaSlots.mjs): the
+   Compass engine's reads go first and always find THETA_ENGINE_RESERVED (2) slots that no page can take, a live
+   snapshot goes ahead of history so prices never wait behind a long replay, and history never holds more than six of
+   the eight. */
 const TERMINAL_SLOTS = Number(process.env.THETA_MAX_CONCURRENT) || 8;
 const HISTORY_SLOTS = Math.max(1, TERMINAL_SLOTS - 2);
-let busy = 0;
-let busyHistory = 0;
-const quick = [];
-const slow = [];
-const isHistory = (p) => /\/(history|at_time)\//.test(p);
-function wake() {
-  while (busy < TERMINAL_SLOTS && quick.length) {
-    busy += 1;
-    quick.shift()();
-  }
-  while (busy < TERMINAL_SLOTS && busyHistory < HISTORY_SLOTS && slow.length) {
-    busy += 1;
-    busyHistory += 1;
-    slow.shift()();
-  }
-}
+const ENGINE_RESERVED = Math.min(TERMINAL_SLOTS - 1, Math.max(0, Number(process.env.THETA_ENGINE_RESERVED ?? 2)));
+const slots = createSlots({ terminal: TERMINAL_SLOTS, history: HISTORY_SLOTS, reserved: ENGINE_RESERVED });
+const isHistory = slots.isHistory;
 /** The terminal's slots as they stand: in use, by history, and readers waiting — for a background reader that should
     take a slot only while others are left free (src/data/volOutlookServer.ts) */
-export const thetaSlots = () => ({ terminal: TERMINAL_SLOTS, history: HISTORY_SLOTS, busy, busyHistory, waiting: quick.length + slow.length });
-async function slot(p, fn) {
-  const hist = isHistory(p);
-  if (busy < TERMINAL_SLOTS && (!hist || busyHistory < HISTORY_SLOTS) && !(hist ? slow : quick).length) {
-    busy += 1;
-    if (hist) busyHistory += 1;
-  } else {
-    /* the slot is counted for us when we are woken */
-    await new Promise((r) => (hist ? slow : quick).push(r));
-  }
-  try {
-    return await fn();
-  } finally {
-    busy -= 1;
-    if (hist) busyHistory -= 1;
-    wake();
-  }
-}
+export const thetaSlots = () => {
+  const s = slots.stats();
+  return { terminal: s.terminal, history: s.history, busy: s.busy, busyHistory: s.busyHistory, waiting: s.waiting, engine: s.busyEngine, waitingEngine: s.waitingEngine };
+};
 
-async function load(reqPath) {
-  return slot(reqPath, async () => {
+async function load(reqPath, lane) {
+  return slots.slot(reqPath, async () => {
     /* the terminal refusing for a moment (429, its own count of requests in flight) is asked again twice */
     let got = await loadNow(reqPath);
     for (let i = 0; i < 2 && got.status === 429; i++) {
@@ -125,7 +101,7 @@ async function load(reqPath) {
       got = await loadNow(reqPath);
     }
     return got;
-  });
+  }, lane);
 }
 
 async function loadNow(reqPath) {
@@ -154,7 +130,11 @@ export const thetaKeepable = (status) =>
 
 const hub = createHub({
   name: 'theta',
-  fetch: (p) => load(p).catch(failed).then(withLogin),
+  fetch: (p, lane) => load(p, lane).catch(failed).then(withLogin),
+  /* the engine joined a page's read still waiting for a slot: it waits in the engine's queue now */
+  promote: (p, lane) => {
+    if (lane === 'engine') slots.promote(p);
+  },
   keepable: thetaKeepable,
   ttl: (p) => Math.max(thetaTtl(p), /\/snapshot\//.test(p) ? 900 : 0),
   refreshPerSec: Number(process.env.THETA_HUB_REFRESH_PER_SEC) || 25,

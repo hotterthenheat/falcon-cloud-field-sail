@@ -78,7 +78,7 @@ export function useHealthRows(probe: boolean): StatusRow[] {
   const lastMark = feed.marks.reduce((m, r) => Math.max(m, r.at), 0);
   const t = Math.max(now, Date.now() - 1000);
   const rows: StatusRow[] = [
-    pathRow('quotes', paths.quotes, t),
+    pathRow('quotes', paths.quotes, t, meta.feed),
     pathRow('flow', paths.flow, t),
     compassRow(
       {
@@ -90,6 +90,7 @@ export function useHealthRows(probe: boolean): StatusRow[] {
         lastMark,
         quotes: meta.theta,
         quotesDownSince: meta.downSince,
+        options: meta.feed,
         markDue: phaseAt(t) === 'regular',
       },
       t,

@@ -31,6 +31,7 @@ const PROOFS = [
   'compass-groupb-proof',
   'compass-late-proof',
   'compass-record-proof',
+  'compass-feed-proof',
   'fixture-proof',
   'higher-proof',
   'paper-proof',

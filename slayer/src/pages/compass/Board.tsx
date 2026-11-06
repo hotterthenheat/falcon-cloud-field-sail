@@ -14,6 +14,7 @@ import { backlogLine, compassFeed } from '../../data/compassFeed';
 import { scanMeta, onScanMeta } from '../../data/compassScan';
 import TailRiskStrip from '../../components/compass/TailRiskCard';
 import { daySummary } from '../../data/compassOutcome';
+import { optionsStaleNow, staleWords } from '../../data/statusModel';
 import { asOfText } from '../../components/ui/states';
 import { MODELS_VALIDATED, P1_MIN, inModelWindow } from '../../data/compassParams';
 import { nyClock, nyDay, nyIsoDate, nyMinutes, nyWallTime } from '../../core/nyTime';
@@ -258,6 +259,9 @@ const Board = () => {
   const todayIso = nyIsoDate();
   const day = daySummary(record.filter(s => s.day === todayIso));
   const backlog = backlogLine(compassFeed().marks);
+  /* the option chain's own stamps lagging (the terminal answers, its option quotes are minutes old): said, not shown as a quiet book */
+  const feedNow = scanMeta().feed;
+  const staleLine = optionsStaleNow(feedNow, Date.now()) ? staleWords(feedNow) : '';
   /* the server's engine: unreachable (nothing kept), or this browser's last copy of it, stamped */
   const lock = compassFeed().lock;
   const serverLine = live.feed === 'offline'
@@ -283,7 +287,7 @@ const Board = () => {
                 ? reading
                 : called || near
                   ? `${calledLine} ${asOf}`
-                  : `${bestLine || (offered === 'odte' ? 'Nothing cleared Model 1 or Model 3.' : 'Nothing cleared Model 1.')} ${asOf}`}${windowLine}${backlog ? ` ${backlog}` : ''}`
+                  : `${bestLine || (offered === 'odte' ? 'Nothing cleared Model 1 or Model 3.' : 'Nothing cleared Model 1.')} ${asOf}`}${windowLine}${staleLine ? ` ${staleLine}` : ''}${backlog ? ` ${backlog}` : ''}`
     } />
   );
   const bests = bestByName(offered === 'weekly' ? 'weekly' : 'odte');
