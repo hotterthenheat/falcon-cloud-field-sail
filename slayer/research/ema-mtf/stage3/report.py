@@ -137,7 +137,7 @@ def failed_md() -> str:
     W('* PREREG S1A permutation null: FWER 100% (200/200 runs); diagnosed in STAGE1 (same-day future leak; block '
       'confound).\n* PREREG synthetic zero-drift null: 10 of 14 seeds pass a feature; the one-vol Black–Scholes generator is '
       'not a martingale at the decision times (STAGE1).\n* Post-hoc S1A-T on that synthetic generator: 6 of 9 seeds (same '
-      'cause). S1A-T on the leak-free null: calibrated (FWER ≈ 2%).\n')
+      'cause). S1A-T on the leak-free null: calibrated (FWER 3.0%, 6/200).\n')
     return '\n'.join(w) + '\n'
 
 

@@ -269,7 +269,7 @@ A feature carrying the outcome window's information is found at +5 to +17 pp, so
 
 **2. Pooling the blocks lets slow regime features confound δ.** A leak-free null permutes feature values across SESSIONS at the same root × bucket × right × decision close, so the time of day is kept and the day's path is broken. Under the pre-registered strata it still has FWER **95%** (19/20 runs). The biased features are L200 at 30m and 60m (null mean +0.16 and +0.36 pp, z ≈ +3 and +9). Their prevalence differs between the 2022 and 2024 regimes, and the strata do not separate the blocks (A2 item 3). Adding the half-hour alone does not fix it (s1_diag_tod_noblock.pkl: 15/20 runs).
 
-**S1A-T (post-hoc)**: the same statistic, rules and Holm, with the strata also split by block and by the half-hour of the decision close. Leak-free null: FWER **2.6%** over 190 runs (≤ 5% needed: OK). Real data: **0 of 40 pass**. Smallest p-values:
+**S1A-T (post-hoc)**: the same statistic, rules and Holm, with the strata also split by block and by the half-hour of the decision close. Leak-free null: FWER **3.0%** over 200 runs (≤ 5% needed: OK). Real data: **0 of 40 pass**. Smallest p-values:
 
 | feature @ tf | δ Y30 (pp) | 95% CI | p | Holm | rules failed |
 |---|---|---|---|---|---|

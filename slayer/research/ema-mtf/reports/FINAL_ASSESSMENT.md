@@ -52,7 +52,7 @@ TRADE (charting-app print chart, dense subset only), tested as its own family: 0
      between-block confound.
 * **The pre-registered synthetic zero-drift null also failed**: 10 of 14 seeds have a Holm-passing feature (≤ 1 of 20 is allowed). The run stopped at 14 of the 20 registered seeds to free memory; no remaining seed can change the outcome. The cause is the generator: Black–Scholes at one vol per session, with the real U-shaped intraday vol profile, is not a martingale at the decision times. Synthetic premiums drift +0.9% per 30 min at 09:45 and −0.6% midday, and premium-state features track that drift. A compass-v2-style generator therefore cannot calibrate a screen of premium-chart features; a variance-clock generator would.
 * A corrected design ("S1A-T": strata split by block and half-hour, leak-free cross-session null) is calibrated:
-  FWER 2.4% (4 of 170 leak-free runs). On it the real data also give **0 of 40**. On the flawed synthetic generator it also over-detects (6 of 9 seeds), for the generator reason above.
+  FWER 3.0% (6 of 200 leak-free runs). On it the real data also give **0 of 40**. On the flawed synthetic generator it also over-detects (6 of 9 seeds), for the generator reason above.
 * A miscalibrated screen can only create false passes, so the Stage-1 conclusion stands: no option-chart feature has
   incremental, executable value.
 
