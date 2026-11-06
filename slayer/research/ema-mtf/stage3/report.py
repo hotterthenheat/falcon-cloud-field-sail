@@ -16,6 +16,7 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from edata.common import EMA_DATA  # noqa: E402
 from stage2.metrics import by, metrics, with_labels  # noqa: E402
+from stage1.md import md  # noqa: E402
 from stage2.report import DESC, f, fci  # noqa: E402
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -36,9 +37,9 @@ def stage3_md(fam='S2C') -> str:
       'the test month, same simulator), `stage3/robust.py` (sensitivity, ablation). OOS trade log: '
       f'`v2data/ema/results/stage3/wf_{fam}_oos.parquet`.\n')
     W('## Walk-forward folds (anchored, ≥ 2 train months, 1-session embargo)\n')
-    W(R['chosen'].assign(chosen=R['chosen'].chosen.map(lambda x: f'{x} ({DESC.get(x, x)})'),
+    W(md(R['chosen'].assign(chosen=R['chosen'].chosen.map(lambda x: f'{x} ({DESC.get(x, x)})'),
                          train_exp=R['chosen'].train_exp.map(lambda x: f(x, 2)),
-                         test_exp=R['chosen'].test_exp.map(lambda x: f(x, 2))).to_markdown(index=False) + '\n')
+                         test_exp=R['chosen'].test_exp.map(lambda x: f(x, 2))), index=False) + '\n')
     W('## Concatenated out-of-sample result\n')
     if m.get('n'):
         W(f"n = {m['n']}, expectancy net **{f(m['expectancy'], 2)}** {fci(m['ci'])} (gross {f(m['gross_expectancy'])}, mid-to-mid "

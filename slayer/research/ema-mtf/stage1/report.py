@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from stage1.md import md  # noqa: E402
 from stage1.run import OUT, S1A_TESTS, S1C_LABEL  # noqa: E402
 
 REPORT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'reports', 'STAGE1.md')
@@ -51,9 +52,10 @@ def main():
       f"at the ask (+ measured 2 s drift, L0c) and selling at the bid h minutes later (or the 15:55 flat), fees in. "
       f"Mean Y30 over all events: **{pct(res['y30_all'])}%** (the random-entry reference of rule (v)).\n")
     ev = pd.Series(res['events_by'])
+    ev.index = ev.index.set_names(['block', 'root', 'bucket'])
     tab = ev.unstack('bucket') if isinstance(ev.index, pd.MultiIndex) else ev
     w('Events by block × root × DTE bucket:\n')
-    w(tab.to_markdown() + '\n')
+    w(md(tab) + '\n')
     # ---------------------------------------------------------------- S1A
     rows = res['s1a']
     npass = sum(r['pass'] for r in rows)
@@ -147,7 +149,7 @@ def main():
     w('')
     w('VIF of the five option states: ' + ', '.join(f'{tf}m {v:.2f}' for tf, v in zip(tfs, b['vif'])) + '.\n')
     w('Pairwise correlation of the five option states:\n')
-    w(pd.DataFrame(b['corr'], index=[f'{t}m' for t in tfs], columns=[f'{t}m' for t in tfs]).round(2).to_markdown() + '\n')
+    w(md(pd.DataFrame(b["corr"], index=[f"{t}m" for t in tfs], columns=[f"{t}m" for t in tfs]).round(2)) + '\n')
     # ---------------------------------------------------------------- S1C
     c = res['s1c']
     w('## S1C — confirmations on the 5m MID E9/E21 cross (14 tests)\n')
