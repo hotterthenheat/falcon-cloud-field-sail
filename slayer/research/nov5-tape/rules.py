@@ -30,6 +30,10 @@ class Day:
     def __init__(self, day, bars, board, book):
         self.day, self.bars, self.board = day, bars.sort_values('m').reset_index(drop=True), board
         self.book = book.set_index('t') if 't' in book.columns else book
+        from collections import namedtuple
+        R = namedtuple('R', ['atm', 'net_all', 'wall_up', 'wall_dn'])
+        self._bk = {int(t): R(float(a), float(n), float(u), float(w)) for t, a, n, u, w in
+                    zip(self.book.index, self.book.atm, self.book.net_all, self.book.wall_up, self.book.wall_dn)}
         self._c = dict(zip(self.bars.m.values, self.bars.c.values))
         self._o = dict(zip(self.bars.m.values, self.bars.o.values))
         self.open = float(self.bars.o.iloc[0])
@@ -55,10 +59,8 @@ class Day:
         return float(np.std(np.diff(np.log(x)), ddof=1) * math.sqrt(YEAR_MIN))
 
     def bk(self, t):
-        if t not in self.book.index:
-            return None
-        r = self.book.loc[t]
-        return r if np.isfinite(r.atm) and r.atm > 0 else None
+        r = self._bk.get(int(t))
+        return r if r is not None and np.isfinite(r.atm) and r.atm > 0 else None
 
 
 def n1_drive(d, k=2.0, t=10 * 3600):

@@ -165,6 +165,10 @@ def build(D):
             x['uw_sweeps15'] = int(f15.sweep.sum())
             fsp = f15[f15.ticker.isin(('SPXW', 'SPX'))]
             x['uw_spx_n15'] = len(fsp)
+            x['uw_spx_put_share15'] = float(fsp[fsp.type == 'put'].prem.sum() / fsp.prem.sum()) if fsp.prem.sum() > 0 else np.nan
+            if len(fsp):
+                big = fsp.loc[fsp.prem.idxmax()]
+                x['uw_spx_big15'] = f"{big.chain[-9:]} ${big.prem / 1e6:.1f}M{' sweep' if big.sweep else ''}"
         if len(nw):
             n30 = nw[(nw.s >= T - 1800) & (nw.s < T)]
             mac = n30[n30.headline.str.contains(MACRO) & n30.major]

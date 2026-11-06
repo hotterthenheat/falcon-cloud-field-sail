@@ -172,6 +172,9 @@ def main():
         rows = run_day(study_day(D), sides=('real', 'flip'), study=True)
         atomic_json(rows, os.path.join(RESD, 'study', f'{D}.json'))
         df = pd.DataFrame(rows)
+        if not len(df):
+            print(f'{D}: no trigger of any registered rule')
+            return
         pd.set_option('display.width', 250)
         cols = ['variant', 'sideset', 't', 'ev_side', 'k', 'call', 'delta', 'fill', 'exit', 'reason', 'entry_s', 'exit_s',
                 'ret_net', 'pnl_net', 'src', 'skip']

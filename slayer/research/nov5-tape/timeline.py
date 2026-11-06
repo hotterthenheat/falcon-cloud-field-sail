@@ -88,6 +88,8 @@ def fmt_row(F, T, contract_ms, label):
             'IV 0D/1D': f"{g('atm_iv')}/{g('atm_iv_1d')}", 'gamma': gs, 'flip': fd, 'walls': walls,
             'P/C vol 15m': f'{pcr:.2f}' if pd.notna(pcr) else '-', 'top vol 15m': r.get('top_vol15', '-'),
             'UW 15m (n, put share, ask share)': f"{int(r.get('uw_n15', 0))}, {g('uw_put_share15')}, {g('uw_ask_share15')}",
+            'UW SPXW 15m (n, put share, biggest)': f"{int(r.get('uw_spx_n15', 0) or 0)}, {g('uw_spx_put_share15')}, "
+                                                    f"{r['uw_spx_big15'] if isinstance(r.get('uw_spx_big15'), str) else '-'}",
             'last macro headline (30m)': r.get('news_last', '') or '-', 'Compass top': r.get('cmp_top', '-') or '-',
             'option': contract_ms}
 
