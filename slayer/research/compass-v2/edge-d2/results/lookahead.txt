@@ -1,0 +1,13 @@
+2022-10-06: open-features identical True, 30-min identical True, canary caught True
+2022-02-28: open-features identical True, 30-min identical True, canary caught True
+2023-01-25: open-features identical True, 30-min identical True, canary caught True
+2020-04-09: open-features identical True, 30-min identical True, canary caught True
+2024-07-31: open-features identical True, 30-min identical True, canary caught True
+2024-05-31: open-features identical True, 30-min identical True, canary caught True
+2023-07-19: open-features identical True, 30-min identical True, canary caught True
+2023-04-19: open-features identical True, 30-min identical True, canary caught True
+2022-02-11: open-features identical True, 30-min identical True, canary caught True
+2022-10-05: open-features identical True, 30-min identical True, canary caught True
+2024-05-29: open-features identical True, 30-min identical True, canary caught True
+2023-11-20: open-features identical True, 30-min identical True, canary caught True
+SUMMARY: open identical 12/12, 30-min identical 12/12, canary caught 12/12
