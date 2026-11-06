@@ -714,7 +714,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
           >
             <div ref={hostRef} className="absolute inset-0" data-tape-chart />
             {fieldLast && minLeft > 0 && !movePending && (
-              <div className="pointer-events-none absolute left-2 top-2 z-10 max-w-[280px] rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-t11 leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-ahead-read>
+              <div className="pointer-events-none absolute left-2 top-2 z-10 max-w-[280px] rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-t11 leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-theme="dark" data-chart-glass data-ahead-read>
                 <span className="block text-t10 uppercase tracking-wider text-textMuted">Ahead to the close</span>
                 <span className="block tnum text-textPrimary">One move {fieldLast.lo1.toFixed(2)} – {fieldLast.hi1.toFixed(2)}</span>
                 <span className="block tnum">Two moves {fieldLast.lo2.toFixed(2)} – {fieldLast.hi2.toFixed(2)}</span>
@@ -724,14 +724,14 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
               </div>
             )}
             {shutCardShows(minLeft, fieldLast, shutBand) && shutBand && (
-              <div className="pointer-events-none absolute left-2 top-2 z-10 max-w-[260px] rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-t11 leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-ahead-read>
+              <div className="pointer-events-none absolute left-2 top-2 z-10 max-w-[260px] rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-t11 leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-theme="dark" data-chart-glass data-ahead-read>
                 <span className="block text-t10 uppercase tracking-wider text-textMuted">{aheadWord === 'today' ? 'Today' : 'Next session'}</span>
                 <span className="block tnum text-textPrimary">One move {shutBand.replace('–', ' – ')}</span>
                 <span className="block tnum">Nothing left in this session. This is the whole move around the close.</span>
               </div>
             )}
             {markMoves && swings.length > 0 && (
-              <div className="pointer-events-none absolute right-14 top-2 z-10 rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-t11 leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-chart-moves={swings.length}>
+              <div className="pointer-events-none absolute right-14 top-2 z-10 rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-t11 leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-theme="dark" data-chart-glass data-chart-moves={swings.length}>
                 <span className="block text-t10 uppercase tracking-wider text-textMuted">Biggest moves</span>
                 {swings.map(s => (
                   <span key={s.time} className="block tnum text-textPrimary">

@@ -3,8 +3,9 @@
 
 type ImpactTier = 'high' | 'medium' | 'low';
 const IMPACT_TIERS: ImpactTier[] = ['high', 'medium', 'low'];
-/* the warm side of the house thermal ramp for high and medium, the muted ink for low — never the direction red */
-export const IMPACT_INK: Record<ImpactTier, string> = { high: '#D73027', medium: '#FDAE61', low: 'rgb(var(--text-muted))' };
+/* the warm side of the house thermal ramp for high and medium, the muted ink for low — never the direction red. Medium
+   is a token: the ramp's #FDAE61 on dark, a deeper amber on paper, where #FDAE61 on its own pill read 1.7:1 */
+export const IMPACT_INK: Record<ImpactTier, string> = { high: '#D73027', medium: 'rgb(var(--impact-medium))', low: 'rgb(var(--text-muted))' };
 const IMPACT_WORD: Record<ImpactTier, string> = {
   high: 'High impact — moves the market on its own',
   medium: 'Medium impact — moves a name, a sector or a currency',

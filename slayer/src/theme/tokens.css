@@ -55,6 +55,8 @@
   --bull: 48 209 88;
   --bear: 255 59 48;
   --warn: 255 149 0;
+  /* the medium-impact ink of the news calendar: the thermal ramp's #FDAE61 (impactMark.tsx) */
+  --impact-medium: 253 174 97;
   /* The accent is the holo silver; --select is the silver as an ink, cut per theme like --silver. */
   --select: 199 211 232;
   /* the accent as a surface is the same on either ground */
@@ -158,6 +160,8 @@
   --bear: 220 32 32;
   /* a saturated orange, 4.3:1 on white */
   --warn: 220 70 0;
+  /* the medium-impact amber cut for paper: #FDAE61 read 1.7:1 on its own pill there (SITECHECK-2); this is 5.7:1 on white */
+  --impact-medium: 160 82 0;
   /* the thermal's warm pole one step redder than the alert amber; the cool pole a deep steel-blue */
   --thermal-warm: 196 62 10; /* 5.2:1 on white */
   --thermal-cool: 0 118 52; /* green on paper */

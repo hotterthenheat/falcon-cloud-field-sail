@@ -59,6 +59,8 @@ const PROOFS = [
   'levels-gate-proof',
   'kept-price-proof',
   'tape-move-proof',
+  'dark-glass-proof.mjs',
+  'impact-ink-proof.mjs',
   'surfaces-proof',
   'theta-wait-proof',
   'book-mode-proof',
