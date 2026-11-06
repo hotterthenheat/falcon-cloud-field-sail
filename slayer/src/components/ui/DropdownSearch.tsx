@@ -186,13 +186,17 @@ const DropdownSearch = <T extends string>({ label, value, options, onChange, tit
             className="py-1.5 font-mono text-t11"
             data-dropdown-search-input
           />
-          <CommandList ref={listRef} className={`max-h-64 ${long ? 'px-1.5 pb-1.5' : 'p-1.5'} ${pinned ? 'pt-0' : ''}`} onScroll={long ? e => setScrollTop(e.currentTarget.scrollTop) : undefined}>
-            {pinned && <div className="sticky top-0 z-10 -mx-1.5 px-1.5 pt-1 mb-1 bg-chip border-b border-borderSubtle">{row(pinned, false, true)}</div>}
-            {matches.length === 0 ? (
-              <div className="px-2.5 py-4 text-center font-mono text-t10 text-textMuted">Nothing matches</div>
-            ) : (
-              rest.map((o, i) => row(o, long, i >= first && i < last))
-            )}
+          {/* one listbox; the pinned "all" stands above the scroller (as before the move), so the scroller keeps its full
+              16rem for the rest */}
+          <CommandList className="max-h-none overflow-visible">
+            {pinned && <div className="px-1.5 pt-1 border-b border-borderSubtle">{row(pinned, false, true)}</div>}
+            <div ref={listRef} className={`max-h-64 overflow-y-auto ${long ? '' : 'p-1.5'}`} onScroll={long ? e => setScrollTop(e.currentTarget.scrollTop) : undefined}>
+              {matches.length === 0 ? (
+                <div className="px-2.5 py-4 text-center font-mono text-t10 text-textMuted">Nothing matches</div>
+              ) : (
+                rest.map((o, i) => row(o, long, i >= first && i < last))
+              )}
+            </div>
           </CommandList>
         </Command>
       </PopoverContent>

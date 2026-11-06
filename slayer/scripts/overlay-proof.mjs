@@ -190,9 +190,12 @@ export const CASES = [
   { name: 'DropdownSelect (Dossier › Stocks)', path: '/dossier/stocks', trigger: 'button[data-dropdown][aria-haspopup="menu"]:not([data-picked])', kind: 'menu' },
   { name: 'DropdownMulti (Dossier › Stocks filter)', path: '/dossier/stocks', trigger: '[data-dropdown="stocks-filter"]', kind: 'menu' },
   { name: 'DropdownSearch (Compass board)', path: '/compass', trigger: '[data-dropdown-search]', kind: 'combobox' },
-  { name: 'Ticker search (Weigher)', path: '/weigher', trigger: '[data-ticker-search], button[title$="switch ticker"], button[title="Switch ticker"]', kind: 'combobox' },
+  /* on the Weigher the door is the scope chip's own card (ui/ScopeChip.tsx, hand-rolled) round the TickerLookup: the
+     lookup is a combobox, so Tab leaves it; the chip's card neither closes on that nor gives focus back on Escape yet */
+  { name: 'Ticker lookup in the scope chip (Weigher)', path: '/weigher', trigger: '[data-ticker-search], button[title$="switch ticker"], button[title="Switch ticker"]', kind: 'combobox' },
   { name: 'Tip on keyboard focus (Compass board)', path: '/compass', trigger: 'button[data-dropdown][aria-haspopup="menu"]', kind: 'tooltip' },
-  { name: 'CardTabs (Pinpoint › Agenda)', path: '/pinpoint/agenda', trigger: '[aria-label="Targets, or Building"] button', kind: 'tabs' },
+  /* the Dossier's news strip draws before any data lands (Pinpoint's Agenda strip waits on the book) */
+  { name: 'CardTabs (Dossier › news)', path: '/dossier', trigger: '[aria-label="Which news"] button', kind: 'tabs' },
   { name: 'FilterTabs (Practice › Journal)', path: '/practice/journal', trigger: '[aria-label="Which period"] button', kind: 'tabs' },
   { name: 'Mobile menu (390)', path: '/pulse', trigger: '[data-mobile-menu-door]', kind: 'dialog', phone: true },
 ];

@@ -215,7 +215,7 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
   return (
     <Dialog open={open} onOpenChange={next => !next && onClose()}>
       <DialogContent place="top" showClose={false} aria-label="Command palette" aria-describedby={undefined} className="max-w-lg shadow-black" data-command-palette>
-        <Command shouldFilter={false} loop label="Type a command or destination">
+        <Command shouldFilter={false} label="Type a command or destination">
           <CommandInput
             ref={inputRef}
             value={query}
