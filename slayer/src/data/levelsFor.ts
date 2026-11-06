@@ -93,6 +93,36 @@ function trackMoves(key: string, lv: { callWall: number | null; putWall: number 
   return kept;
 }
 
+/** What a page may DRAW off one reading. Each level is null when it is not in yet.
+    - The walls and the supreme need the scope's own contracts (`wallsFinal`). Before that, "Today" reads the whole book
+      standing in, and that book's walls are not the day's.
+    - The flip needs its final pricing (`complete`).
+    `wallsIn` / `flipIn` say which case a null is: "…" while not in, "none" once final.
+    This is the one gate. Every page that prints a wall, the supreme or the flip off levelsFor reads them through it
+    (scripts/levels-gate-proof.ts). */
+export interface DrawnLevels {
+  wallsIn: boolean;
+  flipIn: boolean;
+  callWall: number | null;
+  putWall: number | null;
+  supreme: number | null;
+  flip: number | null;
+}
+export function drawnLevels(lv: TickerLevels | null | undefined): DrawnLevels {
+  const wallsIn = !!lv?.wallsFinal;
+  /* complete already waits on wallsFinal (levelsOf); the && keeps the gate true if that ever changes */
+  const flipIn = wallsIn && !!lv?.complete;
+  const at = (v: number | null | undefined) => (v != null && Number.isFinite(v) ? v : null);
+  return {
+    wallsIn,
+    flipIn,
+    callWall: wallsIn ? at(lv!.callWall) : null,
+    putWall: wallsIn ? at(lv!.putWall) : null,
+    supreme: wallsIn ? at(lv!.supreme) : null,
+    flip: flipIn ? at(lv!.flip) : null,
+  };
+}
+
 /** One name's levels for a scope — null until its book is live */
 export function levelsFor(ticker: string, scope: LevelsScope): TickerLevels | null {
   const t = ticker.trim().toUpperCase();

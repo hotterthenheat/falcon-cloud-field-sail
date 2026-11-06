@@ -4,7 +4,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useBookRev, usePinpointFeed } from '../../data/uwBook';
-import { levelsFor } from '../../data/levelsFor';
+import { drawnLevels, levelsFor } from '../../data/levelsFor';
 import { levelsForName } from '../../data/levelsScope';
 import { useNameTape } from '../../data/traceLive';
 import { useTickerNews } from '../../data/liveRecord';
@@ -97,6 +97,9 @@ const NameDesks = ({ ticker, sleeve }: { ticker: string; sleeve: 'odte' | 'weekl
   const name = companyName(cash);
 
   const levels = levelsFor(cash, levelsForName(cash));
+  /* the one gate: no wall off a stand-in book, no flip until it is final — "…" while they are read */
+  const drawn = drawnLevels(levels);
+  const lvWord = (v: number | null, inYet: boolean) => (!inYet ? '…' : v != null ? px(v) : '—');
   const range = useSessionRange(cash);
   const price = useThetaPrice(cash);
   const offline = price.status === 'down';
@@ -152,7 +155,7 @@ const NameDesks = ({ ticker, sleeve }: { ticker: string; sleeve: 'odte' | 'weekl
               <p className="mt-1 text-t12 text-textSecondary">The book is not in yet.</p>
             )}
             {levels && (
-              <p className="mt-0.5 font-mono text-t11 text-textSecondary tnum truncate">Call {levels.callWall != null ? px(levels.callWall) : '—'} · Put {levels.putWall != null ? px(levels.putWall) : '—'} · Flip {levels.flip != null ? px(levels.flip) : '—'}</p>
+              <p className="mt-0.5 font-mono text-t11 text-textSecondary tnum truncate">Call {lvWord(drawn.callWall, drawn.wallsIn)} · Put {lvWord(drawn.putWall, drawn.wallsIn)} · Flip {lvWord(drawn.flip, drawn.flipIn)}</p>
             )}
           </Desk>
           <Desk to="/terrain" glyph="terrain" name="Terrain" note={cash} className="border-b border-borderSubtle/60">

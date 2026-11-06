@@ -2,7 +2,7 @@
    (the lunch pin, the charm window, the share expiring at 4:00). The phases are a rule of thumb; now is readSessionClock (New York). */
 
 import { GLOSSARY } from './glossary';
-import { levelsFor } from '../../data/levelsFor';
+import { drawnLevels, levelsFor } from '../../data/levelsFor';
 import { levelsForName } from '../../data/levelsScope';
 import { bellNone as bellNoneWords, BELL_NONE_TITLE } from '../../data/flipLevel';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
@@ -56,6 +56,8 @@ export interface ClockFacts {
   bellShare: number | null;
   supreme: number | null;
   flip: number | null;
+  /** The flip is still being read (its contracts or pricing landing): a null flip then is "…", never "no flip" */
+  flipPending?: boolean;
 }
 
 /* The schedule, in trading minutes from midnight ET. Weights are the strip's
@@ -77,7 +79,7 @@ export const PHASES: Phase[] = [
     to: 11 * 60 + 30,
     name: 'The morning',
     weight: 0.5,
-    words: f => `the trend hour — ${f.flip != null ? `${fmtStrike(f.flip)} is the flip, where dealer hedging switches between absorbing and chasing moves` : 'no flip within reach, so the hedging leans one way all day'}`,
+    words: f => `the trend hour — ${f.flip != null ? `${fmtStrike(f.flip)} is the flip, where dealer hedging switches between absorbing and chasing moves` : f.flipPending ? 'the flip is still being priced (…)' : 'no flip within reach, so the hedging leans one way all day'}`,
   },
   {
     key: 'lunch',
@@ -309,6 +311,8 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
     let charmStrike: number | null = null;
     let charmMoves: string | null = null;
     let bellShare: number | null = null;
+    let wallsIn = true;
+    let flipPending = false;
     try {
       /* the same levels the tape and the report read — the book's window, not a tighter slice */
       const levels = roomLevels(snapshot, '0DTE');
@@ -317,16 +321,23 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
         supreme = levels.supreme;
         flip = levels.flipFound === false ? null : levels.flip;
       }
-      /* The named levels are levelsFor's, in the Levels card's scope; the pin stays today's. */
-      const lv = snapshot.liveBook ? levelsFor(snapshot.ticker, levelsForName(snapshot.ticker)) : null;
-      if (lv) {
-        supreme = lv.supreme;
-        flip = lv.flip;
+      /* On a live book the named levels are levelsFor's, in the Levels card's scope, through the one gate (drawnLevels).
+         Nothing comes off a stand-in book: no supreme or pin until the scope's own contracts are in, no flip until it is
+         final. The pin stays today's. */
+      if (snapshot.liveBook) {
+        const d = drawnLevels(levelsFor(snapshot.ticker, levelsForName(snapshot.ticker)));
+        wallsIn = d.wallsIn;
+        supreme = d.supreme;
+        flip = d.flip;
+        flipPending = !d.flipIn;
+        if (!d.wallsIn) pinStrike = null;
       }
     } catch {
       /* no chain yet */
     }
     try {
+      /* the charm read names the walls it moves, so it waits for them too */
+      if (!wallsIn) throw new Error('levels pending');
       const vc = buildVannaCharm(snapshot, 'CHARM', -1);
       charmStrike = vc.read.charm.price;
       const moved = vc.shifts.filter(s => Math.abs(s.projected - s.current) > 1e-9);
@@ -347,7 +358,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
     } catch {
       /* no surface yet */
     }
-    return { pin: pinStrike, supreme, flip, charmStrike, charmMoves, bellShare };
+    return { pin: pinStrike, supreme, flip, flipPending, charmStrike, charmMoves, bellShare };
   }, [snapshot, dates]);
 
   /* no share because nothing on the name expires today — said on the figure's hover */

@@ -1,7 +1,7 @@
 /* The levels a Terrain pane plots: the house's (data/levelsFor.ts) for the pane's name and cut, and nothing else. Before
    the house has a reading there is no wall, flip or supreme to draw; the pane's own rows never stand in. */
 
-import type { TickerLevels } from '../../data/levelsFor';
+import { drawnLevels, type TickerLevels } from '../../data/levelsFor';
 
 export interface PaneLevels {
   spot: number;
@@ -22,16 +22,17 @@ export function paneLevels(spot: number | null, house: TickerLevels | null, extr
     const v = k == null || !house ? null : house.netAt(k);
     return v == null || !(top > 0) ? undefined : Math.min(1, Math.abs(v) / top);
   };
-  /* a reading whose walls are another book's (the whole book standing in for "Today" before its date lands) draws no
-     wall and no supreme — the stand-in's walls are not the day's (SPY: the whole book's 800 against the day's 770) */
-  const walls = !!house?.wallsFinal;
+  /* The one gate (levelsFor drawnLevels). The walls and the supreme wait for the scope's own contracts: a stand-in
+     book's walls are not the day's (SPY once read the whole book's 800 against the day's 770). The flip waits for its
+     final pricing, as Pulse's chart and Pinpoint's tape do. */
+  const d = drawnLevels(house);
   return {
     spot: n(spot),
-    callWall: walls ? n(house?.callWall) : Number.NaN,
-    putWall: walls ? n(house?.putWall) : Number.NaN,
-    flip: n(house?.flip),
-    supreme: walls ? n(house?.supreme) : Number.NaN,
+    callWall: n(d.callWall),
+    putWall: n(d.putWall),
+    flip: n(d.flip),
+    supreme: n(d.supreme),
     ...(extra.maxPain != null && extra.maxPain > 0 ? { maxPain: extra.maxPain } : {}),
-    ...(house && walls && top > 0 ? { shares: { callWall: share(house.callWall), putWall: share(house.putWall), supreme: share(house.supreme) } } : {}),
+    ...(house && d.wallsIn && top > 0 ? { shares: { callWall: share(d.callWall), putWall: share(d.putWall), supreme: share(d.supreme) } } : {}),
   };
 }

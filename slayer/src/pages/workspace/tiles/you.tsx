@@ -7,7 +7,8 @@ import { aheadClock, CLOSE_MIN, OPEN_MIN } from '../../../data/ahead';
 import { readSessionClock } from '../../../data/moc';
 import type { TileProps } from '../tile';
 import { TileRead } from './parts';
-import { houseOf, keyLevelsFrom } from './derive';
+import { houseOf } from './derive';
+import { drawnLevels } from '../../../data/levelsFor';
 
 const SPAN = CLOSE_MIN - OPEN_MIN;
 const two = (n: number) => String(n).padStart(2, '0');
@@ -31,12 +32,13 @@ export const ClockTile = ({ ctx, size }: TileProps) => {
   const next = now != null ? PHASES.find(p => p.from > now) ?? null : null;
   /* the supreme and the flip are the house's (data/levelsFor.ts, the name's scope) — the ones every other page prints, and
      none while they are still being read (a stand-in book's are not the day's) */
-  const { pin } = ctx.exposure.levels;
-  const lv = keyLevelsFrom(ctx.snapshot.spot, houseOf(ctx.snapshot));
   const live = ctx.snapshot.liveBook;
-  const supreme = live ? (Number.isFinite(lv.supreme) ? lv.supreme : null) : ctx.exposure.levels.supreme;
-  const flip = live ? (Number.isFinite(lv.flip) ? lv.flip : null) : ctx.exposure.levels.flip;
-  const facts: ClockFacts = { pin, supreme, flip, charmStrike: null, charmMoves: null, bellShare: null };
+  const d = drawnLevels(houseOf(ctx.snapshot));
+  /* the pin is the window's, but a stand-in book's pin is not the day's either */
+  const pin = live && !d.wallsIn ? null : ctx.exposure.levels.pin;
+  const supreme = live ? d.supreme : ctx.exposure.levels.supreme;
+  const flip = live ? d.flip : ctx.exposure.levels.flip;
+  const facts: ClockFacts = { pin, supreme, flip, flipPending: !!live && !d.flipIn, charmStrike: null, charmMoves: null, bellShare: null };
   const wide = size.room !== 'small';
   return (
     <div className="h-full min-h-0 flex flex-col" data-clock-tile={phase?.key ?? 'shut'}>
