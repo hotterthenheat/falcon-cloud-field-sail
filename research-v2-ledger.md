@@ -316,3 +316,10 @@ One line per hypothesis/variant/look: date | worker | id | set | n | result | no
 2026-11-05 | EDGE-K | C CHEAPEST on S2 | DEV | 1178 | exp -73.9% [-75.3,-72.2], win 2% | FAIL (comparator)
 2026-11-05 | EDGE-K | D COMPASS STYLE on S2 | DEV | 1131 | exp -5.5% [-9.0,-1.8] | FAIL (comparator); PBO(S2 pickers) 0.28; nothing to VALIDATION, nothing frozen | edge-k/LOG.md
 2026-11-06 | LEAD | NOTE: EDGE-K found EDGE's E1 20-day vol window read closes from LOCKED sessions (2022-09 bar files, 2024-08) for 70 E1 triggers; EDGE-K dropped them. E1 failed DEV regardless; its earlier numbers carry this leak | - | - | - | - | edge-k/LOG.md
+2026-11-06 | EDGE-G | PREREG R1a FLIP-CROSS (held re-priced flip crossed by >= 0.10 EM_1h into the dealer-short side, ALL book <= 31d + SPX AM; side = crossing; X-A: resting TP 1.5x, vol stop, 60 min, re-cross exit) x cells 0DTE d0.30 / 0DTE d0.45 / 1-7DTE d0.45 | spec | - | registered, 3 variants | edge-g/specs/PREREG.md
+2026-11-06 | EDGE-G | PREREG R1b FLIP-AHEAD (held flip 0.25-1.50 EM_1h ahead at 11:00/12:30/14:00, side toward it; X-A) x 3 cells | spec | - | registered, 3 variants | edge-g/specs/PREREG.md
+2026-11-06 | EDGE-G | PREREG R2-CLEAR / R2-BLOCKED (trend marks |r30| >= 1.0 EM_30m; largest-|GEX| strike in the side's direction >= 1.0 EM_1h away vs < 0.5 EM_1h contrast; X-A) x 3 cells | spec | - | registered, 6 variants | edge-g/specs/PREREG.md
+2026-11-06 | EDGE-G | PREREG R3 RV>IV (trend marks with RV_so_far / ATM IV >= 1.25; X-B vol trail, 90 min) x 3 cells | spec | - | registered, 3 variants | edge-g/specs/PREREG.md
+2026-11-06 | EDGE-G | PREREG BASE-XA / BASE-XB (all trend marks, the R2/R3 parent set, reference) x 3 cells | spec | - | registered, 6 variants | edge-g/specs/PREREG.md
+2026-11-06 | EDGE-G | R4 Compass p1 side selector: NOT TESTABLE on history (engine score history starts 2026-10-29, inside LOCKED; Model 1 inputs never recorded) | spec | - | 0 trials | edge-g/specs/PREREG.md
+2026-11-06 | EDGE-G | R5 pullback-in-trend: dead VWAP-pullback family (V1, 24 variants), not re-run | spec | - | 0 trials | edge-g/specs/PREREG.md
