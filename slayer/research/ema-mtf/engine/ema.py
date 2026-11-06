@@ -99,7 +99,7 @@ def resample(df1: pd.DataFrame, tf: int, how: str = 'mid') -> pd.DataFrame:
         return pd.DataFrame(columns=['session', 'b', 'end_m', 'known_ms', 'c'])
     d = df1[['session', 'm'] + [c for c in ('o', 'h', 'l', 'c', 'v', 'n') if c in df1]].copy()
     d = d[d.c.notna()]
-    d['b'] = d.m.to_numpy() // tf
+    d['b'] = d.m.to_numpy().astype(np.int64) // tf
     g = d.groupby(['session', 'b'], sort=True)
     out = g.c.last().to_frame('c')
     if 'o' in d:

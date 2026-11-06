@@ -34,7 +34,10 @@ def ci(t):
 def main():
     from eval.metrics import ledger_trials
     df = load()
-    f = df[df.status == 'filled'].copy()
+    fall = df[df.status == 'filled'].copy()
+    fall['session'] = fall.session.astype(str)
+    fall['entry_ms'] = (570 + fall.decision_m + 1) * 60_000 + 2000
+    f = fall[fall.latency == 'L0c'].copy()
     f['session'] = f.session.astype(str)
     f['entry_ms'] = (570 + f.decision_m + 1) * 60_000 + 2000
     sessions = sorted(df.session.astype(str).unique())
@@ -91,15 +94,27 @@ def main():
                 cells.append(f'{pct(t.ret_net.mean())} n={len(t)}' if len(t) else '-')
             w(f'| {bl} | ' + ' | '.join(cells) + ' |')
     w('\n## Costs at entry (all filled baseline trades, XT30)\n')
-    t = f[f.exit == 'XT30']
+    t = fall[(fall.exit == 'XT30') & (fall.latency == 'L0')]
     g = t.assign(fee_frac=t.fees / 2 / (t.entry_px * 100)).groupby(['root', 'bucket'])
     w('| root | bucket | n | median spread (% of mid) | median premium $ | median fee (% of premium, one side) | rejected at arrival |')
     w('|---|---|---|---|---|---|---|')
-    rej = df[(df.status == 'rejected') & (df.exit == 'XT30')].groupby(['root', 'bucket']).size()
+    rej = df[(df.status == 'rejected') & (df.exit == 'XT30') & (df.latency == 'L0')].groupby(['root', 'bucket']).size()
     for (rt, b), x in g:
         w(f'| {rt} | {b} | {len(x)} | {100 * x.entry_spread_frac.median():.2f}% | {100 * x.entry_px.median():.0f} | '
           f'{100 * x.fee_frac.median():.2f}% | {int(rej.get((rt, b), 0))} |')
-    w('\n## Exit reasons\n')
+    w('\n## Latency: net expectancy by fill model (pooled; L0 = bar-end NBBO, no latency, optimistic; L0c = L0 + measured '
+      '2 s drift, the screening model; L60 = NBBO 60 s after the bar end; L2 = exact 1-second NBBO 2 s after, where run)\n')
+    lats = [x for x in ('L0', 'L0c', 'L2', 'L60') if x in set(fall.latency)]
+    w('| baseline | exit | ' + ' | '.join(lats) + ' |')
+    w('|---|---|' + '---|' * len(lats))
+    for bl in NAMES:
+        for xname in ('XT30', 'X3S'):
+            cells = []
+            for L in lats:
+                t = fall[(fall.baseline == bl) & (fall.exit == xname) & (fall.latency == L)]
+                cells.append(f'{pct(t.ret_net.mean())} (n={len(t)})' if len(t) else '-')
+            w(f'| {bl} | {xname} | ' + ' | '.join(cells) + ' |')
+    w('\n## Exit reasons (L0c)\n')
     w(f.groupby(['baseline', 'exit']).exit_reason.value_counts().unstack(fill_value=0).to_string().replace('\n', '\n    ').join(['    ', '']))
     w('\n## Reading\n')
     w('READING_PLACEHOLDER')

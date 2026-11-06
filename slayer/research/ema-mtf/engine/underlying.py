@@ -33,7 +33,7 @@ def rth_minutes(sym: str, days) -> pd.DataFrame:
         if not len(b):
             continue
         b = b[(b['mod'] >= M0) & (b['mod'] < 16 * 60)].copy()
-        b['m'] = b['mod'] - M0
+        b['m'] = b['mod'].astype('int64') - M0
         b['session'] = int(D)
         rows.append(b)
     if not rows:

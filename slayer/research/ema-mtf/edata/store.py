@@ -40,29 +40,34 @@ class Panel:
 
     def _read(self, D, name) -> pd.DataFrame:
         p = os.path.join(self.dir, D, f'{name}.parquet')
-        return pd.read_parquet(p) if os.path.exists(p) else pd.DataFrame()
+        if not os.path.exists(p):
+            return pd.DataFrame()
+        df = pd.read_parquet(p)
+        if 'm' in df:
+            df['m'] = df.m.astype('int64')      # stored int16; times are computed from it in ms
+        return df
 
-    @lru_cache(maxsize=96)
+    @lru_cache(maxsize=6)
     def q0(self, D):
         return self._read(D, 'q0')
 
-    @lru_cache(maxsize=96)
+    @lru_cache(maxsize=6)
     def q2(self, D):
         return self._read(D, 'q2')
 
-    @lru_cache(maxsize=96)
+    @lru_cache(maxsize=6)
     def tb(self, D):
         return self._read(D, 'tb')
 
-    @lru_cache(maxsize=96)
+    @lru_cache(maxsize=6)
     def gx(self, D):
         return self._read(D, 'gx')
 
-    @lru_cache(maxsize=96)
+    @lru_cache(maxsize=6)
     def gxp(self, D):
         return self._read(D, 'gxp')
 
-    @lru_cache(maxsize=96)
+    @lru_cache(maxsize=6)
     def oi(self, D):
         p = os.path.join(self.dir, 'oi', f'{D}.parquet')
         return pd.read_parquet(p) if os.path.exists(p) else pd.DataFrame()

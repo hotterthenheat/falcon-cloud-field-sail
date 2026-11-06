@@ -84,7 +84,7 @@ class QuoteBook:
                 cols = [df[c].to_numpy() for c in ('exp', 'strike', 'right', 'm', 'bid', 'ask', 'bs', 'as')]
                 for e, k, r, m, b, a, bs, as_ in zip(*cols):
                     out.setdefault((int(e), int(k), int(r)), {})[int(m)] = (b / 100, a / 100, int(bs), int(as_))
-            if len(self._c) > 64:
+            if len(self._c) > 3:
                 self._c.clear()
             self._c[key] = out
         return self._c[key]
@@ -108,13 +108,13 @@ def _valid(q, max_spread=None):
 
 
 class Simulator:
-    def __init__(self, panel, cfg: ExecConfig | None = None, sessions: list[str] | None = None, fills=None):
+    def __init__(self, panel, cfg: ExecConfig | None = None, sessions: list[str] | None = None, fills=None, book=None):
         """fills: an object with quote_at(D, (exp, strike, right), ms) -> (bid, ask, bid size, ask size) in dollars,
         the NBBO in force at ms (edata/fills.FillBook: 1-second quotes). Required for latency 'L2'."""
         self.p = panel
         self.root = panel.root
         self.cfg = cfg or ExecConfig()
-        self.book = QuoteBook(panel)
+        self.book = book or QuoteBook(panel)
         self.sessions = sessions or panel.days()
         self.fills = fills
         if self.cfg.latency == 'L2' and fills is None:

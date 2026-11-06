@@ -147,7 +147,9 @@ def run_root(root: str, block: str, out_rows: list, lats=('L0c', 'L60', 'L0')):
     xups = {(s, kms): g for (s, kms), g in mb[mb.xup].groupby(['session', 'known_ms'])}
     print(root, block, f'loaded {len(days)} sessions, {len(mb)} 5m MID bars in {time.time()-t0:.0f}s', flush=True)
     from edata.fills import FillBook
-    sims = {(x, L): Simulator(p, ExecConfig(latency=L), sessions=sorted(have), fills=FillBook(root) if L == 'L2' else None)
+    from engine.execution import QuoteBook
+    qb = QuoteBook(p)
+    sims = {(x, L): Simulator(p, ExecConfig(latency=L), sessions=sorted(have), fills=FillBook(root) if L == 'L2' else None, book=qb)
             for x in ('XT30', 'X3S') for L in lats}
     uclose = lambda d: float(m1[m1.session == int(d)].c.iloc[-1]) if (m1.session == int(d)).any() else np.nan
 
