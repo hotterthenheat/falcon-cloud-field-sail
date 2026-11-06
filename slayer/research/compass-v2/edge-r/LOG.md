@@ -51,6 +51,37 @@ any EDGE-R terminal request or outcome.
   answered; workers restarted 17:30 ET (PIDs 978, 980).
 - 18:11 ET: interim analysis at 300 of 651 sessions committed (results/DEV.md, summary.json; no synthetic null yet),
   as a restart safeguard. Nothing in the rules, fills or analysis changes because of it; the run continues to 651.
+- 19:52 ET: simulation complete, 651/651 DEV sessions (no time cut), 0 failed terminal requests over both resumes;
+  v2data/edge-r 480 MB (budget 700). 19:53-20:24 ET: synthetic null 100 runs (4 chunks x 25, merged). 20:25 ET:
+  analysis (`analyze_r.py`; FDR display bug for a 0.0 synthetic FDR fixed, execution-artefact table added; DSR N read
+  from the branch ledger via `V2_LEDGER`, N = 640). Look-ahead test on 120 sessions: entry 1111/1111, exit 1111/1111,
+  prices 1110/1110 identical; canaries caught 1013/1111 (forming bar), 14/14 (60-s peek), 1109/1109 (8-s peek).
+
+## Result (DEV, 651 sessions; full tables in results/DEV.md)
+| variant | n | win | net exp [95% session CI] | gross | payoff | $ (1 lot) | beats shuffle | beats synthetic |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| R0 | 7367 | 57% | -2.5% [-2.9, -2.1] | -1.7% | 0.44 | -$124,169 | 96% | 6% |
+| R1 | 7308 | 57% | -2.6% [-2.9, -2.2] | -1.7% | 0.44 | -$120,648 | 96% | 5% |
+| R2 | 7381 | 57% | -2.7% [-3.1, -2.3] | -1.8% | 0.45 | -$138,381 | 89% | 4% |
+
+Null FDR 0% (shuffle and synthetic); synthetic null mean -2.2% (no-cost calibration +0.6..+0.9%). PBO 0.70, DSR 0.000.
+Every DEV year (2020 -4.1%, 2022 -2.0%, 2023 -2.5%, 2024 -2.5% for R0) and every day type (< 0.5% -2.3%,
+0.5-1.5% -2.5%, > 1.5% -3.8%) is negative with the CI below 0; so is every ticker, book and side. The shape: 81% of
+tickets exit "back" (+3.7%, 71% win) and 19% are "held" 30 minutes (-29%, 1% win); the held losses outweigh the backs.
+Beating the shuffle only says buying the breakout side at the same instants is worse still (-2.9%); the rule loses
+more than a zero-drift martingale with the same costs. R1's filter removes 0.8% of tickets and changes nothing; R2's
+stop cuts the held losses to -16% but stops 865 tickets at -37% that would partly have come back: worse overall.
+The book fires on ~11.3 of the 12 possible keys every session: a close outside a 30-close range is an everyday event,
+not a tail. No variant meets the bar (n >= 150 and CI > 0 and >= 95% of both nulls): nothing fetched for VALIDATION,
+nothing frozen, LOCKED never opened.
+
+Execution artefacts: no pre-open fills possible on history (no pre-open option quotes); 0 fills at 09:30:02; 3 expiry
+holds, 4 next-session sells, 0 skipped fills, 0 flagged. Live-ledger pricing (board ask at the decision, bid at the
+START of the exit bar, ~60 s before the exit decision) understates the real round trip by 5.6 pts per ticket
+[-5.7, -5.4] (live -7.3% vs real -1.7% gross): the live ledger books exits on a stale bid. Separately, the live stale-bar
+bug (above) produced 16 of 29 live tickets as <= 5-s spread round trips; neither artefact is the rule's own merit.
+
+Verdict: switch the book off. Neither pre-registered change rescues it.
 
 ## Live record 2026-11-05 (motivation; execution artefacts only, not a test)
 Book R closed 29 tickets on 23 names (−$1,691 at 15:12 ET). 16 of 29 were held ≤ 5 s (−$259): the live scan reads bars

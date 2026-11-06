@@ -110,7 +110,7 @@ def main():
                               'skips': {str(k): int(c) for k, c in df[df.variant == v].leg_skip.value_counts().items()}
                               if 'leg_skip' in df else {}}
         L.append(f'| {v} ' + fmt(s) + f" {sh.get('beats', float('nan'))*100:.0f}% / {sh.get('fdr', float('nan'))*100:.1f}% | "
-                 f"{sy_beats*100:.0f}% / {(sy.get('fdr') or float('nan'))*100:.1f}% | {ds['dsr']:.3f} |")
+                 f"{sy_beats*100:.0f}% / {(sy['fdr'] if sy.get('fdr') is not None else float('nan'))*100:.1f}% | {ds['dsr']:.3f} |")
         permat[v] = x.groupby('day').leg_ret_net.mean().reindex(sorted(days)).fillna(0.0)
     Mx = np.column_stack([permat[v].values for v in VARS])
     pb = pbo_cscv(Mx, 16)
@@ -148,6 +148,26 @@ def main():
               f'exit decision +2 s: n {len(x)}, live {live.mean()*100:+.1f}% vs real {real.mean()*100:+.1f}% per trade; '
               f'gap {gap.mean()*100:+.1f} pts [{lo*100:+.1f}, {hi*100:+.1f}]; entry slip (ask +2 s vs board ask) '
               f'{out["live_gap"]["entry_slip"]*100:+.2f}%.', '']
+    # execution artefacts (every variant)
+    L += ['## Execution artefacts', '', '| variant | tickets | priced | skipped (reason: n) | fill at 09:30:02 | expiry holds | next-session sells | flagged | shuffle null mean / p95 | synthetic null mean / p95 |',
+          '|---|---:|---:|---|---:|---:|---:|---:|---:|---:|']
+    for v in VARS:
+        a = df[df.variant == v]
+        pr = a[a.leg_ret_net.notna()]
+        sk = a.leg_skip.value_counts().to_dict() if 'leg_skip' in a else {}
+        op = int((pr.leg_fill_s == M.OPEN_S + M.LAT).sum())
+        why = pr.leg_why.value_counts().to_dict()
+        fl = sum(c for w, c in why.items() if str(w).startswith('flag'))
+        sh = out['variants'][v]['shuffle']
+        sy = out['variants'][v]['synthetic']
+        out['variants'][v]['artefacts'] = {'skips': {str(k): int(c) for k, c in sk.items()}, 'open_fills': op,
+                                           'expiry': int(why.get('expiry', 0)), 'nextday': int(why.get('nextday', 0)),
+                                           'flagged': int(fl)}
+        L.append(f"| {v} | {len(a)} | {len(pr)} | {', '.join(f'{k}: {c}' for k, c in sk.items()) or '-'} | {op} | "
+                 f"{why.get('expiry', 0)} | {why.get('nextday', 0)} | {fl} | {sh.get('null_mean', float('nan'))*100:+.2f}% / "
+                 f"{sh.get('null_p95', float('nan'))*100:+.2f}% | {(sy.get('mean') or float('nan'))*100:+.2f}% / "
+                 f"{(sy.get('p95') or float('nan'))*100:+.2f}% |")
+    L.append('')
     # trades per session and seat use
     for v in VARS:
         c = df[df.variant == v].groupby('day').size().reindex(days, fill_value=0)
