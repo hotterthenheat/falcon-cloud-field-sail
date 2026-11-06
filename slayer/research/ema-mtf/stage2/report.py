@@ -74,6 +74,11 @@ def main():
       'clustered bootstrap 95%. Null columns: share of 20 null runs (A3 item 6) whose pooled expectancy is below the '
       "variant's (time = BL2-style random entries, same count per session/bucket, same exit; side = same times, coin-flip "
       'call/put, same exit) and the null runs\' mean expectancy.\n')
+    w('Note on exit 6 (HTF alignment loss): with no MTF filter, the highest timeframe used at entry is the 5m trigger '
+      'chart, and exit 6 is then mathematically the same rule as exit 3. A fresh E9/E21 cross means c > E9 > E21 on the '
+      'entry bar. While c stays ≥ E9, E9 rises monotonically and stays above E21, so the state can only stop being +1 '
+      'by c < E9. The two logs are identical trade for trade (verified). Exit 10, which contains exit 6, inherits '
+      'this.\n')
     w('## Summary\n')
     w('| variant | n | rejected | expectancy net | 95% CI | gross | mid-to-mid | win | avg win | avg loss | PF | median | Sharpe/day (ann.) | Sortino (ann.) | max DD $ | net $ | ROC | hold mean/median min | max losing streak | L60 exp. | null-time mean / pct | null-side mean / pct |')
     w('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|')

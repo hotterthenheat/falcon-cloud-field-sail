@@ -135,7 +135,7 @@ class Runner:
         key = (int(ck), str(D))
         cx = self._ctx.get(key)
         if cx is None:
-            if len(self._ctx) > 5000:
+            if len(self._ctx) > 800:
                 self._ctx.clear()
             g = self.grid(str(D)).row(ck)
             B, A = g[0], g[1]
