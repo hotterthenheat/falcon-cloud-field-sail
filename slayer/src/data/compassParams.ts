@@ -1,4 +1,5 @@
 import { MARKET_HOLIDAYS } from '../core/calendar';
+import { REGULAR_OPEN_MIN, isSessionDay, nextSessionDay, nyWall, regularCloseMin } from '../core/session';
 
 /* Compass parameters, in one place. The entry and runner trees ship in public/models; scoring stays shut until
    those files hash to the values below. */
@@ -350,6 +351,85 @@ export function minutesLeftCol(t: number): number {
   return SESSION_MIN - t;
 }
 
+/* ---- Feature version 2 (Group B, 2026-11-05): one trading-time clock ----------------------------------------------
+   Version 1 (above, the shipped trees' inputs) reads T as today's minutes to a 16:00 close, floored at zero: an
+   evening, overnight or curb mark gets T = 1e-6 years (the vol solve fails, the greeks fall back, column 15 goes to
+   -300), a half day's 12:30 reads 210 minutes instead of 30, and a 1–7 DTE contract counts only today (its solved vol
+   about 2.4× too high). Version 2 reads T on one trading-time clock for every mark and contract: the regular-session
+   minutes from the mark to the expiry's settlement, every session ahead with its own close (an early close is 210
+   minutes), market holidays and weekends skipped. Time outside the regular session (the overnight, the pre-market, the
+   curb, a weekend) carries no weight: a mark at 21:00 for tomorrow's 0DTE has one full session (390 minutes) left,
+   the same as at 09:30 tomorrow. Every root the engine scores (the same-day book and WEEKLY_FOCUS) is PM-settled, at
+   its expiry's close. Column 15 is those minutes; T = minutes / (390 × 252) + 1e-6, the same unit as version 1, so a
+   full-day 0DTE mark reads the same T in both versions. scripts/golden/compass-ref.py rebuilds it in Python. */
+
+export const FEATURE_V1 = 1;
+export const FEATURE_V2 = 2;
+export type FeatureVersion = typeof FEATURE_V1 | typeof FEATURE_V2;
+
+/** Regular-session minutes from an instant to an expiry's settlement (its close), trading time: the rest of today's
+    session (all of it before the open, none after the close) and every session after today up to the expiry. 0 once
+    the expiry's close has passed. */
+export function tradingMinutesTo(expiryIso: string, nowMs: number): number {
+  const exp = asIso(expiryIso).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(exp) || !Number.isFinite(nowMs)) return NaN;
+  const w = nyWall(nowMs);
+  if (exp < w.iso) return 0;
+  let total = 0;
+  if (isSessionDay(w.iso)) {
+    const close = regularCloseMin(w.iso);
+    total += Math.max(0, close - Math.max(REGULAR_OPEN_MIN, w.min));
+  }
+  for (let d = w.iso, i = 0; d < exp && i < 400; i++) {
+    d = nextSessionDay(d);
+    if (d > exp) break;
+    total += regularCloseMin(d) - REGULAR_OPEN_MIN;
+  }
+  return total;
+}
+
+/** The live trees' feature version: version 1 (the shipped trees). Version 2 has no trees (none were trained) and no
+    evidence; it runs in the shadow only (docs/compass-group-b.md). */
+export const LIVE_FEATURE_VERSION: FeatureVersion = FEATURE_V1;
+
+/* ---- Group B switches: every Group B change that would move a live score or gate is off unless its switch is on ----
+   COMPASS_ATM_FRESH=1   B4: the ATM pair reads only valid quotes stamped within 90 s (off: every board row, as before)
+   COMPASS_GATE_DECAY=1  B2b: off a full regular day the theta-burn gate is the repriced decay to the session's own flat
+                         on the trading clock (off: the trained 16:00 theta check everywhere, as before)
+   COMPASS_V2_SHADOW=1   the version 2 shadow scorer (compassShadow; inert until version 2 trees ship with their hashes)
+   Read through globalThis: vite's define turns a bare process.env into {} (vite.config.ts), server side too. */
+export type GroupBSwitch = 'COMPASS_ATM_FRESH' | 'COMPASS_GATE_DECAY' | 'COMPASS_V2_SHADOW';
+const switchOverride = new Map<GroupBSwitch, boolean>();
+export function groupBOn(name: GroupBSwitch): boolean {
+  const forced = switchOverride.get(name);
+  if (forced !== undefined) return forced;
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+  return env[name] === '1';
+}
+/** Proofs only: force a switch on or off (null: back to the environment). */
+export function setGroupBSwitch(name: GroupBSwitch, on: boolean | null): void {
+  if (on == null) switchOverride.delete(name);
+  else switchOverride.set(name, on);
+}
+/** Version 2's trees (research/groupb/train.py) and the lines they call at (set on the training sessions to the
+    current trees' operating point). The shadow (compassShadow) reads them; empty hashes load nothing. */
+export const V2_ENTRY_FILE = '/models/model_entry_v2.txt';
+export const V2_RUNNER_FILE = '/models/model_runner_v2.txt';
+export const V2_ENTRY_SHA = '';
+export const V2_RUNNER_SHA = '';
+export const P1_MIN_V2 = Infinity;
+export const PRUN_MIN_V2 = Infinity;
+
+/** Version 2's T in years from the trading minutes left (tradingMinutesTo). */
+export function yearFracV2(tradingMinutes: number): number {
+  return Math.max(0, tradingMinutes) / (SESSION_MIN * YEAR_SESSIONS) + T_EPS;
+}
+
+/** Version 2's column 15: the trading minutes to the expiry. */
+export function minutesLeftColV2(tradingMinutes: number): number {
+  return tradingMinutes;
+}
+
 export function quoteValid(bid: number, ask: number): boolean {
   return bid >= 0 && ask > 0 && ask >= bid;
 }
@@ -532,6 +612,12 @@ export function releaseBlocks(title: string, releaseMin: number, nowMin: number)
 
 /** Unchanged spot. Dollar theta is the theta column times 365. Price decay over dt years is |theta year| × dt.
     Reject when that decay reaches the 0.5322 haircut before the flat. */
+/** Version 2's theta burn (and version 1's off the regular full day): the repriced decay to the flat (compassFeatures
+    decayOver) reaches the 0.5322 haircut of the ask. */
+export function decayBurns(decay: number, ask: number): boolean {
+  return ask > 0 && Number.isFinite(decay) && decay >= STOP_HAIRCUT * ask;
+}
+
 export function thetaBurns(thetaPerDay: number, gamma: number, ask: number, dtYears: number): boolean {
   if (!(ask > 0) || !(dtYears > 0) || !(gamma > 0) || !Number.isFinite(thetaPerDay)) return false;
   const thetaYear = thetaPerDay * 365;
