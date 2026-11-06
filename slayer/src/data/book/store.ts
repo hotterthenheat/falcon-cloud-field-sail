@@ -253,12 +253,15 @@ export function recordIso(): string {
 }
 
 /** Every live listed date carries its own strikes */
+/** How many listings, nearest first, a full book reads date by date (each its own chain): the rest of a name with more
+    (SPX lists 54) stays on the whole book's rows, carried flat in the flip (data/flipLevel.ts legSet) */
+export const BOOK_LISTINGS = 40;
 export function datesComplete(entry: Entry): boolean {
   const today = isoDate(bookToday());
   /* the same forty listings the full book pulls (loadExpiries) — the day that just settled too, while the vendor still
      lists it: its chain is what liveAll takes off the whole book's total, so without it a Board name's "All expiries"
      net carried the settled contracts (QQQ −$10.6B on the Board against −$9.3B on the Map after the bell) */
-  const live = entry.expiries.slice(0, 40);
+  const live = entry.expiries.slice(0, BOOK_LISTINGS);
   const empty = entry.keptAt ? new Set(entry.keptEmpty) : emptyDates.get(entry.ticker);
   return live.some(e => e.date >= today) && live.every(e => entry.byDate[e.date]?.length || empty?.has(e.date));
 }

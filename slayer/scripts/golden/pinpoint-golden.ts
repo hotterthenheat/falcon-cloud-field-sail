@@ -9,7 +9,7 @@
 import { done, expectEqual, expectNear, freezeClock, installUwFixtures, recordedAt, settleOn } from './uwFixtures';
 import { pruneSet } from './pinpointRaw';
 import { dealerOf } from '../../src/core/dealerSign';
-import { bsVanna, bsVega, byStrike, contractRow, contractOi, contractVols, exposureRows, impliedMove, levelsOfRows, oiChangeRows, phiCdf, pricedFlip, pricedFlowTo, pricedLegs, pricedNet, rawAnswers, straddleMid, terminalOiDiffs, termSigma, termVols, vendorOiDiffs, yearsTrading } from './pinpointRaw';
+import { bsCharmSession, bsVanna, bsVega, byStrike, contractRow, contractOi, contractVols, exposureRows, impliedMove, levelsOfRows, oiChangeRows, phiCdf, pricedFlip, pricedFlowTo, pricedLegs, pricedNet, rawAnswers, straddleMid, terminalOiDiffs, termSigma, termVols, vendorOiDiffs, yearsTrading } from './pinpointRaw';
 
 const SET = 'pinpoint-2026-10-29';
 const NAMES = ['SPY', 'NVDA'] as const;
@@ -265,15 +265,62 @@ for (const t of NAMES) {
          ~0.04×). Now an independent Black-Scholes vanna at the contract's solved vol on the session clock, × S × OI, per
          point of the quoted vol (√(T_cal/T_trade)) */
       vanna: sideSign * bsVanna(spot, k, yearsTrading('2026-10-28', gold.front), vols.get(`${gold.front}|${k}|${right}`) ?? NaN) * spot * oi * Math.sqrt(((Date.parse(`${gold.front}T20:00:00Z`) - Date.parse(String(se.get(k)!.time))) / (365 * 86_400_000)) / yearsTrading('2026-10-28', gold.front)),
-      charm: (Number(se.get(k)![right === 'C' ? 'call_charm_oi' : 'put_charm_oi']) / (0.01 * 365 * 252)) * share,
     };
-    const tol = { dex: 0.1, vex: 0.06, vanna: 0.01, charm: 0.05 } as const;
-    for (const g of ['dex', 'vex', 'vanna', 'charm'] as const) {
+    void share;
+    const tol = { dex: 0.1, vex: 0.06, vanna: 0.01 } as const;
+    for (const g of ['dex', 'vex', 'vanna'] as const) {
       const got = dealerOf(leg[g]);
       const ref = g === 'vanna' ? 'Black-Scholes off the contract' : 'vendor';
       expectEqual(`${t} ${k}${right} ${g}: the dealer sign is the ${ref}'s (${(got / 1e6).toFixed(3)}M, ${ref} ${(want[g] / 1e6).toFixed(3)}M)`, Math.sign(got), Math.sign(want[g]));
       expectNear(`${t} ${k}${right} ${g}: size against the ${ref}'s own figure`, got, want[g], tol[g]);
     }
+    /* audit 2026-11-06: charm was checked against the vendor's charm_oi converted by the very constants the page used
+       (CHARM_SESSION, T_cal/T_trade), so it could not fail. Now independently: Black-Scholes delta at the contract's
+       own vol, solved here off its quote mid, re-priced a small step of the 252-session clock either way, per session,
+       × OI × 100 × spot — at spot, as vanna and vega are (the page prices them where price is) */
+    {
+      const tt = yearsTrading('2026-10-28', gold.front);
+      const iv = vols.get(`${gold.front}|${k}|${right}`) ?? NaN;
+      const hand = sideSign * bsCharmSession(spot, k, tt, iv, right) * oi * 100 * spot;
+      const got = dealerOf(leg.charm);
+      if (process.env.GOLDEN_SHOW) console.log(`    ${t} ${k}${right} charm page ${(got / 1e6).toFixed(3)}M, independent ${(hand / 1e6).toFixed(3)}M (iv ${iv.toFixed(4)}, t ${(tt * 252).toFixed(2)} sessions)`);
+      expectEqual(`${t} ${k}${right} charm: the sign is the independent re-pricing's`, Math.sign(got), Math.sign(hand));
+      expectNear(`${t} ${k}${right} charm per session ${(got / 1e6).toFixed(3)}M against Δ(t−h)−Δ(t+h) at the contract's own vol (${(hand / 1e6).toFixed(3)}M)`, got, hand, 0.01);
+    }
+  }
+  /* …and charm on every front leg near the money (|ln K/S| ≤ 3%, 200+ open interest, a vol of its own) against the
+     independent re-pricing. Before this audit the page printed the vendor's charm_oi on the session clock: its median
+     leg was 4.7% off this (SPY; 21 of 62 over 10%, the 772C −0.53M against +0.54M) and NVDA's 215C 14% — the vendor's
+     own delta model, not Black-Scholes at the vol the contract quotes (book/scale.ts paintLegs) */
+  {
+    const tt = yearsTrading('2026-10-28', gold.front);
+    const offs: number[] = [];
+    const bad: string[] = [];
+    let volApart = 0;
+    for (const node of chain) {
+      if (Math.abs(Math.log(node.strike / marked)) > 0.03) continue;
+      for (const right of ['C', 'P'] as const) {
+        const oi = right === 'C' ? node.callOI : node.putOI;
+        const iv = vols.get(`${gold.front}|${node.strike}|${right}`);
+        if (!(oi >= 200) || !iv) continue;
+        /* a leg whose page vol is not the vol solved here (a quote the page held stale and read the vendor's vol for —
+           0.5% apart on SPY's far 1-session calls, 3–4% of a wing's charm) tests the vol, not the charm: counted apart */
+        const pageIv = (right === 'C' ? node.callIv : node.putIv) ?? 0;
+        if (Math.abs(pageIv / iv - 1) > 0.002) {
+          volApart++;
+          continue;
+        }
+        const hand = (right === 'C' ? 1 : -1) * bsCharmSession(spot, node.strike, tt, iv, right) * oi * 100 * spot;
+        const got = dealerOf(right === 'C' ? node.callCharm : node.putCharm);
+        if (Math.abs(hand) < 1e5) continue;
+        const off = got / hand - 1;
+        offs.push(Math.abs(off));
+        if (Math.abs(off) > 0.01 || Math.sign(got) !== Math.sign(hand)) bad.push(`${node.strike}${right} ${(got / 1e6).toFixed(2)}M vs ${(hand / 1e6).toFixed(2)}M (vol ${(right === 'C' ? node.callIv : node.putIv)?.toFixed(4)} vs ${iv.toFixed(4)})`);
+      }
+    }
+    offs.sort((a, b) => a - b);
+    const med = offs[Math.floor(offs.length / 2)] ?? NaN;
+    expectEqual(`${t}: charm on ${offs.length} front legs near the money against the independent re-pricing — median off ${(med * 100).toFixed(3)}%, none over 1% or of the other sign (${bad.slice(0, 3).join('; ') || 'none'}; ${volApart} legs on another vol left out)`, [offs.length >= 8, med < 0.003, bad.length], [true, true, 0]);
   }
   /* the higher greeks of the same legs: vomma and veta as finite differences of an independent dealer vega (Black-Scholes at
      the leg's vol on the session clock, per point of the quoted vol), and their sign by the model */

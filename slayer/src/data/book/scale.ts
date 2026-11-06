@@ -11,9 +11,10 @@ import { tradingYears } from '../../core/tradingYear';
 import { carryFor, DEFAULT_R } from '../../core/carry';
 import { dealerInventory, flowFirm, flowImbalance, flowWindow, calendarYears, ivOnTradingClock, markGap, quotedVolPoint, quoteMaxAge, smoothSmile, unsignedShare } from '../../core/volClock';
 import { impliedBookSpot, type ParityPair } from '../../core/parity';
-import { contractHigher } from '../liveHigher';
+import { addHigher, amStrikeHigher, contractHigher } from '../liveHigher';
 import { noteClose, noteNodes, peakStrikes, type CloseRow } from '../nodeScore';
 import { type UwContract, type UwFlowStrike, type UwGreekStrike } from '../whales';
+import { amCalendarYears, amGone, amIvOnTradingClock, amTradingYears, amVolPoint, occRoot, settleOf, type Settle } from '../../core/settle';
 
 
 export const num = (v: unknown): number => {
@@ -262,6 +263,25 @@ export function withLiveGamma(chain: readonly StrikeNode[], live: LiveGamma, exp
         c: [l.cc, l.cA, l.cB, l.pc, l.pcA, l.pcB],
         asks: l.asks,
       };
+      /* AM contracts laid on live and now past their 09:30 settlement (this row's clock) are settled from here on */
+      if (next.am && expiry && amGone(expiry, l.at ?? Date.now())) {
+        const am = next.am;
+        delete next.am;
+        next.cut = { call: am.callShare, put: am.putShare };
+        next.callOI = Math.max(0, next.callOI - am.callOI);
+        next.putOI = Math.max(0, next.putOI - am.putOI);
+        /* their vega, vanna, charm and delta come off too */
+        if (am.added) {
+          for (const k of Object.keys(am.added) as (keyof NonNullable<typeof am.added>)[]) next[k] -= am.added[k];
+          next.netVex = next.callVex + next.putVex;
+          next.netVanna = next.callVanna + next.putVanna;
+          next.netCharm = next.callCharm + next.putCharm;
+          next.netDex = next.callDex + next.putDex;
+        }
+      }
+      /* settled AM contracts the row still carries come off (n.cut, set when the contracts were laid on) */
+      const cut = cutGex(next);
+      if (cut) Object.assign(next, cut);
     }
     const painted = n.callBook != null || n.putBook != null;
     if (!painted) {
@@ -314,6 +334,23 @@ export function parseOcc(symbol: string): { expiry: string; right: 'CALL' | 'PUT
   return { expiry: `20${m[1]}-${m[2]}-${m[3]}`, right: m[4] === 'C' ? 'CALL' : 'PUT', strike };
 }
 
+/** The AM contracts' share of a strike's vendor gamma: by the vendor's own per-contract gamma × OI, else by open interest */
+function amShare(amG: number, pmG: number, amOI: number, pmOI: number): number {
+  if (amG > 0 || pmG > 0) return amG / (amG + pmG);
+  return amOI > 0 ? amOI / (amOI + Math.max(0, pmOI)) : 0;
+}
+
+/** A node's gamma with its cut share (settled AM contracts) taken off the vendor row it was laid from — off the raw row
+    every time, so laying it on again never cuts twice. Null without a raw row. */
+export function cutGex(n: StrikeNode): Pick<StrikeNode, 'callGex' | 'putGex' | 'netGex'> | null {
+  const c = n.cut ?? { call: 0, put: 0 };
+  const g = n.vendor?.g;
+  if (!g) return null;
+  const callGex = keptVendorLeg('C', g[0] * (1 - c.call), true);
+  const putGex = keptVendorLeg('P', g[3] * (1 - c.put), true);
+  return { callGex, putGex, netGex: callGex + putGex };
+}
+
 /* The vendor's vega stays on the leg until paintLegs replaces it with Black-Scholes vega at the live spot, on the
    trading clock, times open interest, signed by the one model (core/dealerSign.ts). */
 const LONG_QUOTE_MS = 15 * 60_000;
@@ -362,17 +399,72 @@ interface LegBook {
   callAskPx: number;
   putBidPx: number;
   putAskPx: number;
+  /** An index's AM-settled monthly contracts at this strike (core/settle.ts), kept apart: NOT in the fields above. Their
+      open interest, the vendor's vol and quote, and Σ vendor gamma × OI for the AM and the PM contracts (the shares
+      of the vendor row's gamma each holds). `gone`: settled at 09:30 of the date — they count for nothing. */
+  am?: { callOI: number; putOI: number; callIv: number; putIv: number; callBidPx: number; callAskPx: number; putBidPx: number; putAskPx: number; callG: number; putG: number; gone: boolean };
+  /** Σ vendor gamma × OI of the PM contracts (the AM share's denominator) */
+  pmCallG: number;
+  pmPutG: number;
+  /** Contracts of an adjusted or unknown root, left out (core/settle.ts) */
+  adjusted: number;
 }
 
 function emptyLeg(): LegBook {
-  return { callOI: 0, putOI: 0, callVex: 0, putVex: 0, callVol: 0, putVol: 0, callIv: 0, putIv: 0, callGamma: 0, putGamma: 0, callAsk: 0, callBid: 0, putAsk: 0, putBid: 0, callMulti: 0, putMulti: 0, callMid: 0, putMid: 0, callNone: 0, putNone: 0, callBidPx: 0, callAskPx: 0, putBidPx: 0, putAskPx: 0 };
+  return { callOI: 0, putOI: 0, callVex: 0, putVex: 0, callVol: 0, putVol: 0, callIv: 0, putIv: 0, callGamma: 0, putGamma: 0, callAsk: 0, callBid: 0, putAsk: 0, putBid: 0, callMulti: 0, putMulti: 0, callMid: 0, putMid: 0, callNone: 0, putNone: 0, callBidPx: 0, callAskPx: 0, putBidPx: 0, putAskPx: 0, pmCallG: 0, pmPutG: 0, adjusted: 0 };
 }
 
-export function foldContracts(rows: UwContract[], expiry: string, now = Date.now()): Map<number, LegBook> {
+/** How a contract settles when the name is not known: an index's AM root by its own name, every other root the PM clock */
+const settleBare = (root: string): Settle => (['SPX', 'NDX', 'RUT', 'DJX', 'VIX', 'VIXW'].includes(root) ? 'AM' : 'PM');
+
+/* ROOTS (audit 2026-11-06). The rows of one name mix OCC roots (core/settle.ts). An index's AM monthly (SPX on a third
+   Friday) was summed into the strike with its PM weekly (SPXW) as one contract on the PM clock: its quote solved on a
+   16:00 clock it does not have (one session too many — Thursday afternoon a 0DTE priced as a 1DTE) and, from 09:30 of
+   the date, its settled open interest and the vendor's gamma for it still counted. An adjusted root (AAPL1: not 100
+   shares) was summed at ×100 and its quote could set the strike's vol. Now the AM contracts are kept apart (LegBook.am)
+   and priced to their own settlement, dropped from 09:30 of the date; an adjusted root is left out. `now` is the clock
+   the date's rows were priced at; `ticker` names the roots (without it, an index's AM root by its own name). */
+export function foldContracts(rows: UwContract[], expiry: string, now = Date.now(), ticker = ''): Map<number, LegBook> {
   const by = new Map<number, LegBook>();
+  const settled = amGone(expiry, now);
   for (const row of rows) {
-    const parsed = parseOcc(String(row.option_symbol || ''));
+    const sym = String(row.option_symbol || '');
+    const parsed = parseOcc(sym);
     if (!parsed || parsed.expiry !== expiry) continue;
+    const root = occRoot(sym);
+    const settle = ticker ? settleOf(ticker, root) : settleBare(root);
+    if (settle === 'ADJUSTED') {
+      const leg = by.get(parsed.strike) ?? emptyLeg();
+      leg.adjusted += 1;
+      by.set(parsed.strike, leg);
+      continue;
+    }
+    if (settle === 'AM') {
+      const leg = by.get(parsed.strike) ?? emptyLeg();
+      const am = leg.am ?? { callOI: 0, putOI: 0, callIv: 0, putIv: 0, callBidPx: 0, callAskPx: 0, putBidPx: 0, putAskPx: 0, callG: 0, putG: 0, gone: settled };
+      const oi = num(row.open_interest);
+      const g = num(row.gamma) * oi;
+      const iv = contractIv(row, expiry);
+      const ok = quoteUsable(row, expiry, now);
+      const bidPx = num(row.nbbo_bid);
+      const askPx = num(row.nbbo_ask);
+      if (parsed.right === 'CALL') {
+        am.callG += g > 0 ? g : 0;
+        am.callOI += oi;
+        if (iv > 0) am.callIv = iv;
+        if (ok && bidPx > 0) am.callBidPx = bidPx;
+        if (ok && askPx > 0) am.callAskPx = askPx;
+      } else {
+        am.putG += g > 0 ? g : 0;
+        am.putOI += oi;
+        if (iv > 0) am.putIv = iv;
+        if (ok && bidPx > 0) am.putBidPx = bidPx;
+        if (ok && askPx > 0) am.putAskPx = askPx;
+      }
+      leg.am = am;
+      by.set(parsed.strike, leg);
+      continue;
+    }
     const oi = num(row.open_interest);
     const vol = num(row.volume);
     const vega = num(row.vega);
@@ -401,6 +493,7 @@ export function foldContracts(rows: UwContract[], expiry: string, now = Date.now
       leg.callVex += keptLeg('C', dollar, oi);
       if (iv > 0) leg.callIv = iv;
       if (gamma > 0) leg.callGamma = gamma;
+      if (gamma > 0) leg.pmCallG += gamma * oi;
     } else {
       leg.putOI += oi;
       leg.putVol += vol;
@@ -414,6 +507,7 @@ export function foldContracts(rows: UwContract[], expiry: string, now = Date.now
       leg.putVex += keptLeg('P', dollar, oi);
       if (iv > 0) leg.putIv = iv;
       if (gamma > 0) leg.putGamma = gamma;
+      if (gamma > 0) leg.pmPutG += gamma * oi;
     }
     by.set(parsed.strike, leg);
   }
@@ -449,16 +543,18 @@ function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: stri
     /* the vendor's columns are scaled at the price and minute they were priced at (v.px, v.at), as the open-interest
        book's are (withLiveGamma) — never the live spot or the wall clock, or Live drifts from Settled with no new rows */
     const vPx = v?.px && v.px > 0 ? v.px : spot;
-    const share = expiry ? sessionShare(expiry, v?.at ?? pricedAt) : 1;
     const dexOf = (x: number) => x / (vPx * 0.01);
-    const chmOf = (x: number) => (x / CHARM_SESSION) * share;
     const callCount = !leg || heldGate ? (leg?.callOI ?? n.callOI) : dealerInventory(leg.callOI, leg.callAsk, leg.callBid, leg.callMulti, leg.callVol);
     const putCount = !leg || heldGate ? (leg?.putOI ?? n.putOI) : dealerPuts(leg.putOI, leg.putAsk, leg.putBid, leg.putMulti, leg.putVol);
-    const gex = v?.asks && !heldGate ? { call: add3('C', true, ident, v.g[0], v.g[1], v.g[2]), put: add3('P', true, ident, v.g[3], v.g[4], v.g[5]) } : { call: n.callGex, put: n.putGex };
+    /* settled AM contracts' share of the vendor's columns comes off, as off the open-interest row (cutGex) */
+    const cutC = 1 - (n.cut?.call ?? 0);
+    const cutP = 1 - (n.cut?.put ?? 0);
+    const gex = v?.asks && !heldGate ? { call: add3('C', true, x => x * cutC, v.g[0], v.g[1], v.g[2]), put: add3('P', true, x => x * cutP, v.g[3], v.g[4], v.g[5]) } : { call: n.callGex, put: n.putGex };
     const dex = v?.asks && !heldGate ? { call: add3('C', false, dexOf, v.d[0], v.d[1], v.d[2]), put: add3('P', false, dexOf, v.d[3], v.d[4], v.d[5]) } : { call: n.callDex, put: n.putDex };
-    const charm = v?.asks && !heldGate ? { call: add3('C', true, chmOf, v.c[0], v.c[1], v.c[2]), put: add3('P', true, chmOf, v.c[3], v.c[4], v.c[5]) } : { call: n.callCharm, put: n.putCharm };
     const callBs = n.callIv && n.callIv > 0 && years > 0 ? blackScholesGreeks(priceSpot, n.strike, years, n.callIv, r, q) : null;
     const putBs = n.putIv && n.putIv > 0 && years > 0 ? blackScholesGreeks(priceSpot, n.strike, years, n.putIv, r, q) : null;
+    /* charm off the contracts, like vanna: the flow count × Black-Scholes charm per session × S (see paintLegs) */
+    const charm = v?.asks && !heldGate ? { call: callBs ? keptLeg('C', (callBs.charmCall / 252) * 100 * spot, callCount) : n.callCharm, put: putBs ? keptLeg('P', (putBs.charmPut / 252) * 100 * spot, putCount) : n.putCharm } : { call: n.callCharm, put: n.putCharm };
     if (ticker && v?.asks && callBs && callCount !== 0) {
       const key = `${ticker}|${nyIsoDate()}`;
       if (!loggedFlow.has(key)) {
@@ -473,10 +569,34 @@ function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: stri
     /* vanna off the contracts, like vega: the flow count × Black-Scholes vanna × S per quoted vol point (the vendor's
        vanna columns are not one unit across names) — the open-interest figure when the gate holds */
     const vanna = v?.asks && !heldGate ? { call: callBs ? keptLeg('C', callBs.vanna * spot * volPt, callCount) : n.callVanna, put: putBs ? keptLeg('P', putBs.vanna * spot * volPt, putCount) : n.putVanna } : { call: n.callVanna, put: n.putVanna };
-    const hc = callBs ? contractHigher(priceSpot, n.strike, years, n.callIv ?? 0, callCount, 'C', volPt) : null;
-    const hp = putBs ? contractHigher(priceSpot, n.strike, years, n.putIv ?? 0, putCount, 'P', volPt) : null;
-    const higher = { color: { call: hc?.color ?? 0, put: hp?.color ?? 0 }, vomma: { call: hc?.vomma ?? 0, put: hp?.vomma ?? 0 }, speed: { call: hc?.speed ?? 0, put: hp?.speed ?? 0 }, veta: { call: hc?.veta ?? 0, put: hp?.veta ?? 0 }, zomma: { call: hc?.zomma ?? 0, put: hp?.zomma ?? 0 } };
-    drafts.push({ n, held: heldGate, outside, gex, dex, vanna, charm, vex: { call: callBs ? keptLeg('C', callBs.vega * 100 * volPt, callCount) : n.callVex, put: putBs ? keptLeg('P', putBs.vega * 100 * volPt, putCount) : n.putVex }, pack: higher });
+    const hc = callBs ? contractHigher(priceSpot, n.strike, years, n.callIv ?? 0, callCount, 'C', volPt, r, q) : null;
+    const hp = putBs ? contractHigher(priceSpot, n.strike, years, n.putIv ?? 0, putCount, 'P', volPt, r, q) : null;
+    /* the live AM contracts at their open interest, on their own clock (no flow inventory is kept for them) */
+    const amH = expiry ? amStrikeHigher(priceSpot, n, expiry, pricedAt, r, q) : null;
+    const higher = addHigher({ color: { call: hc?.color ?? 0, put: hp?.color ?? 0 }, vomma: { call: hc?.vomma ?? 0, put: hp?.vomma ?? 0 }, speed: { call: hc?.speed ?? 0, put: hp?.speed ?? 0 }, veta: { call: hc?.veta ?? 0, put: hp?.veta ?? 0 }, zomma: { call: hc?.zomma ?? 0, put: hp?.zomma ?? 0 } }, amH)!;
+    const tAm = n.am && expiry ? amTradingYears(expiry, pricedAt) : null;
+    const amPt = expiry ? amVolPoint(expiry, pricedAt) : 1;
+    const ca = n.am && tAm != null && n.am.callIv > 0 ? blackScholesGreeks(priceSpot, n.strike, tAm, n.am.callIv, r, q) : null;
+    const pa = n.am && tAm != null && n.am.putIv > 0 ? blackScholesGreeks(priceSpot, n.strike, tAm, n.am.putIv, r, q) : null;
+    const amC = n.am?.callOI ?? 0;
+    const amP = n.am?.putOI ?? 0;
+    const flowSide = v?.asks && !heldGate;
+    const vex = { call: callBs ? keptLeg('C', callBs.vega * 100 * volPt, callCount) : n.callVex, put: putBs ? keptLeg('P', putBs.vega * 100 * volPt, putCount) : n.putVex };
+    if (ca && amC) {
+      vex.call += keptLeg('C', ca.vega * 100 * amPt, amC);
+      if (flowSide) {
+        vanna.call += keptLeg('C', ca.vanna * spot * amPt, amC);
+        charm.call += keptLeg('C', (ca.charmCall / 252) * 100 * spot, amC);
+      }
+    }
+    if (pa && amP) {
+      vex.put += keptLeg('P', pa.vega * 100 * amPt, amP);
+      if (flowSide) {
+        vanna.put += keptLeg('P', pa.vanna * spot * amPt, amP);
+        charm.put += keptLeg('P', (pa.charmPut / 252) * 100 * spot, amP);
+      }
+    }
+    drafts.push({ n, held: heldGate, outside, gex, dex, vanna, charm, vex, pack: higher });
   }
   let biggest = 0;
   for (const d of drafts) biggest = Math.max(biggest, Math.abs(d.n.netGex), Math.abs(d.gex.call + d.gex.put));
@@ -498,9 +618,9 @@ function stampFlow(nodes: StrikeNode[], book: Map<number, LegBook>, expiry: stri
       vex = { call: d.n.callVex, put: d.n.putVex };
       const cN = d.n.callBook ?? d.n.callOI;
       const pN = d.n.putBook ?? d.n.putOI;
-      const hc = years > 0 && (d.n.callIv ?? 0) > 0 ? contractHigher(priceSpot, d.n.strike, years, d.n.callIv ?? 0, cN, 'C', volPt) : null;
-      const hp = years > 0 && (d.n.putIv ?? 0) > 0 ? contractHigher(priceSpot, d.n.strike, years, d.n.putIv ?? 0, pN, 'P', volPt) : null;
-      higher = { color: { call: hc?.color ?? 0, put: hp?.color ?? 0 }, vomma: { call: hc?.vomma ?? 0, put: hp?.vomma ?? 0 }, speed: { call: hc?.speed ?? 0, put: hp?.speed ?? 0 }, veta: { call: hc?.veta ?? 0, put: hp?.veta ?? 0 }, zomma: { call: hc?.zomma ?? 0, put: hp?.zomma ?? 0 } };
+      const hc = years > 0 && (d.n.callIv ?? 0) > 0 ? contractHigher(priceSpot, d.n.strike, years, d.n.callIv ?? 0, cN, 'C', volPt, r, q) : null;
+      const hp = years > 0 && (d.n.putIv ?? 0) > 0 ? contractHigher(priceSpot, d.n.strike, years, d.n.putIv ?? 0, pN, 'P', volPt, r, q) : null;
+      higher = addHigher({ color: { call: hc?.color ?? 0, put: hp?.color ?? 0 }, vomma: { call: hc?.vomma ?? 0, put: hp?.vomma ?? 0 }, speed: { call: hc?.speed ?? 0, put: hp?.speed ?? 0 }, veta: { call: hc?.veta ?? 0, put: hp?.veta ?? 0 }, zomma: { call: hc?.zomma ?? 0, put: hp?.zomma ?? 0 } }, expiry ? amStrikeHigher(priceSpot, d.n, expiry, pricedAt, r, q) : null)!;
     }
     d.n.flow = { gex, dex, vex, vanna, charm, ...higher, disagree: show && flowNet !== 0 && d.n.netGex !== 0 && Math.sign(flowNet) !== Math.sign(d.n.netGex), held: !show, outside: d.outside };
   }
@@ -531,6 +651,26 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
       n.callOI = leg.callOI;
       n.putOI = leg.putOI;
     }
+    /* an index's AM monthly at this strike: live, its open interest counts and its own clock is kept (n.am); settled,
+       its share of the vendor row's gamma comes off (n.cut) — core/settle.ts */
+    delete n.am;
+    delete n.cut;
+    const am = leg.am;
+    if (am) {
+      const callShare = amShare(am.callG, leg.pmCallG, am.callOI, leg.callOI);
+      const putShare = amShare(am.putG, leg.pmPutG, am.putOI, leg.putOI);
+      if (am.gone) {
+        if (callShare > 0 || putShare > 0) n.cut = { call: callShare, put: putShare };
+      } else {
+        n.am = { callOI: am.callOI, putOI: am.putOI, callIv: 0, putIv: 0, callShare, putShare };
+        if (oi) {
+          n.callOI += am.callOI;
+          n.putOI += am.putOI;
+        }
+      }
+    }
+    const laid = cutGex(n);
+    if (laid) Object.assign(n, laid);
     if (leg.callIv > 0) n.callIv = leg.callIv;
     if (leg.putIv > 0) n.putIv = leg.putIv;
     if (leg.callGamma > 0) n.callGamma = leg.callGamma;
@@ -550,6 +690,14 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
       if (!leg) continue;
       if (leg.callIv > 0 || (leg.callBidPx > 0 && leg.callAskPx > 0)) n.callIv = ivOnTradingClock(leg.callBidPx, leg.callAskPx, leg.callIv, ivPx, n.strike, expiry, 'C', priced.at, carry?.r, carry?.q);
       if (leg.putIv > 0 || (leg.putBidPx > 0 && leg.putAskPx > 0)) n.putIv = ivOnTradingClock(leg.putBidPx, leg.putAskPx, leg.putIv, ivPx, n.strike, expiry, 'P', priced.at, carry?.r, carry?.q);
+      /* the AM contracts' vols on THEIR clock (to 09:30 of the date); a strike only the AM root lists takes it as its own */
+      const am = leg.am;
+      if (n.am && am) {
+        n.am.callIv = am.callIv > 0 || (am.callBidPx > 0 && am.callAskPx > 0) ? amIvOnTradingClock(am.callBidPx, am.callAskPx, am.callIv, ivPx, n.strike, expiry, 'C', priced.at, carry?.r, carry?.q) : 0;
+        n.am.putIv = am.putIv > 0 || (am.putBidPx > 0 && am.putAskPx > 0) ? amIvOnTradingClock(am.putBidPx, am.putAskPx, am.putIv, ivPx, n.strike, expiry, 'P', priced.at, carry?.r, carry?.q) : 0;
+        if (!(leg.callIv > 0 || (leg.callBidPx > 0 && leg.callAskPx > 0)) && n.am.callIv > 0) n.callIv = n.am.callIv;
+        if (!(leg.putIv > 0 || (leg.putBidPx > 0 && leg.putAskPx > 0)) && n.am.putIv > 0) n.putIv = n.am.putIv;
+      }
     }
   }
   smoothSide(painted, 'callIv');
@@ -562,6 +710,10 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
     }
   }
   if (!(spot > 0) || !(t > 0)) return painted;
+  /* the AM contracts' own clock (to 09:30 of the date; null once settled) and vol point */
+  const tAm = expiry ? amTradingYears(expiry, priced.at) : null;
+  const volPtAm = expiry ? amVolPoint(expiry, priced.at) : 1;
+  void amCalendarYears;
   let volSum = 0;
   let bareSum = 0;
   const closes: CloseRow[] = [];
@@ -601,16 +753,47 @@ export function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBoo
     else n.putVex = 0;
     const v = n.vendor;
     const carried = (xs: readonly number[] | undefined) => !!xs && (xs[0] !== 0 || xs[3] !== 0);
-    if (!carried(v?.d)) {
+    /* the vendor's delta rows still hold settled AM contracts (n.cut): the PM contracts' own delta stands instead */
+    const dexOwn = !carried(v?.d) || !!n.cut;
+    if (dexOwn) {
       n.callDex = call && callN !== 0 ? keptLeg('C', call.deltaCall * 100 * spot, callN) : 0;
       n.putDex = put && putN !== 0 ? keptLeg('P', put.deltaPut * 100 * spot, putN) : 0;
     }
     /* vanna always off the contracts, whatever the rows carried: vanna × S × OI per quoted vol point */
     n.callVanna = call && callN !== 0 ? keptLeg('C', call.vanna * spot * volPt, callN) : 0;
     n.putVanna = put && putN !== 0 ? keptLeg('P', put.vanna * spot * volPt, putN) : 0;
-    if (!carried(v?.c)) {
-      n.callCharm = call && callN !== 0 ? keptLeg('C', (call.charmCall / 252) * 100 * spot, callN) : 0;
-      n.putCharm = put && putN !== 0 ? keptLeg('P', (put.charmPut / 252) * 100 * spot, putN) : 0;
+    /* charm off the contracts too, at the same vol and clock as vanna and vega (audit 2026-11-06). The vendor's charm_oi
+       is its own delta model's: its unit and clock are the house's (charm_oi ÷ CHARM_SESSION × T_cal/T_trade lands within
+       0.3% of Black-Scholes at the vendor's own vol where its delta agrees — SPY 10/29 765P −28.25M against −28.30M,
+       778C −8.128M against −8.128M), but near the money on an expiring date its delta is not Black-Scholes at any vol the
+       contract quotes (SPY 764C Δ 0.858 against 0.911 at its own vol), and its charm ran 5–40% off the re-pricing at the
+       contract's quote-implied vol, the 772C with the other sign (−0.53M against +0.54M). The rows' charm stands in only
+       until the date's contracts are read, or where a leg has no vol to price. */
+    if (call && callN !== 0) n.callCharm = keptLeg('C', (call.charmCall / 252) * 100 * spot, callN);
+    else if (!carried(v?.c) || callN === 0) n.callCharm = 0;
+    if (put && putN !== 0) n.putCharm = keptLeg('P', (put.charmPut / 252) * 100 * spot, putN);
+    else if (!carried(v?.c) || putN === 0) n.putCharm = 0;
+    /* the live AM contracts, each on its own clock and vol (book/scale.ts foldContracts) */
+    if (n.am && tAm != null) {
+      const a = n.am;
+      const ca = a.callIv > 0 && a.callOI !== 0 ? blackScholesGreeks(spotPx, n.strike, tAm, a.callIv, carry?.r, carry?.q) : null;
+      const pa = a.putIv > 0 && a.putOI !== 0 ? blackScholesGreeks(spotPx, n.strike, tAm, a.putIv, carry?.r, carry?.q) : null;
+      /* what the AM contracts add is kept (am.added), to come off when they settle before the contracts are read again */
+      const added = { callVex: 0, putVex: 0, callVanna: 0, putVanna: 0, callCharm: 0, putCharm: 0, callDex: 0, putDex: 0 };
+      if (ca) {
+        added.callVex = keptLeg('C', ca.vega * 100 * volPtAm, a.callOI);
+        added.callVanna = keptLeg('C', ca.vanna * spot * volPtAm, a.callOI);
+        added.callCharm = keptLeg('C', (ca.charmCall / 252) * 100 * spot, a.callOI);
+        if (dexOwn) added.callDex = keptLeg('C', ca.deltaCall * 100 * spot, a.callOI);
+      }
+      if (pa) {
+        added.putVex = keptLeg('P', pa.vega * 100 * volPtAm, a.putOI);
+        added.putVanna = keptLeg('P', pa.vanna * spot * volPtAm, a.putOI);
+        added.putCharm = keptLeg('P', (pa.charmPut / 252) * 100 * spot, a.putOI);
+        if (dexOwn) added.putDex = keptLeg('P', pa.deltaPut * 100 * spot, a.putOI);
+      }
+      for (const k of Object.keys(added) as (keyof typeof added)[]) n[k] += added[k];
+      n.am = { ...a, added };
     }
     n.netVex = n.callVex + n.putVex;
     n.netDex = n.callDex + n.putDex;
@@ -641,11 +824,11 @@ export function pricedClockOf(nodes: readonly StrikeNode[]): { at: number; px: n
 
 /** One expiry's book off the vendor's raw rows, the path a live date takes (spot-exposures/expiry-strike gamma, then
     the date's option-contracts laid on). For the proofs (scripts/gamma-sign-proof.ts). */
-export function expiryBookFromRows(spotRows: unknown, contracts: UwContract[], spot: number, expiry: string): StrikeNode[] {
+export function expiryBookFromRows(spotRows: unknown, contracts: UwContract[], spot: number, expiry: string, ticker = ''): StrikeNode[] {
   const live: LiveGamma = new Map();
   liveGammaRows(spotRows, live);
   const chain = withLiveGamma([], live, expiry);
-  return contracts.length ? paintLegs(chain, foldContracts(contracts, expiry, pricedClockOf(chain).at), true, spot, expiry) : chain;
+  return contracts.length ? paintLegs(chain, foldContracts(contracts, expiry, pricedClockOf(chain).at, ticker), true, spot, expiry, ticker) : chain;
 }
 
 function smoothSide(nodes: StrikeNode[], key: 'callIv' | 'putIv'): void {
@@ -659,7 +842,7 @@ function smoothSide(nodes: StrikeNode[], key: 'callIv' | 'putIv'): void {
 
 /** A date's chain read again keeps the contract facts its last read was painted with (vols, per-contract gamma, open
     interest, vega) until its contracts are read again — a refresh never drops the flip back to the at-the-money vol */
-export function carryFacts(next: StrikeNode[], prev: readonly StrikeNode[] | undefined): StrikeNode[] {
+export function carryFacts(next: StrikeNode[], prev: readonly StrikeNode[] | undefined, expiry = ''): StrikeNode[] {
   if (!prev?.length) return next;
   const at = new Map(prev.map(n => [n.strike, n]));
   return next.map(n => {
@@ -679,7 +862,19 @@ export function carryFacts(next: StrikeNode[], prev: readonly StrikeNode[] | und
       callVex: n.callBook != null || n.putBook != null ? n.callVex : o.callVex || n.callVex,
       putVex: n.callBook != null || n.putBook != null ? n.putVex : o.putVex || n.putVex,
       netVex: n.callBook != null || n.putBook != null ? n.callVex + n.putVex : (o.callVex || n.callVex) + (o.putVex || n.putVex),
+      /* the roots' split (core/settle.ts) until the contracts are read again — a settled AM share stays off the row */
+      am: n.am ?? o.am,
+      cut: n.cut ?? o.cut,
     };
+  }).map(n => {
+    /* AM contracts carried live past their 09:30 settlement (the new rows' clock): their share comes off from now */
+    if (n.am && expiry && amGone(expiry, pricedClockOf(next).at)) {
+      const { am, ...rest } = n;
+      n = { ...rest, cut: { call: am.callShare, put: am.putShare }, callOI: Math.max(0, n.callOI - am.callOI), putOI: Math.max(0, n.putOI - am.putOI) };
+    }
+    if (!n.cut) return n;
+    const laid = cutGex(n);
+    return laid ? { ...n, ...laid } : n;
   });
 }
 

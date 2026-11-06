@@ -12,6 +12,7 @@ import { uwCall, type UwAnswer } from '../whales';
 import { feedHeaders } from '../feedGate';
 import { PREMARKET_MIN } from './load';
 import { num, parseOcc } from './scale';
+import { occRoot, settleOf } from '../../core/settle';
 import { emit, isHot } from './store';
 import { addDays, isSessionDay, regularCloseMin, sessionDayAtOrBefore } from '../../core/session';
 
@@ -204,6 +205,8 @@ async function readMovers(t: string, depth: 'top' | 'full'): Promise<OiChange | 
         const diff = num(r.oi_diff_plain);
         if (order === 'desc' ? diff <= 0 : diff >= 0) reachedZero = true;
         if (!occ || !diff || seen.has(sym)) continue;
+        /* an adjusted root (AAPL1: not 100 shares) is not the name's contract — the book does not count it (core/settle.ts) */
+        if (settleOf(t, occRoot(sym)) === 'ADJUSTED') continue;
         seen.add(sym);
         const cd = String(r.curr_date ?? '');
         const ld = String(r.last_date ?? '');

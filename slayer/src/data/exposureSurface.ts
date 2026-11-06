@@ -9,8 +9,9 @@ import { nyIsoDate } from '../core/nyTime';
 import { expiryOpen } from '../core/tradingYear';
 import { expiryLabel } from './book/levels';
 import { peekIv } from './book/move';
-import { HIGHER_KEYS, chainClock, contractHigher, strikeHigher, type HigherKey } from './liveHigher';
+import { HIGHER_KEYS, addHigher, amStrikeHigher, chainClock, contractHigher, strikeHigher, type HigherKey } from './liveHigher';
 import { pickLegWalls } from '../core/walls';
+import { carryFor } from '../core/carry';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
 import type { ExposureLevels, ExposureProfileData } from '../types/gex';
 
@@ -18,8 +19,9 @@ import type { ExposureLevels, ExposureProfileData } from '../types/gex';
 export type Greek = 'gex' | 'dex' | 'vex' | 'vanna' | 'charm' | 'color' | 'vomma' | 'speed' | 'veta' | 'zomma';
 export type BookMode = 'oi' | 'flow';
 export const GREEKS: Greek[] = ['gex', 'dex', 'vex', 'vanna', 'charm', 'color', 'vomma', 'speed', 'veta', 'zomma'];
-/** Needs the option-contracts read. Spot GEX, DEX and charm do not; vanna does (book/scale.ts prices it off the
-    contracts — the vendor's vanna unit is not one unit across names). */
+/** Needs the option-contracts read. Spot GEX, DEX and charm do not (charm stands in off the vendor's rows until the
+    contracts are read, then is priced off them); vanna does (book/scale.ts prices it off the contracts — the vendor's
+    vanna unit is not one unit across names). */
 const CONTRACT_GREEKS: ReadonlySet<Greek> = new Set<Greek>(['vex', 'vanna', 'color', 'vomma', 'speed', 'veta', 'zomma']);
 export const isContractGreek = (g: Greek): boolean => CONTRACT_GREEKS.has(g);
 
@@ -246,6 +248,7 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow, mode: BookMod
   const closed: boolean[] = [];
   const miss: boolean[][] = [];
   let skipped = 0;
+  const carry = carryFor(snapshot.ticker);
   const higherCols: Array<Map<number, Record<HigherKey, { call: number; put: number }>> | null> = cols.map((col, i) => {
     const blankMiss = strikes.map(() => false);
     miss.push(blankMiss);
@@ -253,7 +256,7 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow, mode: BookMod
       closed.push(false);
       return null;
     }
-    const { years: t, volPt } = chainClock(col.chain, col.date);
+    const { years: t, volPt, at: clockAt } = chainClock(col.chain, col.date);
     /* No time left is not a zero. The column is marked closed and the cells stay blank. */
     if (t == null) {
       closed.push(true);
@@ -265,8 +268,9 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow, mode: BookMod
     const at = new Map(strikes.map((s, si) => [s, si]));
     for (const node of col.chain) {
       if (!want.has(node.strike)) continue;
-      const callN = node.callBook ?? node.callOI;
-      const putN = node.putBook ?? node.putOI;
+      /* the PM contracts on the date's clock; the live AM contracts (node.am) on theirs, added below */
+      const callN = node.callBook ?? node.callOI - (node.am?.callOI ?? 0);
+      const putN = node.putBook ?? node.putOI - (node.am?.putOI ?? 0);
       const callOk = (node.callIv ?? 0) > 0 && (node.callIv ?? 0) <= 3;
       const putOk = (node.putIv ?? 0) > 0 && (node.putIv ?? 0) <= 3;
       let dropped = false;
@@ -282,7 +286,7 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow, mode: BookMod
       if (si != null && dropped) blankMiss[si] = true;
       const h = mode === 'flow' && node.flow
         ? { color: node.flow.color, vomma: node.flow.vomma, speed: node.flow.speed, veta: node.flow.veta, zomma: node.flow.zomma }
-        : strikeHigher(pricedSpot, node.strike, t, node.callIv, node.putIv, callN, putN, volPt);
+        : addHigher(strikeHigher(pricedSpot, node.strike, t, node.callIv, node.putIv, callN, putN, volPt, carry.r, carry.q), amStrikeHigher(pricedSpot, node, col.date, clockAt, carry.r, carry.q));
       if (h) m.set(node.strike, h);
     }
     return m;
