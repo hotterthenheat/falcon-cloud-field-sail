@@ -30,12 +30,19 @@ def load_res(phases):
     return pd.DataFrame(rows)
 
 
-def day_types():
+def day_types(days):
+    """|SPX 09:30 open -> 15:59 close| per DEV day; only the months of DEV days are opened (never a LOCKED month)."""
     import sim
+    from common import assert_open
     out = {}
-    for f in sorted(glob.glob(os.path.join(sim.ROOT, 'bars', 'SPX', '*.parquet'))):
+    for mon in sorted({d[:7] for d in days}):
+        f = os.path.join(sim.ROOT, 'bars', 'SPX', f'{mon}.parquet')
+        if not os.path.exists(f):
+            continue
         b = pd.read_parquet(f)
+        b = b[b.d.isin(set(days)) & (b.o > 0) & (b.c > 0)]
         for d, g in b.groupby('d'):
+            assert_open(d)
             g = g.sort_values('m')
             o, c = g[g.m == 570].o, g[g.m <= 959].c
             if len(o) and len(c):
@@ -103,7 +110,7 @@ def filter_shuffle(sub, base, n_draw=1000, seed=13):
 def main():
     ev = pd.read_parquet(os.path.join(OUT, 'events_DEV.parquet'))
     res = load_res(['P1', 'P2', 'P3', 'P4'])
-    dtypes = day_types()
+    dtypes = day_types(sorted(ev.day.unique()))
     ev['year'] = ev.day.str[:4]
     ev['daytype'] = ev.day.map(dtypes)
     ev['right'] = np.where(ev.side > 0, 'call', 'put')
