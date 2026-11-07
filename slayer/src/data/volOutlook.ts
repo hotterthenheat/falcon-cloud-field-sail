@@ -585,6 +585,10 @@ export function keptRun(have: Sessions | null, start: string): Sessions {
   return { days: have.days.filter(d => d.day >= start), tail: have.tail };
 }
 
+/** Spans one name's readSessions reads at once (the server's lanes count the first name at this width,
+    data/volOutlookServer.ts room) */
+export const SPAN_READS = 2;
+
 /** Bring a name's sessions up to `last`: the kept run (keptRun), then the missing sessions read (28 days of minute bars
     at a time, thetaTape spansOf, two reads at a time, so one name never holds the page's history slots) and digested
     onto its tail.
@@ -622,7 +626,7 @@ export async function readSessions(
       onProgress?.(done, spans.length);
     }
   };
-  await Promise.all([worker(), worker()]);
+  await Promise.all(Array.from({ length: SPAN_READS }, () => worker()));
   if (offline) return { days, tail, offline: true, read: false };
   const byDay = new Map<string, MinuteBar[]>();
   for (const part of got) for (const [day, list] of part) byDay.set(day, [...(byDay.get(day) ?? []), ...list]);
