@@ -1,0 +1,40 @@
+diff --git a/slayer/src/components/gex/gexNodesPrimitive.ts b/slayer/src/components/gex/gexNodesPrimitive.ts
+index 8a2a6ca..d1d4ce3 100644
+--- a/slayer/src/components/gex/gexNodesPrimitive.ts
++++ b/slayer/src/components/gex/gexNodesPrimitive.ts
+@@ -5,7 +5,7 @@ import { dealerOf } from '../../core/dealerSign';
+ import type { NodeLook } from '../../data/deskPrefs';
+ import { NODE_CAP, NODE_SHARE, selectNodeStrikes, type KeptLevel } from './nodeStrikes';
+ import type { NodeConcept } from './nodeConcept';
+-import { fitEdgeLabels } from './edgeLabelFit';
++import { PHONE_ROW_PX, fitEdgeLabels } from './edgeLabelFit';
+ import { heatInks, heatPalette, layoutHeatLabels, onHeatPalette, paintHeatLabels, type HeatLabel } from './nodeHeat';
+ 
+ /*
+@@ -486,6 +486,8 @@ class FieldRenderer {
+                mark, as the references star theirs), never two within STAR_GAP of each other */
+             const STAR_MIN = 26 * hr;
+             const STAR_GAP = 56 * hr;
++            /* the labels' column at the edge: a crown taken under it is named there ("★ Top"), not starred */
++            const STAR_CLEAR = Math.min(150, wCss * 0.3);
+             let lastStar = -Infinity;
+             const g0 = src.groundRgb();
+             const star = (cx: number, cy: number, rad: number) => {
+@@ -533,7 +535,7 @@ class FieldRenderer {
+                 bctx.fillStyle = `rgba(${crown[0]},${crown[1]},${crown[2]},${light ? 0.6 : 0.5})`;
+                 bctx.fillRect(runL, yT, runR - runL, lw);
+                 bctx.fillRect(runL, yB - lw, runR - runL, lw);
+-                if (runR - runL >= STAR_MIN && runL - lastStar >= STAR_GAP) {
++                if (runR - runL >= STAR_MIN && runL - lastStar >= STAR_GAP && runL < (wCss - STAR_CLEAR) * hr) {
+                   lastStar = runL;
+                   star(runL + 7 * hr, mid, Math.max(3.6, Math.min(5.5, ((y1 - y0) / vr) * 0.9)) * hr);
+                 }
+@@ -1051,7 +1053,7 @@ class NodesRenderer {
+     const priceY = lastBar?.close != null ? yOf(lastBar.close) : null;
+     const fit = fitEdgeLabels(
+       tags.map((t, i) => ({ id: String(i), y: t.y, prio: t.prio, keep: t.keep })),
+-      { h: TAG_H, gap: 2, top: src.chromeInset + 2, bottom: paneH - 2, reserved: priceY != null ? [{ lo: priceY - TAG_H / 2, hi: priceY + TAG_H / 2 }] : [] },
++      { h: TAG_H, gap: 2, top: src.chromeInset + 2, bottom: paneH - 2, rowPx: paneW < 480 ? PHONE_ROW_PX : undefined, reserved: priceY != null ? [{ lo: priceY - TAG_H / 2, hi: priceY + TAG_H / 2 }] : [] },
+     );
+     const fitted = fit.map(p => ({ ...tags[Number(p.id)], ty: p.ty }));
+     tags.length = 0;
