@@ -153,6 +153,7 @@ const MapDesk = lazy(() => import('./pages/pinpoint/MapDesk'));
 const Agenda = lazy(() => import('./pages/pinpoint/Agenda'));
 const Board = lazy(() => import('./pages/pinpoint/Board'));
 const Compare = lazy(() => import('./pages/pinpoint/Compare'));
+const Books = lazy(() => import('./pages/pinpoint/Books'));
 const TraceLayout = lazy(() => import('./pages/trace/TraceLayout'));
 const LiveTape = lazy(() => import('./pages/trace/LiveTape'));
 const OptionsScreener = lazy(() => import('./pages/trace/OptionsScreener'));
@@ -332,6 +333,7 @@ const App = () => {
               <Route path="wall" element={<Navigate to="/pinpoint/map" replace />} />
               <Route path="targets" element={<Navigate to="/pinpoint/agenda" replace />} />
               <Route path="board" element={<Board />} />
+              <Route path="books" element={<Books />} />
               <Route path="compare" element={<Compare />} />
               <Route path="ranked-targets" element={<Navigate to="/pinpoint/agenda" replace />} />
               {['exposure-profile', 'session', 'history', 'oi-heat', 'strike-profile', 'vanna-charm', 'expiry-ladder', 'greek-surfaces', 'pain-map', 'model-error', 'vol-lab'].map(p => (

@@ -254,7 +254,7 @@ function railForCut(ticker: string, cut: RailCut, mode: BookMode = 'oi'): RailDa
         })();
   const pack = chainForDate(ticker, date);
   if (!pack || !(spot != null && spot > 0) || pack.nodes.length === 0) return blank;
-  /* the desk's Open interest / Flow toggle (data/bookMode.ts): on Open interest the chain itself */
+  /* the open-interest book only (data/bookMode.ts): the chain itself */
   const nodes = nodesInMode(ticker, pack.nodes, mode);
   const legs = new Map<number, { put: number; call: number }>();
   const rows = nodes

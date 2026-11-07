@@ -21,7 +21,9 @@ import { model1Board, UW_FIELDS } from '../../src/data/twobook/model1';
 const ticker = (process.argv[2] ?? 'SPY').toUpperCase();
 const indexPrint = Number(process.argv[3] ?? NaN);
 const SOFR_R = Number(process.env.SOFR_R ?? 0.0399);
-const dir = join('.cache', 'tb', 'uw', ticker);
+const date = process.env.UW_DATE ?? '';
+const dq = date ? `?date=${date}` : '';
+const dir = join('.cache', 'tb', 'uw', date ? `${ticker}_${date}` : ticker);
 mkdirSync(dir, { recursive: true });
 const env = Object.fromEntries(
   readFileSync('/tmp/qa/keys.env', 'utf8')
@@ -76,10 +78,10 @@ const q = (a: number[], p: number) => {
 };
 const e = (x: number) => (Number.isFinite(x) ? x.toExponential(4) : String(x));
 
-const es = await walk(`/stock/${ticker}/spot-exposures/expiry-strike`);
-const st = await walk(`/stock/${ticker}/spot-exposures/strike`);
-const stats = JSON.parse(await uw(`/stock/${ticker}/volatility/stats`)).data;
-const oc = await walk(`/stock/${ticker}/option-contracts`);
+const es = await walk(`/stock/${ticker}/spot-exposures/expiry-strike${dq}`);
+const st = await walk(`/stock/${ticker}/spot-exposures/strike${dq}`);
+const stats = JSON.parse(await uw(`/stock/${ticker}/volatility/stats${dq}`)).data;
+const oc = await walk(`/stock/${ticker}/option-contracts${dq}`);
 const out: Record<string, unknown> = { ticker };
 console.log(`${ticker}: expiry-strike ${es.rows.length} rows in ${es.pages} pages; strike ${st.rows.length} rows in ${st.pages} pages; option-contracts ${oc.rows.length} rows in ${oc.pages} pages; IV30 ${stats.iv} (${stats.date})`);
 
@@ -119,7 +121,7 @@ const exps = [...new Set(es.rows.map(r => String(r.expiry)))].sort();
 const longDated = exps.filter(x => Date.parse(`${x}T21:00:00Z`) - at > 60 * 86_400_000).slice(0, 2);
 const ratios: Record<string, number[]> = { gamma: [], delta: [], vanna: [], charm: [] };
 for (const x of longDated) {
-  const g = rows(await uw(`/stock/${ticker}/greeks?expiry=${x}`));
+  const g = rows(await uw(`/stock/${ticker}/greeks?expiry=${x}${date ? `&date=${date}` : ''}`));
   const byK = new Map(es.rows.filter(r => r.expiry === x && r.time === es.rows[0].time).map(r => [num(r.strike), r]));
   for (const r of g) {
     const k = num(r.strike);

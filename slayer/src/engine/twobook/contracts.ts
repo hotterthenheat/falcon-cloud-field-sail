@@ -12,6 +12,7 @@
    Time: T = calendar minutes to the settlement instant / (365 × 1440), D = 365 (§1.1). Pure. */
 
 import { nyInstant, nyWall } from '../../../shared/marketSession.mjs';
+import { SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../../core/nyTime';
 
 export const D = 365;
 export const MINUTES_PER_YEAR = D * 1440;
@@ -72,7 +73,7 @@ export function contractSpec(root: string, ticker?: string): ContractSpec | null
 }
 
 /** The instant the engine's clock runs to: 16:00 ET (PM) or 09:30 ET (AM) on the expiration date */
-export const settlementMs = (spec: Pick<ContractSpec, 'settlement'>, expiry: string): number => nyInstant(expiry, spec.settlement === 'AM' ? 9 * 60 + 30 : 16 * 60);
+export const settlementMs = (spec: Pick<ContractSpec, 'settlement'>, expiry: string): number => nyInstant(expiry, spec.settlement === 'AM' ? SESSION_OPEN_MIN : SESSION_CLOSE_MIN);
 
 /** T in years from `nowMs` to the contract's settlement (≤ 0 once there: EXPIRED, §1.5) */
 export const yearsTo = (spec: Pick<ContractSpec, 'settlement'>, expiry: string, nowMs: number): number => (settlementMs(spec, expiry) - nowMs) / 60_000 / MINUTES_PER_YEAR;
@@ -96,7 +97,7 @@ export type UwRowAction = 'INCLUDE' | 'DROP' | 'FLAG_AM';
 export function uwRowAction(snapshotMs: number, expiry: string, amSettlementDay: boolean): UwRowAction {
   const w = nyWall(snapshotMs);
   if (expiry < w.iso) return 'DROP';
-  if (expiry === w.iso && w.min >= 16 * 60) return 'DROP';
-  if (expiry === w.iso && amSettlementDay && w.min >= 9 * 60 + 30) return 'FLAG_AM';
+  if (expiry === w.iso && w.min >= SESSION_CLOSE_MIN) return 'DROP';
+  if (expiry === w.iso && amSettlementDay && w.min >= SESSION_OPEN_MIN) return 'FLAG_AM';
   return 'INCLUDE';
 }

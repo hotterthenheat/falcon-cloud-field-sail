@@ -109,6 +109,7 @@ const PROOFS = [
   'greeks-fd-proof',
   'twobook-proof',
   'twobook-mutation-proof.mjs',
+  'twobook-server-proof',
   'settle-roots-proof',
   'flip-complete-proof',
   'flip-coverage-proof',

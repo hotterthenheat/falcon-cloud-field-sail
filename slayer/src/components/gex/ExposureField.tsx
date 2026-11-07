@@ -66,7 +66,7 @@ import CompanyLogo from '../ui/CompanyLogo';
 import TickerSearch from '../ui/TickerSearch';
 import { useFadeClose } from '../ui/useFadeClose';
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
-import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
+import { type StrikeWindow } from '../../data/exposure';
 import { LEVELS_OPTIONS, levelsForName, setLevelsForName, useLevelsRev, useNameLevels, type LevelsScope } from '../../data/levelsScope';
 import { setUnitForName, unitForName, useDistanceUnit } from '../../data/distanceUnits';
 import type { DistanceUnit } from '../../data/atr';
@@ -78,10 +78,11 @@ import { bookForDates, expirySpan, levelsBook, levelsDate, levelsWords, todaySco
 import { shownGreek } from './retailSign';
 import { useLedgerPalette } from '../../data/ledgerPalette';
 import MoreDoor from './MoreDoor';
-import { BOOK_MODE_WORDS, setBookMode, useBookMode } from '../../data/bookMode';
+import { Link } from 'react-router-dom';
+import { BOOK_MODE_WORDS, useBookMode } from '../../data/bookMode';
 import { todayColumn, buildExposureSurface, CALENDAR_DTES, GREEKS, contractsReady, isContractGreek, type BookMode, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { snapshotAtOpen } from '../../data/levelview';
-import { HEAT_MODE, heatCellStyle, heatRampColorFor } from './heatmap';
+import { HEAT_MODE } from './heatmap';
 import type { MarketSnapshot } from '../../types/market';
 import { VIEWS_FOR, readLedgerView, writeLedgerView, type LedgerView } from './ledgerView';
 import ExposureMatrix from './ExposureMatrix';
@@ -347,9 +348,9 @@ function listedIso(snap: MarketSnapshot | null | undefined): string[] {
     .map(e => e.date);
 }
 
-const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, onHoverStrike, onSelectStrike, openRatio, onTicker, toolbar = 'desk', marks, lead, greeks: greeksProp, onGreeks, fresh = false, after, fullMode = 'portal', fullOpen, headFull = false, multi = false, selectedStrikeFor, onSelectStrikeFor, snapshotFor, onNaturalWidth, onBandNeed, headSlot, pack = false, above, onNames, onExpiries, onNameDates, narrowHint = 'widen the window', viewLock, legsLock }: ExposureFieldProps) => {
+const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, onHoverStrike, onSelectStrike, openRatio: _openRatio, onTicker, toolbar = 'desk', marks, lead, greeks: greeksProp, onGreeks, fresh = false, after, fullMode = 'portal', fullOpen, headFull = false, multi = false, selectedStrikeFor, onSelectStrikeFor, snapshotFor, onNaturalWidth, onBandNeed, headSlot, pack = false, above, onNames, onExpiries, onNameDates, narrowHint = 'widen the window', viewLock, legsLock }: ExposureFieldProps) => {
   const [ownPick, setOwnPick] = useState<string[]>(['gex', 'dex', 'vex', 'vanna', 'charm', 'color', 'vomma', 'speed', 'veta', 'zomma']);
-  /* the desk's one Open interest / Flow toggle (data/bookMode.ts): the walls, the flip, the regime and the Terrain rail
+  /* the desk reads the open-interest book only (data/bookMode.ts; the flow book is its own board): the walls, the flip, the regime and the Terrain rail
      read the same book */
   const bookMode: BookMode = useBookMode();
   const pick = greeksProp ?? ownPick;
@@ -517,7 +518,6 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
     const levels = lv
       ? { ...room, supreme: lv.supreme, callWall: lv.callWall ?? room.callWall, putWall: lv.putWall ?? room.putWall, flip: lv.flip ?? room.flip, flipFound: lv.flip != null, complete: room.complete && lv.complete }
       : room;
-    let out = surf;
     const si = surf.strikes.indexOf(levels.supreme);
     const dtes = new Set((snap.uwExpiries ?? []).filter(e => dates.includes(e.date)).map(e => e.dte));
     let e = -1;
@@ -540,7 +540,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
     const retail = lv?.netAt(levels.supreme);
     const levelNet = retail != null ? (retail === 0 ? 0 : -retail) : node ? node.callGex + node.putGex : total;
     const supreme = { ...surf.supreme, gex: { strike: levels.supreme, e: e >= 0 ? e : 0, value: si >= 0 ? value : levelNet, total: levelNet } };
-    out = { ...surf, levels, supreme };
+    const out = { ...surf, levels, supreme };
     scopedCache.current.set(surf, { key, out });
     return out;
   };
@@ -659,7 +659,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   const liveKey = `${view}|${rings}|${greeks.join(',')}|${range.from}-${range.through}|${afterBell ? 'a' : 'n'}|${legsDrawn}`;
   const [drawn, setDrawn] = useState<{ key: string; shape: DrawnShape }>({ key: liveKey, shape: liveShape });
   const [fading, setFading] = useState(false);
-  const [swapped, setSwapped] = useState(false);
+  const [, setSwapped] = useState(false);
   useEffect(() => {
     if (liveKey === drawn.key) return;
     if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
@@ -947,7 +947,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   const openSurfaceOf = (t: string): ExposureSurface | null => {
     const kept = openRef.current.get(`${t}|${bookMode}`);
     if (kept !== undefined) return kept;
-    let built: ExposureSurface | null = null;
+    let built: ExposureSurface | null;
     try {
       const snap = snapshotAtOpen(t);
       built = snap ? buildExposureSurface(snap, WHOLE_BOOK, CALENDAR_DTES, 'snapshot', bookMode) : null;
@@ -1202,7 +1202,6 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   /* the supreme waits for the Levels card's contracts (the fourth audit's M1: "Supreme 760 · −$2.1B" off the whole book
      before today's landed) */
   const supremePending = !!snapshot.liveBook && supremeGreek === 'gex' && crowned.levels?.complete === false;
-  const supremeEx = crowned.expiries[supreme.e];
   /* the expiries drawn for the host's book: the window, the ceiling, what fits (see `windowFor`) */
   const shownIdx = shownFor(surface, { range, afterBell, greeks });
   const ex = surface.expiries;
@@ -1312,9 +1311,13 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       {/* bare in the panel (2026-10-15): "Calendar", "GEX" and "Today → Oct 19" say what they are without their label words,
           and the three cards then share the panel's one head line with the tabs at 580px */}
       {!viewLock && <DropdownSelect label="View" value={view} options={VIEWS_FOR[viewHost].map(v => VIEW_OPTION[v])} onChange={pickView} title="The matrix, the calendar or the profile" testId="ledger-view" bare={stripsBare || panel} flat={toolbar === 'band'} />}
-      <span className="inline-flex items-center rounded-md border border-borderMuted p-0.5" data-ledger-book={bookMode}>
-        <button type="button" aria-pressed={bookMode === 'oi'} onClick={() => setBookMode('oi')} title={`${BOOK_MODE_WORDS.oi.line} — the default. The walls, the flip, the regime and the strike rail read it too.`} className={`px-1.5 py-0.5 rounded font-mono text-t10 ${bookMode === 'oi' ? 'bg-ink/[0.12] text-textPrimary' : 'text-textMuted'}`}>{BOOK_MODE_WORDS.oi.label}</button>
-        <button type="button" aria-pressed={bookMode === 'flow'} onClick={() => setBookMode('flow')} className={`px-1.5 py-0.5 rounded font-mono text-t10 ${bookMode === 'flow' ? 'bg-ink/[0.12] text-textPrimary' : 'text-textMuted'}`} title={`${BOOK_MODE_WORDS.flow.line}. The walls, the flip, the regime and the strike rail read it too. A cell with too little to go on shows the settled figure.`}>{BOOK_MODE_WORDS.flow.label}</button>
+      {/* one book here: the open-interest book. The flow book (today's prints, Model 2) is its own board on the Books page,
+          never added to this one (docs/TWO_BOOK_SPEC_V2.md §6) */}
+      <span className="inline-flex items-center gap-1 rounded-md border border-borderMuted px-1.5 py-0.5 font-mono text-t10" data-ledger-book={bookMode} title={BOOK_MODE_WORDS.oi.line}>
+        <span className="text-textPrimary">{BOOK_MODE_WORDS.oi.label}</span>
+        <Link to="/pinpoint/books" className="text-textMuted hover:text-textPrimary underline-offset-2 hover:underline" title={BOOK_MODE_WORDS.flow.line}>
+          {BOOK_MODE_WORDS.flow.label} →
+        </Link>
       </span>
       {/* with names side by side the greek steps down to each column's head; the profile draws GEX alone (its foot says
           so), so the card steps aside there rather than read "All five" over a chart it does not govern (the re-audit's M2) */}

@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const engine = join(root, 'src', 'engine', 'twobook');
 const session = pathToFileURL(join(root, 'shared', 'marketSession.mjs')).href;
+const nyTime = pathToFileURL(join(root, 'src', 'core', 'nyTime.ts')).href;
 
 /** [name, file, from, to] — every `from` must occur in the file */
 const MUTATIONS = [
@@ -45,7 +46,7 @@ for (const [name, file, from, to] of MUTATIONS) {
     cpSync(engine, dir, { recursive: true });
     for (const f of ['contracts.ts']) {
       const p = join(dir, f);
-      writeFileSync(p, readFileSync(p, 'utf8').replace("'../../../shared/marketSession.mjs'", `'${session}'`));
+      writeFileSync(p, readFileSync(p, 'utf8').replace("'../../../shared/marketSession.mjs'", `'${session}'`).replace("'../../core/nyTime'", `'${nyTime}'`));
     }
     const p = join(dir, file);
     let src = readFileSync(p, 'utf8');

@@ -4,7 +4,7 @@
    npx tsx scripts/symbol-directory-proof.ts */
 
 import universe from '../src/data/generated/tickerUniverse.json';
-import { directoryCount, directoryEntry, directorySize, hasListedOptions, loadDirectory, optionRootOf, renamedTo, searchDirectory } from '../src/data/symbolDirectory';
+import { directoryCount, directoryEntry, directorySize, hasListedOptions, loadDirectory, optionRootOf, renamedTo, searchDirectory, openInterestBookServes } from '../src/data/symbolDirectory';
 import { companyName, searchTickers } from '../src/data/tickers';
 import { isOptionRoot, isPinpointName, roomOf, searchRoom } from '../src/data/listedNames';
 
@@ -74,9 +74,10 @@ for (const [sym, t, p] of [['SPY', true, true], ['NVDA', true, true], ['SPX', tr
   ok(e && e.terrain === t && e.pinpoint === p, `${sym}: Terrain ${e?.terrain}, Pinpoint ${e?.pinpoint}`);
 }
 ok(directoryCount('terrain') > 10_000 && directoryCount('pinpoint') > 4_000, `Terrain ${directoryCount('terrain')} rows, Pinpoint ${directoryCount('pinpoint')}`);
-/* a name only the terminal lists options on is never offered on Pinpoint */
+/* a name only the terminal lists options on IS offered on Pinpoint since the two books (2026-11-07, docs/TWO_BOOK.md):
+   its flow book is served, its open-interest book says unavailable */
 const tdOnly = DIRECTORY.split('\n').map(l => l.split('\t')).find(([, , f]) => f && marksOf(f).includes('o') && !marksOf(f).includes('p'));
-if (tdOnly) ok(!isPinpointName(tdOnly[0]) && !searchRoom('pinpoint', tdOnly[0], 10, [], s => s).some(r => r.symbol === tdOnly[0]), `${tdOnly[0]} (options on the terminal only) is not offered on Pinpoint`);
+if (tdOnly) ok(isPinpointName(tdOnly[0]) && searchRoom('pinpoint', tdOnly[0], 10, [], s => s).some(r => r.symbol === tdOnly[0]) && openInterestBookServes(tdOnly[0]) === false, `${tdOnly[0]} (options on the terminal only) is offered on Pinpoint, flow book only`);
 for (const [from, to] of Object.entries(ALIASES).slice(0, 3)) ok(renamedTo(from) === to && searchDirectory(from, { limit: 3 })[0]?.symbol === to, `the old ticker ${from} finds ${to}`);
 const nameOf = (s: string) => companyName(s);
 const probes = ['', 'a', 'b', 'c', 'co', 'cola', 'ko', 'brk', 'berkshire', 'pref', 'warrant', 'unit', 'acquisition', 'trust', 'etf', 'fund', 'bank', 'x', 'z', 'q', 'nvidia', 'spx', 'vix', 'ford', 'pfd', '.pr', 'ws'];
@@ -96,7 +97,7 @@ for (const room of ['terrain', 'pinpoint'] as const) {
     for (const r of searchRoom(room, q, 400, [], nameOf)) {
       n += 1;
       const e = directoryEntry(r.symbol);
-      if (!e || !(room === 'terrain' ? e.terrain : e.pinpoint)) off.push(r.symbol);
+      if (!e || !(room === 'terrain' ? e.terrain : e.pinpoint || e.options)) off.push(r.symbol);
     }
   }
   ok(n > 1000 && off.length === 0, `${room} offered ${n} rows over ${probes.length} queries, every one it can serve${off.length ? ` — ${[...new Set(off)].slice(0, 10)}` : ''}`);

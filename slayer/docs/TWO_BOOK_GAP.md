@@ -54,7 +54,8 @@ for other pages), **OPEN** (not done, with the reason).
 | C11 | the ticker audit (2026-11-07) | UW's open-interest-by-expiry route answers the AM root only for SPX/NDX/RUT | Model 1's population is SPX + SPXW (§3.3) | Model 1 reads per-contract OI from `option-contracts`, which lists both roots; the by-expiry route is not used for the population | FIXED |
 | C12 | the ticker audit | index rows carry a coarse `price` (SPX 7385 vs 7376.86; VIX 24.00 vs 25.64) | UW_COMPAT uses the row `price` (§3.5) | used as the spec says; the effect is measured in `docs/TWO_BOOK.md` §Model 1 and labelled on the board ("priced at the listed row price") | FIXED (labelled) |
 | C13 | none | no NBBO at the UW row timestamp | §3.5 step 1: IV solved from the NBBO mid at the row timestamp | needs a quote read the open-interest book may not make (Pinpoint reads the vendor's rows only for this book); the six use step 2 (UW IV, APPROX) and step 3, and the board reports the share | OPEN (by the data rule) |
-| C14 | `src/data/book/load.ts`, Pinpoint lists | a name only ThetaData lists options on is not offered on Pinpoint | Model 1 "unavailable", Model 2 served | `model1.ts` answers UNAVAILABLE; the Pinpoint list adds the 15 names | FIXED |
+| C14 | `src/data/book/load.ts`, Pinpoint lists | a name only ThetaData lists options on is not offered on Pinpoint | Model 1 "unavailable", Model 2 served | `model1.ts` answers UNAVAILABLE; `symbolDirectory.ts` lets Pinpoint list names with terminal options | FIXED |
+| C15 | `src/data/book/load.ts:492` `listingOf` | the vendor's expiry listing keeps dates with no contract behind them (main 85820a2's audit) | the population is the contracts that exist | `listingOf(rows, ticker)` drops `noContractDates(ticker)`; Model 1's six are built from option-contracts, so a no-contract date never enters them | FIXED |
 
 ## D. Model 2 — the flow book (§4)
 

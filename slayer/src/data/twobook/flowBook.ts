@@ -5,8 +5,8 @@
   The option tape (src/data/tapeServer.ts) classifies every print it reads per §4.1 into one signed inventory per
   (root, expiration, strike, right) — FlowInventory, prints only, never open interest. Here that inventory is revalued
   in SLAYER mode at the valuation instant:
-    - quotes: the whole strip's NBBO, one read per root — during a session the terminal's snapshot; for a day the
-      terminal has processed, the quote in force at 15:59:59.999 (/option/at_time/quote), valued at the 16:00 close;
+    - quotes: the strip's NBBO (QUOTE_MAX_DTE days, QUOTE_STRIKES strikes either side), one snapshot read per root;
+      the book is valued at now during the session, else at the quotes' newest stamp (after the close);
     - S* from the parity forwards of every expiry (§1.2), each expiry's carry b_T against S*;
     - r: SOFR (/interest_rate/history/eod, the fixing in force on the tape's day), flat across T (the terminal has no
       term SOFR), continuous ACT/365: r = 365·ln(1 + SOFR/360);
@@ -219,23 +219,33 @@ export function flowBooks(o: { read: (path: string, kind: string) => Promise<str
     return out;
   };
   const build = async (view: FlowTapeView): Promise<FlowBoardWire> => {
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(o.now()));
-    const current = view.day === today;
-    const valuedAt = current ? Math.min(o.now(), view.close) : view.close;
+    /* the tape is always the latest session's (tapeServer tapeDay), so the terminal's snapshot holds its current quotes
+       (after the close: the last quotes of the day; a whole-chain quote-at-time read takes minutes). The book is valued
+       at the instant the quotes stand for — now during the session, else the quotes' newest stamp — so T and the IVs
+       are solved under the same clock (Rule 0); today's expiries are EXPIRED once that is past their settlement. */
     const rate = await rateFor(view.day);
     const quotes: QuoteRow[] = [];
+    /* the quotes reach every expiry the inventory holds, so no held contract is priced off an extrapolated carry (the
+       audit's A7: past the last valid forward the last segment's slope is held, which two close expiries make unstable) */
+    let maxDte = QUOTE_MAX_DTE;
+    for (const [k, C] of view.inv) {
+      if (C === 0) continue;
+      const exp = k.split('|')[1];
+      const d = Math.ceil((Date.parse(`${exp}T21:00:00Z`) - Date.parse(`${view.day}T12:00:00Z`)) / 86_400_000) + 1;
+      if (Number.isFinite(d) && d > maxDte) maxDte = Math.min(d, 1200);
+    }
     for (const root of rootsOf(view.name)) {
-      const path = current
-        ? `/option/snapshot/quote?symbol=${encodeURIComponent(root)}&expiration=*&max_dte=${QUOTE_MAX_DTE}&strike_range=${QUOTE_STRIKES}&format=csv`
-        : `/option/at_time/quote?symbol=${encodeURIComponent(root)}&expiration=*&start_date=${ymd(view.day)}&end_date=${ymd(view.day)}&time_of_day=15:59:59.999&strike_range=${QUOTE_STRIKES}&max_dte=${QUOTE_MAX_DTE}&format=csv`;
+      const path = `/option/snapshot/quote?symbol=${encodeURIComponent(root)}&expiration=*&max_dte=${maxDte}&strike_range=${QUOTE_STRIKES}&format=csv`;
       const csv = await o.read(path, 'quote').catch(e => {
         o.log?.(`[flowbook] ${view.name} ${root} quotes: ${e instanceof Error ? e.message : e}`);
         return null;
       });
       if (csv) quotes.push(...readQuotes(csv, root));
     }
-    const stamps = quotes.map(q => q.ms).filter(Number.isFinite);
-    return flowBoardOf(view, quotes, valuedAt, rate, stamps.length ? Math.max(...stamps) : null);
+    let quotesAt: number | null = null;
+    for (const q of quotes) if (Number.isFinite(q.ms) && (quotesAt == null || q.ms > quotesAt)) quotesAt = q.ms;
+    const valuedAt = view.live ? o.now() : (quotesAt ?? view.close);
+    return flowBoardOf(view, quotes, valuedAt, rate, quotesAt);
   };
   return {
     async board(view: FlowTapeView): Promise<FlowBoardWire> {

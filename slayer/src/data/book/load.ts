@@ -16,7 +16,7 @@ import { carryFacts, chainFrom, flowMap, foldContracts, liveGammaRows, num, oiMa
 import { BOARD_MS, BOOK_LISTINGS, FULL_MS, LIVE_GAMMA_MS, cache, chartAll, chartSpan, closestDate, datesComplete, emit, emptyDates, factsFirst, gammaPriced, gen, horizonFactsMissing, hotGet, isHot, keptBooks, liveGammaCache, liveGammaWait, peekEntry, recordAsked, recordIso, settledLive, type BookMode, type Entry } from './store';
 import { readKept } from './kept';
 import { noteExposureRows } from './exposureLog';
-import { hasListedOptions, hasVendorOptions } from '../symbolDirectory';
+import { hasListedOptions, hasVendorOptions, noContractDates } from '../symbolDirectory';
 import { CLOSE_MIN, candlesFrom, isCashIndex, cashToOf, closesFromTape, parseTape, pushPrint, quoteFromBars, regularCloseOf, thetaTape, twoCashSessions, uwBarsOf } from './tape';
 import { bookMinuteBars, peekPrint } from '../thetaTape';
 
@@ -488,12 +488,14 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   } else await loadFront(entry, token);
 }
 
-/** The vendor's expiry listing, nearest first */
-function listingOf(rows: unknown): { date: string; dte: number }[] {
+/** The vendor's expiry listing, nearest first — without the dates the listing carries that have no contract behind them
+    (symbolDirectory noContractDates: the open-interest book's population is the contracts that exist) */
+function listingOf(rows: unknown, ticker: string): { date: string; dte: number }[] {
   if (!Array.isArray(rows)) return [];
+  const none = noContractDates(ticker);
   return (rows as UwGreekStrike[])
     .map(r => ({ date: String(r.expiry || ''), dte: num(r.dte) }))
-    .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.date))
+    .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.date) && !none.has(r.date))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -528,11 +530,10 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
     return;
   }
   /* the calls that fill a Board row's "Today" levels jump the key's queue */
-  let listed: { date: string; dte: number }[] = [];
   const hot = isHot(entry.ticker);
   const got = await uwCall(`/stock/${encodeURIComponent(entry.ticker)}/greek-exposure/expiry`, hot);
   if (got.error) return;
-  listed = listingOf(got.data);
+  const listed = listingOf(got.data, entry.ticker);
   keepTotals(entry, got.data);
   if (!still() || !listed.length) return;
   /* the first live listing when nothing is within four days */
@@ -754,7 +755,7 @@ async function loadExpiriesNow(entry: Entry, token: number): Promise<void> {
   let listed: { date: string; dte: number }[] = [];
   try {
     const rows = await whalesGreekExpiry(entry.ticker);
-    listed = listingOf(rows);
+    listed = listingOf(rows, entry.ticker);
     keepTotals(entry, rows);
   } catch {
     listed = [];

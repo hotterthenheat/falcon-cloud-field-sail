@@ -9,6 +9,23 @@ endpoint name suggests.
 - **Pinpoint** reads its greeks, exposure, levels and flow from Unusual Whales, and from ThetaData only its live price
   and chart candles (stock and index snapshots and bars) and the one open-interest read below. No ThetaData greeks on
   Pinpoint.
+- **Pinpoint's two books** (owner, 2026-11-07: "pinpoint has 2 models, one is the spot that comes from the keys and then
+  another is thetadata math that we use to math dealer flow gex"; spec `docs/TWO_BOOK_SPEC_V2.md`, build
+  `docs/TWO_BOOK.md`):
+  - **Model 1, the open-interest book**, is Unusual Whales only: `/stock/{t}/spot-exposures/expiry-strike` (every page),
+    `/stock/{t}/volatility/stats` (IV30) and `/stock/{t}/option-contracts` (every page: per-contract OI and IV), read on
+    the server through the hub's background lane and shared by every viewer (`GET /api/twobook/oi`,
+    `server/twoBookApi.mjs`, `src/data/twobook/model1Server.ts`). Its six house metrics are computed by the house engine
+    from those rows; no ThetaData read.
+  - **Model 2, the flow book**, reads ThetaData on the server: the option prints with the NBBO in force at each
+    (`/option/history/trade_quote`, exclusive, with OPRA conditions — the server's option tape, `src/data/tapeServer.ts`,
+    which now also classifies every print into the book's signed inventory), the current NBBO of the name's strip
+    (`/option/snapshot/quote`, one read per root per board, every expiry the inventory holds, 30 strikes either side) and
+    SOFR (`/interest_rate/history/eod`). One board per name on the server, held 20 s (`GET /api/tape/flowbook`,
+    `src/data/twobook/flowBook.ts`); the browser asks the server only. Never Unusual Whales, never open interest.
+  - Pinpoint also lists the names whose options only ThetaData lists: their flow book is served and their open-interest
+    book says it is unavailable.
+  - On screen neither vendor is named ("open-interest book", "flow book", "listed open interest", "today's prints").
 - **Building's open-interest change** (Pinpoint's Building and Terrain's Building tab) is ThetaData's, allowed by the
   owner on 2026-11-01: the all-expiration open interest (`/option/history/open_interest?expiration=*`) for the two
   latest report dates, every listed contract, compared contract by contract. Read on the server, never by the browser:

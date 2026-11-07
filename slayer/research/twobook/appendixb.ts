@@ -75,7 +75,7 @@ for (const f of readdirSync(dir).filter(x => /^q1530_\d{8}\.csv$/.test(x)).sort(
     pairs.set(k, p);
     if (expiry === '2026-11-02') {
       const mid = 0.5 * (bid + ask);
-      strip.push({ root: 'SPXW', expiry: `SPXW|${expiry}`, strike: k, right, bid, ask, tick: spec.tick(Number.isFinite(mid) ? mid : 0), M: spec.multiplier, C: inv.inv.get(contractKey('SPXW', expiry, k, right)) ?? 0 });
+      strip.push({ root: 'SPXW', expiry: `SPXW|${expiry}`, strike: k, right, bid, ask, tick: process.env.AB_TICK ? Number(process.env.AB_TICK) : spec.tick(Number.isFinite(mid) ? mid : 0), M: spec.multiplier, C: inv.inv.get(contractKey('SPXW', expiry, k, right)) ?? 0 });
     }
   });
   chain.push({ id: `SPXW|${expiry}`, T: yearsTo(spec, expiry, V), r, Sref: spx, quotes: [...pairs.values()] });
@@ -87,6 +87,13 @@ for (const [k, C] of inv.inv) {
   const [, e, s, rt] = k.split('|');
   if (e !== '2026-11-02') continue;
   strip.push({ root: 'SPXW', expiry: `SPXW|${e}`, strike: Number(s), right: rt as 'C' | 'P', bid: NaN, ask: NaN, tick: 0.05, M: 100, C });
+}
+/* AB_STRIKES=N: keep the inventory of the N strikes nearest the 15:30 print only (a population check, not the spec's) */
+const nStrikes = Number(process.env.AB_STRIKES ?? 0);
+if (nStrikes > 0) {
+  const ks = [...new Set(strip.map(c => c.strike))].sort((a, z) => Math.abs(a - spx) - Math.abs(z - spx) || a - z).slice(0, nStrikes);
+  const keep = new Set(ks);
+  for (const c of strip) if (!keep.has(c.strike)) c.C = 0;
 }
 const b = slayerBoard(chain, strip);
 const t = b.board!;
@@ -120,4 +127,4 @@ const spec2 = {
 console.log(`\nunit ${t.unit}${t.rate ? ' (rate)' : ''}; r ${rateMode} ${r}; SPX print ${spx}; T1 ${b.spot?.T1} TL ${b.spot?.TL} (${b.spot?.prov})`);
 console.log('metric'.padEnd(24), 'spec'.padStart(14), 'ours'.padStart(16), 'diff'.padStart(10));
 for (const [k, [s, o]] of Object.entries(spec2)) console.log(k.padEnd(24), String(s).padStart(14), o.toPrecision(6).padStart(16), `${(((o - s) / Math.abs(s)) * 100).toFixed(2)}%`.padStart(10));
-writeFileSync(join(dir, `result_${rateMode}.json`), JSON.stringify({ buckets, rows, sizeAll, table: spec2, unit: t.unit, counts: t.counts, linked: inv.linked, unlinked: inv.unlinked, expiries: [...b.expiries.entries()] }, null, 1));
+writeFileSync(join(dir, `result_${rateMode}${nStrikes ? `_k${nStrikes}` : ''}.json`), JSON.stringify({ buckets, rows, sizeAll, table: spec2, unit: t.unit, counts: t.counts, linked: inv.linked, unlinked: inv.unlinked, expiries: [...b.expiries.entries()] }, null, 1));
