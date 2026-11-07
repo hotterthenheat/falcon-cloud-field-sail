@@ -1,6 +1,7 @@
 """Fetch the 1-second windows for a plan (resumable). One request in flight per process.
 
   python3 -m foundation.q1s_fetch plan_base.parquet [--part i/n] [--maxprio p] [--minprio p] [--roots A,B]
+  python3 -m foundation.q1s_fetch --repair SPXW,SPY,QQQ,IWM   (re-fetch windows of recorded selections that failed)
 
 For each planned (root, day, t): select from the board at t (lib.board): the 0.30-delta call and put (|delta| in
 [0.15, 0.50], nearest 0.30) and the ATM strike (nearest the parity forward with both quotes valid); for signal rows
@@ -64,7 +65,36 @@ def select_all(sess, t, side):
     return rec, legsets
 
 
+def repair(roots):
+    """Re-fetch the windows of recorded selections that are not in the store (a request that failed transiently is
+    not marked covered, so its selection would be simulated as 'no_data'). Selections themselves are not changed."""
+    from foundation.trades import legsets
+    nreq = 0
+    for root in roots:
+        f = sel_path(root)
+        if not os.path.exists(f):
+            continue
+        df = pd.DataFrame([json.loads(x) for x in open(f)])
+        df = df[(df.status == 'ok') & df.day.map(split).isin(['DISCOVERY', 'CALIBRATION'])]
+        df = df.drop_duplicates(['root', 'day', 't', 'side', 'purpose'], keep='last')
+        for day, g in df.groupby('day'):
+            plan_w = []
+            for r in g.to_dict('records'):
+                t = int(r['t'])
+                exits = [fills.exit_decision(day, t, h) for h in H]
+                for legs in legsets(r).values():
+                    plan_w.append((legs, t, exits))
+            n = fills.prefetch(root, day, plan_w)
+            if n:
+                print('repair', root, day, n, 'requests', flush=True)
+            nreq += n
+    print('repair done', nreq, 'requests', flush=True)
+
+
 def main():
+    if '--repair' in sys.argv:
+        repair(sys.argv[sys.argv.index('--repair') + 1].split(','))
+        return
     plan = pd.read_parquet(os.path.join(DATA, sys.argv[1]))
     if 'side' not in plan.columns:
         plan['side'] = 'all'

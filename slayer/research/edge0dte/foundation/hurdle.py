@@ -140,7 +140,13 @@ def main():
          'Reading: hz = sign-aligned E[Z] a Stage-1 directional effect must reach before a long 0.30-delta option can '
          'make money after costs; hv_long = E[V]-1 a long straddle needs; hv_short = E[V]-1 below which a short '
          'straddle (iron-fly proxy, before the wing cost) makes money. A Stage-1 effect smaller than its hurdle cannot '
-         'be an option edge.', '']
+         'be an option edge. "-" = fewer than 30 round trips in the cell, or the fitted slope (b or c) is not positive '
+         'so no finite hurdle exists (the structure does not gain from the outcome in that cell). Costs are the median '
+         'and mean of (entry half-spread + exit half-spread + fees) / premium; the mean at "close" is inflated by '
+         'winners: an option that ends deep in the money is exited across a wide ITM spread (SPXW DISCOVERY: 10% of '
+         'single-option round trips to the close cost > 27% of premium; those above 30% have a median mid-to-mid gain '
+         'of +315%). The 15:30 bucket holds only 15:30, so '
+         'its 30-min and close exits coincide; h = 60 is undefined after 15:00.', '']
     total = tr.drop_duplicates(['root', 'day', 't'])
     L += ['## Sample', '', '| root | decision times | sessions | single-option round trips | straddle round trips | skipped |',
           '|---|---:|---:|---:|---:|---:|']
