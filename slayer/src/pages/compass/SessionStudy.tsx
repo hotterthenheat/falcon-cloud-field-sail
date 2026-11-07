@@ -17,7 +17,7 @@ import { EmptyBox, ErrorBox, LoadingBox } from '../../components/ui/states';
 import { useCompassDoc, useAllCalls } from '../../data/compassReviewFeed';
 import { useCompassFeed } from '../../data/compassFeed';
 import type { Signal } from '../../data/compassLedger';
-import { P1_MIN } from '../../data/compassParams';
+import { P1_MIN, modelWordOf } from '../../data/compassParams';
 import { POOL_BAR, type Mover, type PooledStudy, type Rate } from '../../data/compassStudy';
 import { isoDate } from '../../core/calendar';
 import { expiryOfDay, useReviewDay } from './SessionReview';
@@ -32,7 +32,7 @@ const COLUMNS: Column<Mover>[] = [
   { key: 'best', header: 'Best bid', align: 'right', sortValue: r => r.bestBid, render: r => <span className="tnum text-bull">{r.bestBid.toFixed(2)} <span className="text-textMuted">{r.bestAt}</span></span> },
   { key: 'ratio', header: 'Move', align: 'right', sortValue: r => r.ratio, render: r => <span className="tnum text-bull">{r.ratio.toFixed(2)}×</span> },
   { key: 'stop', header: 'Stop first', align: 'right', sortValue: r => (r.stopFirst ? 1 : 0), render: r => (r.stopFirst ? <span className="text-warn">Yes</span> : <span className="text-textMuted">No</span>) },
-  { key: 'p1', header: 'Model 1', align: 'right', sortValue: r => r.p1 ?? -1, render: r => (r.p1 == null ? blank : <span className={`tnum ${r.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'}`}>{(r.p1 * 100).toFixed(1)}%</span>) },
+  { key: 'p1', header: 'Model 1', sortValue: r => (r.p1 == null ? -1 : r.p1 + 1e-12 >= P1_MIN ? 1 : 0), render: r => (r.p1 == null ? blank : <span className={r.p1 + 1e-12 >= P1_MIN ? 'text-textPrimary' : 'text-textSecondary'}>{r.p1 + 1e-12 >= P1_MIN ? 'Cleared' : 'Under the line'}</span>) },
   { key: 'gate', header: 'What stopped it', sortValue: r => r.gate, render: r => <span className="text-textSecondary">{r.gate}</span> },
   { key: 'held', header: 'Held down by', sortValue: r => r.heldDown[0]?.name ?? '', render: r => (r.heldDown.length ? <span className="text-textMuted">{r.heldDown.map(d => d.name).join(', ')}</span> : blank) },
 ];
@@ -48,7 +48,7 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
 const band = (r: Rate) => (r.n ? `${(r.lo95 * 100).toFixed(1)}–${(r.hi95 * 100).toFixed(1)}%` : '—');
 const signed = (v: number, d = 1) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}`;
-const BOOK: Record<string, string> = { A: 'Core', B: 'Wing', C: 'Late sweep', R: 'Model Risk' };
+const BOOK: Record<string, string> = { A: modelWordOf({ book: 'A' }), B: modelWordOf({ book: 'B' }), C: modelWordOf({ book: 'C' }), R: modelWordOf({ book: 'R' }) };
 const money = (v: number | null | undefined) => (v == null ? '—' : `${v > 0 ? '+' : v < 0 ? '−' : ''}$${Math.abs(v).toFixed(2)}`);
 const takenLine = (s: Signal) => {
   const o = s.outcome;
@@ -64,9 +64,9 @@ const whyTaken = (s: Signal): string => {
       ? 'The close broke under the last 30 closes. Tail risk bought the call. Sell the bid when the close comes back through that low, or after 30 minutes if it does not.'
       : 'The close broke above the last 30 closes. Tail risk bought the put. Sell the bid when the close comes back through that high, or after 30 minutes if it does not.';
   }
-  if (s.book === 'C') return 'Book C. No model score. 3× inside 120 seconds, or 2× inside 30 seconds. Flat at 15:50.';
-  if (s.book === 'B' || s.runner) return `Book ${s.book}. ${s.prun != null ? `Model 2 ${(s.prun * 100).toFixed(0)}%. ` : ''}The stop ratchets. Flat at 15:55.`;
-  return `Book A. ${s.p1 != null ? `Model 1 ${(s.p1 * 100).toFixed(1)}%. ` : ''}Out at 1.50× the ask, or the stop at 0.4678× the fill.`;
+  if (s.book === 'C') return 'Model 3, the late sweep. No model score. 3× inside 120 seconds, or 2× inside 30 seconds. Flat at 15:50.';
+  if (s.book === 'B' || s.runner) return `${modelWordOf(s)}. The stop ratchets. Flat at 15:55.`;
+  return 'Model 1. Out at 1.50× the ask, or the stop at 0.4678× the fill.';
 };
 
 const leftOnTable = (s: Signal): string => {
@@ -177,11 +177,10 @@ const Calls = ({ rows }: { rows: Signal[] }) => (
 
 /** One bucket on a 0–100% track: the realised rate's 95% interval (the band), its rate (the bar) and the mean
     score (the tick). A calibrated bucket has the tick inside the band. */
-const Strip = ({ r, score }: { r: Rate; score: number | null }) => (
+const Strip = ({ r }: { r: Rate }) => (
   <div className="relative h-3 w-full min-w-[96px] rounded-sm bg-chip" aria-hidden="true">
     {r.n > 0 && <div className="absolute inset-y-0 rounded-sm bg-silver/25" style={{ left: `${r.lo95 * 100}%`, width: `${Math.max(0.5, (r.hi95 - r.lo95) * 100)}%` }} />}
     {r.n > 0 && <div className="absolute inset-y-[3px] w-[2px] bg-textPrimary" style={{ left: `calc(${r.rate * 100}% - 1px)` }} />}
-    {score != null && <div className="absolute -inset-y-[2px] w-[2px] bg-warn" style={{ left: `calc(${score * 100}% - 1px)` }} />}
   </div>
 );
 
@@ -231,12 +230,11 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
             <tr className="text-textMuted text-t9 uppercase tracking-widest">
               <th className={`text-left ${TH}`}>Model 1</th>
               <th className={`text-right ${TH}`} title="Settled rows inside the trained minutes, 09:45–15:00 ET">Rows</th>
-              <th className={`text-right ${TH}`} title="Mean Model 1 of those rows">Score</th>
-              <th className={`text-right ${TH}`} title="Took the 1.50× profit by Book A's rules from the mark">Took</th>
+              <th className={`text-right ${TH}`} title="Took the 1.50× profit by Model 1's near-the-money rules from the mark">Took</th>
               <th className={`text-right ${TH} max-sm:hidden`}>95% interval</th>
-              <th className={`text-right ${TH}`} title="Took minus score, points">Gap</th>
+              <th className={`text-right ${TH}`} title="Inside the bar (the band's outcomes sit near the band's own reading), or not. No score is shown.">Calibrated</th>
               <th className={`text-left ${TH} pl-4 max-md:hidden w-[28%]`}>
-                <span className="text-textMuted">Took, 95% band</span> · <span className="text-warn">score</span>
+                <span className="text-textMuted">Took, 95% band</span>
               </th>
               <th className={`text-right ${TH} max-lg:hidden`} title="All settled rows, every minute">All rows · took</th>
               <th className={`text-right ${TH} max-lg:hidden`}>Sessions</th>
@@ -247,11 +245,10 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
               <tr key={c.bucket} className={`border-b border-borderSubtle/40 ${c.lo >= P1_MIN ? 'text-textPrimary' : 'text-textSecondary'}`}>
                 <td className="py-1 whitespace-nowrap">{c.bucket}</td>
                 <td className={`py-1 text-right ${c.win.n < POOL_BAR.rowsPerBucket ? 'text-warn' : ''}`}>{c.win.n.toLocaleString('en-US')}</td>
-                <td className="py-1 text-right">{c.meanP1 == null ? blank : pct(c.meanP1)}</td>
                 <td className="py-1 text-right">{c.win.n ? pct(c.win.rate) : blank}</td>
                 <td className="py-1 text-right text-textMuted max-sm:hidden">{band(c.win)}</td>
-                <td className={`py-1 text-right ${c.gapPoints == null ? '' : Math.abs(c.gapPoints) <= POOL_BAR.gapPoints ? 'text-bull' : 'text-bear'}`}>{c.gapPoints == null ? blank : signed(c.gapPoints)}</td>
-                <td className="py-1 pl-4 max-md:hidden"><Strip r={c.win} score={c.meanP1} /></td>
+                <td className={`py-1 text-right ${c.gapPoints == null ? '' : Math.abs(c.gapPoints) <= POOL_BAR.gapPoints ? 'text-bull' : 'text-bear'}`}>{c.gapPoints == null ? blank : Math.abs(c.gapPoints) <= POOL_BAR.gapPoints ? 'Yes' : 'No'}</td>
+                <td className="py-1 pl-4 max-md:hidden"><Strip r={c.win} /></td>
                 <td className="py-1 text-right max-lg:hidden">{c.all.n.toLocaleString('en-US')} · {c.all.n ? pct(c.all.rate) : '—'}</td>
                 <td className="py-1 text-right max-lg:hidden">{c.sessions}</td>
               </tr>
@@ -267,14 +264,14 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
               <th className={`text-right ${TH}`}>Rows</th>
               <th className={`text-right ${TH}`}>Took</th>
               <th className={`text-right ${TH} max-sm:hidden`}>95% interval</th>
-              <th className={`text-right ${TH}`} title="Mean Book A return per row, percent">Mean return</th>
+              <th className={`text-right ${TH}`} title="Mean Model 1 return per row (near-the-money rules), percent">Mean return</th>
               <th className={`text-right ${TH}`} title="Sessions whose mean return at this cut was positive, of those with a row">Sessions up</th>
             </tr>
           </thead>
           <tbody>
             {doc.thresholds.map(t => (
               <tr key={t.p1} className={`border-b border-borderSubtle/40 ${Math.abs(t.p1 - P1_MIN) < 1e-9 ? 'text-textPrimary' : 'text-textSecondary'}`}>
-                <td className="py-1 whitespace-nowrap">{(t.p1 * 100).toFixed(Math.abs(t.p1 - P1_MIN) < 1e-9 ? 2 : 0)}%{Math.abs(t.p1 - P1_MIN) < 1e-9 && <span className="text-textMuted"> · now</span>}</td>
+                <td className="py-1 whitespace-nowrap">{Math.abs(t.p1 - P1_MIN) < 1e-9 ? <>The line <span className="text-textMuted"> · now</span></> : `Cut ${doc.thresholds.indexOf(t) + 1}${t.p1 < P1_MIN ? ', under the line' : ', over the line'}`}</td>
                 <td className="py-1 text-right">{t.win.n.toLocaleString('en-US')}</td>
                 <td className="py-1 text-right">{t.win.n ? pct(t.win.rate) : blank}</td>
                 <td className="py-1 text-right text-textMuted max-sm:hidden">{band(t.win)}</td>
@@ -319,9 +316,8 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
             <tr className="text-textMuted text-t9 uppercase tracking-widest">
               <th className={`text-left ${TH}`}>Session</th>
               <th className={`text-right ${TH} max-sm:hidden`}>Rows</th>
-              <th className={`text-right ${TH}`} title={`Settled rows at or over ${(P1_MIN * 100).toFixed(2)}%, 09:45–15:00 ET`}>Over the bar</th>
+              <th className={`text-right ${TH}`} title="Settled rows that cleared Model 1's line, 09:45–15:00 ET">Over the bar</th>
               <th className={`text-right ${TH}`}>Took</th>
-              <th className={`text-right ${TH} max-sm:hidden`}>Score</th>
               <th className={`text-right ${TH}`}>Mean return</th>
               <th className={`text-right ${TH} max-sm:hidden`}>Movers</th>
             </tr>
@@ -333,7 +329,6 @@ const PooledView = ({ doc }: { doc: PooledStudy }) => {
                 <td className="py-1 text-right max-sm:hidden">{d.settled.toLocaleString('en-US')}</td>
                 <td className="py-1 text-right">{d.over.n.toLocaleString('en-US')}</td>
                 <td className="py-1 text-right text-textPrimary">{d.over.n ? pct(d.over.rate) : blank}</td>
-                <td className="py-1 text-right max-sm:hidden">{d.overMeanP1 == null ? blank : pct(d.overMeanP1)}</td>
                 <td className={`py-1 text-right ${d.overMeanRet == null ? '' : d.overMeanRet > 0 ? 'text-bull' : 'text-bear'}`}>{d.overMeanRet == null ? blank : `${signed(d.overMeanRet, 2)}%`}</td>
                 <td className="py-1 text-right max-sm:hidden">{d.movers ?? blank}</td>
               </tr>
@@ -508,7 +503,7 @@ const SessionStudy = () => {
               </table>
             </div>
           </Section>
-          <Section title="Model 1 against what happened (Book A rules from each mark)">
+          <Section title="Model 1 against what happened (its near-the-money rules from each mark)">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[420px] font-mono text-t11 tnum" data-study-calibration>
                 <thead>
@@ -540,7 +535,7 @@ const SessionStudy = () => {
                 {doc.falsePositives.map(f => (
                   <li key={`${f.contract}${f.would}`} className="flex gap-3">
                     <span className="text-textPrimary">{f.contract}</span>
-                    <span className="text-textMuted">Book {f.book}{f.would ? ' · would have called' : ''}</span>
+                    <span className="text-textMuted">{modelWordOf({ book: f.book })}{f.would ? ' · would have called' : ''}</span>
                     <span className="text-bear tnum">{f.pnl == null ? '—' : `−$${Math.abs(f.pnl).toFixed(2)}`}</span>
                     <span className="text-textSecondary">{f.cause}</span>
                   </li>
@@ -566,7 +561,7 @@ const SessionStudy = () => {
                   aside={<span className="text-bull">{r.ratio.toFixed(2)}×</span>}
                   figures={[
                     <span key="m">{r.mark} ET · ask {r.ask.toFixed(2)} → {r.bestBid.toFixed(2)} at {r.bestAt}</span>,
-                    <span key="g">{r.p1 == null ? 'Not scored' : `Model 1 ${(r.p1 * 100).toFixed(1)}%`} · {r.gate}</span>,
+                    <span key="g">{r.p1 == null ? 'Not scored' : r.p1 + 1e-12 >= P1_MIN ? 'Cleared Model 1' : 'Under Model 1’s line'} · {r.gate}</span>,
                   ]}
                 />
               )}
@@ -582,5 +577,8 @@ const SessionStudy = () => {
     </TraceBox>
   );
 };
+
+/** The movers grid's columns, for scripts/compass-words-proof.ts (the grid itself renders only in a browser) */
+export const STUDY_GRID = { columns: COLUMNS };
 
 export default SessionStudy;

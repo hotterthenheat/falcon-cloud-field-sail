@@ -9,6 +9,7 @@ import ContractLabel from '../ui/ContractLabel';
 import { TraceGrid, RestFoot, useRestCap, ROWS_AT_REST } from '../trace/TraceBox';
 import SetupScanCard, { ownExpiry } from './SetupScanCard';
 import { STOP_KEEP } from '../../data/contractQuote';
+import { RIDING_WORD, modelOfBand } from '../../data/compassParams';
 
 type ScanLayout = 'cards' | 'table';
 
@@ -27,12 +28,12 @@ interface SetupScanBoardProps {
   emptyLabel?: string;
 }
 
-const WIDTHS: Record<string, number> = { rank: 56, expiry: 150, book: 90, sigma: 110, premium: 96, breaks: 120, open: 72 };
-const TOOLTIPS: Record<string, string> = {
+const WIDTHS: Record<string, number> = { rank: 56, expiry: 150, model: 150, sigma: 110, premium: 96, breaks: 120, open: 72 };
+export const SCAN_TOOLTIPS: Record<string, string> = {
   sigma: 'One standard deviation of the underlying to expiry, from the quote implied vol. A dash means the quote had no vol.',
   premium: 'The ask on this quote.',
-  breaks: 'Book A and Book B: 0.4678 times the ask. Book C has no stop.',
-  book: 'Book A is the near book. Book B is the far book. Book C is the close lottery.',
+  breaks: 'Model 1: 0.4678 times the ask. Model 3 has no stop.',
+  model: `Model 1 is the entry model: near the money, or far from it with ${RIDING_WORD} on the exit. Model 3 is the late sweep, same-day only.`,
 };
 
 const STEP = 80;
@@ -53,6 +54,55 @@ const MoreFoot = ({ shown, total, onMore }: { shown: number; total: number; onMo
   );
 };
 
+/** The table view's columns (exported for scripts/compass-words-proof.ts: the grid renders only in a browser). */
+export function scanColumns(onAnalysis: (setup: Setup) => void): Column<Ranked>[] {
+  const cols: Column<Ranked>[] = [
+    { key: 'rank', header: '#', sortValue: r => r.rank, render: r => <span className="font-mono text-t10 text-textMuted tnum">{r.rank}</span> },
+    {
+      key: 'contract',
+      header: 'Contract',
+      sortValue: r => r.ticker,
+      render: r => (
+        <span className="inline-flex items-center gap-2 min-w-0">
+          <ContractLabel contract={r.contract} right={r.right} logo={r.ticker} size="sm" />
+        </span>
+      ),
+    },
+    { key: 'expiry', header: 'Expiry', render: r => <span className="font-mono text-t11 text-textSecondary whitespace-normal">{ownExpiry(r)}</span> },
+    {
+      key: 'model',
+      header: 'Model',
+      sortValue: r => r.band ?? '',
+      render: r => <span className="font-mono text-t11 text-textPrimary">{r.band === 'wing' ? `${modelOfBand(r.band)} · ${RIDING_WORD}` : modelOfBand(r.band) || '—'}</span>,
+    },
+    { key: 'sigma', header: '1σ to expiry', align: 'right', sortValue: r => r.sigmaMovePct, render: r => <span className="font-mono text-t11 tnum text-textPrimary">{r.greeks.iv > 0 && r.sigmaMovePct > 0 ? `±${r.sigmaMovePct}%` : '—'}</span> },
+    { key: 'premium', header: 'Ask', align: 'right', sortValue: r => (r.ask > 0 ? r.ask : r.mid), render: r => <span className="font-mono text-t11 tnum text-textPrimary">${(r.ask > 0 ? r.ask : r.mid).toFixed(2)}</span> },
+    { key: 'breaks', header: 'Stop', align: 'right', sortValue: r => (r.band === 'lottery' ? 0 : (r.ask > 0 ? r.ask : r.mid) * STOP_KEEP), render: r => {
+      if (r.band === 'lottery') return <span className="font-mono text-t11 tnum text-warn">No stop</span>;
+      if (r.band !== 'top' && r.band !== 'wing') return <span className="font-mono text-t11 text-textMuted">Not a call</span>;
+      return <span className="font-mono text-t11 tnum text-warn">${((r.ask > 0 ? r.ask : r.mid) * STOP_KEEP).toFixed(2)}</span>;
+    } },
+  ];
+  cols.push({
+    key: 'open',
+    header: '',
+    align: 'right',
+    render: r => (
+      <button
+        type="button"
+        onClick={e => {
+          e.stopPropagation();
+          onAnalysis(r);
+        }}
+        className="slayer-chip uppercase tracking-wider"
+      >
+        Open <ArrowUpRight className="w-3 h-3" />
+      </button>
+    ),
+  });
+  return cols;
+}
+
 const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expiryChip, emptyLabel }: SetupScanBoardProps) => {
   const ranked = useMemo<Ranked[]>(() => setups.map((s, i) => ({ ...s, rank: i + 1 })), [setups]);
   const cap = useRestCap(ranked);
@@ -64,53 +114,7 @@ const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expi
   }, [listKey]);
   const shown = huge ? ranked.slice(0, shownN) : layout === 'cards' ? cap.shown : ranked;
 
-  const columns = useMemo<Column<Ranked>[]>(() => {
-    const cols: Column<Ranked>[] = [
-      { key: 'rank', header: '#', sortValue: r => r.rank, render: r => <span className="font-mono text-t10 text-textMuted tnum">{r.rank}</span> },
-      {
-        key: 'contract',
-        header: 'Contract',
-        sortValue: r => r.ticker,
-        render: r => (
-          <span className="inline-flex items-center gap-2 min-w-0">
-            <ContractLabel contract={r.contract} right={r.right} logo={r.ticker} size="sm" />
-          </span>
-        ),
-      },
-      { key: 'expiry', header: 'Expiry', render: r => <span className="font-mono text-t11 text-textSecondary whitespace-normal">{ownExpiry(r)}</span> },
-      {
-        key: 'book',
-        header: 'Book',
-        sortValue: r => r.band ?? '',
-        render: r => <span className="font-mono text-t11 text-textPrimary">{r.band === 'top' ? 'A' : r.band === 'wing' ? 'B' : r.band === 'lottery' ? 'C' : '—'}</span>,
-      },
-      { key: 'sigma', header: '1σ to expiry', align: 'right', sortValue: r => r.sigmaMovePct, render: r => <span className="font-mono text-t11 tnum text-textPrimary">{r.greeks.iv > 0 && r.sigmaMovePct > 0 ? `±${r.sigmaMovePct}%` : '—'}</span> },
-      { key: 'premium', header: 'Ask', align: 'right', sortValue: r => (r.ask > 0 ? r.ask : r.mid), render: r => <span className="font-mono text-t11 tnum text-textPrimary">${(r.ask > 0 ? r.ask : r.mid).toFixed(2)}</span> },
-      { key: 'breaks', header: 'Stop', align: 'right', sortValue: r => (r.band === 'lottery' ? 0 : (r.ask > 0 ? r.ask : r.mid) * STOP_KEEP), render: r => {
-        if (r.band === 'lottery') return <span className="font-mono text-t11 tnum text-warn">No stop</span>;
-        if (r.band !== 'top' && r.band !== 'wing') return <span className="font-mono text-t11 text-textMuted">Not a call</span>;
-        return <span className="font-mono text-t11 tnum text-warn">${((r.ask > 0 ? r.ask : r.mid) * STOP_KEEP).toFixed(2)}</span>;
-      } },
-    ];
-    cols.push({
-      key: 'open',
-      header: '',
-      align: 'right',
-      render: r => (
-        <button
-          type="button"
-          onClick={e => {
-            e.stopPropagation();
-            onAnalysis(r);
-          }}
-          className="slayer-chip uppercase tracking-wider"
-        >
-          Open <ArrowUpRight className="w-3 h-3" />
-        </button>
-      ),
-    });
-    return cols;
-  }, [onAnalysis]);
+  const columns = useMemo(() => scanColumns(onAnalysis), [onAnalysis]);
 
   if (setups.length === 0) {
     return (
@@ -127,7 +131,7 @@ const SetupScanBoard = ({ setups, layout, selectedId, onSelect, onAnalysis, expi
           rows={shown}
           columns={columns}
           widths={WIDTHS}
-          tooltips={TOOLTIPS}
+          tooltips={SCAN_TOOLTIPS}
           rowKey={r => r.id}
           onRowClick={onSelect}
           selectedKey={selectedId}

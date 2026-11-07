@@ -6,11 +6,11 @@ import type { Setup } from '../../types/compass';
 import { nyClock } from '../../core/nyTime';
 import ContractLabel from '../ui/ContractLabel';
 import SessionSpark from './SessionSpark';
-import { MODELS_VALIDATED, UNVALIDATED_LINE, UNVALIDATED_WORD } from '../../data/compassParams';
+import { MODELS_VALIDATED, RIDING_WORD, UNVALIDATED_LINE, UNVALIDATED_WORD, modelOfBand } from '../../data/compassParams';
 import { activeStop, signalOf } from '../../data/compassLedger';
 import { pctWord, returnInk } from '../../data/compassReturn';
 import { useContractLive } from '../../data/thetaBook';
-import { P1_MIN, takeProfitPx, targetPx } from '../../data/compassParams';
+import { takeProfitPx, targetPx } from '../../data/compassParams';
 import { STOP_KEEP } from '../../data/contractQuote';
 import { Tip } from '../ui/Tooltip';
 import { usd2 as money } from '../../core/format';
@@ -35,11 +35,12 @@ interface SetupScanCardProps {
   spark?: number[];
 }
 
+/* the model a card came from, by name only (owner: Model 1/2/3, never a book letter, never a score) */
 const tagOf = (setup: Setup): string => {
   if (setup.band === 'closest') return 'Closest';
-  if (setup.band === 'lottery') return 'Book C';
-  if (setup.band === 'wing') return MODELS_VALIDATED ? 'Book B' : `Book B · ${UNVALIDATED_WORD}`;
-  if (setup.band === 'top') return MODELS_VALIDATED ? 'Book A' : `Book A · ${UNVALIDATED_WORD}`;
+  if (setup.band === 'lottery') return modelOfBand('lottery');
+  if (setup.band === 'wing') return MODELS_VALIDATED ? `${modelOfBand('wing')} · ${RIDING_WORD}` : `${modelOfBand('wing')} · ${RIDING_WORD} · ${UNVALIDATED_WORD}`;
+  if (setup.band === 'top') return MODELS_VALIDATED ? modelOfBand('top') : `${modelOfBand('top')} · ${UNVALIDATED_WORD}`;
   if (setup.band === 'scalp') return 'Scalp';
   if (setup.band === 'average') return 'Average';
   return '';
@@ -48,8 +49,8 @@ const tagOf = (setup: Setup): string => {
 const holdOf = (setup: Setup): string => {
   if (setup.strength) return 'Held. Same trade.';
   if (setup.band === 'closest') return '';
-  if (setup.band === 'lottery') return 'Book C. No model. No stop. Flat at 15:50.';
-  if (setup.band === 'wing') return 'Book B. Model 2 exit, even under 50%.';
+  if (setup.band === 'lottery') return 'Model 3, the late sweep. No stop. Flat at 15:50.';
+  if (setup.band === 'wing') return `Model 1, far from the money. ${RIDING_WORD}: the stop ratchets.`;
   if (setup.band === 'average') return 'Average.';
   if (setup.runner) return 'Model 2 runner. Stop ratchets. Flat at 15:55.';
   return 'Model 1. Out at 1.50 × the ask, or the stop.';
@@ -88,7 +89,7 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
   /* the stop standing now: the ratchet's rung once the call has filled and run, else 0.4678 × the entry */
   const standing = paid > 0 && outcome ? activeStop(paid, outcome.peak, runner) : null;
   const stopPx = priced && setup.band !== 'lottery' && entry > 0 ? Number((standing ? standing.stop : entry * STOP_KEEP).toFixed(2)) : 0;
-  /* a non-runner Book A leaves at 1.50 × the fill; a runner and Book B ride the ratchet; Book C sells 3× or 2× */
+  /* a non-runner Model 1 call leaves at 1.50 × the fill; a runner (Model 2 riding) rides the ratchet; Model 3 sells 3× or 2× */
   const target = !priced || !(entry > 0) ? 0 : setup.band === 'lottery' ? targetPx(entry, 2) : runner ? 0 : takeProfitPx(entry);
   const away = (px: number) => (Number.isFinite(liveBid) && liveBid > 0 && px > 0 ? `${px >= liveBid ? '+' : '−'}${Math.abs((px / liveBid - 1) * 100).toFixed(0)}%` : '');
   const closedOutPnl = closedOut?.exit && entry > 0 ? ((closedOut.exit.px - entry) / entry) * 100 : NaN;
@@ -96,11 +97,8 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
   const pnl = Number.isFinite(closedOutPnl) ? closedOutPnl : livePnl;
   const pnlWord = Number.isFinite(pnl) ? pctWord(pnl) : '—';
   const place = placeWord(setup);
-  const model = setup.p1 != null
-    ? `${holdOf(setup)} Model 1 ${(setup.p1 * 100).toFixed(1)}%.${setup.prun != null ? ` Model 2 ${(setup.prun * 100).toFixed(0)}%.` : ''}${MODELS_VALIDATED ? '' : ` ${UNVALIDATED_LINE}`}`
-    : setup.band === 'lottery'
-      ? holdOf(setup)
-      : '';
+  /* the hold in words, never the score the model read */
+  const model = setup.band === 'lottery' ? holdOf(setup) : setup.p1 != null ? `${holdOf(setup)}${MODELS_VALIDATED ? '' : ` ${UNVALIDATED_LINE}`}` : '';
   const when = [
     ticket && setup.late && setup.seenAt ? `Scored late from recorded quotes (${nyClock(setup.mark ?? setup.seenAt)} ET mark)` : '',
     ticket && !setup.late && setup.seenAt ? `Called ${nyClock(setup.seenAt, { zone: true })}` : '',
@@ -153,7 +151,7 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
       {priced ? (
         <>
           <div className="grid grid-cols-4 gap-2 items-start" data-card-numbers>
-            <Stat label="Model 1" value={setup.p1 != null ? `${(setup.p1 * 100).toFixed(1)}%` : setup.band === 'lottery' ? 'None' : '—'} ink={setup.p1 != null && setup.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'} />
+            <Stat label="Model" value={modelOfBand(setup.band) || 'Not a call'} ink={closest ? 'text-textMuted' : 'text-textPrimary'} />
             <Stat label={paid > 0 ? 'Filled' : 'Ask'} value={entry > 0 ? money(entry) : '—'} />
             <Stat label={closedOut ? 'Exit' : 'Bid'} value={closedOut?.exit ? money(closedOut.exit.px) : Number.isFinite(liveBid) ? money(liveBid) : '—'} />
             <Stat label="P&L" value={pnlWord} ink={!Number.isFinite(pnl) ? 'text-textMuted' : returnInk(pnl)} right />

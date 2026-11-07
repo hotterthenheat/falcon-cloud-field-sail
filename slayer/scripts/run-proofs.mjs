@@ -33,6 +33,7 @@ const PROOFS = [
   'compass-late-proof',
   'compass-record-proof',
   'compass-feed-proof',
+  'compass-words-proof',
   'fixture-proof',
   'higher-proof',
   'paper-proof',

@@ -37,8 +37,8 @@ export const setupsControls = (): TileControl[] => [
   { id: 'sleeve', label: 'Expiry', title: 'How far out the contracts run', options: SCAN_SLEEVES.map(s => ({ value: s.key, label: `${s.label} · ${fmtDay(expiryFor(s.dte).date)}`, hint: s.blurb })) },
 ];
 
-/** The cards, kept: they re-render when the scan hands a new ranking */
-const Cards = memo(({ ranked, expiryChip, onOpen }: { ranked: Setup[]; expiryChip: string; onOpen: (s: Setup) => void }) => (
+/** The cards, kept: they re-render when the scan hands a new ranking (exported for scripts/compass-words-proof.ts) */
+export const CompassCards = memo(({ ranked, expiryChip, onOpen }: { ranked: Setup[]; expiryChip: string; onOpen: (s: Setup) => void }) => (
   <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2 grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-2 content-start" data-tile-rows>
     {ranked.map((s, i) => (
       <div key={s.id} className="animate-soft-in flex flex-col min-w-0 [&>button]:flex-1">
@@ -47,7 +47,7 @@ const Cards = memo(({ ranked, expiryChip, onOpen }: { ranked: Setup[]; expiryChi
     ))}
   </div>
 ));
-Cards.displayName = 'Cards';
+CompassCards.displayName = 'CompassCards';
 
 /* Compass's own scan, run on the terminal's live quotes while the tile is on the desk (data/thetaBook.ts) */
 export const SetupsTile = ({ state }: TileProps) => {
@@ -67,7 +67,7 @@ export const SetupsTile = ({ state }: TileProps) => {
   const top = ranked[0];
   return (
     <div className="h-full min-h-0 flex flex-col" data-setups-tile>
-      <Cards ranked={ranked} expiryChip={expiryChip} onOpen={open} />
+      <CompassCards ranked={ranked} expiryChip={expiryChip} onOpen={open} />
       <TileRead testId="setups">
         {earlier ? <AsOf at={earlier.at} prefix="last scan" className="mr-1.5" /> : null}
         {view.status === 'down' ? <span className="text-warn">Live data offline. </span> : null}

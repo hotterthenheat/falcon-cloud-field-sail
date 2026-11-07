@@ -111,7 +111,8 @@ const GuideFocus = ({ open, onClose, title, children, testId, width = 460, viewp
       )}
     </AnimatePresence>
   );
-  return viewport ? createPortal(layer, document.body) : layer;
+  /* no document (a server render, scripts/compass-words-proof.ts): the layer in place */
+  return viewport && typeof document !== 'undefined' ? createPortal(layer, document.body) : layer;
 };
 
 export default GuideFocus;

@@ -125,6 +125,13 @@ export function modelOfBook(book: 'A' | 'B' | 'C' | 'R' | string): string {
   return book === 'R' ? 'Model Risk' : book === 'C' ? MODEL_WORD[3] : book === 'A' || book === 'B' ? MODEL_WORD[1] : '';
 }
 
+/** A recorded call's model as a row reads it: "Model 1", "Model 1 · Model 2 riding" (a runner, or the far wing, whose
+    exit Model 2 rides), "Model 3" or "Model Risk". Never a book letter, never a score. */
+export function modelWordOf(call: { book: 'A' | 'B' | 'C' | 'R' | string; runner?: boolean }): string {
+  const word = modelOfBook(call.book);
+  return (call.book === 'A' || call.book === 'B') && (call.runner || call.book === 'B') ? `${word} · ${RIDING_WORD}` : word;
+}
+
 /** The model a card came from, by its band; empty for a contract that is not a call. */
 export function modelOfBand(band: string | undefined): string {
   return band === 'lottery' ? MODEL_WORD[3] : band === 'top' || band === 'wing' ? MODEL_WORD[1] : '';

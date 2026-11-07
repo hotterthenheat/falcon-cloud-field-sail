@@ -9,14 +9,14 @@ import { setupIdOf } from '../../data/compass';
 import { COMPASS_TICKERS, COMPASS_SET } from '../../data/compassUniverse';
 import { liveSpark, alertUniverse, setScanFocus, useThetaBook } from '../../data/thetaBook';
 import { useSignals } from '../../data/compassLedger';
-import { bestByName, lastScanAt, scanBusy, scanReport, seatsNow } from '../../data/compassModel';
+import { lastScanAt, scanBusy, scanReport, seatsNow } from '../../data/compassModel';
 import { backlogLine, compassFeed } from '../../data/compassFeed';
 import { scanMeta, onScanMeta } from '../../data/compassScan';
 import TailRiskStrip from '../../components/compass/TailRiskCard';
 import { daySummary } from '../../data/compassOutcome';
 import { optionsStaleNow, staleWords } from '../../data/statusModel';
 import { asOfText } from '../../components/ui/states';
-import { MODELS_VALIDATED, P1_MIN, inModelWindow } from '../../data/compassParams';
+import { MODELS_VALIDATED, P1_MIN, RIDING_WORD, inModelWindow } from '../../data/compassParams';
 import { nyClock, nyDay, nyIsoDate, nyMinutes, nyWallTime } from '../../core/nyTime';
 import { setCompassView, useCompassView, type BoardLayout } from '../../data/compassView';
 import { useScanClock } from '../../data/compassDoor';
@@ -51,7 +51,7 @@ const LAYOUT_OPTIONS: DropdownOption<BoardLayout>[] = [
   { value: 'table', label: 'Table', hint: 'One row per setup, sortable' },
 ];
 
-/** A card is a call, or one of the closest that did not clear. Closest does not need 70.67%. */
+/** A card is a call, or one of the closest that did not clear (a closest card did not clear Model 1's line). */
 function shownCard(s: Setup): boolean {
   const dte = s.expiry === '0DTE' ? 0 : Number(/^(\d+)DTE$/.exec(s.expiry)?.[1]);
   if (!(dte >= 0 && dte <= 7)) return false;
@@ -179,12 +179,12 @@ const Board = () => {
       {
         value: 'odte',
         label: `0DTE · ${dayOf(same.date)}`,
-        hint: same.dte === 0 ? 'Stops today. Book C runs here.' : `Next session, ${same.weekday}.`,
+        hint: same.dte === 0 ? 'Stops today. Model 3 runs here.' : `Next session, ${same.weekday}.`,
       },
       {
         value: 'weekly',
         label: `1–7 DTE · ${dayOf(week.date)}`,
-        hint: 'Same models as same-day. Book C does not run here.',
+        hint: 'Same models as same-day. Model 3 does not run here.',
       },
     ];
   }, [sleeveDates]);
@@ -233,7 +233,7 @@ const Board = () => {
   const scanOff = clock.phase === 'closed';
   const report = scanReport(offered === 'weekly' ? 'weekly' : 'odte');
   const bestLine = report.scored
-    ? `Nothing cleared. Closest is ${report.contract} at ${(report.best * 100).toFixed(1)}%.`
+    ? `Nothing cleared. Closest is ${report.contract}.`
     : report.quiet
       ? 'Quotes are in. The minute tape did not load, so nothing was scored.'
       : '';
@@ -245,8 +245,8 @@ const Board = () => {
   const called = swings + wings + booksC;
   const caveat = MODELS_VALIDATED ? '' : ' Unvalidated models.';
   const calledLine = offered === 'odte'
-    ? `Book A ${swings}. Book B ${wings}. Book C ${booksC}.${near ? ` Closest ${near}.` : ''}${caveat}`
-    : `Book A ${swings}. Book B ${wings}. Book C is same-day only.${near ? ` Closest ${near}.` : ''}${caveat}`;
+    ? `Model 1 ${swings + wings}${wings ? ` (${RIDING_WORD} on ${wings})` : ''}. Model 3 ${booksC}.${near ? ` Closest ${near}.` : ''}${caveat}`
+    : `Model 1 ${swings + wings}${wings ? ` (${RIDING_WORD} on ${wings})` : ''}. Model 3 is same-day only.${near ? ` Closest ${near}.` : ''}${caveat}`;
   const scannedAt = lastScanAt(offered === 'weekly' ? 'weekly' : 'odte');
   const asOf = scannedAt
     ? `Last scan ${nyClock(scannedAt, { zone: true })}.`
@@ -290,8 +290,6 @@ const Board = () => {
                   : `${bestLine || (offered === 'odte' ? 'Nothing cleared Model 1 or Model 3.' : 'Nothing cleared Model 1.')} ${asOf}`}${windowLine}${staleLine ? ` ${staleLine}` : ''}${backlog ? ` ${backlog}` : ''}`
     } />
   );
-  const bests = bestByName(offered === 'weekly' ? 'weekly' : 'odte');
-  const topBest = [...bests.values()].reduce((m, r) => Math.max(m, r.p1), -1);
   const seats = seatsNow().seats;
   const emptyLabel = live.feed === 'offline'
     ? serverLine
@@ -318,9 +316,6 @@ const Board = () => {
                 <Fact label="Net today" testId="net" title="Per contract: today's closed calls, (exit − fill) × 100. No fees.">
                   {day.won + day.lost ? <span className={day.net >= 0 ? 'text-bull' : 'text-bear'}>{`${day.net < 0 ? '−' : '+'}$${Math.abs(day.net).toFixed(2)}`}</span> : '—'}
                 </Fact>
-                <Fact label="Best Model 1" testId="best" title={`The highest Model 1 read on this sleeve today. A call needs ${(P1_MIN * 100).toFixed(2)}%.`}>
-                  {topBest >= 0 ? `${(topBest * 100).toFixed(1)}%` : '—'}
-                </Fact>
                 <Fact label="Roots called" testId="fading" title="Roots called today on this scan. A root is called once per sleeve, whenever its best contract clears, from the open until the flat. 0DTE and 1–7 DTE each keep their own.">
                   <span className="text-textPrimary">{seats}</span>
                 </Fact>
@@ -333,7 +328,7 @@ const Board = () => {
                   value={offered}
                   options={expiryOptions}
                   onChange={next => setCompassView({ sleeve: next === 'weekly' ? 'weekly' : 'odte' })}
-                  title="0DTE includes Book C. 1–7 DTE uses Book A and Book B."
+                  title="0DTE includes Model 3. 1–7 DTE uses Model 1 only."
                   ink={CARD_INK.expiry}
                   testId="compass-expiry"
                 />

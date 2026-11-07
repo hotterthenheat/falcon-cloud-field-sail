@@ -1,4 +1,4 @@
-/* A Model Risk call in the same card as Books A, B and C. The mark is the tail, so it is not read as those books. */
+/* A Model Risk call in the same card as Model 1 and Model 3's. The mark is the tail, so it is not read as those models. */
 
 import { ArrowUpRight, TriangleAlert } from 'lucide-react';
 import { nyClock } from '../../core/nyTime';
@@ -71,7 +71,7 @@ const TailRiskCard = ({ ticket: t, rank, onOpen }: { ticket: TailTicket; rank: n
     >
       <div className="flex items-center gap-2 flex-wrap">
         <span className="font-mono text-t10 text-textMuted tnum">#{rank}</span>
-        <Tip label="Model Risk. Not Book A, B or C.">
+        <Tip label="Model Risk. Not Model 1 or Model 3.">
           <span className="inline-flex items-center gap-1.5 font-mono text-t10 uppercase tracking-wider text-warn border border-warn/40 rounded px-1.5 py-0.5" data-tail-logo>
             <TailMark size={14} />
             Tail risk
@@ -79,7 +79,7 @@ const TailRiskCard = ({ ticket: t, rank, onOpen }: { ticket: TailTicket; rank: n
         </Tip>
         <ContractLabel contract={t.contract} right={t.right} logo={t.ticker} />
         <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">{expChip(t)}</span>
-        <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">Book {t.book}</span>
+        <span className="font-mono text-t10 text-textSecondary border border-borderSubtle rounded px-1.5 py-0.5">Model Risk</span>
         <span className={`ml-auto font-mono text-t10 uppercase tracking-wider ${closed ? 'text-textPrimary' : 'text-textPrimary'}`}>{closed ? 'Closed' : 'Open'}</span>
       </div>
       <p className="font-mono text-t10 text-textMuted whitespace-normal break-words" data-card-times>
