@@ -83,13 +83,13 @@ const TickerSearch = ({ value, onChange }: TickerSearchProps) => {
             value={query}
             onValueChange={setQuery}
             className="py-2.5"
-            placeholder={room === 'equity' ? 'Ticker or company…' : room === 'option' ? 'Ticker or company, options only…' : room === 'compass' ? 'One of the 456…' : 'Ticker or company…'}
+            placeholder={room === 'equity' ? 'Ticker or company…' : room === 'option' || room === 'trace' ? 'Ticker or company, options only…' : room === 'compass' ? 'One of the 456…' : 'Ticker or company…'}
           />
           <CommandList className="max-h-72 py-1">
             {!mod ? (
               <div className="px-3 py-6 text-center font-mono text-t11 text-textMuted">Loading tickers…</div>
             ) : results.length === 0 ? (
-              <div className="px-3 py-6 text-center font-mono text-t11 text-textMuted">{(room === 'option' && noOptionsLine(query)) || 'No symbol or company matches'}</div>
+              <div className="px-3 py-6 text-center font-mono text-t11 text-textMuted">{((room === 'option' || room === 'trace') && noOptionsLine(query, room === 'trace')) || 'No symbol or company matches'}</div>
             ) : (
               results.map(t => {
                 const label = companyName(t.symbol);

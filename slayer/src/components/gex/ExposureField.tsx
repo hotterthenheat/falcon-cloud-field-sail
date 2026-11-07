@@ -41,7 +41,8 @@ import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import Fold from '../ui/Fold';
 import ScopeChip from '../ui/ScopeChip';
 import ExpiryRangeCard, { type ExpiryDay, type ExpiryShortcut } from '../ui/ExpiryRangeCard';
-import { listedExpiry } from '../../core/calendar';
+import { isoDate, listedExpiry } from '../../core/calendar';
+import { pickableExpiries } from '../../data/expiryListing';
 import DropdownMulti from '../ui/DropdownMulti';
 import GuideFocus, { GuideDoor } from '../ui/GuideFocus';
 import { undoable } from '../ui/undo';
@@ -1210,7 +1211,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
      2026-09-22 the card picks a WINDOW of them — From and Through — with
      shortcuts, and says the ceiling. */
   const beside = extraBooks.length > 0 ? ` beside ${1 + extraBooks.length} names` : '';
-  const expiryDays: ExpiryDay[] = ex.map((e, i) => ({
+  const expiryDays: ExpiryDay[] = pickableExpiries(snapshot.ticker, ex.map((e, i) => ({
     value: i,
     /* the listed date itself, never a day count from today (a weekend moved VIX's Wednesdays to Thursdays) */
     date: listedExpiry(e.date, e.dte).date,
@@ -1218,7 +1219,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
        "TODAY → NOV 3" on the Expiries chip beside "MATRIX OCT 23 → NOV 3" on the supreme's) */
     label: e.dte === 0 && todayScopeLabel() === 'Today' ? 'Today' : e.date,
     hint: e.dte === 0 ? `${e.date} — the contracts that expire at ${todayScopeLabel() === 'Today' ? 'the bell' : "the next session's close"}` : `${e.date} — ${e.dte} ${e.dte === 1 ? 'day' : 'days'} out`,
-  }));
+  })), d => isoDate(d.date), { settled: false });
   const lastIdx = Math.max(0, ex.length - 1);
   const weekEnd = ex.reduce((last, e, i) => (e.dte <= 5 ? i : last), 0);
   const shortcuts: ExpiryShortcut[] = [
@@ -1994,7 +1995,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                     )}
                     <ExpiryRangeCard
                       label="Expiries"
-                      days={book.surface.expiries.map((e, i) => ({ value: i, date: listedExpiry(e.date, e.dte).date, label: e.dte === 0 && todayScopeLabel() === 'Today' ? 'Today' : e.date, hint: e.date }))}
+                      days={pickableExpiries(c.ticker, book.surface.expiries.map((e, i) => ({ value: i, date: listedExpiry(e.date, e.dte).date, label: e.dte === 0 && todayScopeLabel() === 'Today' ? 'Today' : e.date, hint: e.date })), d => isoDate(d.date), { settled: false })}
                       from={lens.from}
                       through={lens.through}
                       onChange={(from, through) => {

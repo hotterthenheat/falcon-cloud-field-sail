@@ -53,6 +53,32 @@ endpoint name suggests.
   for the vendor's expiry walk); `--master <csv>` also writes the full table both vendors' expiry lists sit in.
   `/option-trades/optionable-tickers` ("which symbols have listed options") is API Advanced only on this key (422), so
   the screener (`/screener/stocks`, paged with `offset` as a page number, 500 a page) and the expiry walk stand in.
+  **Trace's** search offers the names Unusual Whales lists options on (the `v` flag; Trace reads Unusual Whales only),
+  not ThetaData's (`o`, the Weigher, Paper and Backtest).
+
+- **Expiration lists are checked against the contracts** (from the 2026-11-07 ticker audit, `reports/expiry_mismatches.csv`).
+  ThetaData's `/option/list/expirations` carries dates no contract was ever listed on (56 on names both vendors carry:
+  SPX 2088-07-10 … 2090-06-18, TT 2027-04-16, PWR 2027-08-20, RIO 2031-01-01; about a thousand more on roots only it
+  lists) and lags new listings by a session or more (18 dates first quoted on 2026-11-06: SPX 2026-12-15, NDX
+  2026-12-14, RUT 2026-11-23, SPY 2027-04-16 …). So the proxy answers every `/option/list/expirations` read — every
+  page's and every server reader's, Terrain, the Weigher, Paper and Backtest, Compass, the tapes — with the checked
+  list (`server/expiryCheck.mjs`, arithmetic in `shared/expiryEvidence.mjs`): a date from today on is offered only
+  with at least one contract behind it in the root's current NBBO snapshot (`/option/snapshot/quote?expiration=*`), its
+  current open-interest report (`/option/snapshot/open_interest?expiration=*`) or the contracts quoted on the last
+  finished session (`/option/list/contracts/quote?date=D`), and a date those carry that the list lacks is added the
+  day its contracts appear. Earlier dates pass as listed. Three reads a root (the snapshot kept 10 minutes, the report
+  an hour, the session's list a day), through the same slots as any read; when none answers, the list goes out as the
+  last universe build judged it (`expiries.phantom` / `expiries.added` in the generated file), and every verdict is
+  logged once a day (`[expiries] SPX: … dropped …`). The universe build does the same with the whole market's quoted
+  and traded contracts of the session, so the `o` flag means a live date with contracts.
+  Unusual Whales' expiry list has the opposite fault on a few index products (CBTX, CBTXW, SPEQW, SPEQX; ISHP on
+  2026-11-06): dates with no exposure and no contract on either vendor. The build lists them (`expiries.noContracts`)
+  and every expiry picker hides them (`src/data/expiryListing.ts`, logged once); a date with no exposure yet that does
+  have contracts (SPX 2026-12-15, a new listing with no open interest) stays. Two dates Unusual Whales was missing on
+  2026-11-06, SUPN 2027-06-17 and XNDX 2026-11-20, are its own omissions (quoted on ThetaData, 40 and 18 contracts):
+  nothing in the app can add them to its list, and no page that reads it needs them. Proof:
+  `scripts/expiry-evidence-proof.ts` (the audit's cases, recorded in `scripts/fixtures/expiry-audit-2026-11-06.json`);
+  against the live terminal, `node scripts/expiry-check-live.mjs`.
 
 Set by the owner on 2026-10-22 (Pinpoint and Dossier on Unusual Whales), 2026-10-29 (Trace on Unusual Whales
 only; ThetaData for Pinpoint's live price and candles) and 2026-11-01 (ThetaData's open interest for Building).

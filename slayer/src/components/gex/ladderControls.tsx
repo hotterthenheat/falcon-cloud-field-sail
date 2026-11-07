@@ -6,6 +6,7 @@ import { bookToday, expiryFor, isoDate, sessionsBetween, today, MONTHS } from '.
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 import { expiryDateFor } from '../../data/book/levels';
 import type { ExposureExpiry } from '../../types/gex';
+import { pickableExpiries } from '../../data/expiryListing';
 
 const fmtDay = (d: Date) => `${MONTHS[d.getMonth()]} ${d.getDate()}`;
 /** The monthly expiration: the third Friday of this month, or next month's once it has passed */
@@ -34,7 +35,7 @@ export function ladderExpiryOptions(ticker?: string): ExpiryChoice<ExposureExpir
   const isToday = t0.dte === 0 && isoDate(t0.date) === isoDate(today());
   /* Each choice carries its real day (the calendar card lights it), and a day is offered once: from a Thursday 1D and 2D both land on Friday. */
   const seen = new Set<string>();
-  return ([
+  const choices = ([
     { value: '0DTE', label: isToday ? `Today · ${fmtDay(t0.date)}` : `Next session · ${fmtDay(t0.date)}`, hint: 'The contracts that expire at the bell — the sharpest hedging', date: t0.date },
     { value: '1D', label: `${fmtDay(day(1).date)} · ${day(1).weekday}`, hint: 'The next expiry out', date: day(1).date },
     { value: '2D', label: `${fmtDay(day(2).date)} · ${day(2).weekday}`, hint: 'Two sessions out', date: day(2).date },
@@ -61,6 +62,9 @@ export function ladderExpiryOptions(ticker?: string): ExpiryChoice<ExposureExpir
     seen.add(k);
     return true;
   });
+  /* a date the vendor lists with no contract behind it is not offered (data/expiryListing.ts); the book counts from its
+     own floor, so the settled rule is its own */
+  return pickableExpiries(ticker, choices, o => (o.date ? isoDate(o.date) : null), { settled: false });
 }
 
 /** ±10 for the day's fight, ±30 for the whole book — the tail hedges live out there */

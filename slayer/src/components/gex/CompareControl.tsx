@@ -86,7 +86,7 @@ const CompareControl = ({
     requestAnimationFrame(() => inputRef.current?.focus());
     setHighlight(0);
     setModeIdx(0);
-  }, [open]);
+  }, [open, room]);
 
   /* A new search is a new list — keeping the old index would leave the
      highlight on whatever row happens to sit at that position now. */
@@ -163,7 +163,7 @@ const CompareControl = ({
               aria-controls={`${uid}-list`}
               aria-autocomplete="list"
               aria-activedescendant={results[highlight] ? `${uid}-opt-${highlight}` : undefined}
-              placeholder={room === 'compass' ? 'Compare one of the 456…' : room === 'option' ? 'Compare a name with options…' : 'Compare symbols…'}
+              placeholder={room === 'compass' ? 'Compare one of the 456…' : room === 'option' || room === 'trace' ? 'Compare a name with options…' : 'Compare symbols…'}
               title="Up and down to choose a symbol, left and right for the scale, Enter to add"
               className="w-full bg-transparent py-1.5 font-mono text-t11 text-textPrimary placeholder:text-textMuted focus:outline-none"
             />
