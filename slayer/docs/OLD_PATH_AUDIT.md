@@ -42,3 +42,17 @@ day wraps under, the matrix's columns share the full box. The calendar view had 
 counted 120 px a column while the grid draws at least 128, so a box packed to it cut the last greek's column (CHARM, 15 px);
 `ExposureLedger.tsx` now counts the drawn floor (`CELL_DRAWN_MIN`). Terrain's rails and the Board were checked at every
 width and have no dead strip.
+
+## The Weigher follows Compass's rules (2026-11-07, after Compass's f574f0f)
+
+Compass dropped its fixed price and spread limits (f574f0f). The Weigher's gate (`data/weigherGate.ts readGate`) and its
+words (`components/weigher/StrikeCase.tsx`) now read the same definitions from `compassParams`, never restated:
+- validity, not a limit: `quoteTradable` and `quoteFreshAt` (a two-sided quote within 90 s);
+- Books A and B (scored by Model 1): `inModel1Domain` — a bid over $0.15 and a spread within 8%, said as the model's
+  trained quotes ("our model was never trained on a quote this thin"), not "too thin to take";
+- Book B's wing: `wingShape`, |delta| ≤ `WING_DELTA_MAX` (0.15) at the contract's own IV (`compassCost deltaOf`), in
+  place of an ask of $1.00 or less; the halving rule stays;
+- Book C (Model 3): `lotteryShape`, at the money or out of it (|delta| ≤ `LOTTERY_DELTA_MAX`, 0.55), no bid, spread or
+  $1.65 cap; `LOTTERY_ASK_MAX` is no longer imported anywhere.
+
+Proof: `scripts/weigher-rules-proof.ts` (in CI).
