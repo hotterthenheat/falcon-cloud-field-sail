@@ -11,7 +11,7 @@
 import { compassHost, type ThetaAnswer } from './compassHost';
 import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { setupIdOf } from './compass';
-import { BOOK_NAME, GEX_CORE, WEEKLY_STRIKES, inLottery, sessionScanOpen, weekdayDte } from './compassParams';
+import { BOOK_NAME, GEX_CORE, LOTTERY_ASK_MAX, WEEKLY_STRIKES, inLottery, m3ShapeOn, sessionScanOpen, weekdayDte } from './compassParams';
 import { deskPhase, odteAsleep, optionScanOpen, sessionDayOpen, sessionIso, sessionYmd } from './compassSession';
 import { MODEL4, model4OnOdte } from './model4Event';
 import { COMPASS_TICKERS } from './compassUniverse';
@@ -323,12 +323,16 @@ interface Draft {
   under: number;
   at: number;
   greeks: LiveGreeks;
+  bidSize?: number;
+  askSize?: number;
 }
 
 /** Book A reaches the span (4 strikes on an index root, up to 12 on a single name). Book B is the band past it,
-    max(8, span + 1) to that + 4 strikes out, at an ask of 1.00 or less. A long chain keeps 12 strikes either side and
-    every contract asking 1.65 or less, which holds all of Book B (it asks 1.00 or less) and Book C. */
-function kept(list: Draft[]): Draft[] {
+    max(8, span + 1) to that + 4 strikes out (WEEKLY_STRIKES, 17, at the widest). A long chain keeps that many strikes
+    either side of the money, by distance: a wing is chosen by its shape and its cost, not its price (it used to keep
+    12 strikes and every contract asking $1.65 or less). While Model 3 runs today's rule (COMPASS_M3_SHAPE off) every
+    contract that rule could take (asking $1.65 or less) is kept too, so the sweep sees the board it always saw. */
+export function kept<D extends { strike: number; ask: number; under: number }>(list: D[]): D[] {
   if (list.length <= 80) return list;
   const strikes = [...new Set(list.map(d => d.strike))].sort((a, b) => a - b);
   const spot = list.find(d => d.under > 0)?.under ?? 0;
@@ -341,8 +345,8 @@ function kept(list: Draft[]): Draft[] {
       atm = i;
     }
   });
-  const near = new Set(strikes.filter((_, i) => Math.abs(i - atm) <= 12));
-  for (const d of list) if (d.ask > 0 && d.ask <= 1.65) near.add(d.strike);
+  const near = new Set(strikes.filter((_, i) => Math.abs(i - atm) <= WEEKLY_STRIKES));
+  if (!m3ShapeOn()) for (const d of list) if (d.ask > 0 && d.ask <= LOTTERY_ASK_MAX) near.add(d.strike);
   return list.filter(d => near.has(d.strike));
 }
 
@@ -393,7 +397,10 @@ function draftOf(item: Record<string, unknown>, symbol: string, now: number, fre
         epsilon: finite(row.quote.epsilon),
       }
     : NO_GREEKS;
-  return { root, strike, right, exp: expiry, bid, ask, under, at, greeks };
+  const bidSize = num(row.quote.bid_size);
+  const askSize = num(row.quote.ask_size);
+  const sizes = row.quote.bid_size != null && row.quote.ask_size != null && Number.isFinite(bidSize) && Number.isFinite(askSize) ? { bidSize, askSize } : {};
+  return { root, strike, right, exp: expiry, bid, ask, under, at, greeks, ...sizes };
 }
 
 /** A row the snapshot priced without greeks (the quote snapshot, the recorded quotes): its greeks from its own mid
@@ -411,7 +418,10 @@ export function localGreeks(d: Pick<Draft, 'bid' | 'ask' | 'under' | 'strike' | 
 }
 
 function build(drafts: Map<string, Draft[]>, expiry: string, sleeve: SleeveKey, listed: number): Setup[] {
-  return kept(drafts.get(expiry) ?? []).map(d => toSetup(d.root, d.strike, d.right, d.exp, d.bid, d.ask, d.under, sleeve, d.at, d.greeks, listed));
+  return kept(drafts.get(expiry) ?? []).map(d => {
+    const s = toSetup(d.root, d.strike, d.right, d.exp, d.bid, d.ask, d.under, sleeve, d.at, d.greeks, listed);
+    return d.bidSize != null && d.askSize != null ? { ...s, bidSize: d.bidSize, askSize: d.askSize } : s;
+  });
 }
 
 /** One snapshot of one name: today's expiry (0DTE), one named expiry, or '*' for the nearest expiry 1 to 7 sessions

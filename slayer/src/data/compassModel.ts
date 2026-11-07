@@ -16,7 +16,12 @@ import {
   weekdayDte,
   sessionScanOpen,
   quoteValid,
-  spreadPass,
+  quoteTradable,
+  quoteFreshAt,
+  lotteryEntry,
+  m3ShapeOn,
+  sizeShown,
+  inModel1Domain,
   f32,
   strikeDistance,
   strikeSpan,
@@ -44,7 +49,6 @@ import {
   LIVE_FEATURE_VERSION,
   groupBOn,
   type FeatureVersion,
-  lotteryEntry,
   P1_MIN,
   WEEKLY_STRIKES,
   MODEL_1_NAME,
@@ -64,7 +68,7 @@ import { shadowClears, shadowOn, shadowPick, shadowScore, shadowTrees, type Shad
 import { optionScanOpen, sessionDayOpen, sessionIso, sessionYmd, tapeClockOf } from './compassSession';
 import type { OptionRight, Setup } from '../types/compass';
 import { frozenTail, type FullQuote, type PathBar } from './compassOutcome';
-import { atmIvOf, costPick, costPickOn, costRead, type CostMark, type CostRead } from './compassCost';
+import { MINI_OF, altsOf, atmIvOf, costPick, costPickOn, costRead, deltaOf, lotterySide, lotterySideNow, type CostMark, type CostRead } from './compassCost';
 import { CORE, INDEX, INPUT_NAMES, NO_DAILY, SECTOR_OF, UNDER, atmPair, atmRows, barsBefore, curveFrom, decayOver, features, tapeOf, yearsLeft, type Bar, type Curve, type PinBook } from './compassFeatures';
 
 let ENTRY: Tree[] = [];
@@ -545,7 +549,7 @@ export function onScoredRow(fn: (row: ScoredRow) => void): () => void {
 
 /** The feature version the live trees read (compassParams FEATURE_V1 / FEATURE_V2): version 1 until version 2's trees
     pass the holdout (docs/compass-group-b.md). */
-let liveFeatures: FeatureVersion = LIVE_FEATURE_VERSION;
+const liveFeatures: FeatureVersion = LIVE_FEATURE_VERSION;
 
 /** One scored row as research reads it (research/groupb/build.ts): both versions' inputs, the live answer, and every
     gate a book applies apart from the line, so any pair of trees can be run through the same seats offline. Nothing
@@ -665,6 +669,23 @@ const seedWindows = new Map<string, SeedWindow>();
     for every strike of the name and expiry): the mids 5 and 15 minutes back and Book B's ask 30 minutes back come
     from the quotes that stood then, not only from the scans this tab happened to run. The window is fixed to the
     mark, so every viewer scanning the same slot asks the same path and the server shares one answer. */
+/** How a seed read asks for its strikes. The terminal centres strike_range on the underlying as it is when asked, not as
+    it was at the mark: QQQ's 15:21 chain on 2026-11-05 (QQQ at 652), read on a later day with QQQ near 683, came back
+    668 and up at strike_range 16, so a late mark scored after the price moved got none of its own strikes. A live mark
+    (scored within SEED_LIVE_MS of the wall clock) keeps the centred read, exactly as before; any later read asks for
+    every strike and keeps the mark's own (the answer is filtered to the setups' strikes either way). */
+export const SEED_LIVE_MS = 10 * 60_000;
+export function seedStrikeParam(markMs: number, wallMs: number, weekly: boolean): string {
+  return Math.abs(wallMs - markMs) <= SEED_LIVE_MS ? `strike_range=${weekly ? WEEKLY_STRIKES : 16}` : 'strike=*';
+}
+
+/** Proofs only: the seed read of a list at a mark (seedQuotes), with its memo cleared first. */
+export async function seedQuotesForProof(list: Setup[], now: number): Promise<Map<string, Map<number, { bid: number; ask: number }>> | null> {
+  seededAt.clear();
+  seedWindows.clear();
+  return seedQuotes(list, now);
+}
+
 async function seedQuotes(list: Setup[], now: number, strict = false): Promise<SeedWindow | null> {
   const first = list[0];
   if (!first?.expiryDate) return null;
@@ -681,7 +702,7 @@ async function seedQuotes(list: Setup[], now: number, strict = false): Promise<S
      A weekly expiry reads Book B's band (to 17 strikes out); the same-day read stays at 16. */
   const step = clock.minute % 5 === 0 && mark === clock.hour * 60 + clock.minute ? 5 : 1;
   const weekly = first.expiryDate.slice(0, 10) !== sessionIso(now);
-  const got = await compassHost().theta(`/option/history/quote?symbol=${encodeURIComponent(first.ticker)}&expiration=${first.expiryDate.replace(/-/g, '').slice(0, 8)}&start_date=${ymd(now)}&end_date=${ymd(now)}&strike_range=${weekly ? WEEKLY_STRIKES : 16}&interval=${step}m&start_time=${hm(Math.max(0, mark - 30))}&end_time=${hm(mark)}&format=json`);
+  const got = await compassHost().theta(`/option/history/quote?symbol=${encodeURIComponent(first.ticker)}&expiration=${first.expiryDate.replace(/-/g, '').slice(0, 8)}&start_date=${ymd(now)}&end_date=${ymd(now)}&${seedStrikeParam(now, Date.now(), weekly)}&interval=${step}m&start_time=${hm(Math.max(0, mark - 30))}&end_time=${hm(mark)}&format=json`);
   if (faulted(got)) {
     /* not marked as read: the next pass asks again, and a strict one does not score without it */
     if (strict) throw new InputFault('quotes 30 minutes back');
@@ -1543,12 +1564,14 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
         notes.push(`${word} quote is older than 90 seconds`);
         continue;
       }
-      if (!quoteValid(s.bid, s.ask)) {
-        notes.push(`${word} quote is missing`);
+      /* validity: a two-sided quote with size shown (not a limit) */
+      if (!quoteTradable(s.bid, s.ask) || !sizeShown(s.bidSize, s.askSize)) {
+        notes.push(`${word} quote is missing or one-sided`);
         continue;
       }
-      if (!spreadPass(s.bid, s.ask)) {
-        notes.push(`${word} bid is at or under 0.15, or the spread is over 8%`);
+      /* Model 1's trained quotes (compassParams BID_MIN, SPREAD_MAX): the trees score nothing outside them */
+      if (!inModel1Domain(s.bid, s.ask)) {
+        notes.push(`${word} is outside Model 1's trained quotes (a bid over 0.15, a spread within 8%)`);
         continue;
       }
       const mid = (s.bid + s.ask) / 2;
@@ -1561,6 +1584,8 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       const x = liveFeatures === FEATURE_V2 && x2 ? x2 : x1;
       const scored = scoreRow(x);
       const dt = Math.max(0, left - 1) / (SESSION_MIN * YEAR_SESSIONS);
+      /* the contract's |delta| on the trading clock at its own IV: a far-band contract is a wing by it (wingShape) */
+      const wingDelta = () => deltaOf({ strike: s.strike, right: s.right, bid: s.bid, ask: s.ask, expiryDate: s.expiryDate.slice(0, 10) }, tape.S, now);
       if (researchFns.size) {
         const dist0 = strikeDistance(list.map(row => row.strike), tape.S, s.strike);
         const span0 = strikeSpan(tape.S, list.map(row => row.strike), SPAN_INDEX.includes(s.ticker as typeof SPAN_INDEX[number]));
@@ -1570,7 +1595,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
           setup: s, minute, mark, late, pass: scorePass, order: researchOrder++, x1, x2: x2 ?? x1, p1: scored.p1, prun: scored.prun,
           entryOk: timeOk, burns1: !regularDay && groupBOn('COMPASS_GATE_DECAY') ? burns2 : thetaBurns(x1[39], x1[38], s.ask, dt), burns2,
           aGeom: bookAPass(tape.tt, dist0, span0, dte, s.bid, s.ask, 1, flatT, overnightRoot, tapeClock),
-          bGeom: !!prior0 && bookBPass(tape.tt, dist0, span0, dte, s.bid, s.ask, prior0.bid, prior0.ask, 1, flatT, overnightRoot, tapeClock),
+          bGeom: !!prior0 && bookBPass(tape.tt, dist0, span0, dte, s.bid, s.ask, prior0.bid, prior0.ask, wingDelta(), 1, flatT, overnightRoot, tapeClock),
           dte, retOpen: tape.op > 0 && tape.S > 0 ? tape.S / tape.op - 1 : NaN, session: session ?? '', flatAt: flatMs, trained, regularDay,
           tm: v2.tm, atmMoved: atmMoved(list, atmList, tape.S, horizon),
         };
@@ -1584,7 +1609,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
           const sp2 = strikeSpan(tape.S, strikesOf, SPAN_INDEX.includes(s.ticker as typeof SPAN_INDEX[number]));
           const pr2 = seeded(s, minute - BOOK_B_LOOKBACK) ?? quoteAt(s.id, minute - BOOK_B_LOOKBACK);
           const geomA = bookAPass(tape.tt, d2, sp2, dte, s.bid, s.ask, 1, flatT, overnightRoot, tapeClock);
-          const geomB = !geomA && !!pr2 && bookBPass(tape.tt, d2, sp2, dte, s.bid, s.ask, pr2.bid, pr2.ask, 1, flatT, overnightRoot, tapeClock);
+          const geomB = !geomA && !!pr2 && bookBPass(tape.tt, d2, sp2, dte, s.bid, s.ask, pr2.bid, pr2.ask, wingDelta(), 1, flatT, overnightRoot, tapeClock);
           if (geomA || geomB) shadowRows.push({ setup: { ...s, mark, flatAt: flatMs }, p1: sh.p1, prun: sh.prun, retOpen: tape.op > 0 && tape.S > 0 ? tape.S / tape.op - 1 : NaN, book: geomA ? 'A' : 'B', flatAt: flatMs, session: session ?? '' });
         }
       }
@@ -1628,7 +1653,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       const retOpen = tape.op > 0 && tape.S > 0 ? tape.S / tape.op - 1 : NaN;
       const row: PoolRow = { setup: { ...s, tapeSession: session, outsideTrained: !trained || undefined, flatAt: flatMs }, p1, prun, gex: x[27], retOpen, atm: atmOf(s.expiryDate), spot: tape.S };
       if (bookAPass(tape.tt, dist, span, dte, s.bid, s.ask, p1, flatT, overnightRoot, tapeClock)) aPool.push(row);
-      else if (prior && bookBPass(tape.tt, dist, span, dte, s.bid, s.ask, prior.bid, prior.ask, p1, flatT, overnightRoot, tapeClock)) bPool.push(row);
+      else if (prior && dist > span && bookBPass(tape.tt, dist, span, dte, s.bid, s.ask, prior.bid, prior.ask, wingDelta(), p1, flatT, overnightRoot, tapeClock)) bPool.push(row);
       else if (!prior && dist > span) notes.push(`${word} has no quote from 30 minutes earlier`);
       notes.push(`${word} ${lineWhy(p1)}${prun == null ? ` ${scored.why}` : ''}`);
       scoredP.set(word, p1);
@@ -1644,6 +1669,9 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       rememberPass(hit, pct ?? 0, note.slice(cut + 1));
     }
   }
+  /* the mini of an SPX or SPXW pick (compassCost MINI_OF): the XSP contracts on its expiry and side within one strike
+     of a tenth of its strike, valid and fresh at the mark, for the card's "next best that fits" (never a call) */
+  const minisOf = (pick: Setup): PoolRow[] => miniRows(pick, setups, now);
   type Row = PoolRow & { book: 'A' | 'B' };
   const choose = (pool: PoolRow[], book: 'A' | 'B'): Row[] => {
     const byRoot = new Map<string, typeof pool>();
@@ -1667,7 +1695,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
           passed.set(list[0].setup.ticker, had.slice(0, 6));
           continue;
         }
-        out.push({ ...pickOf(side, best, now), book });
+        out.push({ ...pickOf(side, best, now, minisOf), book });
         continue;
       }
       /* A flat root with both sides clearing has no side named: the ask-side flow split that would break the tie is not read. */
@@ -1677,7 +1705,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
         passed.set(list[0].setup.ticker, had.slice(0, 6));
         continue;
       }
-      out.push({ ...pickOf(list, best, now), book });
+      out.push({ ...pickOf(list, best, now, minisOf), book });
     }
     return out;
   };
@@ -1868,7 +1896,7 @@ function poolCost(r: { setup: Setup; atm: number | null; spot: number }, at: num
     choice is off (COMPASS_COST_PICK=0) or nothing could be read. The pick carries the read and how it was chosen, and
     the contract the other rule would have called when it differs, so the record can compare them. No cap, no gate:
     a root that clears is called on some contract either way. */
-function pickOf<T extends { setup: Setup; atm: number | null; spot: number }>(xs: T[], byScore: (xs: T[]) => T, at: number): T {
+function pickOf<T extends { setup: Setup; atm: number | null; spot: number }>(xs: T[], byScore: (xs: T[]) => T, at: number, minisOf?: (pick: Setup) => { setup: Setup; atm: number | null; spot: number }[]): T {
   const scorePick = byScore(xs);
   const reads = new Map<T, CostRead | null>();
   const read = (r: T) => {
@@ -1888,7 +1916,31 @@ function pickOf<T extends { setup: Setup; atm: number | null; spot: number }>(xs
     ...(chosen !== scorePick ? { scorePick: scorePick.setup.contract } : {}),
     ...(cheapest && cheapest.pick !== chosen ? { costPick: cheapest.pick.setup.contract } : {}),
   };
+  /* smaller ways into the same call, for a budget a contract of the pick does not fit (compassBudget): the mini, then
+     the other allowed contracts by mu, each held to the pick's flat */
+  type Any = { setup: Setup; atm: number | null; spot: number };
+  const minis: Any[] = (minisOf?.(chosen.setup) ?? []).map(m => ({ ...m, setup: { ...m.setup, flatAt: chosen.setup.flatAt } }));
+  const readAny = (r: Any) => (xs.includes(r as T) ? read(r as T) : poolCost(r, at));
+  const alts = altsOf<Any>(chosen, xs, minis, r => r.setup.contract, r => r.setup.ask, readAny);
+  if (alts.length) mark.alts = alts;
   return { ...chosen, setup: { ...chosen.setup, cost: mark } };
+}
+
+/** The XSP rows for an SPX or SPXW pick (MINI_OF): same expiry and side, within one listed XSP strike of a tenth of its
+    strike, tradable and fresh at `now`. Empty for every other root, or when the pass has no XSP chain. */
+export function miniRows(pick: Setup, setups: readonly Setup[], now: number): PoolRow[] {
+  const mini = MINI_OF[pick.ticker];
+  if (!mini) return [];
+  const exp = (pick.expiryDate ?? '').slice(0, 10);
+  const chain = setups.filter(s => s.ticker === mini.root && (s.expiryDate ?? '').slice(0, 10) === exp);
+  const side = chain.filter(s => s.right === pick.right && quoteTradable(s.bid, s.ask) && quoteFreshAt(s.quotedAt, now) && sizeShown(s.bidSize, s.askSize));
+  if (!side.length) return [];
+  const target = pick.strike / mini.ratio;
+  const strikes = [...new Set(side.map(s => s.strike))].sort((a, b) => Math.abs(a - target) - Math.abs(b - target));
+  const near = new Set(strikes.slice(0, 2));
+  const spot = chain.find(s => (s.spot ?? 0) > 0)?.spot ?? 0;
+  const atm = spot > 0 ? atmIvOf(chain.filter(s => quoteTradable(s.bid, s.ask)), spot, now) : null;
+  return side.filter(s => near.has(s.strike)).map(s => ({ setup: s, p1: 0, prun: null, gex: NaN, retOpen: NaN, atm, spot }));
 }
 
 export async function scoreLottery(setups: Setup[], now = Date.now(), late = false): Promise<void> {
@@ -1898,11 +1950,14 @@ export async function scoreLottery(setups: Setup[], now = Date.now(), late = fal
   /* the session's own window (12:20 to 12:50 on a 13:00 close), the one the scan sweeps in */
   if (!inLottery(minute, clock.second, closeOn(day))) return;
   if (releaseShut(now)) return;
+  /* COMPASS_M3_SHAPE (off by default): on, validity only here and the shape is lotterySide's; off, today's rule
+     unchanged (lotteryEntry: a bid over $0.15, a spread within 8%, an ask of $1.65 or less) */
+  const shape = m3ShapeOn();
   const byRoot = new Map<string, Setup[]>();
   for (const s of setups) {
     if (NO_DAILY.has(s.ticker) || seenRootC.has(s.ticker) || seen.has(s.id)) continue;
     if (weekdayDte(day, s.expiryDate) !== 0) continue;
-    if (!lotteryEntry(s.bid, s.ask)) continue;
+    if (shape ? !quoteTradable(s.bid, s.ask) || !sizeShown(s.bidSize, s.askSize) : !lotteryEntry(s.bid, s.ask)) continue;
     const qMin = s.quotedAt ? minuteOf(s.quotedAt) : NaN;
     if (qMin !== minute) continue;
     const list = byRoot.get(s.ticker) ?? [];
@@ -1911,24 +1966,18 @@ export async function scoreLottery(setups: Setup[], now = Date.now(), late = fal
   }
   const ranked: Setup[] = [];
   for (const [ticker, list] of byRoot) {
-    const strikes = [...new Set(list.map(s => s.strike))];
     const spot = list.find(s => (s.spot ?? 0) > 0)?.spot ?? 0;
     if (!(spot > 0)) continue;
-    list.sort((a, b) => {
-      const da = strikeDistance(strikes, spot, a.strike);
-      const db = strikeDistance(strikes, spot, b.strike);
-      if (da !== db) return da - db;
-      if (a.strike !== b.strike) return a.strike - b.strike;
-      return a.right === b.right ? 0 : a.right === 'C' ? -1 : 1;
-    });
-    const first = list[0];
+    /* the nearest strike's side (by shape with the switch on, of today's rule's contracts with it off); the one that
+       makes the most sense to risk among them (the smallest mean move it needs to pay back its round trip, held to the
+       sweep's flat); the nearest when none can be read */
+    const sideList = shape ? lotterySide(list, spot, now) : lotterySideNow(list, spot);
+    const first = sideList[0];
     if (!first) continue;
-    /* the contract on the nearest strike's side that makes the most sense to risk (compassCost: the smallest mean move
-       it needs to pay back its round trip, held to the sweep's flat); the nearest strike when none can be read */
     const atm = atmIvOf(setups.filter(s => s.ticker === ticker && weekdayDte(day, s.expiryDate) === 0), spot, now);
     const flatAt = nyWallTime(Number(day.slice(0, 4)), Number(day.slice(4, 6)), Number(day.slice(6, 8)), 0, (closeOn(day) ?? sessionCloseMinOn(`${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}`)) - LOTTERY_FLAT_BEFORE);
-    const side = list.filter(s => s.right === first.right).map(s => ({ setup: { ...s, flatAt }, atm, spot }));
-    const win = pickOf(side, xs => xs[0], now).setup;
+    const side = sideList.map(s => ({ setup: { ...s, flatAt }, atm, spot }));
+    const win = pickOf(side, xs => xs[0], now, pick => miniRows(pick, setups, now).filter(m => (m.setup.quotedAt ? minuteOf(m.setup.quotedAt) : NaN) === minute)).setup;
     ranked.push(win.cost ? { ...win, flatAt: first.flatAt } : first);
   }
   /* a late sweep counts its own would-calls against the five (it used to note every root's pick) */

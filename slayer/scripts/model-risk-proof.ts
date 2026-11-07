@@ -102,11 +102,13 @@ late[980] = 100;
 const lateOut = exitAt(late, 900, 100);
 ok('a later cross still exits as the cross when no close printed in between', !!lateOut && lateOut.minute === 980 && lateOut.why === 'back');
 
-ok('a strike 1.6% out is refused', !tailQuoteOk(1.9, 1.94, 101.6, 100, 'AAPL', 'AAPL'));
-ok('a strike inside 1.5% with a tight quote is kept', tailQuoteOk(1.9, 1.94, 101, 100, 'AAPL', 'AAPL'));
-ok('a 5% spread is refused', !tailQuoteOk(1.9, 2.0, 100, 100, 'AAPL', 'AAPL'));
-ok('a single name at $5 is refused', !tailQuoteOk(5, 5.1, 100, 100, 'CRM', 'CRM'));
-ok('an index at $25 is kept', tailQuoteOk(25.4, 25.5, 7595, 7600, 'SPX', 'SPXW'));
+ok('a strike 1.6% out is refused', !tailQuoteOk(1.9, 1.94, 101.6, 100));
+ok('a strike inside 1.5% with a tight quote is kept', tailQuoteOk(1.9, 1.94, 101, 100));
+/* no spread cap and no price cap (2026-11-07): the cost rule chooses (tailPick); only a quote that is not one is refused */
+ok('a 5% spread is no longer refused by a cap', tailQuoteOk(1.9, 2.0, 100, 100));
+ok('a single name at $5 is no longer refused by a cap', tailQuoteOk(5, 5.1, 100, 100));
+ok('an index at $25 is kept', tailQuoteOk(25.4, 25.5, 7595, 7600));
+ok('a crossed, locked or zero-bid quote is refused', !tailQuoteOk(2, 1.9, 100, 100) && !tailQuoteOk(2, 2, 100, 100) && !tailQuoteOk(0, 0.05, 100, 100));
 ok('inside the band the closer strike wins', betterRank(1.02, 0.01, 1, 0.002) === false && betterRank(1.2, 0.01, 1, 0.002) === true);
 
 ok('return and dollars', tailReturn(2, 1.5) === -0.25 && tailDollars(2, 1.5) === -50);

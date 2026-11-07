@@ -15,6 +15,7 @@ import { STOP_KEEP } from '../../data/contractQuote';
 import { Tip } from '../ui/Tooltip';
 import { usd2 as money } from '../../core/format';
 import { costWords } from './costWords';
+import { budgetRead, useBudget } from '../../data/compassBudget';
 
 const Stat = ({ label, value, ink = 'text-textPrimary', right = false }: { label: string; value: string; ink?: string; right?: boolean }) => (
   <span className={`flex flex-col gap-0.5 min-w-0 ${right ? 'items-end text-right' : ''}`}>
@@ -100,6 +101,9 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
   const place = placeWord(setup);
   /* what it needs, in the stock's terms, read at the call (the record's copy once called) */
   const cost = costWords(signal?.cost ?? setup.cost, setup.ticker, setup.right, signal?.firedAt ?? setup.seenAt ?? 0);
+  /* your budget a call (Settings): how many of the call it buys, or the next-best way in that fits. Sizes only. */
+  const budget = useBudget();
+  const sized = ticket ? budgetRead(signal?.ask ?? entry, (signal?.cost ?? setup.cost)?.alts, budget) : null;
   /* the hold in words, never the score the model read */
   const model = setup.band === 'lottery' ? holdOf(setup) : setup.p1 != null ? `${holdOf(setup)}${MODELS_VALIDATED ? '' : ` ${UNVALIDATED_LINE}`}` : '';
   const when = [
@@ -162,6 +166,11 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
           {cost ? (
             <Tip label={cost.hover}>
               <p className="font-mono text-t11 text-textPrimary tnum whitespace-normal" data-card-needs>{cost.line}</p>
+            </Tip>
+          ) : null}
+          {sized ? (
+            <Tip label={sized.hover}>
+              <p className={`font-mono text-t11 tnum whitespace-normal ${sized.size >= 1 ? 'text-textSecondary' : 'text-warn'}`} data-card-budget>{sized.line}</p>
             </Tip>
           ) : null}
           <div className="flex items-center gap-x-3 gap-y-1 flex-wrap font-mono text-t10 text-textSecondary tnum" data-card-distances>

@@ -19,8 +19,8 @@
    floor and no gate: a call is never blocked here, and a contract this cannot read leaves the choice to the score.
    Every number is CALC on the observed quote; nothing here is a forecast. */
 
-import { blackScholesPrice, impliedVolFromPrice } from '../core/greeks';
-import { Q, R, SESSION_MIN, YEAR_SESSIONS, tradingMinutesTo } from './compassParams';
+import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../core/greeks';
+import { Q, R, SESSION_MIN, YEAR_SESSIONS, lotteryShape, strikeDistance, tradingMinutesTo } from './compassParams';
 import type { OptionRight } from '../types/compass';
 
 export interface CostQuote {
@@ -64,6 +64,37 @@ export interface CostMark extends CostRead {
   scorePick?: string;
   /** The contract the cost choice would have called, when it differs (the choice is off) */
   costPick?: string;
+  /** Smaller ways into the same call, for a viewer whose budget a contract of the pick does not fit (compassBudget):
+      for SPX and SPXW the XSP contract at a tenth of the strike ('mini', the same exposure at a tenth of the size), then
+      the other contracts the rule allowed on the side, by their mu ('strike'). At most ALTS_MAX. Never a filter: the
+      call is the pick. */
+  alts?: CostAlt[];
+}
+
+export interface CostAlt {
+  contract: string;
+  ask: number;
+  /** Its mu, held to the same flat; null when it could not be read */
+  mu: number | null;
+  kind: 'mini' | 'strike';
+}
+
+export const ALTS_MAX = 3;
+
+/** The mini of an index root: XSP is a tenth of SPX, on the same expiries (SPXW's dailies included). */
+export const MINI_OF: Record<string, { root: string; ratio: number }> = { SPX: { root: 'XSP', ratio: 10 }, SPXW: { root: 'XSP', ratio: 10 } };
+
+/** The alternatives a call carries (CostMark.alts): the mini first (its best-mu contract within one strike of a tenth
+    of the pick's strike), then the rest of the allowed contracts by mu, the pick left out. */
+export function altsOf<T>(pick: T, allowed: readonly T[], minis: readonly T[], word: (c: T) => string, ask: (c: T) => number, read: (c: T) => CostRead | null): CostAlt[] {
+  const out: CostAlt[] = [];
+  const mini = costPick(minis, read);
+  const miniPick = mini?.pick ?? minis[0];
+  if (miniPick) out.push({ contract: word(miniPick), ask: ask(miniPick), mu: mini?.read.mu ?? read(miniPick)?.mu ?? null, kind: 'mini' });
+  const rest = allowed.filter(c => c !== pick).map(c => ({ c, mu: read(c)?.mu ?? null }));
+  rest.sort((a, b) => (a.mu == null ? 1 : b.mu == null ? -1 : a.mu - b.mu));
+  for (const r of rest) out.push({ contract: word(r.c), ask: ask(r.c), mu: r.mu, kind: 'strike' });
+  return out.slice(0, ALTS_MAX + (miniPick ? 1 : 0));
 }
 
 const yearsOf = (tradingMinutes: number) => Math.max(0, tradingMinutes) / (SESSION_MIN * YEAR_SESSIONS);
@@ -93,6 +124,61 @@ export function atmIvOf(list: readonly CostQuote[], spot: number, at: number): n
     if (iv != null && iv > 0) ivs.push(iv);
   }
   return ivs.length ? ivs.reduce((a, b) => a + b, 0) / ivs.length : null;
+}
+
+/** A contract's |delta| at its own IV (solved from the mid) on the trading clock to its expiry: its shape, the same
+    number on any root at any price (a wing, Model 3's ticket). NaN when the quote is not two-sided or the IV does not
+    solve. */
+export function deltaOf(c: CostQuote, spot: number, at: number): number {
+  if (!(spot > 0) || !(c.strike > 0) || !(c.ask > 0) || !(c.bid >= 0) || c.ask < c.bid) return NaN;
+  const t = yearsTo(c.expiryDate, at);
+  if (!(t > 0)) return NaN;
+  const iv = impliedVolFromPrice((c.bid + c.ask) / 2, spot, c.strike, t, c.right, R, Q);
+  if (iv == null || !(iv > 0)) return NaN;
+  const g = blackScholesGreeks(spot, c.strike, t, iv, R, Q);
+  return Math.abs(c.right === 'C' ? g.deltaCall : g.deltaPut);
+}
+
+/** Model 3's contracts on one root at a sweep minute while COMPASS_M3_SHAPE is off (today's rule, unchanged): of the
+    contracts that passed lotteryEntry (`list`, already filtered), the nearest strike's side, nearest the money first
+    (ties: the lower strike, then the call). */
+export function lotterySideNow<T extends { strike: number; right: OptionRight }>(list: readonly T[], spot: number): T[] {
+  const strikes = [...new Set(list.map(s => s.strike))];
+  const order = [...list].sort((a, b) => {
+    const da = strikeDistance(strikes, spot, a.strike);
+    const db = strikeDistance(strikes, spot, b.strike);
+    if (da !== db) return da - db;
+    if (a.strike !== b.strike) return a.strike - b.strike;
+    return a.right === b.right ? 0 : a.right === 'C' ? -1 : 1;
+  });
+  const first = order[0];
+  return first ? order.filter(s => s.right === first.right) : [];
+}
+
+/** Model 3's contracts with COMPASS_M3_SHAPE on: those in its shape (compassParams lotteryShape: a valid quote at
+    the money or out of it, by delta) on the nearest strike's side, nearest the money first (ties: the lower strike,
+    then the call). The cost rule picks among them (costPick). No price in it: the same shape on any root. */
+export function lotterySide<T extends CostQuote>(list: readonly T[], spot: number, at: number): T[] {
+  if (!(spot > 0)) return [];
+  const shaped = list.filter(q => lotteryShape(q.bid, q.ask, deltaOf({ ...q, expiryDate: q.expiryDate.slice(0, 10) }, spot, at)));
+  const strikes = [...new Set(shaped.map(q => q.strike))];
+  const order = [...shaped].sort((a, b) => {
+    const da = strikeDistance(strikes, spot, a.strike);
+    const db = strikeDistance(strikes, spot, b.strike);
+    if (da !== db) return da - db;
+    if (a.strike !== b.strike) return a.strike - b.strike;
+    return a.right === b.right ? 0 : a.right === 'C' ? -1 : 1;
+  });
+  const first = order[0];
+  return first ? order.filter(q => q.right === first.right) : [];
+}
+
+/** The first-order cost when the full read cannot be had (no regular-session time in the horizon, say): the round trip
+    over |delta|, the move in the underlying's dollars that pays the spread back. Among contracts on one expiry at one
+    instant it orders them as mu does to first order (mu ≈ round trip ÷ (delta × priced move)). NaN when unreadable. */
+export function firstOrderCost(c: CostQuote, spot: number, at: number): number {
+  const d = deltaOf(c, spot, at);
+  return d > 0 ? (c.ask - c.bid) / d : NaN;
 }
 
 /* The expectation over a Normal move: Simpson's rule on ±6 standard deviations (241 points; the exit bid has a kink at

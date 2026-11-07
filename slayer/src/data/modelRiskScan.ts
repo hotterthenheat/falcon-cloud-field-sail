@@ -17,7 +17,8 @@ import {
   OVERNIGHT_ROOTS,
   atmStrike,
   printOf,
-  spreadPass,
+  quoteTradable,
+  sizeShown,
   strikeDistance,
   strikeSpan,
   weekdayDte,
@@ -27,12 +28,12 @@ import { closeTail, recordTail } from './compassLedger';
 import {
   TAIL_OPEN_MAX,
   TAIL_OPEN_NOW,
-  betterRank,
   breakSide,
   emptyTail,
   exitAt,
   quoteFresh,
   rankMinute,
+  tailPick,
   tailQuoteOk,
   trailRange,
   contractRank,
@@ -220,8 +221,10 @@ function legsOf(data: unknown, now: number, rightWanted: 'C' | 'P'): Leg[] {
     const at = nyWallStamp(quote.timestamp);
     const exp = String(contract.expiration || quote.expiration || '').slice(0, 10);
     if (!(strike > 0) || !exp) continue;
+    /* validity only (a fresh two-sided quote with size shown): no bid floor and no spread cap (the cost rule chooses) */
     if (!quoteFresh(at, now)) continue;
-    if (!spreadPass(bid, ask)) continue;
+    if (!quoteTradable(bid, ask)) continue;
+    if (!sizeShown(quote.bid_size == null ? undefined : num(quote.bid_size), quote.ask_size == null ? undefined : num(quote.ask_size))) continue;
     out.push({ strike, bid, ask, at, exp });
   }
   return out;
@@ -317,16 +320,19 @@ async function rankBook(ticker: string, book: TailBook, minute: number, spot: nu
   const span = strikeSpan(spot, strikes, index);
   const atm = atmStrike(strikes, spot);
   if (!(atm > 0)) return null;
-  let best: { leg: Leg; rank: NonNullable<ReturnType<typeof contractRank>>; dist: number } | null = null;
+  /* the legs the fade allows (within the span and TAIL_MONEY of the stock, a valid quote, an IV that solves), nearest
+     the stock first; the cost rule takes the one that makes the most sense to risk (tailPick) */
+  const allowed: { leg: Leg; rank: NonNullable<ReturnType<typeof contractRank>>; dist: number; strike: number; bid: number; ask: number }[] = [];
   for (const leg of probe) {
     if (strikeDistance(strikes, spot, leg.strike) > span + 1e-9) continue;
-    if (!tailQuoteOk(leg.bid, leg.ask, leg.strike, spot, ticker, root)) continue;
+    if (!tailQuoteOk(leg.bid, leg.ask, leg.strike, spot)) continue;
     const mid = (leg.bid + leg.ask) / 2;
     const rank = contractRank(spot, leg.strike, rankMinute(minute), dte, mid, right === 'C');
     if (!rank) continue;
-    const dist = Math.abs(leg.strike - spot) / spot;
-    if (!best || betterRank(rank.score, dist, best.rank.score, best.dist)) best = { leg, rank, dist };
+    allowed.push({ leg, rank, dist: Math.abs(leg.strike - spot) / spot, strike: leg.strike, bid: leg.bid, ask: leg.ask });
   }
+  allowed.sort((a, b) => a.dist - b.dist);
+  const best = tailPick(allowed, right, expiry, spot, now)?.leg ?? null;
   if (!best) return null;
   return {
     book,
