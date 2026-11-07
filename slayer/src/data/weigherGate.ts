@@ -15,7 +15,7 @@ import { readGreek, type ChainPair, type GreekWhy } from '../core/readGreek';
 import { nyIsoDate } from '../core/nyTime';
 import { tradingMinutes, tradingYears, TRADING_DAYS } from '../core/tradingYear';
 import { quotedVolPoint, sigmaMoveOfQuotedIv } from '../core/volClock';
-import { SPAN_INDEX, strikeSpan, bookBRange, P1_MIN, BID_MIN, SPREAD_MAX, DRIVE, onScanGrid, inLottery, releaseBlocks, QUOTE_MAX_AGE_MS, inModel1Domain, quoteTradable, quoteFreshAt, wingShape, WING_DELTA_MAX, lotteryShape, LOTTERY_DELTA_MAX } from './compassParams';
+import { SPAN_INDEX, strikeSpan, bookBRange, P1_MIN, BID_MIN, SPREAD_MAX, DRIVE, onScanGrid, inLottery, releaseBlocks, QUOTE_MAX_AGE_MS, inModel1Domain, quoteTradable, quoteFreshAt, wingShape, WING_DELTA_MAX, lotteryShape, LOTTERY_DELTA_MAX, lotteryEntry, LOTTERY_ASK_MAX, m3ShapeOn } from './compassParams';
 import { deltaOf } from './compassCost';
 import { optionScanOpen, scanShutWhy } from './compassSession';
 import { econReleases } from './monthCalendar';
@@ -460,8 +460,8 @@ export function readGate(input: GateInput): GateRead {
   passed.push(dte === 0 ? 'Same-day contract.' : `${left.toFixed(1)} trading sessions to expiration.`);
 
   /* Model 1's trained quotes (compassParams inModel1Domain): its trees were trained only on a bid over $0.15 and a spread
-     within 8% of the mid, so Books A and B (scored by Model 1) take nothing else. Not a limit on what can be traded:
-     Book C (Model 3) does not read them (2026-11-07, the owner: "remove the hard coded limits"). */
+     within 8% of the mid, so Books A and B (scored by Model 1) take nothing else. Not a limit on what can be traded;
+     Book C reads Model 3's own rule below (2026-11-07, the owner: "remove the hard coded limits"). */
   const mid = (c.ask + c.bid) / 2;
   const spread = mid > 0 ? (c.ask - c.bid) / mid : Infinity;
   const bidWord = `$${BID_MIN.toFixed(2)}`;
@@ -471,6 +471,17 @@ export function readGate(input: GateInput): GateRead {
     return fail(6, `Outside Model 1's trained quotes: the spread is over ${spreadWord} of the mid. The model was never trained on one.`);
   }
   if (!bookC) passed.push(`Inside Model 1's trained quotes: bid over ${bidWord}, spread ${(spread * 100).toFixed(1)}% of the mid.`);
+  /* Book C follows Model 3's live rule (compassParams m3ShapeOn, COMPASS_M3_SHAPE): off (the default) it is lotteryEntry —
+     a bid over $0.15 and a spread within 8% here, the ask cap below; on, the shape rule (lotteryShape) and none of them */
+  const m3Shape = m3ShapeOn();
+  if (bookC && !m3Shape && !lotteryEntry(c.bid, c.ask)) {
+    if (!(c.bid > BID_MIN)) return fail(5, `Bid is at or under ${bidWord}.`);
+    if (!inModel1Domain(c.bid, c.ask)) return fail(6, `Spread is over ${spreadWord} of the mid.`);
+  }
+  if (bookC && !m3Shape) {
+    passed.push(`Bid is above ${bidWord}.`);
+    passed.push(`Spread ${(spread * 100).toFixed(1)}% of the mid.`);
+  }
   /* the contract's |delta| at its own IV on the trading clock (compassCost deltaOf): the wing's and Book C's shape */
   const absDelta = exp ? Math.abs(deltaOf({ strike: c.strike, right: c.right, bid: c.bid, ask: c.ask, expiryDate: exp }, chain.spot, now)) : NaN;
 
@@ -502,8 +513,11 @@ export function readGate(input: GateInput): GateRead {
       /* Compass's rule: a flat root is sent only when the opposite side does not clear as well. */
       passed.push('Flat root. Sent only if the opposite side does not clear too.');
     }
+  } else if (!m3Shape) {
+    /* the switch off: Model 3's live rule, its ask cap (lotteryEntry, LOTTERY_ASK_MAX) */
+    if (!lotteryEntry(c.bid, c.ask)) return fail(8, `Book C ask is over $${LOTTERY_ASK_MAX.toFixed(2)}.`);
   } else if (!lotteryShape(c.bid, c.ask, absDelta)) {
-    /* Model 3's contract by its shape (compassParams lotteryShape): at the money or out of it, no price cap */
+    /* the switch on: Model 3's contract by its shape (compassParams lotteryShape): at the money or out of it, no price cap */
     return fail(8, Number.isFinite(absDelta) ? `Book C takes a contract at the money or out of it: ${LOTTERY_DELTA_MAX.toFixed(2)} delta or less. This one is ${absDelta.toFixed(2)}.` : 'Book C takes a contract by its delta, and this one did not solve.');
   } else passed.push(`Book C contract: ${absDelta.toFixed(2)} delta, at the money or out of it.`);
 

@@ -10,7 +10,7 @@ import { seatsNow, type LiveScore } from '../../data/compassModel';
 import { MODEL_1_NAME, STOP_KEEP, TP1_STOP, TP2_STOP, TP3_STOP, TP4_TRAIL, DRIVE } from '../../data/compassParams';
 
 /* the entry tree's name as the scan writes it (compassParams), and its old name in rows written before the rename */
-import { BID_MIN, LOTTERY_DELTA_MAX, SPREAD_MAX, WING_DELTA_MAX } from '../../data/compassParams';
+import { BID_MIN, LOTTERY_ASK_MAX, LOTTERY_DELTA_MAX, SPREAD_MAX, WING_DELTA_MAX } from '../../data/compassParams';
 const MODEL_1_RE = new RegExp(`${MODEL_1_NAME}|Model 1`, 'i');
 import { odteDoneMin } from '../../data/compassSession';
 import { useEconCalendar } from '../../data/liveRecord';
@@ -82,7 +82,11 @@ function speak(s: string): string | null {
   else if (/trained quotes: the spread/i.test(s)) out = `The spread is wider than ${Math.round(SPREAD_MAX * 100)}% of the price. Our model was never trained on a quote this wide, so it does not score it.`;
   else if (/Inside Model 1's trained quotes/i.test(s)) out = null;
   else if (/Outside the span/i.test(s)) out = 'Too far from the stock.';
-  else if (/Book C takes/i.test(s)) out = `The late window takes a contract at the money or further out (${LOTTERY_DELTA_MAX.toFixed(2)} delta or less).`;
+  /* Book C on Model 3's live rule (COMPASS_M3_SHAPE off): its own bid, spread and ask cap, said as before */
+  else if (/^Bid is at or under/i.test(s)) out = `The bid is $${BID_MIN.toFixed(2)} or less. Too thin to take.`;
+  else if (/^Spread is over/i.test(s)) out = `The spread is wider than ${Math.round(SPREAD_MAX * 100)}% of the price.`;
+  else if (/Book C ask/i.test(s)) out = `The ask is over $${LOTTERY_ASK_MAX.toFixed(2)}.`;
+  else if (/Book C takes/i.test(s)) out =`The late window takes a contract at the money or further out (${LOTTERY_DELTA_MAX.toFixed(2)} delta or less).`;
   else if (/Book C contract/i.test(s)) out = null;
   else if (/Book B is a wing:|Book B is a wing by/i.test(s)) out = `A far strike here is a wing: ${WING_DELTA_MAX.toFixed(2)} delta or less. This one has more.`;
   else if (/Only the call/i.test(s)) out = 'The stock is up from the open. This is a put.';
@@ -104,6 +108,7 @@ function speak(s: string): string | null {
   else if (/^Spread /i.test(s)) out = s.replace('of the mid.', 'of the price.');
   else if (/Inside Book A/i.test(s)) out = s.replace(/Inside Book A\.\s*/i, '');
   else if (/Inside Book B/i.test(s)) out = s.replace(/Inside Book B\.\s*/i, 'Further out. ');
+  else if (/^Bid is above/i.test(s)) out = `The bid is above $${BID_MIN.toFixed(2)}.`;
   else if (/has halved/i.test(s)) out = 'A wing, and its ask has come in.';
   else if (/Call side of the open/i.test(s)) out = 'It is the call, and the stock is up from the open.';
   else if (/Put side of the open/i.test(s)) out = 'It is the put, and the stock is down from the open.';

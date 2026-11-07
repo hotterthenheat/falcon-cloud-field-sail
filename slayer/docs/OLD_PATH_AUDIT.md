@@ -52,7 +52,9 @@ words (`components/weigher/StrikeCase.tsx`) now read the same definitions from `
   trained quotes ("our model was never trained on a quote this thin"), not "too thin to take";
 - Book B's wing: `wingShape`, |delta| ≤ `WING_DELTA_MAX` (0.15) at the contract's own IV (`compassCost deltaOf`), in
   place of an ask of $1.00 or less; the halving rule stays;
-- Book C (Model 3): `lotteryShape`, at the money or out of it (|delta| ≤ `LOTTERY_DELTA_MAX`, 0.55), no bid, spread or
-  $1.65 cap; `LOTTERY_ASK_MAX` is no longer imported anywhere.
+- Book C (Model 3) follows Model 3's switch, `m3ShapeOn()` (`COMPASS_M3_SHAPE`, off by default while the shape rule is
+  backtested). Off: Model 3's live rule, `lotteryEntry` — a bid over $0.15, a spread within 8% and an ask of
+  `LOTTERY_ASK_MAX` ($1.65) or less — with the old wording ("The ask is over $1.65."). On: `lotteryShape`, at the money
+  or out of it (|delta| ≤ `LOTTERY_DELTA_MAX`, 0.55), no bid, spread or price cap.
 
 Proof: `scripts/weigher-rules-proof.ts` (in CI).
