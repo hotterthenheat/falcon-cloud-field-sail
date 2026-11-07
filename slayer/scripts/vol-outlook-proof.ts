@@ -479,6 +479,62 @@ console.log('\n4. the server reads the sessions once a day; the tile fits on the
     /* one slot taken by others: the second name's reads go only while four stay free (8 − 1 − 2 − 1 = 4 for its first) */
     const one = await lanesRun(['AAA', 'BBB', 'CCC'], () => 1);
     check(`lanes: with one slot taken by others, a second name reads but never past ${KEEP_FREE} free (peak ${one.peakBusy} of 8 busy)`, one.peakNames === 2 && 8 - one.peakBusy >= KEEP_FREE, JSON.stringify(one));
+    /* The same, with no clock in it: every read is held open until the proof lets it go, so what the lanes see when the
+       second name looks for room is fixed, whatever the machine's load. The first name is walked to its last span (one
+       read in flight, its other slot free for a moment) and held there past the second name's look for room; then the
+       first name's last read ends and it starts the next name at full width. The free slot was the first name's: had
+       the second name taken it, 8 − 1 other − 2 − 2 = 3 would be free (the 1-in-3 failure on a loaded machine before
+       2026-11-07, when the timers happened to land there). */
+    {
+      const ldir = mkdtempSync(join(tmpdir(), 'vol-lanes-held-'));
+      const held: { t: string; go: () => void }[] = [];
+      let total = 0;
+      let peakBusy = 0;
+      let draining = false;
+      const others = 1;
+      const nameOf = (p: string) => p.match(/symbol=([A-Z]+)/)![1];
+      const s = startVolOutlookServer({
+        dir: ldir,
+        hot: ['AAA', 'BBB', 'CCC'],
+        slots: () => ({ terminal: 8, history: 6, busy: total + others, busyHistory: total + others, waiting: 0 }),
+        log: () => undefined,
+        theta: p => {
+          if (draining) return Promise.resolve({ status: 200, body: body(p), type: 'application/json' });
+          total++;
+          peakBusy = Math.max(peakBusy, total + others);
+          return new Promise(r => held.push({ t: nameOf(p), go: () => { total--; r({ status: 200, body: body(p), type: 'application/json' }); } }));
+        },
+      });
+      /* every turn the lanes take on a released read runs before the next look (no timer in the read path) */
+      const settle = () => new Promise(r => setImmediate(r));
+      const release = async (t: string) => {
+        const i = held.findIndex(h => h.t === t);
+        held.splice(i, 1)[0].go();
+        await settle();
+      };
+      const heldOf = (t: string) => held.filter(h => h.t === t).length;
+      await settle();
+      const atStart = `${heldOf('AAA')} AAA + ${heldOf('BBB')} BBB`;
+      /* the first name's spans, two at a time, until one read is left: its last span */
+      while (heldOf('AAA') === 2) await release('AAA');
+      const atTail = `${heldOf('AAA')} AAA + ${heldOf('BBB')} BBB`;
+      /* the second name's look for room comes every 250 ms; two of them while the first name holds one slot */
+      await new Promise(r => setTimeout(r, 600));
+      const afterLook = `${heldOf('AAA')} AAA + ${heldOf('BBB')} BBB`;
+      const tookFree = heldOf('BBB');
+      /* the first name's last read ends: it takes the next name at full width */
+      await release('AAA');
+      const nextName = `${heldOf('CCC')} CCC + ${heldOf('BBB')} BBB`;
+      const peak = peakBusy;
+      const ok = atStart === '2 AAA + 1 BBB' && atTail === '1 AAA + 1 BBB' && tookFree === 1 && heldOf('CCC') === 2 && 8 - peak >= KEEP_FREE;
+      /* done: the reads still held, and any the readers ask for after, answer at once */
+      s.stop();
+      draining = true;
+      for (const h of held.splice(0)) h.go();
+      await settle();
+      rmSync(ldir, { recursive: true, force: true });
+      check(`lanes: the first name's free slot at the end of a name stays its own — the second name waits, and the next name at full width leaves ${8 - peak} of 8 free (≥ ${KEEP_FREE})`, ok, `start ${atStart}; last span ${atTail}; after the look ${afterLook}; next name ${nextName}; peak ${peak} of 8 busy`);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
