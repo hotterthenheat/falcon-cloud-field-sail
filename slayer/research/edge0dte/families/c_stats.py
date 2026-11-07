@@ -112,7 +112,7 @@ def ols_cell(df, ycol, xname, ctrl):
     yr = year_of(day)
     for lab, ys in YEARS:
         m = ok & np.isin(yr, ys)
-        if len(np.unique(day[m])) >= 30:
+        if len(np.unique(day[m])) >= 30 and np.count_nonzero(X[m, 0]) >= 2:
             rr = ols_cluster(y[m], X[m], day[m], names=names)
             out[f'eff_{lab}'] = float(rr['beta'][1])
         else:
@@ -150,7 +150,7 @@ def main():
         key = f"{base['row_id']}|{base['param']}"
         used.setdefault(root, {}).setdefault(key, sorted(set(df.day.values[ev])))
 
-    for root in ('SPXW', 'SPY', 'QQQ', 'IWM'):
+    for root in os.environ.get('C_ROOTS', 'SPXW,SPY,QQQ,IWM').split(','):
         df = load_root(root)
         print(root, len(df), df.day.nunique(), flush=True)
         flowroot = root in ('SPXW', 'SPY')
@@ -256,11 +256,15 @@ def main():
                 for h in HS:
                     res, ok = ols_cell(df, f'Z_{h}', 'c1_sig', ['b6ctl_b6', 'b6ctl_z5'] + ctrl)
                     res['n_events'] = int(((df.c1_sig != 0) & ok).sum())
+                    res['effect_za_equiv'] = res['effect']          # +/-1 event regressor: Z per event
                     add(dict(d0, row_id='X11', outcome='Z', horizon=h, param_kind=pk, param=f'C1 ratio>{thr}',
                              expected_sign=1, label='CALC', test='incremental OLS'), res, ok, df, root)
         del df
 
     out = pd.DataFrame(rows)
+    if os.environ.get('C_DRYRUN'):
+        print(out.head(40).T)
+        return
     os.makedirs(OUTD, exist_ok=True)
     out.to_parquet(os.path.join(OUTD, 'C.parquet'), index=False)
     out.to_csv(os.path.join(OUTD, 'C.csv'), index=False)
