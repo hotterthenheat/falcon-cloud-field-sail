@@ -149,6 +149,10 @@ const HEAD_H = 44;
    Map stands the day box beside the book the panes pack to it, and elsewhere the cells share the pane, never leaving
    air after the last one. */
 export const CELL_MAX = 120;
+/** The narrowest a column is DRAWN (the grid's minmax(128px, 1fr), 2026-11): the pane's natural width counts this, not
+    CELL_MAX — counted at 120, a box packed to it cut the last greek's column (the Map's calendar at 1280–2560, three
+    greeks on one date: CHARM clipped 15px under the box's edge) */
+export const CELL_DRAWN_MIN = 128;
 /** How many nodes a board badges with their move since the open — the biggest ones (Noah, 2026-10-12) */
 const SINCE_SHOWN = 10;
 /** …and no node whose move is under this share of the board's heaviest cell: a quiet board wears no badge */
@@ -479,10 +483,10 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
     ro.observe(strikeHead);
     return () => ro.disconnect();
   }, [strikeHead]);
-  const cellW = Math.max(128, (box.w - strikeW) / Math.max(1, cols));
+  const cellW = Math.max(CELL_DRAWN_MIN, (box.w - strikeW) / Math.max(1, cols));
   /* THE PANE'S NATURAL WIDTH, told to the host (2026-10-13): the strike column as measured, the wanted columns at
      CELL_MAX, the grid's 4px of right padding */
-  const natural = strikeW > 0 ? strikeW + Math.max(cols, wantCols ?? 0) * CELL_MAX + 4 : 0;
+  const natural = strikeW > 0 ? strikeW + Math.max(cols, wantCols ?? 0) * Math.max(CELL_MAX, CELL_DRAWN_MIN) + 4 : 0;
   useLayoutEffect(() => {
     if (natural > 0) onNatural?.(natural);
   }, [natural, onNatural]);
@@ -1077,7 +1081,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
           /* …AND PAINTED ONCE: `will-change: transform` through the glide gives the pinned grid a layer of its own, so
              the frames in between only composite it as the pane clips it — a trace of a name leaving put PAINT first
              (135ms in 700ms: four panes of shadowed capsules repainted every frame), style recalc second, layout third */
-          style={{ gridTemplateColumns: `max-content repeat(${cols}, minmax(128px, 1fr))`, gridTemplateRows: rowsTemplate, ...(gliding && box.w > 0 ? { width: box.w, willChange: 'transform' } : null) }}
+          style={{ gridTemplateColumns: `max-content repeat(${cols}, minmax(${CELL_DRAWN_MIN}px, 1fr))`, gridTemplateRows: rowsTemplate, ...(gliding && box.w > 0 ? { width: box.w, willChange: 'transform' } : null) }}
         >
           {/* HEAD — sticky under scroll */}
           <div ref={setStrikeHead} className={`sticky top-0 z-10 ${ground} pl-2 pr-1.5 flex flex-col items-end justify-end pb-1 font-mono text-t11 font-semibold uppercase tracking-normal text-textSecondary border-b border-borderSubtle`} style={{ gridRow: 'span 2' }}>

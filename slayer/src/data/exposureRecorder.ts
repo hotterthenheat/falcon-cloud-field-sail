@@ -31,7 +31,9 @@ import { takeWire, writeWire } from '../../shared/jsonWire.mjs';
 import { nyIsoDate, nyParts } from '../core/nyTime';
 import { isTradingDay } from '../core/calendar';
 import { phaseAt, sessionAt } from '../core/session';
-import { ALL, closeOf, placeSeg, readAnswer, spanOf, type KeptSeries } from './book/exposureSegs';
+import { ALL, closeOf, placeSeg, readAnswer, spanOf, WINDOW, type KeptSeries } from './book/exposureSegs';
+import { LEG_AT } from './twobook/legs';
+import { EXPOSURE_NAMES } from '../engine/twobook/exposures';
 import { loadDirectory, noContractDates } from './symbolDirectory';
 
 /* the rebuilt past day is served by the same mount (server/exposureApi.mjs): one module to load */
@@ -80,6 +82,50 @@ export interface RecorderOptions {
   /** no timers: the caller drives tick() (the proof) */
   manual?: boolean;
   log?: (line: string) => void;
+  /** The open-interest book the server already holds for a name (the two-book engine's Model 1 board, built for a viewer by
+      src/data/twobook/model1Server.ts), or null — read, never built, so it costs no vendor call. Default: the keeper's
+      registry (heldModel1). Each pass records it beside the listing's rows, in its own file (ENGINE_CUT). */
+  engine?: (ticker: string) => EngineBoard | null;
+}
+
+/** What the recorder reads off a held open-interest board: its instant and price, and its cells (twobook/legs.ts) */
+export interface EngineBoard {
+  at: number | null;
+  price: number | null;
+  phase?: string;
+  legs: { cells: (number | null)[][] } | null;
+}
+/** The engine's record: its own file (<TICKER>.engine.jsonl), its own cut name — never merged into the listing's series */
+export const ENGINE_CUT = 'M1';
+/* the cell slots the engine line reads (twobook/legs.ts LEG_AT): the strike, the call and the put leg's GEX */
+const CELL_STRIKE = LEG_AT.strike;
+const CELL_CALL_GEX = LEG_AT.call + EXPOSURE_NAMES.indexOf('GEX');
+const CELL_PUT_GEX = LEG_AT.put + EXPOSURE_NAMES.indexOf('GEX');
+
+/** The held board as one line of the engine's record (null: nothing within the field's window, or no board): every strike
+    within WINDOW of the board's price, its open-interest GEX = Σ over the board's cells at that strike of call + put GEX
+    (house units, the listing's own sign, as the board's four are — the same figure the listing's line holds as its
+    open-interest gamma, on the engine's population: one timestamp, expired rows left out). The flow slot is 0: the
+    open-interest book has no traded-today figure. */
+export function engineLineOf(w: EngineBoard | null, readAt: number): Line | null {
+  if (!w || !w.legs || !(w.at != null && w.at > 0) || !(w.price != null && w.price > 0)) return null;
+  const by = new Map<number, number>();
+  for (const c of w.legs.cells) {
+    const k = c[CELL_STRIKE];
+    if (k == null || !(k > 0) || Math.abs(k - w.price) > w.price * WINDOW) continue;
+    by.set(k, (by.get(k) ?? 0) + (c[CELL_CALL_GEX] ?? 0) + (c[CELL_PUT_GEX] ?? 0));
+  }
+  if (!by.size) return null;
+  const r: Line['r'] = [...by.entries()].sort((a, b) => a[0] - b[0]).map(([k, g]) => [k, 0, g, 0]);
+  return { at: w.at, n: readAt, c: ENGINE_CUT, p: 0, r };
+}
+
+/* The keeper's held boards (src/data/twobook/model1Server.ts registers its reader here): a process-wide registry, so the
+   recorder and the keeper find each other however the server loaded them (vite's ssrLoadModule, tsx's tsImport). */
+const heldKey = '__slayerModel1Held';
+export function heldModel1(ticker: string): EngineBoard | null {
+  const f = (globalThis as Record<string, unknown>)[heldKey];
+  return typeof f === 'function' ? ((f as (t: string) => EngineBoard | null)(ticker) ?? null) : null;
 }
 
 /** One answer on disk: the moment it answers for, when it was read, the cut, the page, and the rows the field keeps:
@@ -101,6 +147,8 @@ export interface PassReport {
   vendor: number;
   /** lines written */
   lines: number;
+  /** engine lines written (the held open-interest boards, no vendor call) */
+  engine?: number;
   /** names (cuts) the pass did not reach before its deadline */
   missed: number;
   fault: string | null;
@@ -121,6 +169,10 @@ export interface ExposureDay {
   readings: number;
   /** the field's series, as data/book/exposureLog.ts keeps them; with `since`, only segments that end after it */
   series: KeptSeries[];
+  /** whose figures: 'listing' — the vendor's whole-book and front-expiry rows (the field's history; after 16:00 the
+      whole-book rows still hold the day's expired contracts, and no one-timestamp rule applies); 'engine' — the
+      open-interest book's board as the server held it (ENGINE_CUT), recorded only while a viewer kept it built */
+  basis?: 'listing' | 'engine';
 }
 
 export interface RecorderStatus {
@@ -149,7 +201,7 @@ export interface Recorder {
   /** a Terrain viewer opened this name today: record it (up to the cap) */
   noteViewer: (ticker: string) => void;
   names: () => string[];
-  day: (ticker: string, day: string, since?: number) => ExposureDay | null;
+  day: (ticker: string, day: string, since?: number, basis?: 'listing' | 'engine') => ExposureDay | null;
   status: () => RecorderStatus;
   /** one scheduler step: runs the pass the clock calls for, if any (the timers call it every 5 s) */
   tick: () => Promise<PassReport | null>;
@@ -315,7 +367,7 @@ export function takeLock(dir: string, now = Date.now(), race?: { afterRead?: () 
     if (text == null) continue; // gone between the create and the read: create again
     /* the proof's hook: another process acting between this read and what follows (scripts/exposure-recorder-proof.ts) */
     race?.afterRead?.();
-    let held: { pid: number; at: number } | null = null;
+    let held: { pid: number; at: number } | null;
     try {
       held = JSON.parse(text) as { pid: number; at: number };
     } catch {
@@ -328,7 +380,7 @@ export function takeLock(dir: string, now = Date.now(), race?: { afterRead?: () 
     if (held && alive(held.pid) && now - held.at < LOCK_STALE_MS) return { ok: false, pid: held.pid };
     if (!held) {
       /* half-written, or not a lock this process can read: held until its file is as old as a stale lock */
-      let age = Infinity;
+      let age: number;
       try {
         age = now - fs.statSync(file).mtimeMs;
       } catch {
@@ -341,13 +393,13 @@ export function takeLock(dir: string, now = Date.now(), race?: { afterRead?: () 
        past GATE_STALE_MS — a takeover takes milliseconds) is cleared, and only the very gate judged dead. */
     if (!createOnly(gate, mine)) {
       const g = readOr(gate);
-      let gHeld: { pid: number } | null = null;
+      let gHeld: { pid: number } | null;
       try {
         gHeld = g ? (JSON.parse(g) as { pid: number }) : null;
       } catch {
         gHeld = null;
       }
-      let gAge = 0;
+      let gAge: number;
       try {
         gAge = Date.now() - fs.statSync(gate).mtimeMs;
       } catch {
@@ -428,14 +480,15 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
   }
 
   const dayDir = (day: string) => path.join(o.dir, day);
-  const fileOf = (day: string, t: string) => path.join(dayDir(day), `${t}.jsonl`);
+  const fileOf = (day: string, t: string, engine = false) => path.join(dayDir(day), `${t}${engine ? '.engine' : ''}.jsonl`);
+  const engineOf = o.engine ?? heldModel1;
 
   /* ---- the days on disk, read incrementally (the recorder appends; a reader parses only the new bytes) ---- */
   const cache = new Map<string, { offset: number; gz: boolean; data: DaySeries; used: number }>();
-  function load(t: string, day: string): DaySeries | null {
-    const key = `${t}|${day}`;
+  function load(t: string, day: string, engine = false): DaySeries | null {
+    const key = `${t}|${day}${engine ? '|engine' : ''}`;
     let c = cache.get(key);
-    const plain = fileOf(day, t);
+    const plain = fileOf(day, t, engine);
     const gz = `${plain}.gz`;
     let size = -1;
     try {
@@ -559,7 +612,7 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
       if ((res.at ?? t0) >= t0) rep.vendor += 1;
       if (res.status === 429 || res.status >= 500) return 'fault';
       if (res.status !== 200) return null;
-      let dates: string[] = [];
+      let dates: string[];
       try {
         const data = (JSON.parse(res.body) as { data?: { expiry?: string }[] }).data;
         dates = [...new Set((Array.isArray(data) ? data : []).map(r => String(r?.expiry ?? '').slice(0, 10)).filter(d => DAY.test(d)))].sort();
@@ -577,18 +630,31 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
   }
 
   /* ---- writing ---- */
-  function append(t: string, day: string, line: Line): boolean {
-    const data = load(t, day) ?? new DaySeries();
+  function append(t: string, day: string, line: Line, engine = false): boolean {
+    const data = load(t, day, engine) ?? new DaySeries();
     const key = `${line.c}|${line.p}`;
     if ((data.newest.get(key) ?? 0) >= line.at) return false;
     try {
       fs.mkdirSync(dayDir(day), { recursive: true });
-      fs.appendFileSync(fileOf(day, t), `${JSON.stringify(line)}\n`);
+      fs.appendFileSync(fileOf(day, t, engine), `${JSON.stringify(line)}\n`);
     } catch {
       return false;
     }
-    load(t, day);
+    load(t, day, engine);
     return true;
+  }
+  /* the engine's record: each name's held open-interest board, when its instant is new — no vendor call */
+  function recordEngine(list: readonly string[], day: string, rep: PassReport): void {
+    for (const t of list) {
+      let line: Line | null;
+      try {
+        line = engineLineOf(engineOf(t), clock());
+      } catch {
+        line = null;
+      }
+      /* a board's instant on another day (a closed session's) is filed under its own day */
+      if (line && nyIsoDate(line.at) === day && append(t, day, line, true)) rep.engine = (rep.engine ?? 0) + 1;
+    }
   }
 
   /* ---- one pass ---- */
@@ -625,7 +691,7 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
         const res = await ask(bookPath(job.t, page));
         if (retryable(res.status)) return 'fault';
         if (res.status !== 200) break;
-        let rows: unknown[] = [];
+        let rows: unknown[];
         try {
           const data = (JSON.parse(res.body) as { data?: unknown }).data;
           rows = Array.isArray(data) ? data : [];
@@ -692,6 +758,8 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
         }
       }
       if (!rep.fault) backoff = 0;
+      /* after the listing's rows, the boards the engine already holds (none asked for) */
+      recordEngine(list, slot.day, rep);
     } finally {
       rep.took = clock() - t0;
       running = false;
@@ -727,7 +795,7 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
     const p = nyParts(clock());
     const floor = isoDay(p.year, p.month, p.day - keepDays);
     const day = today();
-    let entries: string[] = [];
+    let entries: string[];
     try {
       entries = fs.readdirSync(o.dir);
     } catch {
@@ -747,7 +815,7 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
       }
       if (d >= day) continue;
       /* a finished day: its lines gzipped (about a fifth of the size) */
-      let files: string[] = [];
+      let files: string[];
       try {
         files = fs.readdirSync(full).filter(f => f.endsWith('.jsonl'));
       } catch {
@@ -790,10 +858,10 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
     dir: o.dir,
     noteViewer,
     names,
-    day(t, day, since = 0) {
+    day(t, day, since = 0, basis = 'listing') {
       const name = cleanTicker(t);
       if (!name || !DAY.test(day)) return null;
-      const data = load(name, day);
+      const data = load(name, day, basis === 'engine');
       return {
         format: EXPOSURE_FORMAT,
         ticker: name,
@@ -804,6 +872,7 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
         lastAt: data?.lastAt ?? null,
         readings: data?.readings ?? 0,
         series: data ? data.out(since) : [],
+        basis,
       };
     },
     status: () => ({
@@ -872,10 +941,12 @@ export function exposureRoute(rec: Recorder, req: Req, res: Res, now: () => numb
       return;
     }
     const since = Number(url.searchParams.get('since')) || 0;
-    if (day === nyIsoDate(now())) rec.noteViewer(t);
-    const body = rec.day(t, day, since);
+    /* basis=engine: the open-interest book's own record, kept apart from the listing's (never merged into one series) */
+    const basis = url.searchParams.get('basis') === 'engine' ? 'engine' : 'listing';
+    if (day === nyIsoDate(now()) && basis === 'listing') rec.noteViewer(t);
+    const body = rec.day(t, day, since, basis);
     const stamp = `${body?.readings}|${body?.lastAt}|${since}|${body?.recording}`;
-    writeWire(req, res, 200, takeWire(`exposure|${t}|${day}|${since}`, stamp, () => body));
+    writeWire(req, res, 200, takeWire(`exposure|${t}|${day}|${since}|${basis}`, stamp, () => body));
     return;
   }
   if (route === '/status') {

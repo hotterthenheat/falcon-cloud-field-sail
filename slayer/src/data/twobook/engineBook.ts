@@ -59,16 +59,38 @@ export function flowFocus(ticker: string | null | undefined): void {
   if (i >= 0) focus.splice(i, 1);
   focus.push(t);
   if (focus.length > FLOW_NAMES) focus.shift();
-  if (bookMode() === 'flow') {
+  if (bookFor(t) === 'flow') {
     askFlow(t);
     changed();
   }
 }
 export const followsToggle = (ticker: string): boolean => focus.includes(ticker.toUpperCase());
 
-/** The book a name is drawn from right now: the toggle's, for a focused name; the open-interest book for any other */
+/* A page whose subject is the open-interest book itself holds it while it is on screen (Building: the overnight change
+   of open interest, valued at each contract's open-interest-book gamma). While held, every name is drawn from the
+   open-interest book whatever the toggle says, so the page and the shell around it (the head's regime and flip) show
+   one book; the page says so when the toggle reads Flow (docs/OLD_PATH_AUDIT.md item 4). */
+let oiHolds = 0;
+/** Hold the open-interest book for every name until the returned release is called (a page's mount and unmount) */
+export function holdOiBook(): () => void {
+  oiHolds += 1;
+  changed();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    oiHolds = Math.max(0, oiHolds - 1);
+    /* the focused names' flow books are asked again once nothing holds the open-interest book */
+    if (!oiHolds && bookMode() === 'flow') for (const t of focus) askFlow(t);
+    changed();
+  };
+}
+export const oiBookHeld = (): boolean => oiHolds > 0;
+
+/** The book a name is drawn from right now: the toggle's, for a focused name; the open-interest book for any other, and
+    for every name while a page holds the open-interest book */
 export function bookFor(ticker: string): BookMode {
-  return bookMode() === 'flow' && followsToggle(ticker) ? 'flow' : 'oi';
+  return bookMode() === 'flow' && !oiBookHeld() && followsToggle(ticker) ? 'flow' : 'oi';
 }
 
 async function ask<T>(held: Map<string, Held<T>>, t: string, urlOf: string | ((w: T | null) => string), again: (w: T | null, error: string | null) => number): Promise<void> {
@@ -135,13 +157,13 @@ export function peekBook(ticker: string, m: BookMode): { wire: Model1Wire | Flow
 export const legacyBook = (): boolean => !!(globalThis as { SLAYER_LEGACY_BOOK?: boolean }).SLAYER_LEGACY_BOOK;
 
 /** The engine has been asked for this name (book/load.ts ensureBook asks before it reads) — the pages' chains are its */
-export const engineKnows = (ticker: string): boolean => !legacyBook() && oi.has(ticker.toUpperCase()) || flow.has(ticker.toUpperCase());
+export const engineKnows = (ticker: string): boolean => !legacyBook() && (oi.has(ticker.toUpperCase()) || flow.has(ticker.toUpperCase()));
 export const peekModel1 = (ticker: string): Model1Wire | null => oi.get(ticker.toUpperCase())?.wire ?? null;
 export const peekFlowBook = (ticker: string): FlowBoardWire | null => flow.get(ticker.toUpperCase())?.wire ?? null;
 
 /* the toggle: the focused names' flow books are asked when it turns to them, and every page redraws */
 subscribeBookMode(() => {
-  if (bookMode() === 'flow') for (const t of focus) askFlow(t);
+  if (bookMode() === 'flow' && !oiBookHeld()) for (const t of focus) askFlow(t);
   changed();
 });
 

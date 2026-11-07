@@ -305,6 +305,9 @@ have all the gex in those formatting").
   whole-book route (no expiry on a row, so §3.4's expired-row rule cannot be applied after 16:00) and four pages; the
   field's newest column is aligned to the engine's chain (`exposureLog.ts alignLatestColumn`). Moving it onto the
   engine's walk would multiply its vendor calls per minute by the expiry count.
+- **The old-path audit** (2026-11-07): what was left on the old path, what moved, and why the rest stays —
+  `docs/OLD_PATH_AUDIT.md` (the recorder's engine record, the Board's per-row book, Building on the open-interest book,
+  the board encoded once, the Weigher's gamma measured and kept).
 - **A week of same-minute Test 4 pairs** for the production shadow tolerance, and the intraday AM-settlement check.
 - **Early-close days**: PM roots still run to 16:00 per the spec's wording.
 - **The 15 terminal-only names**: listed on Pinpoint; on 2026-11-07 the terminal answered no expirations for the ones

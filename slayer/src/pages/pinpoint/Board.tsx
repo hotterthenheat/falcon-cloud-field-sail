@@ -45,6 +45,8 @@ import { LivePrice } from '../../components/gex/LivePrice';
 import { AsOf, EmptyBox, ErrorBox, LoadingBox } from '../../components/ui/states';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { fmtStrike } from '../../core/format';
+import { BOOK_MODE_WORDS, bookMode, useBookMode } from '../../data/bookMode';
+import { bookFor, followsToggle } from '../../data/twobook/engineBook';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal */
 const ROLE_INK: Record<string, string> = { 'call wall': CALL_WALL, 'put wall': PUT_WALL, supreme: SUPREME, flip: FLIP };
@@ -281,6 +283,19 @@ const SupremeCell = ({ data }: ICellRendererParams<BoardRow>) =>
     </span>
   ) : null;
 
+/* WHICH BOOK A ROW IS (docs/OLD_PATH_AUDIT.md item 2): with the Map's switch on Flow, the names the Map follows are
+   drawn from the flow book and every other row from the open-interest book — one screen, two books, so each row says
+   which (the rule: never two books on one screen without saying so). On the open-interest switch nothing is added. */
+const RowBook = ({ ticker }: { ticker: string }) => {
+  if (bookMode() !== 'flow') return null;
+  const b = bookFor(ticker);
+  return (
+    <span className={`block text-t9 font-normal uppercase tracking-wider ${b === 'flow' ? 'text-silver' : 'text-textMuted'}`} title={`${BOOK_MODE_WORDS[b].label}: ${BOOK_MODE_WORDS[b].line}`} data-board-row-book={b}>
+      {b === 'flow' ? 'flow book' : 'open-interest book'}
+    </span>
+  );
+};
+
 /* Net GEX in the retail sign: positive = dealers long gamma = absorbs (green), negative amplifies (red); when the net
    and the side of the flip disagree, the hover says so. */
 const NetCell = ({ data }: ICellRendererParams<BoardRow>) =>
@@ -294,6 +309,7 @@ const NetCell = ({ data }: ICellRendererParams<BoardRow>) =>
       </span>
       <RegimeWord data={data} />
       <ExpiryMark data={data} />
+      <RowBook ticker={data.ticker} />
     </TickFigure>
   ) : null;
 
@@ -405,6 +421,7 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
               {row.netGex > 0 ? '+' : ''}
               {fmtUsd(row.netGex)}
             </span>
+            <RowBook ticker={row.ticker} />
           </div>
           <div className="flex flex-col min-w-0">
             {label('Flip', 'The price where dealer hedging switches between absorbing and amplifying')}
@@ -461,6 +478,9 @@ const Board = () => {
   const names = useMemo(() => stored.filter(isPinpointName), [stored, listedRev]);
   usePinpointFeed(names[0]);
   const bookRev = useBookRev();
+  /* the switch: on Flow the status line names the rows drawn from the flow book (RowBook marks each row) */
+  const switchMode = useBookMode();
+  const flowRows = switchMode === 'flow' ? names.filter(followsToggle) : [];
   const [rows, setRows] = useState<BoardRow[]>([]);
   const [scanAt, setScanAt] = useState('');
   const lastRef = useRef(0);
@@ -746,6 +766,11 @@ const Board = () => {
             </>
           )}
           <span>{keptAt != null || scanAt ? '· ' : ''}{cadence}</span>
+          {switchMode === 'flow' && (
+            <span className="normal-case tracking-normal text-textSecondary" title={`The Map's switch is on the ${BOOK_MODE_WORDS.flow.label.toLowerCase()}: it is read for the names the Map follows. Every other row is the ${BOOK_MODE_WORDS.oi.label.toLowerCase()} — the two are never added, and each row says which it is.`} data-board-books={flowRows.join(',') || 'none'}>
+              · {flowRows.length ? `Flow book: ${flowRows.join(', ')} · every other row: open-interest book` : 'Every row: open-interest book (the flow book is read for the names the Map follows)'}
+            </span>
+          )}
         </span>
       </div>
       {bookDown && rows.length === 0 ? (

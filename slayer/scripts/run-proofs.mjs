@@ -114,6 +114,7 @@ const PROOFS = [
   'twobook-mutation-proof.mjs',
   'twobook-server-proof',
   'twobook-map-proof',
+  'old-path-proof',
   'settle-roots-proof',
   'flip-complete-proof',
   'flip-coverage-proof',

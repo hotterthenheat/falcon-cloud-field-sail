@@ -8,6 +8,7 @@ import { setUnitForName, useNameUnit } from '../../data/distanceUnits';
 import { todayScopeLabel } from '../../data/bookWindow';
 import { fmtGexUsd } from '../../data/gex';
 import { peekEntry, useBookRev } from '../../data/book/store';
+import { BOOK_MODE_WORDS } from '../../data/bookMode';
 import { LivePrice } from './LivePrice';
 import { AsOf } from '../ui/states';
 import type { DistanceUnit } from '../../data/atr';
@@ -107,6 +108,13 @@ const RegimeLine = ({ ticker, stamp = true }: { ticker: string | null | undefine
         )}
         {lv?.complete && lv.flip == null && <span className="font-mono text-t11 text-textMuted" title={GLOSSARY.flip}>no flip within 10%</span>}
         {lv?.complete && <span className="font-mono text-t10 uppercase tracking-wider text-textMuted">{lv.scopeLabel}</span>}
+        {/* the strip is on every Pinpoint page: when the name is drawn from the flow book it says so, so a page that shows
+            the open-interest book under it (Board's other rows, Building) never reads as one book (OLD_PATH_AUDIT item 2) */}
+        {lv?.complete && entry?.engine?.mode === 'flow' && (
+          <span className="font-mono text-t10 uppercase tracking-wider text-silver" title={`${BOOK_MODE_WORDS.flow.label}: ${BOOK_MODE_WORDS.flow.line}`} data-regime-book="flow">
+            {BOOK_MODE_WORDS.flow.label}
+          </span>
+        )}
         {stamp && entry?.keptAt && (
           <span data-kept>
             <AsOf at={entry.at} title="This browser's kept copy of the book, shown while the fresh read loads; it is replaced as soon as that lands" />

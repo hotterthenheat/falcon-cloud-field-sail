@@ -89,6 +89,12 @@ export function startModel1(o: { uw: Read; now?: () => number; log?: (s: string)
     if (inputs.size > 8) inputs.delete(inputs.keys().next().value as string);
     return { ...model1Board(input), version: `${now()}|full` };
   };
+  /* the exposure recorder reads the boards held here, never building one (src/data/exposureRecorder.ts heldModel1): a
+     process-wide registry, the latest keeper's */
+  (globalThis as Record<string, unknown>).__slayerModel1Held = (ticker: string): Model1Wire | null => {
+    const t = ticker.toUpperCase();
+    return boards.get(t)?.wire ?? partial.get(t) ?? null;
+  };
   /* the rows say when they were priced: a board priced more than 30 minutes before now is a shut market's */
   const holdOf = (w: Model1Wire) => (w.at != null && now() - w.at > 30 * 60_000 ? HOLD_SHUT_MS : HOLD_MS);
   return {
@@ -131,18 +137,41 @@ export function startModel1(o: { uw: Read; now?: () => number; log?: (s: string)
 
 type Req = { url?: string; headers?: Record<string, string | string[] | undefined> };
 type Res = { statusCode: number; setHeader: (k: string, v: string) => void; end: (b?: string | Buffer) => void };
+/* A board is encoded once (docs/OLD_PATH_AUDIT.md item 5): the same wire object is served to every viewer until the next
+   build, and SPX's full board took ~220 ms of JSON and gzip on every request (12,303 cells × 28 figures). The bytes are
+   the same JSON, full precision — only kept. Weak: a board the keeper lets go takes its bytes with it. */
+const encoded = new WeakMap<object, { text: string; gz: Buffer | null }>();
+export function encodedBoard(w: object): { text: string; gz: Buffer | null } {
+  let hit = encoded.get(w);
+  if (!hit) {
+    const text = JSON.stringify(w);
+    hit = { text, gz: text.length > 4096 ? gzipSync(text) : null };
+    encoded.set(w, hit);
+  }
+  return hit;
+}
 export function model1Route(keeper: ReturnType<typeof startModel1>, req: Req, res: Res): void {
   const url = new URL(req.url || '/', 'http://local');
   const t = String(url.searchParams.get('ticker') ?? '').trim().toUpperCase();
   res.setHeader('content-type', 'application/json');
   res.setHeader('cache-control', 'no-store');
+  const gzipOk = String(req.headers?.['accept-encoding'] ?? '').includes('gzip');
   const send = (s: number, b: unknown) => {
     res.statusCode = s;
     const text = JSON.stringify(b);
-    if (text.length > 4096 && String(req.headers?.['accept-encoding'] ?? '').includes('gzip')) {
+    if (text.length > 4096 && gzipOk) {
       res.setHeader('content-encoding', 'gzip');
       res.end(gzipSync(text));
     } else res.end(text);
+  };
+  /* a board: its bytes as encoded the first time it was served */
+  const sendBoard = (w: Model1Wire) => {
+    const e = encodedBoard(w);
+    res.statusCode = 200;
+    if (e.gz && gzipOk) {
+      res.setHeader('content-encoding', 'gzip');
+      res.end(e.gz);
+    } else res.end(e.text);
   };
   if (!TICKER.test(t)) return send(400, { error: 'ask /api/twobook/oi?ticker=SPY' });
   /* what the last full build read — for recording a fixture; never in production */
@@ -154,7 +183,7 @@ export function model1Route(keeper: ReturnType<typeof startModel1>, req: Req, re
   const have = url.searchParams.get('v');
   keeper.board(t).then(
     /* the board the browser already holds: answered in a few bytes */
-    w => (have && w.version === have ? send(200, { same: true, version: have }) : send(200, w)),
+    w => (have && w.version === have ? send(200, { same: true, version: have }) : sendBoard(w)),
     e => send(503, { error: `the open-interest book could not be built: ${e instanceof Error ? e.message : e}`, code: 'oi_book_failed' }),
   );
 }
