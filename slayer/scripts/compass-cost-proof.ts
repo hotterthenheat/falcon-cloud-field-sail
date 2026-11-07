@@ -32,9 +32,10 @@ const md = readFileSync(join(root, HURDLE_MD), 'utf8');
 const gen = readFileSync(join(root, HURDLE_GEN), 'utf8');
 check('compassHurdle.gen.ts is HURDLE.md as it stands (else: npx tsx scripts/compass-hurdle-sync.ts)', hurdleModule(md) === gen);
 const at10 = hurdleFor('SPXW', 10 * 60 + 5, 55);
-check('SPXW 10:05, held 55 min: the 10:00 bucket at 60 min, +0.38 [+0.24, +0.55]', !!at10 && at10.hz === 0.38 && at10.lo === 0.24 && at10.hi === 0.55 && !at10.pooled, JSON.stringify(at10));
-const at11 = hurdleFor('SPX', 11 * 60, 50);
-check('SPX 11:00 (no number in its bucket): the pooled 60-minute row, +0.18', !!at11 && at11.hz === 0.18 && at11.pooled);
+check('SPXW 10:05, held 55 min: the 10:00 bucket at 60 min, +0.15 [+0.10, +0.19]', !!at10 && at10.hz === 0.15 && at10.lo === 0.1 && at10.hi === 0.19 && !at10.pooled, JSON.stringify(at10));
+/* h = 60 is undefined after 15:00 (HURDLE.md), so a 15:30 call held 50 minutes falls back to the pooled 60-minute row */
+const at1530 = hurdleFor('SPX', 15 * 60 + 30, 50);
+check('SPX 15:30 (no 60-minute number in its bucket): the pooled 60-minute row, +0.11', !!at1530 && at1530.hz === 0.11 && at1530.pooled, JSON.stringify(at1530));
 check('a root the research has not measured has no hurdle', hurdleFor('TSLA', 10 * 60, 30) == null);
 check('horizons: 10 → 15, 30 → 30, 75 → 60, 300 → close', horizonOf(10) === 15 && horizonOf(30) === 30 && horizonOf(75) === 60 && horizonOf(300) === 'close');
 check('buckets: 09:47 → 09:30, 14:59 → 14:30', bucketOf(9 * 60 + 47) === '09:30' && bucketOf(14 * 60 + 59) === '14:30');
