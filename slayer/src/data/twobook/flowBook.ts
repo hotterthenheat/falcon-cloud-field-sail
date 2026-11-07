@@ -16,7 +16,8 @@
   /api/tape/flowbook only.
 */
 
-import { contractKey, contractSpec, rootsOf, slayerBoard, yearsTo, type ChainExpiry, type FlowContract, type ParityQuote } from '../../engine/twobook';
+import { contractKey, contractSpec, EXPOSURE_NAMES, rootsOf, slayerBoard, sumBoard, yearsTo, type BoardCell, type ChainExpiry, type FlowContract, type ParityQuote } from '../../engine/twobook';
+import { LEG_AT, LEG_WIDTH, type BookLegs } from './legs';
 import { nyInstant } from '../../../shared/marketSession.mjs';
 import { eachCsvRow, stampParts } from '../printTags';
 
@@ -76,6 +77,36 @@ export interface FlowBoardWire {
   flow: { prints: number; buckets: Record<string, number>; linkedCancels: number; unlinkedCancels: number; contracts: number };
   population: string;
   fault: string | null;
+  /** Every (expiry, strike) the inventory holds, both legs, the ten in Slayer units (src/data/twobook/legs.ts): the Map
+      draws these when it is set to the flow book. Σ over the cells = `totals`. No open interest anywhere (the slots
+      carry 0). */
+  legs: BookLegs | null;
+}
+
+/** The engine's cells as wire rows (both books use it): the ten per leg, open interest where the book has it */
+export function legsOfCells(cells: readonly BoardCell[], oiOf?: (date: string, strike: number, right: 'C' | 'P') => number): BookLegs {
+  const T = new Map<string, number>();
+  for (const c of cells) if (!T.has(c.expiry) || c.T < (T.get(c.expiry) as number)) T.set(c.expiry, c.T);
+  const dates = [...T.keys()].sort();
+  const di = new Map(dates.map((d, i) => [d, i]));
+  const rows = cells.map(c => {
+    const row = new Array<number>(LEG_WIDTH).fill(0);
+    row[LEG_AT.date] = di.get(c.expiry) as number;
+    row[LEG_AT.strike] = c.strike;
+    EXPOSURE_NAMES.forEach((n, i) => {
+      row[LEG_AT.call + i] = c.call[n];
+      row[LEG_AT.put + i] = c.put[n];
+    });
+    row[LEG_AT.callOI] = oiOf ? oiOf(c.expiry, c.strike, 'C') : 0;
+    row[LEG_AT.putOI] = oiOf ? oiOf(c.expiry, c.strike, 'P') : 0;
+    row[LEG_AT.callIv] = c.callIv;
+    row[LEG_AT.putIv] = c.putIv;
+    row[LEG_AT.callGamma] = c.callGamma;
+    row[LEG_AT.putGamma] = c.putGamma;
+    return row;
+  });
+  rows.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  return { dates: dates.map(d => ({ date: d, T: T.get(d) as number })), cells: rows };
 }
 
 const ymd = (d: string) => d.replace(/-/g, '');
@@ -102,7 +133,7 @@ export function sofrOn(body: string, day: string): { pct: number; day: string } 
   return best;
 }
 
-interface QuoteRow {
+export interface QuoteRow {
   root: string;
   expiry: string;
   strike: number;
@@ -173,6 +204,8 @@ export function flowBoardOf(view: FlowTapeView, quotes: QuoteRow[], valuedAt: nu
   }
   const b = slayerBoard(chain, contracts);
   const t = b.board;
+  /* the cells: the same lines, the same unit, summed per (expiry, strike) — Σ cells = the totals above */
+  const cells = t ? sumBoard(b.lines, t.unit, true).cells ?? [] : [];
   const absByExp = new Map<string, number>();
   for (const c of contracts) if (c.C !== 0) absByExp.set(c.expiry, (absByExp.get(c.expiry) ?? 0) + Math.abs(c.C));
   const spot = b.spot ? { S: b.spot.S, prov: b.spot.prov, T1: b.spot.T1, TL: b.spot.TL } : null;
@@ -204,14 +237,27 @@ export function flowBoardOf(view: FlowTapeView, quotes: QuoteRow[], valuedAt: nu
       ? `today's prints on the nearest listed expiries (${Object.entries(view.exps).map(([r, e]) => `${r}: ${(e ?? []).join(', ')}`).join('; ')}), ${QUOTE_STRIKES} strikes either side`
       : `the session's prints on every expiry, ${QUOTE_STRIKES} strikes either side`,
     fault: view.fault,
+    legs: t ? legsOfCells(cells) : null,
   };
 }
+
+/** A build's inputs as JSON (the inventory and buckets as entries) — flowBoardOf(viewOf(i.view), …) rebuilds the board */
+export interface FlowInputs {
+  view: Omit<FlowTapeView, 'inv' | 'buckets'> & { inv: [string, number][]; buckets: [string, number][] };
+  quotes: QuoteRow[];
+  valuedAt: number;
+  rate: { r: number; sofr: number; day: string } | null;
+  quotesAt: number | null;
+}
+export const viewOf = (v: FlowInputs['view']): FlowTapeView => ({ ...v, inv: new Map(v.inv), buckets: new Map(v.buckets) });
 
 /** One board per name, held BOARD_HOLD_MS, one build in flight: `read` is the tapes' own terminal gate */
 export function flowBooks(o: { read: (path: string, kind: string) => Promise<string | null>; now: () => number; log?: (s: string) => void }) {
   const boards = new Map<string, { at: number; wire: FlowBoardWire }>();
   const building = new Map<string, Promise<FlowBoardWire>>();
   const rates = new Map<string, { r: number; sofr: number; day: string } | null>();
+  /** What the last build valued, per name (a recorded fixture is these: scripts/twobook-map-proof.ts) */
+  const inputs = new Map<string, FlowInputs>();
   const rateFor = async (day: string) => {
     if (rates.has(day)) return rates.get(day) ?? null;
     const start = new Date(Date.parse(`${day}T12:00:00Z`) - 12 * 86_400_000).toISOString().slice(0, 10);
@@ -254,9 +300,12 @@ export function flowBooks(o: { read: (path: string, kind: string) => Promise<str
     let quotesAt: number | null = null;
     for (const q of quotes) if (Number.isFinite(q.ms) && (quotesAt == null || q.ms > quotesAt)) quotesAt = q.ms;
     const valuedAt = view.live ? o.now() : (quotesAt ?? view.close);
+    inputs.set(view.name, { view: { ...view, inv: [...view.inv], buckets: [...view.buckets] }, quotes, valuedAt, rate, quotesAt });
+    if (inputs.size > 8) inputs.delete(inputs.keys().next().value as string);
     return flowBoardOf(view, quotes, valuedAt, rate, quotesAt);
   };
   return {
+    inputs: (name: string): FlowInputs | null => inputs.get(name.toUpperCase()) ?? null,
     async board(view: FlowTapeView): Promise<FlowBoardWire> {
       const hit = boards.get(view.name);
       if (hit && hit.wire.day === view.day && o.now() - hit.at < BOARD_HOLD_MS) return hit.wire;

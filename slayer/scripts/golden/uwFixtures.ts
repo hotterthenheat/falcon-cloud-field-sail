@@ -31,6 +31,10 @@ export interface Fixtures {
 /** Serve /api/uw/* and /api/theta/* from the named fixture set (or record them). Returns the paths asked for, in order,
     and how many are being answered now. */
 export function installUwFixtures(set: string): Fixtures {
+  /* a recording replays the vendor's rows through the per-date pipeline it was recorded with (book/load.ts): the
+     two-book engine's boards (/api/twobook/oi, /api/tape/flowbook) are the server's and are not in a recording, so the
+     book is read as loaded (twobook/engineBook.ts legacyBook) — the engine's own proof is scripts/twobook-map-proof.ts */
+  (globalThis as { SLAYER_LEGACY_BOOK?: boolean }).SLAYER_LEGACY_BOOK = true;
   const dir = join(ROOT, set);
   const asked: string[] = [];
   let open = 0;
@@ -169,12 +173,14 @@ let fail = 0;
 export function expectNear(name: string, got: number, want: number, tol = 1e-6): void {
   const ok = Number.isFinite(got) && Math.abs(got - want) <= tol * Math.max(1, Math.abs(want));
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}: got ${got}, want ${want}`);
-  ok ? pass++ : fail++;
+  if (ok) pass++;
+  else fail++;
 }
 export function expectEqual<T>(name: string, got: T, want: T): void {
   const ok = JSON.stringify(got) === JSON.stringify(want);
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
-  ok ? pass++ : fail++;
+  if (ok) pass++;
+  else fail++;
 }
 /** Print the tally and exit non-zero on any failure. */
 export function done(): never {

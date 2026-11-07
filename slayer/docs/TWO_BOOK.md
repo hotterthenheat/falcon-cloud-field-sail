@@ -19,8 +19,8 @@ On screen the sources are described, never named (standing owner rule; it overri
 | Greek engine (pure) | `src/engine/twobook/` — `normal.ts` (Cody erfc), `bsm.ts` (price, ten Greeks, statuses, bounds, IV), `contracts.ts` (contract-spec table, per-root settlement, T, §3.4 row action), `forward.ts` (parity forward, S*, b_T), `exposures.ts` (§4.4, §3.4, §4.5, §5), `classify.ts` (§4.1, inventory with cancel linking), `board.ts` (flat wing, board sums), `model2.ts` (end-to-end SLAYER board) |
 | Model 1 board | `src/data/twobook/model1.ts` (pure), `model1Server.ts` + `server/twoBookApi.mjs`: `GET /api/twobook/oi?ticker=` |
 | Model 2 board | `src/data/tapeServer.ts` (every print → `FlowInventory`, kept with the day's tape), `src/data/twobook/flowBook.ts` (revaluation): `GET /api/tape/flowbook?ticker=` |
-| Browser | `src/data/twobook/useTwoBooks.ts` (asks the server only), `src/pages/pinpoint/Books.tsx` (Pinpoint → Books) |
-| Retired | `src/data/bookMode.ts` (the Live toggle: identity functions now), `ExposureField.tsx` (toggle → label + link to the flow book) |
+| Browser | `src/data/twobook/engineBook.ts` (asks the server only, one board per name), `legs.ts` (the boards' cells → the chains every page reads), `src/data/book/engineView.ts` (store.ts `peekEntry` hands every page the engine's chains), `src/data/bookMode.ts` (the Map's book switch), `src/components/gex/BookSources.tsx` (the switch and the Sources & units card) |
+| Retired | the Books page (`/pinpoint/books` redirects to the Map); the old per-date chain reads in `src/data/book/load.ts` (`engineChains`); the old Live = OI + flow reading |
 | Python reference | `research/twobook/ref/` — `slayer_ref.py` (mpmath, 60 digits), `test_ref.py`, `make_golden.py` → `golden_vectors.json` = `scripts/golden/twobook-vectors.json` |
 | Proofs in CI | `scripts/twobook-proof.ts`, `scripts/twobook-mutation-proof.mjs`, `scripts/twobook-server-proof.ts`, `scripts/book-mode-proof.ts` (rewritten), listed in `scripts/run-proofs.mjs` |
 | Real-data runs | `research/twobook/appendixb_fetch.sh` + `appendixb.ts` (Model 2), `model1_live.ts` (Model 1, Test 4 pieces), `test8.ts` (vendor Greeks), `carry_a7.ts` (A7), `aggressor_check.py` (A22), `audit/score-audit.ts` + `audit/score_audit.py` (the lead's audit file) |
@@ -248,18 +248,41 @@ to 4 decimals; vega, charm and color sit above the spec's 2e-3 median (T shifted
 so the clock matches; the residual is the IV rounding on the wings). Gamma, speed and zomma round to 0.0000 at this
 strike spacing and cannot be compared.
 
-## 4. What the screen shows
+## 4. What the screen shows — §The Map
 
-- **Pinpoint → Books** (new): the open-interest book and the flow book side by side. Each lists its time ("As of" /
-  "Valued at"), the price it is priced at (the listed row price / the spot implied by the forwards), its rate, its one
-  time unit (per calendar day, or per calendar hour with "(instantaneous rate)" under an hour), its model, its position
-  assumption ("convention, not observed" / "modelled, not observed"), the share on a modelled vol, and every metric with
-  its provenance (calculated, modelled). The flow book adds the inventory (contracts, Σ|C|), the print counts, the
-  population, total GEX change for +1% and the hedge (with index-futures equivalents for SPX). Opposite signs are kept.
-  A name the listing has no options for shows "Unavailable for …" in the open-interest book; the flow book still reads.
-- **The Live toggle is gone** from the exposure field (Pinpoint Map). In its place: "Open-interest book" and a link,
-  "Flow book →". The walls, the flip, the regime and the Terrain strike rail read the open-interest book only
-  (`bookMode` is the identity); a browser that kept "flow" is moved back.
+One engine behind every Pinpoint view, in the Map's own formatting (2026-11-07, after the owner: "in pinpoint the map i
+have all the gex in those formatting").
+
+- **The cells.** Both boards now carry every (expiry, strike) cell, both legs, all ten in house units
+  (`src/data/twobook/legs.ts`): Model 1's four converted leg by leg exactly as §3.4 converts the board (GEX as listed;
+  DEX call +delta·100/S, put −delta·100/S; VANNA ÷ IV30; CHARM ·100/(365·D), ÷24 per hour), its six from the engine's
+  UW_COMPAT lines summed per cell (`sumBoard(…, withCells)`); Model 2's ten from its SLAYER lines. Σ cells = the board's
+  totals. The open-interest board goes out in two phases: the four as soon as the rows and IV30 are in, the six once the
+  contracts are walked (the Map paints off the first); a browser holding the server's version is answered "same".
+- **Every page reads them.** `store.ts peekEntry` hands every reader the engine's view of a name (`engineView.ts`): the
+  loaded entry's price, bars and vols, with `all` and `byDate` replaced by the chosen book's chains (house sign, so every
+  reader that prints dealer figures is unchanged). The matrix and calendar, the strike chart and ladder, the walls, the
+  flip, the regime, the hedge-flow ladder, Board, Compare, Agenda/Targets, Building (per-contract gamma and vol per cell
+  from the engine), Pulse's tiles and Terrain's rail all add up these cells. The flip re-prices the engine's own legs
+  (T on the 365 clock to each date's settlement, the board's IV per leg, r = b = 0 for Model 1, the board's r and the
+  front date's carry for Model 2); the five higher greeks are the engine's, never re-priced on the page. CHARM, COLOR
+  and VETA carry the board's one unit (per calendar day, or hour), shown in every header. The old per-date reads are not
+  made (`load.ts engineChains`).
+- **The switch.** The Map's toolbar holds "Open-interest book | Flow book" (`data/bookMode.ts`, kept per browser): the
+  whole Map — matrix, chart, walls, flip, regime — and the names that follow it (the Map's names, Terrain's panes,
+  Compare's pair; the six most recent) draw the book it names. The flow book is never added to open interest: its chains
+  carry no open interest at all. Other names (a Board row) stay on the open-interest book.
+- **Sources & units** (beside the switch, replacing the Books page): as-of time, priced-at, unit, model, position
+  assumption, the share on modelled vol, the population (rows at one timestamp, rows of another left out, expired rows
+  left out, the flagged AM line), the listing's own-sign DEX for reference, the carry-model note; for the flow book the
+  valuation time and implied spot, rate and carry, the inventory, the prints and the classifier's shares, the cancels,
+  the population, GEX change for +1% and the hedge. It changes with the switch.
+- **The proof** (`scripts/twobook-map-proof.ts`, in CI, on recorded SPY and SPX books in `scripts/fixtures/twobook/`,
+  written by `scripts/twobook-map-record.mjs`): each board rebuilt from its recorded inputs equals the server's answer;
+  Σ cells, Σ per-date chains and Σ whole-book chain equal the board totals for all ten (1e-9 relative); every matrix cell
+  the Map draws is the chain's figure; the walls are the cells' largest call and put GEX; the flip's legs add to the
+  chain's net and, at the board's price, to the board's GEX, and the regime is its sign; the flow book's chains carry no
+  open interest; the switch swaps every chain.
 - The field-history toggle (the recorder's "traded today" gamma of the listing's rows, not the flow book) is renamed
   "Traded today" / "Open interest" so it is never read as the retired book.
 - Pinpoint's name list now includes optionable names only the terminal lists (flow book only).
@@ -272,6 +295,11 @@ strike spacing and cannot be compared.
 - **Model 2 population on the current day** is the tape's four nearest expiries within 14 days, 30 strikes either side
   (the terminal serves the current day one expiry a read, about a minute each); a processed day is every expiry.
 - **SPX on 11-02** for Model 1 (about 90 more pages on the shared key); SPY 11-02 and SPX 11-06 were run.
+- **The exposure recorder** (Terrain's per-minute field history, `src/data/exposureRecorder.ts`) still records the
+  listing's rows minute by minute: its GEX is the same figure as Model 1's (call + put gamma_oi), but it reads the
+  whole-book route (no expiry on a row, so §3.4's expired-row rule cannot be applied after 16:00) and four pages; the
+  field's newest column is aligned to the engine's chain (`exposureLog.ts alignLatestColumn`). Moving it onto the
+  engine's walk would multiply its vendor calls per minute by the expiry count.
 - **A week of same-minute Test 4 pairs** for the production shadow tolerance, and the intraday AM-settlement check.
 - **Early-close days**: PM roots still run to 16:00 per the spec's wording.
 - **The 15 terminal-only names**: listed on Pinpoint; on 2026-11-07 the terminal answered no expirations for the ones

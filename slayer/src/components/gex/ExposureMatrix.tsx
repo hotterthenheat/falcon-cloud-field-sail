@@ -11,7 +11,7 @@ import PointerCard, { CardRow, PointerFollowCard, letGoWords } from '../ui/Point
 const letGo = letGoWords();
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { shownGreek } from './retailSign';
-import { GREEKS, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
+import { GREEKS, greekUnit, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { ABSORB, AMPLIFY, CALL_WALL, EMBER, FLIP, GLACIER, PUT_WALL, SUPREME } from './paletteInk';
 import { strikeRole, underlineClass } from './strikeRole';
 import StrikeNum, { hasCents } from './StrikeNum';
@@ -385,7 +385,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
   /* The head's words by room (7.2 px a character at 11 px): greek, leg and unit; greek and leg; or the greek alone. Never a wrap. */
   const headRoom = legW * LEGS.length;
   const headChars = (g: (typeof shownGreeks)[number], withUnit: boolean) =>
-    `${GREEK_LABEL[g]}${LEGS.length === 1 ? ` · ${LEGS[0]}` : ''}${withUnit ? ` · ${GREEK_UNIT[g]}` : ''}`.length;
+    `${GREEK_LABEL[g]}${LEGS.length === 1 ? ` · ${LEGS[0]}` : ''}${withUnit ? ` · ${greekUnit(g, surface.timeUnit)}` : ''}`.length;
   const headFits = (withUnit: boolean) => headRoom >= Math.max(0, ...shownGreeks.map(g => headChars(g, withUnit))) * 7.2 + 16;
   const headTier: 'full' | 'leg' | 'greek' = stacked ? 'greek' : headFits(true) ? 'full' : LEGS.length === 1 && headFits(false) ? 'leg' : 'greek';
   /* The pane's natural width, told to the host: the strike column as measured and every leg at its widest. */
@@ -584,7 +584,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
                 data-matrix-group={g}
                 data-lead={g === lead || undefined}
                 /* The silver head is the greek the pointer card reads, and says so. */
-                title={`${g === lead && shownGreeks.length > 1 ? `The greek the card reads · ${GREEK_UNIT[g]}` : GREEK_UNIT[g]}${windowLabel ? (windowLevels ? ` · each row adds up the matrix window, ${windowLabel} (the Expiries card), and the coloured rows are that window's own call wall, put wall and supreme — the Levels card (${levelsWords ?? 'its scope'}) names its own on the rest of the page` : ` · each row adds up the matrix window, ${windowLabel} (the Expiries card) — not the Levels card's contracts, so a level's row can differ from the level's own figure`) : ''}`}
+                title={`${g === lead && shownGreeks.length > 1 ? `The greek the card reads · ${greekUnit(g, surface.timeUnit)}` : greekUnit(g, surface.timeUnit)}${windowLabel ? (windowLevels ? ` · each row adds up the matrix window, ${windowLabel} (the Expiries card), and the coloured rows are that window's own call wall, put wall and supreme — the Levels card (${levelsWords ?? 'its scope'}) names its own on the rest of the page` : ` · each row adds up the matrix window, ${windowLabel} (the Expiries card) — not the Levels card's contracts, so a level's row can differ from the level's own figure`) : ''}`}
               >
                 {/* One leg, one head: with the net alone the leg rides the greek's head ("GEX · net · 1% move"). */}
                 {/* A narrow column wears the greek alone; its unit is in the title. */}
@@ -593,7 +593,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
                   {headTier !== 'greek' && (
                     <span className="text-textSecondary font-medium normal-case tracking-normal">
                       {LEGS.length === 1 ? ` · ${LEGS[0]}` : ''}
-                      {headTier === 'full' ? ` · ${GREEK_UNIT[g]}` : ''}
+                      {headTier === 'full' ? ` · ${greekUnit(g, surface.timeUnit)}` : ''}
                     </span>
                   )}
                   {windowLabel && headTier !== 'greek' && (

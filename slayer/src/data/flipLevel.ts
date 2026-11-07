@@ -316,6 +316,56 @@ interface LegSet {
   complete: boolean;
   key: string;
   withVol: number;
+  /** The rate and yield the legs re-price at — the engine's board's (Model 1: r = b = 0; Model 2: r and the front date's
+      carry); absent on the old chains (the name's carry) */
+  r?: number;
+  q?: number;
+}
+
+/** The engine's legs of `chain` (its dates, or the whole live book) — what the flip re-prices; the consistency proof reads them */
+export function engineLegsFor(snapshot: MarketSnapshot, chain: readonly StrikeNode[], entry: NonNullable<ReturnType<typeof peekEntry>>): GammaLeg[] {
+  const by = snapshot.uwByDate ?? {};
+  const floor = isoDate(bookToday());
+  const dates = datesOf(snapshot, chain) ?? 'ALL';
+  const want = dates === 'ALL' ? Object.keys(by).filter(d => d >= floor && by[d]?.length) : dates.filter(d => by[d]?.length);
+  return entry.engine ? engineLegSet(snapshot, chain, entry, dates, want).legs : [];
+}
+
+/** The two-book engine's legs (book/engineView.ts): each cell's call and put at the board's own price, instant and vol —
+    T on the calendar clock (D = 365) to the date's settlement, the board's r and carry. g0 is the cell's own figure, so
+    the legs add up to the chain's net exactly; nothing is carried flat (the whole book is its dates added up). */
+function engineLegSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], entry: NonNullable<ReturnType<typeof peekEntry>>, dates: string[] | 'ALL', want: string[]): LegSet {
+  const eng = entry.engine!;
+  const by = snapshot.uwByDate ?? {};
+  const legs: GammaLeg[] = [];
+  let withVol = 0;
+  const front = [...want].sort()[0];
+  const r = eng.r;
+  const q = eng.mode === 'flow' && front != null ? r - (eng.b[front] ?? r) : 0;
+  for (const d of want) {
+    const t = eng.T[d];
+    const smile = smileOf(by[d], eng.price ?? snapshot.spot);
+    for (const n of by[d]) {
+      const wing = smile(n.strike);
+      const leg = (g0: number, iv: number | undefined, oi: number, side: 1 | -1) => {
+        const vol = iv && iv > 0 ? iv : wing;
+        if (!g0 && !(oi > 0 && vol > 0)) return;
+        if (vol > 0) withVol++;
+        legs.push({ strike: n.strike, g0, iv: vol > 0 && t > 0 ? vol : 0, t: t > 0 ? t : 0, s0: n.gexPx, oi: oi > 0 ? oi : undefined, side, ownIv: !!iv && iv > 0 });
+      };
+      leg(n.callGex, n.callIv, n.callOI, -1);
+      leg(n.putGex, n.putIv, n.putOI, 1);
+    }
+  }
+  /* a chain that is not the dates' sum (none the engine builds) keeps its difference flat */
+  const onDates = new Map<number, number>();
+  for (const l of legs) onDates.set(l.strike, (onDates.get(l.strike) ?? 0) + l.g0);
+  for (const n of chain) {
+    const rest = n.netGex - (onDates.get(n.strike) ?? 0);
+    if (Math.abs(rest) > 1e-9 * (Math.abs(n.netGex) + 1)) legs.push({ strike: n.strike, g0: rest, iv: 0, t: 0 });
+  }
+  const key = `E|${snapshot.ticker}|${eng.mode}|${eng.at}|${eng.price}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.map(d => chainSig(by[d])).join(',')}|${chainSig(chain)}|${snapshot.spot}|${eng.sixIn}`;
+  return { legs, complete: eng.sixIn, key, withVol, r, q };
 }
 
 /** The re-priced legs of the contracts in `chain` — the one leg set the flip, and the net path, are read off */
@@ -328,6 +378,7 @@ function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: num
   const floor = isoDate(bookToday());
   const want = dates === 'ALL' ? Object.keys(by).filter(d => d >= floor && by[d]?.length) : dates.filter(d => by[d]?.length);
   if (!want.length) return null;
+  if (entry.engine) return engineLegSet(snapshot, chain, entry, dates, want);
   /* the whole book is final once every listing the book READS is in (the first BOOK_LISTINGS, as datesComplete; a listed
      date whose strikes came back empty is in, with none). It once waited on every listing: SPX lists 54 and the book
      reads 40, so its All flip stayed "…" for good (audit 2026-11-06); listings past those are the whole book's rows,
@@ -396,7 +447,7 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
      browser may have moved it) */
   let base = cache.get(set.key);
   if (!base) {
-    const raw = repricedFlip(set.legs, spot, carryFor(snapshot.ticker).r, undefined, carryFor(snapshot.ticker).q);
+    const raw = repricedFlip(set.legs, spot, set.r ?? carryFor(snapshot.ticker).r, undefined, set.q ?? carryFor(snapshot.ticker).q);
     /* off the hold: the crossing nearest price, and the other crossing nearest it disclosed — the same inputs give the same
        answer on every page and in every profile */
     const second = (raw.crossings?.length ?? 0) > 1 && raw.flip != null ? raw.crossings!.filter(x => x !== raw.flip).sort((a, b) => Math.abs(a - raw.flip!) - Math.abs(b - raw.flip!))[0] ?? null : null;
@@ -442,7 +493,7 @@ export function levelNetPath(snapshot: MarketSnapshot, chain: readonly StrikeNod
   const legs = quietLegs(set.legs);
   /* the minute the legs are priced at: a pinned book's own (a finished session frozen at its close), else the live clock */
   const ref = snapshot.asOf ?? snapshot.flipAt ?? pricingClock(undefined, Date.now());
-  const y = carryFor(snapshot.ticker);
+  const y = set.r != null ? { r: set.r, q: set.q ?? 0 } : carryFor(snapshot.ticker);
   /* every price at the same clock: one pass over the legs (netGammaPath, the same values as netGammaAt price by price) */
   if (!times) return { path: netGammaPath(legs, snapshot.spot, prices, y.r, y.q).map(v => (v === 0 ? 0 : -v)), complete: set.complete };
   /* each minute at its own clock: the time to expiry it had, its time now plus the session minutes since — one pass over
@@ -458,11 +509,11 @@ export function levelNetPath(snapshot: MarketSnapshot, chain: readonly StrikeNod
 /** Each date's own net gamma at each price, house sign — the same legs the flip re-prices (legSet), one set a date;
     null for a date whose rows cannot be re-priced. The profile's curve is these, added. */
 export function datesNetAt(snapshot: MarketSnapshot, dates: readonly string[], prices: readonly number[]): (number[] | null)[] {
-  const y = carryFor(snapshot.ticker);
   return dates.map(d => {
     const chain = snapshot.uwByDate?.[d];
     const set = chain?.length ? legSet(snapshot, chain) : null;
     if (!set || !set.withVol) return null;
+    const y = set.r != null ? { r: set.r, q: set.q ?? 0 } : carryFor(snapshot.ticker);
     const legs = quietLegs(set.legs);
     return netGammaPath(legs, snapshot.spot, prices, y.r, y.q);
   });

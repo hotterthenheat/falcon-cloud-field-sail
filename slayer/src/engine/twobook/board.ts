@@ -63,6 +63,24 @@ export interface StrikeRow {
   net: Exposures;
 }
 
+/** One (expiry, strike) of a board, both legs: what a strike × expiry view draws. `expiry` is the line's expiry with
+    any root prefix dropped (SPX and SPXW at one date and strike are one cell, as the listed rows sum them). Per leg: the
+    ten exposures, Σ|C|, the |C|-weighted IV the leg was priced at and its gamma per contract (greek, unscaled). */
+export interface BoardCell {
+  expiry: string;
+  strike: number;
+  /** T of the cell's nearest-settling root (years) */
+  T: number;
+  call: Exposures;
+  put: Exposures;
+  callAbsC: number;
+  putAbsC: number;
+  callIv: number;
+  putIv: number;
+  callGamma: number;
+  putGamma: number;
+}
+
 export interface BoardTotals {
   unit: TimeUnit;
   /** Some contract has under an hour left: the per-hour figures are instantaneous rates */
@@ -77,14 +95,19 @@ export interface BoardTotals {
   modeledShare: number;
   approxShare: number;
   counts: { lines: number; priced: number; expired: number; unavailable: number; flatWing: number };
+  /** Only when asked (`sumBoard(lines, unit, true)`): every (expiry, strike) cell, nearest expiry first, then by strike */
+  cells?: BoardCell[];
 }
+
+/** The date of a line's expiry id ('SPXW|2026-11-20' or '2026-11-20') */
+export const expiryDateOf = (expiry: string): string => (expiry.includes('|') ? expiry.slice(expiry.lastIndexOf('|') + 1) : expiry);
 
 const addInto = (a: Exposures, b: Exposures) => {
   for (const n of EXPOSURE_NAMES) a[n] += b[n];
 };
 
 /** Sum a board. `unit` is fixed by §4.5 from the T of every line that is priced (unless given). */
-export function sumBoard(input: readonly BoardLine[], unitIn?: TimeUnit): BoardTotals {
+export function sumBoard(input: readonly BoardLine[], unitIn?: TimeUnit, withCells = false): BoardTotals {
   const lines = fillFlatWing(input);
   const priced: (BoardLine & { iv: number })[] = [];
   let expired = 0;
@@ -108,6 +131,7 @@ export function sumBoard(input: readonly BoardLine[], unitIn?: TimeUnit): BoardT
   let modeled = 0;
   let approx = 0;
   let flatWing = 0;
+  const cells = withCells ? new Map<string, BoardCell & { cIvW: number; pIvW: number; cGW: number; pGW: number }>() : null;
   for (const l of priced) {
     const g = greeks(l.S, l.strike, l.T, l.iv, l.r, l.b, l.right);
     const e = exposures(g, l.C, l.M, l.S, unit);
@@ -130,7 +154,31 @@ export function sumBoard(input: readonly BoardLine[], unitIn?: TimeUnit): BoardT
       flatWing++;
     }
     if (l.ivProv === 'UW_APPROX') approx += Math.abs(l.C);
+    if (cells && l.C !== 0) {
+      const date = expiryDateOf(l.expiry);
+      const ck = `${date}|${l.strike}`;
+      let c = cells.get(ck);
+      if (!c) cells.set(ck, (c = { expiry: date, strike: l.strike, T: l.T, call: zeroExposures(), put: zeroExposures(), callAbsC: 0, putAbsC: 0, callIv: 0, putIv: 0, callGamma: 0, putGamma: 0, cIvW: 0, pIvW: 0, cGW: 0, pGW: 0 }));
+      if (l.T < c.T) c.T = l.T;
+      const a = Math.abs(l.C);
+      if (l.right === 'C') {
+        addInto(c.call, e);
+        c.callAbsC += a;
+        c.cIvW += a * l.iv;
+        c.cGW += a * g.gamma;
+      } else {
+        addInto(c.put, e);
+        c.putAbsC += a;
+        c.pIvW += a * l.iv;
+        c.pGW += a * g.gamma;
+      }
+    }
   }
+  const cellList = cells
+    ? [...cells.values()]
+        .map(({ cIvW, pIvW, cGW, pGW, ...c }) => ({ ...c, callIv: c.callAbsC > 0 ? cIvW / c.callAbsC : 0, putIv: c.putAbsC > 0 ? pIvW / c.putAbsC : 0, callGamma: c.callAbsC > 0 ? cGW / c.callAbsC : 0, putGamma: c.putAbsC > 0 ? pGW / c.putAbsC : 0 }))
+        .sort((a, b) => a.expiry.localeCompare(b.expiry) || a.strike - b.strike)
+    : undefined;
   return {
     unit,
     rate,
@@ -143,5 +191,6 @@ export function sumBoard(input: readonly BoardLine[], unitIn?: TimeUnit): BoardT
     modeledShare: absC > 0 ? modeled / absC : 0,
     approxShare: absC > 0 ? approx / absC : 0,
     counts: { lines: lines.length, priced: priced.length, expired, unavailable, flatWing },
+    ...(cellList ? { cells: cellList } : {}),
   };
 }

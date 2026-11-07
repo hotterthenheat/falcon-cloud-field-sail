@@ -37,19 +37,23 @@ export function contractsReady(snapshot: MarketSnapshot | null | undefined): boo
   return false;
 }
 
-/** The unit each greek is stated in — the matrix's own headers. */
+/** The unit each greek is stated in — the matrix's own headers (docs/TWO_BOOK_SPEC_V2.md §4.4; CHARM, COLOR and VETA per
+    calendar day, or per calendar hour on a board with a contract under a day left: greekUnit). */
 export const GREEK_UNIT: Record<Greek, string> = {
   gex: '1% move',
   dex: '$ of stock',
   vex: '1 vol pt',
   vanna: '1 vol pt',
-  charm: 'per session',
-  color: 'per session',
+  charm: 'per calendar day',
+  color: 'per calendar day',
   vomma: 'per vol pt',
   speed: 'per 1%',
-  veta: 'per session',
+  veta: 'per calendar day',
   zomma: 'per vol pt',
 };
+const TIMED: ReadonlySet<Greek> = new Set<Greek>(['charm', 'color', 'veta']);
+/** A greek's unit on a board whose time rates are per `unit` (§4.5: one unit a board, never mixed) */
+export const greekUnit = (g: Greek, unit: 'day' | 'hour' = 'day'): string => (TIMED.has(g) && unit === 'hour' ? 'per calendar hour' : GREEK_UNIT[g]);
 
 /** Today's column, or -1. The one-column 'Book' fallback (no per-expiry chains loaded) also reads dte 0 but is the
  *  whole book, not today's expiry — counting it made the Board read "100% expires today" on names with no 0DTE. */
@@ -107,6 +111,8 @@ export interface SupremeNode {
 
 export interface ExposureSurface {
   ticker: string;
+  /** CHARM, COLOR and VETA per calendar day or hour (the board's one unit) */
+  timeUnit?: 'day' | 'hour';
   spot: number;
   changePct: number;
   /** Ascending */
@@ -268,6 +274,11 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow, mode: BookMod
     const at = new Map(strikes.map((s, si) => [s, si]));
     for (const node of col.chain) {
       if (!want.has(node.strike)) continue;
+      /* the engine's own higher greeks (book/engineView.ts): drawn as they are, nothing priced here */
+      if (node.higher) {
+        m.set(node.strike, node.higher);
+        continue;
+      }
       /* the PM contracts on the date's clock; the live AM contracts (node.am) on theirs, added below */
       const callN = node.callBook ?? node.callOI - (node.am?.callOI ?? 0);
       const putN = node.putBook ?? node.putOI - (node.am?.putOI ?? 0);
@@ -449,6 +460,7 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow, mode: BookMod
 
   return {
     ticker: snapshot.ticker,
+    timeUnit: snapshot.timeUnit ?? 'day',
     spot: snapshot.spot,
     changePct: snapshot.changePercent,
     strikes,
@@ -475,6 +487,9 @@ function liveSurface(snapshot: MarketSnapshot, half: StrikeWindow, mode: BookMod
 
 /** `pricedOff`: whose spot and OI the desk's expiries are priced from, the live book or the snapshot given (levelview snapshotAtOpen). */
 export function buildExposureSurface(snapshot: MarketSnapshot, half: StrikeWindow, _dtes: readonly number[] = DESK_DTES, _pricedOff: 'live' | 'snapshot' = 'live', mode: BookMode = 'oi'): ExposureSurface {
-  /* Every book is the vendor's per-date rows: there is no modelled chain to stand in for an expiry */
-  return liveSurface(snapshot, half, mode);
+  /* The chains are already the chosen book's (book/engineView.ts: the open-interest book or the flow book, cell by cell),
+     so the surface reads their own fields: the old 'flow' reading (StrikeNode.flow, open interest + signed volume) is
+     retired. `mode` is kept for the callers' cache keys. */
+  void mode;
+  return liveSurface(snapshot, half, 'oi');
 }

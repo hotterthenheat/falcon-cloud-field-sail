@@ -11,6 +11,7 @@ import { sameName } from '../spotGexBook';
 import { PRICES_MS, refreshBoardPrices } from './day';
 import { bookCandles, dayBars, materialize } from './levels';
 import { ensureBook } from './load';
+import { flowFocus } from '../twobook/engineBook';
 import { markHotName, peekEntry, type BookMode, useBookRev } from './store';
 
 
@@ -49,6 +50,8 @@ export function usePinpointFeed(ticker: string | null | undefined): MarketSnapsh
   useEffect(() => {
     if (!name) return;
     markHotName(name);
+    /* the Map's name follows its book switch (twobook/engineBook.ts) */
+    flowFocus(name);
     const had = peekEntry(name);
     ensureBook(name, 'full', had?.status === 'error');
     startPinpoint(name);

@@ -110,6 +110,7 @@ const PROOFS = [
   'twobook-proof',
   'twobook-mutation-proof.mjs',
   'twobook-server-proof',
+  'twobook-map-proof',
   'settle-roots-proof',
   'flip-complete-proof',
   'flip-coverage-proof',

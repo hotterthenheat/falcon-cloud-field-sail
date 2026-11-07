@@ -160,7 +160,9 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
       /* a figure the chart cannot draw is not drawn (the library throws past ±9×10^13 and the page stops) */
       return pts.map((p, i) => ({ time: p.time, min: p.min, net: read.path[i], spot: p.price })).filter(m => Number.isFinite(m.net) && Math.abs(m.net) < 1e13);
     }
-    const pool = vendor ?? [];
+    /* a book from the two-book engine is drawn off its own legs only (above) — never the vendor's volume-based minute
+       gamma, which is neither book (docs/TWO_BOOK_SPEC_V2.md §6) */
+    const pool = snapshot.book ? [] : vendor ?? [];
     let kept = pool.filter(m => m.min >= lo && m.min <= hi && m.min <= endMin);
     if (kept.length < 2) kept = pool.filter(m => m.min <= endMin);
     if (kept.length >= 2 && !isRamp(kept.map(m => m.net))) {
