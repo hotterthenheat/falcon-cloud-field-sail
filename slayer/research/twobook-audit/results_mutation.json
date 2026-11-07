@@ -1,0 +1,254 @@
+{
+ "caught": 12,
+ "total": 12,
+ "control_passes": true,
+ "results": [
+  {
+   "mutation": "color missing (b-r)",
+   "caught": true,
+   "caught_by": [
+    "T3",
+    "T6"
+   ],
+   "first_failures": {
+    "T3": [
+     "T3 color_T: 438 failed",
+     "T3 COLOR: 438 failed"
+    ],
+    "T6": [
+     "T6 greeks_exposures: 1120 fail e.g. [('ge00028', ['color_T', 'COLOR', 'COLOR_per_hour']), ('ge00029', ['color_T', 'COLOR', 'COLOR_per_hour'])]",
+     "T6 board_model2: 1 fail e.g. [('board_m2_spxw', ['totals.COLOR'])]"
+    ]
+   }
+  },
+  {
+   "mutation": "veta (1 - d1*d2)",
+   "caught": true,
+   "caught_by": [
+    "T3",
+    "T6",
+    "T7"
+   ],
+   "first_failures": {
+    "T3": [
+     "T3 veta_T: 952 failed",
+     "T3 VETA: 952 failed"
+    ],
+    "T6": [
+     "T6 greeks_exposures: 2304 fail e.g. [('ge00024', ['veta_T', 'VETA', 'VETA_per_hour']), ('ge00025', ['veta_T', 'VETA', 'VETA_per_hour'])]",
+     "T6 model1_six: 68 fail e.g. [('m1_001', ['VETA', 'VETA_per_hour']), ('m1_002', ['VETA', 'VETA_per_hour'])]"
+    ],
+    "T7": [
+     "T7 v1 regression veta_T",
+     "T7 v1 regression veta_T"
+    ]
+   }
+  },
+  {
+   "mutation": "charm sign",
+   "caught": true,
+   "caught_by": [
+    "T3",
+    "T6",
+    "T7"
+   ],
+   "first_failures": {
+    "T3": [
+     "T3 charm: 1106 failed",
+     "T3 CHARM: 1106 failed"
+    ],
+    "T6": [
+     "T6 greeks_exposures: 2446 fail e.g. [('ge00004', ['charm', 'CHARM', 'CHARM_per_hour']), ('ge00006', ['charm', 'CHARM', 'CHARM_per_hour'])]",
+     "T6 board_model2: 1 fail e.g. [('board_m2_spxw', ['totals.CHARM'])]"
+    ],
+    "T7": [
+     "T7 charm parity",
+     "T7 charm parity"
+    ]
+   }
+  },
+  {
+   "mutation": "charm without carry term",
+   "caught": true,
+   "caught_by": [
+    "T3",
+    "T6",
+    "T7"
+   ],
+   "first_failures": {
+    "T3": [
+     "T3 charm: 608 failed",
+     "T3 CHARM: 608 failed"
+    ],
+    "T6": [
+     "T6 greeks_exposures: 1279 fail e.g. [('ge00004', ['charm', 'CHARM', 'CHARM_per_hour']), ('ge00006', ['charm', 'CHARM', 'CHARM_per_hour'])]",
+     "T6 board_model2: 1 fail e.g. [('board_m2_spxw', ['totals.CHARM'])]"
+    ],
+    "T7": [
+     "T7 charm parity",
+     "T7 charm parity"
+    ]
+   }
+  },
+  {
+   "mutation": "speed sign",
+   "caught": true,
+   "caught_by": [
+    "T3",
+    "T5",
+    "T6",
+    "T7"
+   ],
+   "first_failures": {
+    "T3": [
+     "T3 speed: 952 failed",
+     "T3 total_gex_change_1pct: 952 failed"
+    ],
+    "T5": [
+     "T5 total_gex closed form",
+     "T5 GEX after +1% vs total_gex_change_1pct rel 3.47"
+    ],
+    "T6": [
+     "T6 greeks_exposures: 2292 fail e.g. [('ge00024', ['speed', 'SPEED', 'speed_gex_component', 'total_gex_change_1pct']), ('ge00025', ['speed', 'SPEED', 'speed_gex_component', 'total_gex_change_1pct'])]",
+     "T6 model1_six: 72 fail e.g. [('m1_000', ['SPEED']), ('m1_001', ['SPEED'])]"
+    ],
+    "T7": [
+     "T7 speed identity",
+     "T7 speed identity"
+    ]
+   }
+  },
+  {
+   "mutation": "zomma (d1*d2 + 1)",
+   "caught": true,
+   "caught_by": [
+    "T3",
+    "T6"
+   ],
+   "first_failures": {
+    "T3": [
+     "T3 zomma: 928 failed",
+     "T3 ZOMMA: 928 failed"
+    ],
+    "T6": [
+     "T6 greeks_exposures: 2248 fail e.g. [('ge00024', ['zomma', 'ZOMMA']), ('ge00025', ['zomma', 'ZOMMA'])]",
+     "T6 model1_six: 69 fail e.g. [('m1_001', ['ZOMMA']), ('m1_002', ['ZOMMA'])]"
+    ]
+   }
+  },
+  {
+   "mutation": "vanna with d1",
+   "caught": true,
+   "caught_by": [
+    "T3",
+    "T6"
+   ],
+   "first_failures": {
+    "T3": [
+     "T3 vanna: 904 failed",
+     "T3 VANNA: 904 failed"
+    ],
+    "T6": [
+     "T6 greeks_exposures: 2240 fail e.g. [('ge00024', ['vanna', 'VANNA']), ('ge00025', ['vanna', 'VANNA'])]",
+     "T6 board_model2: 1 fail e.g. [('board_m2_spxw', ['totals.VANNA'])]"
+    ]
+   }
+  },
+  {
+   "mutation": "COLOR without minus",
+   "caught": true,
+   "caught_by": [
+    "T3",
+    "T6"
+   ],
+   "first_failures": {
+    "T3": [
+     "T3 COLOR: 952 failed"
+    ],
+    "T6": [
+     "T6 greeks_exposures: 2304 fail e.g. [('ge00024', ['COLOR', 'COLOR_per_hour']), ('ge00025', ['COLOR', 'COLOR_per_hour'])]",
+     "T6 model1_six: 72 fail e.g. [('m1_000', ['COLOR']), ('m1_001', ['COLOR', 'COLOR_per_hour'])]"
+    ]
+   }
+  },
+  {
+   "mutation": "CHARM with extra minus",
+   "caught": true,
+   "caught_by": [
+    "T3",
+    "T6",
+    "UW"
+   ],
+   "first_failures": {
+    "T3": [
+     "T3 CHARM: 1106 failed"
+    ],
+    "T6": [
+     "T6 greeks_exposures: 2446 fail e.g. [('ge00004', ['CHARM', 'CHARM_per_hour']), ('ge00006', ['CHARM', 'CHARM_per_hour'])]",
+     "T6 board_model2: 1 fail e.g. [('board_m2_spxw', ['totals.CHARM'])]"
+    ],
+    "UW": [
+     "UW consistency CHARM K=700",
+     "UW consistency CHARM K=752"
+    ]
+   }
+  },
+  {
+   "mutation": "VANNA without S",
+   "caught": true,
+   "caught_by": [
+    "T3",
+    "T6",
+    "UW"
+   ],
+   "first_failures": {
+    "T3": [
+     "T3 VANNA: 952 failed"
+    ],
+    "T6": [
+     "T6 greeks_exposures: 2256 fail e.g. [('ge00024', ['VANNA']), ('ge00025', ['VANNA'])]",
+     "T6 board_model2: 1 fail e.g. [('board_m2_spxw', ['totals.VANNA'])]"
+    ],
+    "UW": [
+     "UW consistency VANNA K=700",
+     "UW consistency VANNA K=752"
+    ]
+   }
+  },
+  {
+   "mutation": "Model 2 buy sign",
+   "caught": true,
+   "caught_by": [
+    "T2",
+    "T6"
+   ],
+   "first_failures": {
+    "T2": [
+     "T2 customer buys call at ask -> C<0, GEX<0",
+     "T2 customer buys put at ask -> GEX<0"
+    ],
+    "T6": [
+     "T6 classifier: 126 fail e.g. [('cl_r12_buy', ['dealer_C']), ('cl_code_0_regular', ['dealer_C'])]",
+     "T6 accumulate: 5 fail e.g. [('acc_basic', ['C.SPXW 2026-11-02 7565 C', 'C.SPXW 2026-11-02 7565 P']), ('acc_cancel_unlinked', ['C.SPXW 2026-11-02 7565 C'])]"
+    ]
+   }
+  },
+  {
+   "mutation": "UW DEX without put flip",
+   "caught": true,
+   "caught_by": [
+    "T6",
+    "UW"
+   ],
+   "first_failures": {
+    "T6": [
+     "T6 uw_conversion: 10 fail e.g. [('uwx00', ['DEX']), ('uwx01', ['DEX'])]"
+    ],
+    "UW": [
+     "UW consistency DEX K=700",
+     "UW consistency DEX K=752"
+    ]
+   }
+  }
+ ]
+}
