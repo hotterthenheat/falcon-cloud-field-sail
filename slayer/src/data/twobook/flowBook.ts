@@ -24,6 +24,9 @@ export const BOARD_HOLD_MS = 20_000;
 /** Expiries and strikes the quote read covers: enough for a ≥ 7-day TL and the tape's strikes */
 export const QUOTE_MAX_DTE = 45;
 export const QUOTE_STRIKES = 30;
+/** Reads of one root's quote snapshot before the board goes out without quotes, and the first pause (doubling) */
+export const QUOTE_ATTEMPTS = 4;
+export const QUOTE_RETRY_MS = 400;
 
 /** What the tape hands over: its inventory and where it stands */
 export interface FlowTapeView {
@@ -236,10 +239,16 @@ export function flowBooks(o: { read: (path: string, kind: string) => Promise<str
     }
     for (const root of rootsOf(view.name)) {
       const path = `/option/snapshot/quote?symbol=${encodeURIComponent(root)}&expiration=*&max_dte=${maxDte}&strike_range=${QUOTE_STRIKES}&format=csv`;
-      const csv = await o.read(path, 'quote').catch(e => {
-        o.log?.(`[flowbook] ${view.name} ${root} quotes: ${e instanceof Error ? e.message : e}`);
-        return null;
-      });
+      /* the terminal's snapshot answers 500 intermittently (measured 2026-11-07: 2–4 of 6 reads of one path refused,
+         each within 0.1 s), so a refused read is asked again before the board is built without quotes */
+      let csv: string | null = null;
+      for (let attempt = 0; attempt < QUOTE_ATTEMPTS && csv == null; attempt++) {
+        if (attempt > 0) await new Promise(res => setTimeout(res, QUOTE_RETRY_MS * 2 ** (attempt - 1)));
+        csv = await o.read(path, 'quote').catch(e => {
+          o.log?.(`[flowbook] ${view.name} ${root} quotes (try ${attempt + 1} of ${QUOTE_ATTEMPTS}): ${e instanceof Error ? e.message : e}`);
+          return null;
+        });
+      }
       if (csv) quotes.push(...readQuotes(csv, root));
     }
     let quotesAt: number | null = null;
