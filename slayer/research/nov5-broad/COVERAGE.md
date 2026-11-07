@@ -40,5 +40,16 @@ MSFT 0.57M, AVGO 0.53M). Names have no 11-05 expiry: their nearest weekly (2026-
   QQQ 125,970 (50), IWM 27,224, names 2,813-22,944. Mostly far-OTM $0.01-0.05 quotes pinned at the minimum tick
   (conservative: they are excluded even where the pin is legitimate).
 
-## Out-of-sample days
-Filled in after PREREG.md is committed (2026-11-04, 2026-11-06), with the same code and the same checks.
+## Out-of-sample days (fetched after PREREG.md was committed, same code, same checks)
+| day | roots | 1-second contracts | prints | parity | prints outside the 1-s band | notes |
+|---|---|---|---|---|---|---|
+| Wed 2026-11-04 | SPY, QQQ, IWM (0DTE), names (11-06 weekly, 2DTE); SPXW 1-minute board from nov5-tape, 1-second paths fetched per pick | SPY 106, QQQ 110, IWM 47, names 20-56 | 3.1M | 0 mismatches | 0.00-0.15% | no flow / headline recorder yet (R4, R5 untestable) |
+| Fri 2026-11-06 | all 9 (SPXW 0DTE board read strike by strike within +-8% of the open: the wildcard read truncates) | SPXW 206, SPY 100, QQQ 100, IWM 48, names 20-54 | 4.7M | 0 mismatches | 0.00-0.15% (SPXW 2.1%) | the terminal refuses expiration=* OI on its current day: OI read expiry by expiry |
+
+**The Friday vendor lag is not in the history store.** `lagcheck.py` (results/LAG_20261106.md) cross-correlates
+10-second changes of the ATM option mid with the underlying at lags -60..+600 s: the best lag is 0 s on SPXW, SPY,
+QQQ and NVDA in 09:35-10:15, 11:00-12:00 and 14:00-15:00 (|corr| 0.91-0.98). Frozen 1-minute rows on 11-06 (SPY
+1,219 rows / 68 contracts, SPXW 5,615 / 152) are no more frequent than on 11-05 and are dropped the same way.
+
+Disk: v2data/nov5-broad holds the three days, the DEV path cache (q1s_dev), the vol-index minutes and the results
+(see the final report for the size); free space never went below 3.5 GB.

@@ -159,8 +159,8 @@ def dev_day(root, day, need_volix=True):
     EC.assert_open(day) if hasattr(EC, 'assert_open') else None
     bars = esim.day_bars(root, day)
     ch = esim.chain(root, day)
-    if ch is None or len(bars) < 300:
-        return None
+    if ch is None or len(bars) < 300 or not len(ch) or 'bid' not in ch.columns:
+        return None                             # an empty cached chain file (EDGE wrote some): no board, no session
     exp = first_exp(root, day)
     if exp is None:
         return None
@@ -355,6 +355,8 @@ def main():
         days = EC.dev_sessions('DEV')
         rng = np.random.default_rng(20261107)
         order = [days[i] for i in rng.permutation(len(days))]
+        if '--reverse' in sys.argv:         # a second worker walks the same seeded order from the other end
+            order = order[::-1]
         t0, n = time.time(), 0
         for day in order:
             assert EC.split_of(day) == 'DEV', day

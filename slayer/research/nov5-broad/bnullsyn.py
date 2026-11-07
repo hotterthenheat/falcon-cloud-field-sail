@@ -134,6 +134,8 @@ def run(nruns):
     hs = half_spreads()
     sess = sorted(os.path.basename(f)[:-5] for f in glob.glob(os.path.join(RN.RES, 'dev', '*.json')))
     RN.DS.NOFETCH = True
+    if '--reverse' in sys.argv:          # a second CPU worker from the other end
+        sess = sess[::-1]
     t0 = time.time()
     # session outer, runs inner (the real day's inputs are built once); one file per session: resumable
     for i, s in enumerate(sess):
