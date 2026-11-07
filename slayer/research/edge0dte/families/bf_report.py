@@ -89,7 +89,8 @@ def report(extra=''):
     P = df[df.param_role == 'P']
     for root in ROOTS:
         s = P[(P.root == root) & P.ci_excludes_0 & P.effect_beyond_hurdle]
-        items = [f'{r.row_id} h{r.horizon} {r.effect:+.3f} [{r.ci_lo:+.3f},{r.ci_hi:+.3f}] (hurdle {r.hurdle:.2f}, n {r.n_obs})' for r in s.itertuples()]
+        items = [f'{r.row_id} h{r.horizon} {r.effect:+.3f} [{r.ci_lo:+.3f},{r.ci_hi:+.3f}] (hurdle {r.hurdle:.2f}, n {r.n_obs}'
+                 + (', OPPOSITE to the registry sign)' if r.effect * r.expected_sign < 0 else ', registry sign)') for r in s.itertuples()]
         L.append(f'* {root}: ' + ('; '.join(items) if items else 'none'))
     L.append('\nP cells with the CI excluding 0 but |effect| below the hurdle:\n')
     for root in ROOTS:

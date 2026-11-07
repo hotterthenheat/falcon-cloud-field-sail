@@ -255,6 +255,7 @@ def stats():
     df['hurdle_kind'] = '|E[za]| (HURDLE.md hz, event-weighted over buckets)'
     df['ci_excludes_0'] = (df.ci_lo > 0) | (df.ci_hi < 0)
     df['effect_beyond_hurdle'] = df.effect.abs() > df.hurdle.abs()
+    df['sign_matches_expected'] = np.sign(df.effect) == df.expected_sign
     df.to_parquet(os.path.join(OUT_RES, 'BF.parquet'), index=False)
     df.to_csv(os.path.join(OUT_RES, 'BF.csv'), index=False)
     print(len(df), 'rows ->', OUT_RES)
