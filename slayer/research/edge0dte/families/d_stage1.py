@@ -53,18 +53,31 @@ NB_NULL = 500
 
 # ------------------------------------------------------------------ data
 
-def load_panel(root):
+SPLITS_ALLOWED = ('DISCOVERY', 'CALIBRATION')      # HOLDOUT / LOCKED panels are never read by this module
+
+
+def load_panel(root, split='DISCOVERY'):
+    """split: the panel split filter (default DISCOVERY; 'CALIBRATION' only for the aggregator's one frozen look,
+    families/agg_calibration.py). Definitions are unchanged; only the session filter moves."""
+    if split not in SPLITS_ALLOWED:
+        raise ValueError(f'split {split!r} refused (allowed: {SPLITS_ALLOWED})')
     cols = ['root', 'day', 't', 'split', 'bucket', 'iv_atm'] + [f'{o}_{h}' for o in ('Z', 'V') for h in HS]
     f = os.path.join(DATA, 'panel', f'{root}.parquet')
-    p = pd.read_parquet(f, columns=cols, filters=[('split', '==', 'DISCOVERY')])
-    assert (p.split == 'DISCOVERY').all() and p.day.max() <= '2023-12-31', 'non-DISCOVERY rows loaded'
+    p = pd.read_parquet(f, columns=cols, filters=[('split', '==', split)])
+    assert (p.split == split).all() and p.day.max() <= '2024-12-31', f'non-{split} rows loaded'
+    if split == 'DISCOVERY':
+        assert p.day.max() <= '2023-12-31', 'non-DISCOVERY rows loaded'
     return p.reset_index(drop=True)
 
 
-def features(root):
+def feature_path(root, split='DISCOVERY'):
+    return os.path.join(FEAT, f'D_features_{root}.parquet' if split == 'DISCOVERY' else f'D_features_{root}_{split}.parquet')
+
+
+def features(root, split='DISCOVERY'):
     os.makedirs(FEAT, exist_ok=True)
-    out = os.path.join(FEAT, f'D_features_{root}.parquet')
-    p = load_panel(root)[['root', 'day', 't', 'iv_atm']]
+    out = feature_path(root, split)
+    p = load_panel(root, split)[['root', 'day', 't', 'iv_atm']]
     t0 = time.time()
     f = d_vol.bulk_features(root, p)
     df = pd.concat([p[['root', 'day', 't']], f], axis=1)
@@ -83,7 +96,8 @@ def features(root):
         if not same.all():
             raise SystemExit(f'bulk/registered mismatch {root} {c}: {rep[c]}')
     df.to_parquet(out)
-    json.dump(rep, open(os.path.join(FEAT, f'D_crosscheck_{root}.json'), 'w'), indent=1)
+    json.dump(rep, open(os.path.join(FEAT, f'D_crosscheck_{root}.json' if split == 'DISCOVERY'
+                                     else f'D_crosscheck_{root}_{split}.json'), 'w'), indent=1)
     print(root, 'cross-check', rep, flush=True)
 
 

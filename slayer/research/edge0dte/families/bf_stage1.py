@@ -42,8 +42,18 @@ HZ = {'B6': (15, 30), 'B7': ('close',), 'B8': (30, 60), 'F4': (15, 30), 'F7': (1
 COND_ROWS = {('B4', 'all5'), ('B2', 'W30'), ('B3b', 'tol0.1'), ('F5', 'pdhl+swing'), ('B1', 'OR30')}
 
 
-def discovery_days(root):
-    return [d for d in cal.expiry_sessions(root) if split(d) == 'DISCOVERY']
+SPLITS_ALLOWED = ('DISCOVERY', 'CALIBRATION')      # HOLDOUT / LOCKED sessions are never touched by this module
+
+
+def discovery_days(root, which='DISCOVERY'):
+    """Expiry sessions of `which` split (default DISCOVERY; 'CALIBRATION' only for the aggregator's frozen look)."""
+    if which not in SPLITS_ALLOWED:
+        raise ValueError(f'split {which!r} refused (allowed: {SPLITS_ALLOWED})')
+    return [d for d in cal.expiry_sessions(root) if split(d) == which]
+
+
+def ev_path(root, which='DISCOVERY'):
+    return os.path.join(OUT_EV, f'BF_events_{root}.parquet' if which == 'DISCOVERY' else f'BF_events_{root}_{which}.parquet')
 
 
 def merge(evs):
@@ -62,11 +72,15 @@ def merge(evs):
     return out
 
 
-def events_day(root, day):
+def events_day(root, day, keep=None):
+    """keep: optional set of (row, param) to keep (None = all). The filter is applied after the merge (its key
+    includes the row) and BEFORE any outcome is computed, so cells outside `keep` never get an outcome."""
     sess = panel.session(root, day)
     cm = sess.close
     evs = [e for e in bf.day_events(sess) if T0 <= e['t'] <= cm * 60 - 1800]
     evs = merge(evs)
+    if keep is not None:
+        evs = [e for e in evs if (e['row'], e['param']) in keep]
     zcache, xcache = {}, {}
     x0945 = dealer.exposures(sess, T0)['gex_total']
     rows = []
@@ -101,28 +115,29 @@ def events_day(root, day):
     return rows
 
 
-def run_events(root):
+def run_events(root, which='DISCOVERY', keep=None):
     os.makedirs(OUT_EV, exist_ok=True)
-    days = discovery_days(root)
-    rows, skipped = [], []
+    days = discovery_days(root, which)
+    out, skipped = [], []
     t0 = time.time()
     for i, d in enumerate(days):
         if load_chain(root, d) is None or not len(load_bars(root, d)):
             skipped.append((d, 'no board or bars'))
             continue
         try:
-            rows += events_day(root, d)
+            out += events_day(root, d, keep)
         except Exception as ex:                       # report, never hide
             skipped.append((d, f'error {type(ex).__name__}: {ex}'))
         if i % 50 == 0:
-            print(root, i, len(days), d, f'{time.time() - t0:.0f}s', len(rows), flush=True)
-    df = pd.DataFrame(rows)
+            print(root, i, len(days), d, f'{time.time() - t0:.0f}s', len(out), flush=True)
+    df = pd.DataFrame(out)
     for c in df.columns:
         if df[c].dtype == float and c not in ('iv',):
             df[c] = df[c].astype('float64')
-    df.to_parquet(os.path.join(OUT_EV, f'BF_events_{root}.parquet'), index=False)
-    json.dump({'root': root, 'days': len(days), 'skipped': skipped},
-              open(os.path.join(OUT_EV, f'BF_events_{root}.meta.json'), 'w'), indent=1)
+    df.to_parquet(ev_path(root, which), index=False)
+    json.dump({'root': root, 'split': which, 'keep': sorted(map(list, keep)) if keep is not None else 'all',
+               'days': len(days), 'skipped': skipped},
+              open(ev_path(root, which).replace('.parquet', '.meta.json'), 'w'), indent=1)
     print(root, 'done', len(df), 'events', len(skipped), 'skipped', f'{time.time() - t0:.0f}s', flush=True)
 
 
@@ -131,11 +146,13 @@ def run_events(root):
 YEARS = (('2020-21', lambda d: d < '2022-01-01'), ('2022', lambda d: '2022' <= d < '2023'), ('2023', lambda d: '2023' <= d < '2024'))
 
 
-def bucket_means(root):
+def bucket_means(root, which='DISCOVERY'):
+    if which not in SPLITS_ALLOWED:
+        raise ValueError(f'split {which!r} refused (allowed: {SPLITS_ALLOWED})')
     p = pd.read_parquet(os.path.join(DATA, 'panel', f'{root}.parquet'),
                         columns=['day', 't', 'split', 'bucket'] + [f'Z_{h}' for h in HORIZONS])
-    p = p[p.split == 'DISCOVERY']
-    assert p.day.max() <= '2023-12-31'
+    p = p[p.split == which]
+    assert p.day.max() <= ('2023-12-31' if which == 'DISCOVERY' else '2024-12-31')
     return {h: p.groupby('bucket')[f'Z_{h}'].mean().to_dict() for h in HORIZONS}
 
 
