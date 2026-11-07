@@ -1,0 +1,48 @@
+library leakage days: [('SPXW', '2022-11-21'), ('SPXW', '2021-11-22'), ('SPXW', '2020-12-24'), ('SPXW', '2023-07-14'), ('SPXW', '2020-04-01'), ('SPY', '2023-09-22'), ('SPY', '2023-07-06'), ('SPY', '2023-05-24'), ('SPY', '2021-09-24'), ('SPY', '2023-02-27'), ('QQQ', '2021-03-05'), ('QQQ', '2021-07-12'), ('QQQ', '2023-11-30'), ('QQQ', '2022-01-07'), ('QQQ', '2023-05-10'), ('IWM', '2022-08-17'), ('IWM', '2023-04-12'), ('IWM', '2023-07-05'), ('IWM', '2021-01-22'), ('IWM', '2022-12-28')]
+PASS  D future-bar invariance d_iv_rv60: 320/320
+PASS  D future-bar invariance d_rv30_rel: 320/320
+PASS  D future-bar invariance d_semivar60: 320/320
+PASS  D past-bar sensitivity d_rv30_rel: 320/320
+PASS  D past-bar sensitivity d_semivar60: 320/320
+PASS  D targeted leak d_iv_rv60: 320/320
+PASS  D targeted leak d_rv30_rel: 320/320
+PASS  D targeted leak d_semivar60: 320/320
+PASS  canary leak detected: 1/1
+PASS  fills refuse: 3/3
+PASS  guard allows 2024: 1/1
+PASS  guard refuses: 3/3
+PASS  guard refuses 2026: 1/1
+PASS  guard refuses unregistered sha: 1/1
+PASS  leak bars_upto: 160/160
+PASS  leak board: 160/160
+PASS  leak exposures_G7: 160/160
+PASS  leak exposures_P: 160/160
+PASS  leak feature:d_iv_rv60: 160/160
+PASS  leak feature:d_rv30_rel: 160/160
+PASS  leak feature:d_semivar60: 160/160
+PASS  leak feature:etf_vol_ratio30: 160/160
+PASS  leak feature:gex_total: 160/160
+PASS  leak feature:rv_ratio30: 160/160
+PASS  leak feature:vix: 160/160
+PASS  leak feature:vix1d: 160/160
+PASS  leak feature:z_prev30: 160/160
+PASS  leak iv_atm: 160/160
+PASS  leak select_atm: 160/160
+PASS  leak select_call: 160/160
+PASS  leak select_put: 160/160
+PASS  leak sigma_15: 160/160
+PASS  leak sigma_30: 160/160
+PASS  leak sigma_60: 160/160
+PASS  leak sigma_close: 160/160
+PASS  leak smile: 160/160
+PASS  leak spot: 160/160
+PASS  outcome endpoint 15: 160/160
+PASS  outcome endpoint 30: 160/160
+PASS  outcome endpoint 60: 139/139
+PASS  outcome endpoint close: 160/160
+PASS  outcome horizon 15: 160/160
+PASS  outcome horizon 30: 160/160
+PASS  outcome horizon 60: 139/139
+PASS  outcome horizon close: 160/160
+targeted D times: 320 finite values per feature: {'d_rv30_rel': 320, 'd_semivar60': 320, 'd_iv_rv60': 319}
+TOTAL PASS 7488 checks, 0 failures
