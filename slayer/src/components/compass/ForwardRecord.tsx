@@ -6,7 +6,7 @@ import { useMemo } from 'react';
 import { Download } from 'lucide-react';
 import type { Signal } from '../../data/compassLedger';
 import { useTwins } from '../../data/compassTwins';
-import { forwardCsv, forwardTest, rateWords, RESAMPLES, SMALL_N, type ForwardLine, type SideStat } from '../../data/compassForward';
+import { forwardCsv, forwardTest, rateWords, MIN_SESSIONS, RESAMPLES, SMALL_N, type ForwardLine, type SideStat } from '../../data/compassForward';
 import { downloadText } from '../../data/exportBook';
 import { Tip } from '../ui/Tooltip';
 
@@ -21,7 +21,7 @@ export function edgeWords(l: ForwardLine): string {
   if (!n) return `${l.label}: no call and twin have both closed yet.`;
   const { mean, lo, hi } = l.edge;
   const days = `${n} pair${n === 1 ? '' : 's'} over ${l.paired.days} session${l.paired.days === 1 ? '' : 's'}`;
-  if (lo == null || hi == null || mean == null) return `${l.label}: ${days}. Too few sessions for an interval.`;
+  if (lo == null || hi == null || mean == null) return `${l.label}: ${mean == null ? '' : `the side it chose ${mean >= 0 ? 'beat' : 'trailed'} the other side by ${dollars(Math.abs(mean))} a pair, `}${days}. Too few sessions to tell that from chance.`;
   if (lo > 0) return `${l.label}: the side it chose beat the other side by ${dollars(mean)} a pair [${dollars(lo)}, ${dollars(hi)}], ${days}.`;
   if (hi < 0) return `${l.label}: the other side did better, by ${dollars(-mean)} a pair [${dollars(-hi)}, ${dollars(-lo)}], ${days}.`;
   return `${l.label}: the side it chose cannot be told from the other side yet (${dollars(mean)} a pair [${dollars(lo)}, ${dollars(hi)}], ${days}).`;
@@ -74,7 +74,7 @@ const ForwardRecord = ({ calls }: { calls: readonly Signal[] }) => {
                   <th className="text-right font-normal pb-1 pr-3" title="The same instants, the other side.">Their twins</th>
                   <th className="text-right font-normal pb-1 pr-3" title="A coin picks the call or its twin: the average of the two.">Coin flip</th>
                   <th className="text-right font-normal pb-1 pr-3" title="Call minus twin, a contract a pair: what the side choice was worth.">Call − twin</th>
-                  <th className="text-right font-normal pb-1" title={`Of ${RESAMPLES.toLocaleString('en-US')} coin-flip records over the same pairs, how many the calls' total beat.`}>Beat coin flips</th>
+                  <th className="text-right font-normal pb-1" title={`Of ${RESAMPLES.toLocaleString('en-US')} coin-flip records over the same pairs (one flip a session), how many the calls' total beat.`}>Beat coin flips</th>
                 </tr>
               </thead>
               <tbody>
@@ -91,7 +91,7 @@ const ForwardRecord = ({ calls }: { calls: readonly Signal[] }) => {
                     <Side s={l.coin} testId="coin" />
                     <td className={`py-1 pr-3 text-right whitespace-nowrap ${ink(l.edge.mean)}`} data-forward="edge">{band(l.edge)}</td>
                     <td className="py-1 text-right whitespace-nowrap text-textPrimary" data-forward="beats">
-                      {l.paired.n ? `${l.beatsCoin.toLocaleString('en-US')} of ${RESAMPLES.toLocaleString('en-US')}` : '—'}
+                      {l.beatsCoin != null ? `${l.beatsCoin.toLocaleString('en-US')} of ${RESAMPLES.toLocaleString('en-US')}` : l.paired.n ? `Under ${MIN_SESSIONS} sessions` : '—'}
                       {l.unpaired ? (
                         <Tip label="Closed calls whose twin has not closed yet, or has no contract or no quote on the other side.">
                           <span className="block text-textMuted">{l.unpaired} unpaired</span>
@@ -104,7 +104,7 @@ const ForwardRecord = ({ calls }: { calls: readonly Signal[] }) => {
             </table>
           </div>
           <p className="mt-2 font-mono text-t10 text-textMuted">
-            Won is a count below {SMALL_N} closed calls. Dollars are a contract, (exit − fill) × 100. Brackets are 95% intervals from {RESAMPLES.toLocaleString('en-US')} resamples of whole sessions. The research protocol's live shadow runs {test.target} sessions.
+            Won is a count below {SMALL_N} closed calls or {MIN_SESSIONS} sessions. Dollars are a contract, (exit − fill) × 100. Brackets are 95% intervals from {RESAMPLES.toLocaleString('en-US')} resamples of whole sessions, drawn from {MIN_SESSIONS} sessions on. The research protocol's live shadow runs {test.target} sessions.
           </p>
         </>
       )}

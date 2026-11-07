@@ -14,6 +14,8 @@ import { modelWordOf } from './compassParams';
 
 /** Below this many closed calls a rate is shown as counts, not as a percentage. */
 export const SMALL_N = 30;
+/** Fewer sessions than this and no interval is drawn: resampling two or three days says almost nothing. */
+export const MIN_SESSIONS = 5;
 /** PROTOCOL §7: the live shadow runs 15 sessions. */
 export const SHADOW_SESSIONS = 15;
 export const RESAMPLES = 2000;
@@ -31,7 +33,7 @@ function draws(seed: number): () => number {
 }
 
 /** The mean of `values` and its day-clustered bootstrap 95% interval (resampling whole days with replacement; the mean
-    over every item of the drawn days). Null interval with fewer than two days. */
+    over every item of the drawn days). Null interval with fewer than MIN_SESSIONS days. */
 export function clusteredMean(items: readonly { day: string; v: number }[], resamples = RESAMPLES, seed = 7): { mean: number | null; lo: number | null; hi: number | null } {
   if (!items.length) return { mean: null, lo: null, hi: null };
   const byDay = new Map<string, { sum: number; n: number }>();
@@ -43,7 +45,7 @@ export function clusteredMean(items: readonly { day: string; v: number }[], resa
   }
   const days = [...byDay.values()];
   const mean = items.reduce((s, it) => s + it.v, 0) / items.length;
-  if (days.length < 2) return { mean, lo: null, hi: null };
+  if (days.length < MIN_SESSIONS) return { mean, lo: null, hi: null };
   const rnd = draws(seed);
   const stats: number[] = [];
   for (let b = 0; b < resamples; b++) {
@@ -106,8 +108,9 @@ export interface ForwardLine {
   coin: SideStat;
   /** Call minus twin, dollars a contract a pair, with its interval: the side choice's own worth */
   edge: { mean: number | null; lo: number | null; hi: number | null };
-  /** Of RESAMPLES coin-flip records over the same pairs, how many the calls' total beat (strictly) */
-  beatsCoin: number;
+  /** Of RESAMPLES coin-flip records over the same pairs (one flip a session), how many the calls' total beat
+      (strictly); null under MIN_SESSIONS sessions */
+  beatsCoin: number | null;
   /** Closed calls whose twin has no result yet, or none (no contract, no quote) */
   unpaired: number;
 }
@@ -130,12 +133,21 @@ function line(label: string, calls: readonly Signal[], twinOf: ReadonlyMap<strin
     const to = closedPnl(t);
     return to ? [{ day: c.day, c: { pnl: co.pnl!, ret: retOf(co) }, t: { pnl: to.pnl!, ret: retOf(to) } }] : [];
   });
+  /* the coin is flipped once a session for all of that session's pairs (a day's calls move together: flipping each
+     pair alone would read a single trending day as many independent wins) */
   const rnd = draws(seed + 99);
   const actual = pairs.reduce((s, p) => s + p.c.pnl, 0);
+  const sessions = new Map<string, { c: number; t: number }>();
+  for (const p of pairs) {
+    const d = sessions.get(p.day) ?? { c: 0, t: 0 };
+    d.c += p.c.pnl;
+    d.t += p.t.pnl;
+    sessions.set(p.day, d);
+  }
   let beats = 0;
   for (let b = 0; b < RESAMPLES; b++) {
     let total = 0;
-    for (const p of pairs) total += rnd() < 0.5 ? p.c.pnl : p.t.pnl;
+    for (const d of sessions.values()) total += rnd() < 0.5 ? d.c : d.t;
     if (actual > total + 1e-9) beats += 1;
   }
   return {
@@ -145,7 +157,7 @@ function line(label: string, calls: readonly Signal[], twinOf: ReadonlyMap<strin
     twins: sideStat(pairs.map(p => ({ day: p.day, ...p.t })), seed + 20),
     coin: sideStat(pairs.map(p => ({ day: p.day, pnl: (p.c.pnl + p.t.pnl) / 2, ret: (p.c.ret + p.t.ret) / 2 })), seed + 30),
     edge: clusteredMean(pairs.map(p => ({ day: p.day, v: p.c.pnl - p.t.pnl })), RESAMPLES, seed + 40),
-    beatsCoin: pairs.length ? beats : 0,
+    beatsCoin: sessions.size >= MIN_SESSIONS ? beats : null,
     unpaired: closed.length - pairs.length,
   };
 }
@@ -164,11 +176,12 @@ export function forwardTest(calls: readonly Signal[], twins: readonly Twin[]): F
   };
 }
 
-/** A rate as a reader sees it: counts below SMALL_N ("5 of 14 (interval 2–9)"), a percentage at or above it. */
+/** A rate as a reader sees it: counts below SMALL_N closed calls or MIN_SESSIONS sessions ("5 of 14 (interval
+    2–9)"), a percentage at or above both. */
 export function rateWords(s: SideStat): string {
   if (!s.n) return '—';
   const { lo, hi } = s.win;
-  if (s.n < SMALL_N) {
+  if (s.n < SMALL_N || s.days < MIN_SESSIONS) {
     const band = lo != null && hi != null ? ` (interval ${Math.round(lo * s.n)}–${Math.round(hi * s.n)})` : '';
     return `${s.won} of ${s.n}${band}`;
   }

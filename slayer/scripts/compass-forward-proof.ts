@@ -10,7 +10,7 @@
 */
 import { setCompassHost } from '../src/data/compassHost';
 import { mirrorStrike, settleTwins, twinOf, twinRows, importTwins, type Twin } from '../src/data/compassTwins';
-import { clusteredMean, forwardCsv, forwardTest, rateWords, RESAMPLES, SMALL_N } from '../src/data/compassForward';
+import { clusteredMean, forwardCsv, forwardTest, rateWords, MIN_SESSIONS, RESAMPLES, SMALL_N } from '../src/data/compassForward';
 import type { Signal } from '../src/data/compassLedger';
 import type { Outcome } from '../src/data/compassOutcome';
 import { nyWallTime } from '../src/core/nyTime';
@@ -86,6 +86,8 @@ check('a closed twin is frozen: never read again', asked.length === before);
 /* ---- the bootstrap ---- */
 const one = clusteredMean([{ day: 'a', v: 1 }, { day: 'a', v: 3 }]);
 check('one session: the mean, and no interval', one.mean === 2 && one.lo == null && one.hi == null);
+const four = clusteredMean(['a', 'b', 'c', 'd'].map((d, i) => ({ day: d, v: i })));
+check(`under ${MIN_SESSIONS} sessions: no interval (resampling a handful of days says almost nothing)`, four.mean === 1.5 && four.lo == null);
 const same = clusteredMean(Array.from({ length: 20 }, (_, i) => ({ day: `d${i}`, v: 5 })));
 check('no spread between days: the interval is the mean', same.lo === 5 && same.hi === 5);
 const spread = Array.from({ length: 30 }, (_, i) => ({ day: `d${i}`, v: i % 2 ? 10 : -10 }));
@@ -110,7 +112,8 @@ check('Model 1: 21 closed calls, 20 paired, 1 unpaired', m1.calls.n === 21 && m1
 check('net and counts are the rows\' own', m1.calls.net === 2050 && m1.calls.won === 21 && m1.twins.won === 0 && m1.twins.net === -2000);
 check('the coin flip is the average of each call and its twin', m1.coin.perCall.mean === 0 && m1.coin.net === 0);
 check('call − twin is the side choice\'s worth: +$200 a pair, interval [200, 200]', m1.edge.mean === 200 && m1.edge.lo === 200 && m1.edge.hi === 200);
-check(`the calls beat (nearly) every one of ${RESAMPLES} coin-flip records`, m1.beatsCoin >= RESAMPLES - 2, String(m1.beatsCoin));
+check(`the calls beat (nearly) every one of ${RESAMPLES} coin-flip records (20 sessions, one flip each)`, (m1.beatsCoin ?? 0) >= RESAMPLES - 2, String(m1.beatsCoin));
+check(`under ${MIN_SESSIONS} sessions there is no coin-flip count`, forwardTest(calls.slice(0, 4), twins).lines[0].beatsCoin == null);
 check('Model 3 is its own line; both together count every official call', ft.lines[1].calls.n === 1 && ft.lines[2].calls.n === 22);
 check('sessions with a closed call, against the shadow\'s 15', ft.sessions === 21 && ft.target === 15);
 check(`under ${SMALL_N} closed calls a rate is a count`, /^21 of 21/.test(rateWords(m1.calls)) && !rateWords(m1.calls).includes('%'), rateWords(m1.calls));
