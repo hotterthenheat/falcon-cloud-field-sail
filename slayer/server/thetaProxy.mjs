@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHub, HOT_NAMES, nameOfPath } from './hub.mjs';
 import { createSlots } from './thetaSlots.mjs';
+import { createExpiryCheck, EXPIRATION_LIST } from './expiryCheck.mjs';
 
 const RELAY = (process.env.THETA_RELAY_URL || '').replace(/\/+$/, '');
 const RELAY_SECRET = process.env.THETA_RELAY_SECRET || '';
@@ -92,7 +93,22 @@ export const thetaSlots = () => {
   return { terminal: s.terminal, history: s.history, busy: s.busy, busyHistory: s.busyHistory, waiting: s.waiting, engine: s.busyEngine, waitingEngine: s.waitingEngine };
 };
 
+/* Every expiration list is checked against the root's own contracts before anyone reads it (server/expiryCheck.mjs):
+   the terminal's list carries dates with no contract (SPX 2088) and lags new listings by a session. Its reads take the
+   same slots as any other. */
+const expiryCheck = createExpiryCheck({
+  load: (p, lane) => loadRaw(p, lane),
+  log: (line) => console.log(`[expiries] ${line}`),
+});
+/** The expiration checks so far (the load check's) */
+export const expiryCheckStats = () => expiryCheck.stats();
+
 async function load(reqPath, lane, timeoutMs) {
+  if (EXPIRATION_LIST.test(reqPath)) return expiryCheck.answer(reqPath, lane);
+  return loadRaw(reqPath, lane, timeoutMs);
+}
+
+async function loadRaw(reqPath, lane, timeoutMs) {
   return slots.slot(reqPath, async () => {
     /* the terminal refusing for a moment (429, its own count of requests in flight) is asked again twice */
     let got = await loadNow(reqPath, timeoutMs);

@@ -1,20 +1,21 @@
 /* The listed names each desk may offer: on Terrain every listing the terminal quotes with bars (and every index it
    prices); on Pinpoint every name the vendor lists options on (Pinpoint reads its options from the vendor only); every
-   listing on the Dossier; names with the terminal's listed options on the option desks (Weigher, Trace, Paper,
-   Backtest); the 456 on Compass. The rows and their desks come from the generated directory
+   listing on the Dossier; names with the terminal's listed options on the option desks (Weigher, Paper, Backtest);
+   names the vendor lists options on in Trace (Trace reads the vendor only, docs/DATA_SOURCES.md); the 456 on Compass. The rows and their desks come from the generated directory
    (scripts/build-ticker-universe.mjs). */
 
 import { useSyncExternalStore } from 'react';
 import { thetaCall, thetaUseHere } from './theta';
 import type { TickerListing } from './tickers';
-import { directoryCount, directoryEntry, directoryReady, hasListedOptions, loadDirectory, normalSymbol, pinpointServes, renamedTo, searchDirectory, type DirectoryFilter } from './symbolDirectory';
+import { directoryCount, directoryEntry, directoryReady, hasListedOptions, loadDirectory, normalSymbol, passes, pinpointServes, renamedTo, searchDirectory, type DirectoryFilter } from './symbolDirectory';
 import { COMPASS_TICKERS } from './compassUniverse';
 
-type NameRoom = 'equity' | 'terrain' | 'option' | 'pinpoint' | 'compass' | 'listed';
+export type NameRoom = 'equity' | 'terrain' | 'option' | 'trace' | 'pinpoint' | 'compass' | 'listed';
 /** The rooms whose names come from the directory */
-type DirectoryRoom = 'equity' | 'terrain' | 'option' | 'pinpoint';
-/** What each room keeps of the directory */
-const ROOM_FILTER: Record<DirectoryRoom, DirectoryFilter | undefined> = { equity: undefined, terrain: 'terrain', option: 'options', pinpoint: 'pinpoint' };
+type DirectoryRoom = 'equity' | 'terrain' | 'option' | 'trace' | 'pinpoint';
+/** What each room keeps of the directory: Trace the vendor's optionable names (it reads the vendor only), the option
+    desks the terminal's */
+const ROOM_FILTER: Record<DirectoryRoom, DirectoryFilter | undefined> = { equity: undefined, terrain: 'terrain', option: 'options', trace: 'vendor', pinpoint: 'pinpoint' };
 
 const FEATURED = [
   'SPY', 'QQQ', 'IWM', 'NVDA', 'TSLA', 'AAPL', 'MSFT', 'AMZN', 'META', 'GOOGL',
@@ -160,9 +161,10 @@ export function roomOf(path = typeof location !== 'undefined' ? location.pathnam
   if (path.startsWith('/terrain')) return 'terrain';
   if (path.startsWith('/dossier')) return 'equity';
   if (path.startsWith('/pinpoint')) return 'pinpoint';
+  /* Trace reads the vendor only: it offers the names the vendor lists options on */
+  if (path.startsWith('/trace')) return 'trace';
   if (
     path.startsWith('/weigher')
-    || path.startsWith('/trace')
     || path.startsWith('/practice/paper')
     || path.startsWith('/practice/backtest')
   ) return 'option';
@@ -205,15 +207,14 @@ export function searchListed(kind: DirectoryRoom, query: string, limit: number, 
     askDirectory();
     /* An option desk must not offer equity names before the directory lands. The cash indexes are the only roots that
        are options for certain. */
-    if (kind === 'option' || kind === 'pinpoint') {
+    if (kind === 'option' || kind === 'trace' || kind === 'pinpoint') {
       const indexes = OPTION_INDEXES.filter(s => !q || s.includes(q) || nameOf(s).toUpperCase().includes(q));
       return indexes.slice(0, limit).map(row);
     }
     return fallback.slice(0, limit);
   }
   const only = ROOM_FILTER[kind];
-  const keeps = (e: NonNullable<ReturnType<typeof directoryEntry>>) =>
-    !only || (only === 'options' ? e.options : only === 'terrain' ? e.terrain : e.pinpoint);
+  const keeps = (e: NonNullable<ReturnType<typeof directoryEntry>>) => passes(e, only);
   if (!q) {
     const out: TickerListing[] = [];
     const seen = new Set<string>();
@@ -233,9 +234,9 @@ export function searchListed(kind: DirectoryRoom, query: string, limit: number, 
   const asked = SAME_AS[q] ?? q;
   const hits = searchDirectory(asked, { limit, only, exclude: FOLDED }).map(e => row(e.symbol));
   /* a listing newer than the directory: the terminal's live list carries it, offered when typed in full (not on
-     Pinpoint: the terminal's lists say nothing of the vendor's options) */
+     Pinpoint or Trace: the terminal's lists say nothing of the vendor's options) */
   const typed = normalSymbol(asked);
-  if (kind !== 'pinpoint' && !directoryEntry(typed) && !renamedTo(typed) && (kind === 'option' ? optionSet : stockSet).has(typed) && /^[A-Z][A-Z0-9.]{0,7}$/.test(typed)) hits.unshift(row(typed));
+  if (kind !== 'pinpoint' && kind !== 'trace' && !directoryEntry(typed) && !renamedTo(typed) && (kind === 'option' ? optionSet : stockSet).has(typed) && /^[A-Z][A-Z0-9.]{0,7}$/.test(typed)) hits.unshift(row(typed));
   return hits.slice(0, limit);
 }
 

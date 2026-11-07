@@ -1,0 +1,34 @@
+{
+ "points": 400,
+ "rights": [
+  "C",
+  "P"
+ ],
+ "dps": 50,
+ "worst_abs": {
+  "delta": "1.67e-49",
+  "gamma": "1.82e-50",
+  "vega": "2.75e-47",
+  "vanna": "2.86e-49",
+  "vomma": "5.91e-46",
+  "charm": "6.51e-46",
+  "color_T": "3.31e-46",
+  "speed": "3.64e-50",
+  "veta_T": "2.98e-44",
+  "zomma": "1.79e-49"
+ },
+ "worst_rel": {
+  "delta": "5.91e-42",
+  "gamma": "2.4e-40",
+  "vega": "2.4e-40",
+  "vanna": "2.4e-40",
+  "vomma": "2.4e-40",
+  "charm": "2.4e-40",
+  "color_T": "2.4e-40",
+  "speed": "2.4e-40",
+  "veta_T": "2.4e-40",
+  "zomma": "2.4e-40"
+ },
+ "worst_abs_overall": "2.98e-44",
+ "worst_rel_overall": "2.4e-40"
+}

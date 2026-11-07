@@ -17,7 +17,9 @@
    Sources:
      terminal  /stock/list/symbols, /option/list/symbols, /index/list/symbols; /stock/snapshot/quote and /ohlc and
                /index/snapshot/price (150 symbols a request) for what is quoted now; /option/list/expirations for
-               every option root; /stock/list/dates/trade for a quoted symbol with no bar this week.
+               every option root, checked against /option/list/contracts/{quote,trade}?date=<session> (the whole
+               market's contracts quoted and traded on the last session, one request each); /stock/list/dates/trade
+               for a quoted symbol with no bar this week.
      vendor    /screener/stocks (every row, paged by ticker: name, type, options flag, 30-day option volume),
                /stock-directory/ticker-exchanges (every ticker it maps), and /stock/{t}/greek-exposure/expiry, the
                list Pinpoint reads its expiries from, for every screener ticker and every name the terminal lists
@@ -31,13 +33,19 @@
      Pinpoint  reads its options from the vendor: a name whose vendor expiry list has a live date. A name only the
                terminal lists options on is NOT offered there (no vendor greeks, and Pinpoint may not use the
                terminal's).
-     options   (the Weigher, Paper, Backtest) the terminal's chains: a root with a live expiration. */
+     options   (the Weigher, Paper, Backtest) the terminal's chains: a root with a live expiration that has contracts
+               (a listed date nothing was quoted or traded on is not one; a quoted date the list lacks is).
+     Trace     the vendor's options (the v flag).
+   The expiry checks go out with the rows (`expiries`): each root's listed dates with no contract and quoted dates its
+   list lacks (the server's fallback, server/expiryCheck.mjs), and the vendor's dates with no contract behind them
+   (hidden by every expiry picker, src/data/expiryListing.ts). */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { HOLIDAY_DATES } from '../shared/marketCalendar.mjs';
+import { isoOf as isoOfDate, verifyExpirations } from '../shared/expiryEvidence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
@@ -385,7 +393,6 @@ log('vendor lists', { screener: screen.size, directory: uwDirectory.length });
 /* ---- one symbol for every spelling: the terminal's stock form (BRK.B, X.PR.A, X.WS, X.U, X.RT) ---- */
 const testSymbol = s => /TEST/.test(s) || /^Z[A-Z]ZZT$/.test(s) || ['ZBZX', 'ZEXIT', 'ZIEXT', 'ZXIET', 'ZTST', 'ZZK', 'IGZ', 'ZVV', 'NTEST'].includes(s);
 const wellFormed = s => /^[A-Z0-9][A-Z0-9./]{0,15}$/.test(s) && !testSymbol(s);
-const derivative = sym => /\.(PR|WS|U|RT|W|R)(\.|$)|\/WI$|\.CL$|\.CV$/.test(sym);
 
 /** An option root's underlying and how the root relates to it */
 function rootUnderlying(root) {
@@ -458,8 +465,62 @@ for (const r of uwDirectory) {
   e.uwDirExch ||= UW_EXCH[r.exchange] ?? '';
 }
 
-/* live roots: an expiration on or after the floor */
-const liveDates = root => (expirations[root] ?? []).filter(d => d >= FLOOR);
+/* ---- which listed dates have contracts (shared/expiryEvidence.mjs): the terminal's expiration list carries dates no
+   contract was ever listed on (SPX 2088, TT 2027-04-16) and lags new listings (SPX 2026-12-15 was quoted a session
+   before the list carried it). The whole market's contracts quoted and traded on the last session, one request each,
+   decide: a live date is a root's only when one of its contracts was quoted or traded; a quoted date the list does not
+   carry yet is added. If neither list can be read the terminal's lists stand, unverified, and the build says so. */
+async function contractDates(kind) {
+  return cached(`td_contract_dates_${kind}_${SESSION}.json`, async () => {
+    const url = `${THETA}/option/list/contracts/${kind}?date=${SESSION.replace(/-/g, '')}&format=csv`;
+    for (let i = 0; i < 3; i++) {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(900_000) });
+        if (res.status === 472) return {};
+        if (res.ok) {
+          const by = {};
+          const lines = (await res.text()).split('\n');
+          const head = lines[0].split(',').map(c => c.replace(/"/g, '').trim());
+          const [si, ei] = [head.indexOf('symbol'), head.indexOf('expiration')];
+          for (let j = 1; j < lines.length; j++) {
+            const f = lines[j].split(',');
+            const d = isoOfDate(f[ei]);
+            if (!d || d < FLOOR) continue;
+            const r = String(f[si] ?? '').replace(/"/g, '').trim();
+            (by[r] ??= new Set()).add(d);
+          }
+          return Object.fromEntries(Object.entries(by).map(([r, s]) => [r, [...s].sort()]));
+        }
+        if (res.status >= 400 && res.status < 470) throw new Error(`terminal ${res.status}`);
+      } catch (e) {
+        log(`  the ${kind} contract list did not answer (${String(e).slice(0, 60)})`);
+      }
+      await sleep(5_000 * (i + 1));
+    }
+    throw new Error(`the terminal's ${kind} contract list for ${SESSION} did not answer`);
+  }).catch(e => {
+    log(String(e));
+    return null;
+  });
+}
+const contractQuoted = OFFLINE && !existsSync(cachePath(`td_contract_dates_quote_${SESSION}.json`)) ? null : await contractDates('quote');
+const contractTraded = OFFLINE && !existsSync(cachePath(`td_contract_dates_trade_${SESSION}.json`)) ? null : await contractDates('trade');
+const evidenceKnown = !!(contractQuoted && Object.keys(contractQuoted).length);
+if (!evidenceKnown) log(`WARNING: no contract list for ${SESSION}: the terminal's expiration lists are used unverified`);
+/** root → { dates, phantom, added } on and after the floor */
+const verified = new Map();
+const evidenceOf = root => new Set([...(contractQuoted?.[root] ?? []), ...(contractTraded?.[root] ?? [])]);
+function checkedRoot(root) {
+  let v = verified.get(root);
+  if (!v) {
+    const listed = (expirations[root] ?? []).filter(d => d >= FLOOR);
+    v = evidenceKnown ? verifyExpirations({ listed, evidence: [evidenceOf(root)], today: FLOOR }) : { dates: listed, phantom: [], added: [], verified: false };
+    verified.set(root, v);
+  }
+  return v;
+}
+/* live roots: an expiration on or after the floor with a contract behind it */
+const liveDates = root => checkedRoot(root).dates;
 /* the vendor's expiry walk: every screener ticker, and the vendor's spelling of every name the terminal lists live
    options on (its standard and index roots, not an adjusted root) */
 const uwExp = readCache('uw_greek_expiry.json') ?? {};
@@ -612,6 +673,23 @@ for (const e of master.values()) {
   e.uwAsked = uwAsked;
   e.uwDates = [...uwDates].sort();
   e.uwStale = [...uwStale].sort();
+  /* a vendor date with no contract behind it (CBTX 2026-11-09, SPEQX 2026-11-13: the vendor lists the date with no
+     exposure and the terminal has no contract on it): hidden in every expiry picker (src/data/expiryListing.ts). A date
+     with no exposure but contracts on the terminal is a new listing with no open interest yet (SPX 2026-12-15): kept. */
+  e.uwEmpty = [];
+  const tdRoots = [...new Set([...e.roots, ...[...e.uwTickers].filter(t => contractQuoted?.[t] || expirations[t])])];
+  if (evidenceKnown && tdRoots.length) {
+    const flat = new Map();
+    for (const t of [...e.uwTickers, uwForm(s)]) {
+      for (const row of uwExp[t]?.rows ?? []) {
+        if (!(row[0] >= FLOOR)) continue;
+        const zero = [row[3], row[4], row[5], row[6]].every(x => !Number(x));
+        flat.set(row[0], (flat.get(row[0]) ?? true) && zero);
+      }
+    }
+    const behind = new Set(tdRoots.flatMap(r => [...evidenceOf(r)]));
+    e.uwEmpty = e.uwDates.filter(d => flat.get(d) === true && !behind.has(d));
+  }
   e.inUw = e.uwScreener || e.uwDirectory || e.uwDates.length > 0;
   e.tdOptions = e.tdDates.length > 0;
   e.uwOptions = e.uwDates.length > 0;
@@ -713,6 +791,18 @@ const stats = {
   sources: { stocks: tdStockList.length, optionRoots: tdRootList.length, indexes: tdIndexList.length, vendorScreener: screen.size, vendorDirectory: uwDirectory.length },
 };
 log('app directory', stats);
+const expiryVerdicts = { session: SESSION, verified: evidenceKnown, phantom: {}, added: {}, noContracts: {} };
+for (const r of tdRootList) {
+  const v = checkedRoot(r);
+  if (v.phantom.length) expiryVerdicts.phantom[r] = v.phantom;
+  if (v.added.length) expiryVerdicts.added[r] = v.added;
+}
+for (const e of app) if (e.uwEmpty?.length && e.pinpoint) expiryVerdicts.noContracts[e.symbol] = e.uwEmpty;
+{
+  const n = o => Object.values(o).reduce((a, d) => a + d.length, 0);
+  log('expiry checks', { verified: evidenceKnown, phantomDates: n(expiryVerdicts.phantom), phantomRoots: Object.keys(expiryVerdicts.phantom).length, addedDates: n(expiryVerdicts.added), addedRoots: Object.keys(expiryVerdicts.added).length, vendorDatesWithNoContract: n(expiryVerdicts.noContracts) });
+  for (const [t, d] of Object.entries(expiryVerdicts.noContracts)) log(`  no contract behind the vendor's ${t} ${d.join(' ')}`);
+}
 const doc = {
   schema: SCHEMA,
   builtOn: today,
@@ -721,6 +811,11 @@ const doc = {
   legend: 'rows: one symbol a line, SYMBOL \\t NAME \\t FLAGS. FLAGS: the kind (s stock, e ETF, i index, p preferred, w warrant, u unit, r right); then o (the terminal lists live options), v (the vendor lists live options), t (Terrain can serve it), p (Pinpoint can serve it); then the listing exchange (Q Nasdaq, N NYSE, A NYSE American, P NYSE Arca, Z Cboe BZX, V IEX, O OTC, C Cboe index). Most traded options first. aliases: an old ticker to its new one.',
   stats,
   aliases,
+  /* the expiry checks (shared/expiryEvidence.mjs): per terminal root, the live listed dates with no contract quoted or
+     traded on the session (phantom) and the quoted dates its list does not carry yet (added) — the server's fallback
+     when it cannot read a root's contracts (server/expiryCheck.mjs); per symbol, the vendor's dates with no contract
+     (noContracts), hidden by every expiry picker */
+  expiries: expiryVerdicts,
   rows: rows.join('\n'),
 };
 writeFileSync(OUT, `${JSON.stringify(doc)}\n`);
@@ -732,7 +827,7 @@ if (MASTER) {
     const s = Array.isArray(v) ? v.join('|') : v === true ? 'Y' : v === false ? '' : String(v ?? '');
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const cols = ['symbol', 'name', 'type', 'issue_type', 'exchange', 'quoted', 'renamed_to', 'formerly', 'option_roots', 'adjusted_roots', 'in_uw', 'uw_screener', 'uw_directory', 'uw_tickers', 'td_stock', 'td_options_any', 'td_index', 'uw_options', 'td_options', 'options_both', 'terrain', 'terrain_reason', 'pinpoint', 'pinpoint_note', 'in_app', 'vol30', 'uw_n', 'td_n', 'uw_nearest', 'td_nearest', 'uw_pattern', 'td_pattern', 'uw_dates', 'td_dates', 'uw_stale_dates', 'td_dates_by_root'];
+  const cols = ['symbol', 'name', 'type', 'issue_type', 'exchange', 'quoted', 'renamed_to', 'formerly', 'option_roots', 'adjusted_roots', 'in_uw', 'uw_screener', 'uw_directory', 'uw_tickers', 'td_stock', 'td_options_any', 'td_index', 'uw_options', 'td_options', 'options_both', 'terrain', 'terrain_reason', 'pinpoint', 'pinpoint_note', 'in_app', 'vol30', 'uw_n', 'td_n', 'uw_nearest', 'td_nearest', 'uw_pattern', 'td_pattern', 'uw_dates', 'td_dates', 'uw_stale_dates', 'td_dates_by_root', 'td_phantom_dates', 'td_added_dates', 'uw_no_contract_dates'];
   const lines = [cols.join(',')];
   const inAppSet = new Set(app.map(e => e.symbol));
   for (const e of [...master.values()].sort((a, b) => a.symbol.localeCompare(b.symbol))) {
@@ -744,6 +839,9 @@ if (MASTER) {
       uw_n: e.uwAsked ? e.uwDates.length : '', td_n: e.roots.length ? e.tdDates.length : '', uw_nearest: e.uwDates[0] ?? '', td_nearest: e.tdDates[0] ?? '',
       uw_pattern: e.uwAsked ? patternOf(e.uwDates) : '', td_pattern: e.roots.length ? patternOf(e.tdDates) : '', uw_dates: e.uwDates, td_dates: e.tdDates, uw_stale_dates: e.uwStale,
       td_dates_by_root: Object.entries(e.tdByRoot).map(([r, d]) => `${r}:${d.join(';')}`),
+      td_phantom_dates: e.stdRoots.filter(r => checkedRoot(r).phantom.length).map(r => `${r}:${checkedRoot(r).phantom.join(';')}`),
+      td_added_dates: e.stdRoots.filter(r => checkedRoot(r).added.length).map(r => `${r}:${checkedRoot(r).added.join(';')}`),
+      uw_no_contract_dates: e.uwEmpty ?? [],
     };
     lines.push(cols.map(c => esc(v[c])).join(','));
   }

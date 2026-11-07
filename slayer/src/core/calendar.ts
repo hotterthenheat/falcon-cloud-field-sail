@@ -61,8 +61,16 @@ export function mergeLiveHolidays(rows: readonly HolidayRow[], log: (line: strin
   for (const [year, got] of [...byYear].sort((a, b) => a[0].localeCompare(b[0]))) {
     out.years.push(year);
     if (!TABLE_YEARS.has(year)) {
-      for (const d of got.full) if (!LIVE_HOLIDAYS.has(d)) (LIVE_HOLIDAYS.add(d), out.added.push(d));
-      for (const d of got.early) if (!LIVE_EARLY.has(d)) (LIVE_EARLY.add(d), out.added.push(`${d} (early close)`));
+      for (const d of got.full) {
+        if (LIVE_HOLIDAYS.has(d)) continue;
+        LIVE_HOLIDAYS.add(d);
+        out.added.push(d);
+      }
+      for (const d of got.early) {
+        if (LIVE_EARLY.has(d)) continue;
+        LIVE_EARLY.add(d);
+        out.added.push(`${d} (early close)`);
+      }
       continue;
     }
     const tableFull = HOLIDAY_DATES.filter(d => d.startsWith(year));

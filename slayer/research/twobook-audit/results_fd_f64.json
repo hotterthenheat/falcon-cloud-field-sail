@@ -1,0 +1,126 @@
+{
+ "backend": "f64",
+ "contracts_per_check": 1568,
+ "stats": {
+  "delta": {
+   "checked": 1260,
+   "passed": 1260,
+   "failed": 0,
+   "skipped": 308,
+   "worst_ratio": 6.660266032990506e-05
+  },
+  "vega": {
+   "checked": 1064,
+   "passed": 1064,
+   "failed": 0,
+   "skipped": 504,
+   "worst_ratio": 0.0834807847350102
+  },
+  "gamma": {
+   "checked": 952,
+   "passed": 952,
+   "failed": 0,
+   "skipped": 616,
+   "worst_ratio": 0.00028695697911605364
+  },
+  "vanna": {
+   "checked": 960,
+   "passed": 960,
+   "failed": 0,
+   "skipped": 608,
+   "worst_ratio": 0.00039175554390060005
+  },
+  "vomma": {
+   "checked": 976,
+   "passed": 976,
+   "failed": 0,
+   "skipped": 592,
+   "worst_ratio": 0.00019375432681094544
+  },
+  "speed": {
+   "checked": 960,
+   "passed": 960,
+   "failed": 0,
+   "skipped": 608,
+   "worst_ratio": 0.00014954250676467334
+  },
+  "zomma": {
+   "checked": 976,
+   "passed": 976,
+   "failed": 0,
+   "skipped": 592,
+   "worst_ratio": 0.0006804381338070322
+  },
+  "charm": {
+   "checked": 1112,
+   "passed": 1112,
+   "failed": 0,
+   "skipped": 456,
+   "worst_ratio": 0.0008797579199389859
+  },
+  "color_T": {
+   "checked": 976,
+   "passed": 976,
+   "failed": 0,
+   "skipped": 592,
+   "worst_ratio": 3.8951691519515987e-05
+  },
+  "veta_T": {
+   "checked": 974,
+   "passed": 974,
+   "failed": 0,
+   "skipped": 594,
+   "worst_ratio": 5.087691347505638e-06
+  },
+  "CHARM": {
+   "checked": 1113,
+   "passed": 1113,
+   "failed": 0,
+   "skipped": 455,
+   "worst_ratio": 0.0014366652207947737
+  },
+  "COLOR": {
+   "checked": 976,
+   "passed": 976,
+   "failed": 0,
+   "skipped": 592,
+   "worst_ratio": 4.3721118239123953e-05
+  },
+  "VETA": {
+   "checked": 974,
+   "passed": 974,
+   "failed": 0,
+   "skipped": 594,
+   "worst_ratio": 5.087692865564727e-06
+  },
+  "VANNA": {
+   "checked": 962,
+   "passed": 962,
+   "failed": 0,
+   "skipped": 606,
+   "worst_ratio": 0.0006080827012431437
+  },
+  "VOMMA": {
+   "checked": 976,
+   "passed": 976,
+   "failed": 0,
+   "skipped": 592,
+   "worst_ratio": 0.00019375432681094541
+  },
+  "ZOMMA": {
+   "checked": 976,
+   "passed": 976,
+   "failed": 0,
+   "skipped": 592,
+   "worst_ratio": 0.0006652524807930903
+  },
+  "total_gex_change_1pct": {
+   "checked": 960,
+   "passed": 960,
+   "failed": 0,
+   "skipped": 608,
+   "worst_ratio": 7.52903213338494e-05
+  }
+ },
+ "failures": []
+}

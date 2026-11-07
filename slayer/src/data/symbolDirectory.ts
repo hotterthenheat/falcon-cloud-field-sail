@@ -32,8 +32,9 @@ export interface DirectoryEntry {
   rank: number;
 }
 
-/** What a search may offer: every row, or the rows one desk can serve */
-export type DirectoryFilter = 'options' | 'terrain' | 'pinpoint';
+/** What a search may offer: every row, or the rows one desk can serve. `options` is the terminal's live options (the
+    Weigher, Paper, Backtest), `vendor` the vendor's (Trace, which reads the vendor only) */
+export type DirectoryFilter = 'options' | 'vendor' | 'terrain' | 'pinpoint';
 
 const KINDS: Record<string, SymbolKind> = { s: 'stock', e: 'etf', i: 'index', p: 'preferred', w: 'warrant', u: 'unit', r: 'right' };
 const EXCHANGES: Record<string, string> = { Q: 'Nasdaq', N: 'NYSE', A: 'NYSE American', P: 'NYSE Arca', Z: 'Cboe BZX', V: 'IEX', O: 'OTC', C: 'Cboe' };
@@ -141,8 +142,20 @@ interface UniverseFile {
   schema: number;
   builtOn: string;
   aliases?: Record<string, string>;
+  /** The build's expiry checks (scripts/build-ticker-universe.mjs): noContracts are the vendor's dates with no contract */
+  expiries?: { session?: string; noContracts?: Record<string, string[]> };
   rows: string;
 }
+
+/* the vendor's listed dates with no contract behind them, per symbol (CBTX 2026-11-09): every expiry picker hides them */
+let noContracts = new Map<string, ReadonlySet<string>>();
+/** Set the vendor dates with no contract (the directory's load; a proof's) */
+export function setNoContractDates(map: Record<string, readonly string[]> | undefined): void {
+  noContracts = new Map(Object.entries(map ?? {}).map(([k, v]) => [k.toUpperCase(), new Set(v)]));
+}
+/** The vendor's listed dates for a symbol with no contract behind them (empty before the directory loads) */
+export const noContractDates = (symbol: string): ReadonlySet<string> => noContracts.get(normalSymbol(symbol)) ?? EMPTY_DATES;
+const EMPTY_DATES: ReadonlySet<string> = new Set();
 
 /** Load the directory (once). Every caller may ask; the data chunk is fetched the first time. */
 export function loadDirectory(): Promise<void> {
@@ -151,6 +164,7 @@ export function loadDirectory(): Promise<void> {
       .then(m => {
         const doc = ((m as { default?: UniverseFile }).default ?? m) as UniverseFile;
         parseDirectory(doc.rows, doc.aliases);
+        setNoContractDates(doc.expiries?.noContracts);
         builtOn = doc.builtOn;
         rev += 1;
         listeners.forEach(fn => fn());
@@ -166,8 +180,9 @@ export function loadDirectory(): Promise<void> {
 export const directoryReady = (): boolean => entries.length > 0;
 export const directoryBuiltOn = (): string => builtOn;
 export const directorySize = (): number => entries.length;
-const passes = (e: DirectoryEntry, only: DirectoryFilter | undefined): boolean =>
-  !only || (only === 'options' ? e.options : only === 'terrain' ? e.terrain : e.pinpoint || e.options);
+/* Pinpoint: names the vendor lists options on (both books), and names only the terminal does (the flow book only) */
+export const passes = (e: DirectoryEntry, only: DirectoryFilter | undefined): boolean =>
+  !only || (only === 'options' ? e.options : only === 'vendor' ? e.vendorOptions : only === 'terrain' ? e.terrain : e.pinpoint || e.options);
 const counts = new Map<string, number>();
 /** How many rows one filter keeps (every row without one) */
 export function directoryCount(only?: DirectoryFilter): number {

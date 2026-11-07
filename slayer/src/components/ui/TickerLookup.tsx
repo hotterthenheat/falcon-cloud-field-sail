@@ -43,7 +43,7 @@ const TickerLookup = ({ onPick, active, limit = 80 }: TickerLookupProps) => {
     if (!mod) return [];
     if (room === 'listed') return mod.searchTickers(query, limit);
     return searchRoom(room, query, window, mod.searchTickers('', 40), companyName);
-  }, [mod, query, window, room, listedRev, nameRev]);
+  }, [mod, query, limit, window, room, listedRev, nameRev]);
 
   useEffect(() => {
     if (results.length) askCompanyNames(results.map(r => r.symbol));
@@ -94,14 +94,14 @@ const TickerLookup = ({ onPick, active, limit = 80 }: TickerLookupProps) => {
         icon="sm"
         rowClassName="gap-1.5 px-2"
         className="py-1.5 font-mono text-t11"
-        placeholder={room === 'equity' ? 'Symbol or company…' : room === 'option' ? 'Symbol or company, with listed options…' : room === 'compass' ? 'Search the 456…' : 'Symbol or company…'}
+        placeholder={room === 'equity' ? 'Symbol or company…' : room === 'option' || room === 'trace' ? 'Symbol or company, with listed options…' : room === 'compass' ? 'Search the 456…' : 'Symbol or company…'}
       />
       <CommandList ref={listRef} onScroll={onListScroll} className="max-h-72 py-1">
         {!mod ? (
           <div className="px-2.5 py-4 text-center font-mono text-t10 text-textMuted">Loading tickers…</div>
         ) : results.length === 0 ? (
           <div className="px-2.5 py-4 text-center font-mono text-t10 text-textMuted">
-            {room === 'option' ? noOptionsLine(query) ?? 'No name with listed options matches.' : room === 'compass' ? 'Not one of the 456.' : room === 'equity' ? 'No listing by that symbol or name.' : `No listing — Enter picks “${query.trim().toUpperCase().slice(0, 6)}”`}
+            {room === 'option' || room === 'trace' ? noOptionsLine(query, room === 'trace') ?? 'No name with listed options matches.' : room === 'compass' ? 'Not one of the 456.' : room === 'equity' ? 'No listing by that symbol or name.' : `No listing — Enter picks “${query.trim().toUpperCase().slice(0, 6)}”`}
           </div>
         ) : (
           results.map(t => {
@@ -131,13 +131,13 @@ const TickerLookup = ({ onPick, active, limit = 80 }: TickerLookupProps) => {
             );
           })
         )}
-        {room === 'option' && results.length > 0 && !results.some(r => r.symbol === query.trim().toUpperCase()) && noOptionsLine(query) && (
-          <div className="px-2.5 py-1.5 font-mono text-t9 text-textMuted border-t border-borderSubtle">{noOptionsLine(query)}</div>
+        {(room === 'option' || room === 'trace') && results.length > 0 && !results.some(r => r.symbol === query.trim().toUpperCase()) && noOptionsLine(query, room === 'trace') && (
+          <div className="px-2.5 py-1.5 font-mono text-t9 text-textMuted border-t border-borderSubtle">{noOptionsLine(query, room === 'trace')}</div>
         )}
       </CommandList>
       {roomCount(room) > 0 && (
         <div className="px-2.5 py-1 border-t border-borderSubtle font-mono text-t9 text-textMuted" data-listed-count={roomCount(room)}>
-          {roomCount(room).toLocaleString()} {room === 'option' || room === 'pinpoint' ? 'names with listed options' : room === 'compass' ? 'names' : 'listings'}
+          {roomCount(room).toLocaleString()} {room === 'option' || room === 'trace' || room === 'pinpoint' ? 'names with listed options' : room === 'compass' ? 'names' : 'listings'}
           {results.length < roomCount(room) ? ' · scroll for more' : ''}
         </div>
       )}
