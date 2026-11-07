@@ -290,8 +290,9 @@ const RowBook = ({ ticker }: { ticker: string }) => {
   if (bookMode() !== 'flow') return null;
   const b = bookFor(ticker);
   return (
-    <span className={`block text-t9 font-normal uppercase tracking-wider ${b === 'flow' ? 'text-silver' : 'text-textMuted'}`} title={`${BOOK_MODE_WORDS[b].label}: ${BOOK_MODE_WORDS[b].line}`} data-board-row-book={b}>
-      {b === 'flow' ? 'flow book' : 'open-interest book'}
+    /* inline on the figure's line, so the row keeps its height: "flow" or "OI" (the status line spells both out) */
+    <span className={`ml-1.5 whitespace-nowrap text-t9 font-normal uppercase tracking-wider ${b === 'flow' ? 'text-silver' : 'text-textMuted'}`} title={`${BOOK_MODE_WORDS[b].label}: ${BOOK_MODE_WORDS[b].line}`} data-board-row-book={b}>
+      {b === 'flow' ? 'flow' : 'OI'}
     </span>
   );
 };
@@ -303,13 +304,13 @@ const NetCell = ({ data }: ICellRendererParams<BoardRow>) =>
     <Pending data={data} />
   ) : data ? (
     <TickFigure value={data.netGex} title={netGexTitle(data.netGex, data.regime)} className={`inline-flex flex-col justify-center leading-[14px] font-mono text-t11 font-semibold ${data.netGex > 0 ? 'text-bull' : data.netGex < 0 ? 'text-bear' : 'text-textMuted'}`}>
-      <span>
+      <span className="whitespace-nowrap">
         {data.netGex > 0 ? '+' : ''}
         {fmtUsd(data.netGex)}
+        <RowBook ticker={data.ticker} />
       </span>
       <RegimeWord data={data} />
       <ExpiryMark data={data} />
-      <RowBook ticker={data.ticker} />
     </TickFigure>
   ) : null;
 
@@ -420,8 +421,8 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
             <span className={row.netGex > 0 ? 'text-bull' : row.netGex < 0 ? 'text-bear' : 'text-textMuted'}>
               {row.netGex > 0 ? '+' : ''}
               {fmtUsd(row.netGex)}
+              <RowBook ticker={row.ticker} />
             </span>
-            <RowBook ticker={row.ticker} />
           </div>
           <div className="flex flex-col min-w-0">
             {label('Flip', 'The price where dealer hedging switches between absorbing and amplifying')}
@@ -768,7 +769,7 @@ const Board = () => {
           <span>{keptAt != null || scanAt ? '· ' : ''}{cadence}</span>
           {switchMode === 'flow' && (
             <span className="normal-case tracking-normal text-textSecondary" title={`The Map's switch is on the ${BOOK_MODE_WORDS.flow.label.toLowerCase()}: it is read for the names the Map follows. Every other row is the ${BOOK_MODE_WORDS.oi.label.toLowerCase()} — the two are never added, and each row says which it is.`} data-board-books={flowRows.join(',') || 'none'}>
-              · {flowRows.length ? `Flow book: ${flowRows.join(', ')} · every other row: open-interest book` : 'Every row: open-interest book (the flow book is read for the names the Map follows)'}
+              · {flowRows.length ? `Flow book (flow): ${flowRows.join(', ')} · every other row: open-interest book (OI)` : 'Every row: open-interest book (the flow book is read for the names the Map follows)'}
             </span>
           )}
         </span>
