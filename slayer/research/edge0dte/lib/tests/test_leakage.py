@@ -8,8 +8,8 @@
    all data stamped after t deleted.
 2. Outcome horizon: Z/V at (t, h) must equal the value with all data after t+h deleted, and must become NaN when the
    endpoint bar (closing at t+h) is deleted (the outcome really uses data up to t+h, and nothing after).
-3. OI date: every OI row used is published on the session day before 09:30 (td == 0, ts < 570) for files that carry
-   the stamp; for cached files without it, 5 days per root are re-fetched raw and compared value by value.
+3. OI date: every OI row the loader returns is published on the session day before 09:30 (td == 0, ts < 570) for
+   files that carry the stamp (rows stamped later are dropped by lib.data and counted); for cached files without it, 5 days per root are re-fetched raw and compared value by value.
 4. Expiry: every panel/plan session is in the root's expiration list; one board row per tested day is re-fetched with
    expiration = day and must equal the cached snapshot.
 5. HOLDOUT guard: outcomes and fills refuse 2025 and 2026 days without a registered sha256.
@@ -128,7 +128,13 @@ def oi_date(days):
             check('oi present', False, f'{root} {day}')
             continue
         if 'td' in o.columns:
-            check('oi stamp', bool(((o.td == 0) & (o.ts < 570)).all()), f'{root} {day}: td {o.td.unique()} ts max {o.ts.max()}')
+            from lib.data import oi as load_oi
+            u = load_oi(root, day, 31)                     # the rows the library actually uses
+            check('oi stamp (rows used)', u is not None and bool(((u.td == 0) & (u.ts < 570)).all()),
+                  f'{root} {day}: td {None if u is None else u.td.unique()} ts max {None if u is None else u.ts.max()}')
+            late = o[(o.td != 0) | (o.ts >= 570)]
+            COUNTS['oi rows stamped after the open (dropped by the loader)'] = \
+                COUNTS.get('oi rows stamped after the open (dropped by the loader)', 0) + len(late)
         else:
             t = get(f'/option/history/open_interest?symbol={root}&expiration={day.replace("-", "")}&date={day.replace("-", "")}&format=csv')
             if not t:

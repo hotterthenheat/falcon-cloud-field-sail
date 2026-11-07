@@ -2,6 +2,7 @@
 
   python3 -m foundation.ledger   (appends; run once)
 Format: date | worker | id | set | n | result | note.
+Hurdle n = decision times (pooled over buckets); E[za]* etc. at each horizon with 95% day-clustered CIs.
 """
 import datetime
 import os
@@ -22,7 +23,7 @@ def main():
     day = datetime.date.today().isoformat()
     lines = []
     h = pd.read_parquet(os.path.join(DATA, 'hurdle.parquet'))
-    for root in ('SPXW', 'SPY', 'QQQ', 'IWM'):
+    for root in ('SPXW', 'SPY', 'QQQ', 'IWM', 'SPY+QQQ+IWM'):
         a = h[(h.root == root) & (h.bucket == 'all')].set_index('h')
         if not len(a):
             continue
@@ -30,8 +31,10 @@ def main():
         for hh in ('15', '30', '60', 'close'):
             if hh in a.index:
                 r = a.loc[hh]
+                ci = lambda k: (f"{r[k]:+.2f} [{r.get(k + '_lo', np.nan):+.2f},{r.get(k + '_hi', np.nan):+.2f}]"
+                                if np.isfinite(r.get(k, np.nan)) else '-')
                 parts.append(f"h{hh}: cost 0.30d {100 * r.cost_single_med:.1f}% / straddle {100 * r.cost_straddle_med:.1f}% (median), "
-                             f"E[za]* {r.hz:+.2f}, E[V]-1* long {r.hv_long:+.2f} / short below {r.hv_short:+.2f}")
+                             f"E[za]* {ci('hz')}, E[V]-1* long {ci('hv_long')} / short below {ci('hv_short')}")
         n = int(a.n_single.max() + a.n_straddle.max()) if len(a) else 0
         lines.append(f"{day} | EDGE0DTE | FOUNDATION HURDLE {root} (0.30d call/put + ATM straddle, 1-s NBBO ask-in/bid-out, $0.65) | DISCOVERY | "
                      f"{int(a.times.max())} times | {'; '.join(parts)} | edge0dte/results/HURDLE.md (by bucket); not a hypothesis test")
@@ -39,9 +42,12 @@ def main():
     for _, r in b.iterrows():
         if r.baseline == 'no-trade':
             res = 'expectancy 0 (by definition)'
+        elif not r.trades:
+            res = f'no trades (skips {int(r.skips)})'
         else:
             res = (f"exp {pct(r.exp)} [{pct(r.exp_lo)}, {pct(r.exp_hi)}], win {100 * r.win:.1f}%, PF {r.pf:.2f}, "
-                   f"Sharpe/tr {r.sharpe_trade:+.3f}, maxDD ${r.maxdd_usd:,.0f}, skips {int(r.skips)}")
+                   f"Sharpe/tr {r.sharpe_trade:+.3f}, p {r.p:.3f}, DSR {r.dsr:.2f} (N={int(r.n_trials)}), maxDD ${r.maxdd_usd:,.0f}, "
+                   f"skips {int(r.skips)}")
         lines.append(f"{day} | EDGE0DTE | BASELINE {r.root} {r.baseline} exit {r.h} | {r.split} | {int(r.trades)} tr / {int(r.sessions)} sess | "
                      f"{res} | edge0dte/results/BASELINES.md; baseline, not in the FDR family")
     with open(LEDGER, 'a') as f:

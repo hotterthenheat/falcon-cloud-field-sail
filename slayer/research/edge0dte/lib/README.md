@@ -20,8 +20,8 @@ read-only). Requires `exchange_calendars` (`pip install exchange_calendars`) for
 | module | what | label |
 |---|---|---|
 | `cal` | NYSE sessions (`sessions`, `close_min`, `prev_sessions`), expirations (`expiries`), `expiry_sessions(root)` | - |
-| `data` | loaders: `bars(root_or_sym, day)` (m,o,h,l,c[,v,n]), `chain(root, day)` (m,k,r,bid,ask,bs,as), `oi(root, day, max_dte)` (e,k,r,oi[,ts,td]), `vix(day, 'VIX'/'VIX1D')`, `daily_closes(root)` | OBS |
-| `theta` | ThetaData fetchers (bars, board, OI, 1-second NBBO windows with a change-only store); `q1s(root, day, k, call, a, b)` | OBS |
+| `data` | loaders: `bars(root_or_sym, day)` (m,o,h,l,c[,v,n]), `chain(root, day)` (m,k,r,bid,ask,bs,as), `oi(root, day, max_dte)` (e,k,r,oi[,ts,td]; rows stamped at/after 09:30 of D are dropped), `vix(day, 'VIX'/'VIX1D')`, `daily_closes(root)` | OBS |
+| `theta` | ThetaData fetchers (bars, board, OI, 1-second NBBO windows with a change-only store, fcntl-locked per (root, day) so several fetch processes can share it); `q1s(root, day, k, call, a, b)` | OBS |
 | `bs` | Black-76 price, `implied_vol` (bisection), delta, gamma, vega, vanna, charm | CALC |
 | `board` | `Session(root, day)`: `spot(t)`, `bars_upto(t)`, `board(t)`, `smile(t)`, `iv_atm(t)`, `sigma_h(t, h)`, `select_delta(t, call, 0.30)`, `select_atm(t)`, `truncated(t)` | OBS/CALC |
 | `outcomes` | `zv(sess, t, h)` -> Z, V, ret, rv, sigma; `grid_outcomes(sess, times)`; `event_outcomes(root, day, t)` (HOLDOUT-guarded) | CALC |
@@ -103,6 +103,7 @@ Every inference clusters by trading day. `boot_mean(x, day)` -> (mean, lo, hi, p
 
 ## Panels
 
-`v2data/edge0dte/panel/{ROOT}.parquet` (+ `.labels.json` with OBS/CALC/MODEL per column), DISCOVERY + CALIBRATION
+Built by `python3 -m foundation.build_panel [ROOT ...]` (resumable: per-session parts in `panel/parts/{ROOT}/`, then
+assembled). `v2data/edge0dte/panel/{ROOT}.parquet` (+ `.labels.json` with OBS/CALC/MODEL per column), DISCOVERY + CALIBRATION
 only. Columns: root, day, t, split, bucket, S, iv_atm, sig_{15,30,60,close}, Z_*, V_*, vix, vix1d, gex_total (MODEL),
 z_prev30, rv_ratio30, etf_vol_ratio30.

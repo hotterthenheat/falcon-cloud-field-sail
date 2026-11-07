@@ -2,7 +2,7 @@
 
 bars(root_or_sym, day)  1-minute bars of the session, columns m, o, h, l, c [, v, n]; zero/invalid rows dropped (OBS)
 chain(root, day)        same-day-expiry 1-minute NBBO board: m, k, r(1=call), bid, ask, bs, as (OBS)
-oi(root, day, max_dte)  OI published for day: e (days to expiry), k, r, oi (OBS); None when missing
+oi(root, day, max_dte)  OI published for day before its open: e (days to expiry), k, r, oi (OBS); None when missing
 vix(day, sym)           VIX or VIX1D 1-minute bars (OBS)
 All loaders return the whole session; slicing to "data <= t" is done by the board/feature functions, and the leakage
 tests prove that slicing.
@@ -68,6 +68,11 @@ def _oi(root, day):
         f = os.path.join(base, 'oi', root, f'{day}.parquet')
         if os.path.exists(f):
             o = pd.read_parquet(f)
+            if len(o) and 'td' in o.columns:
+                # leakage rule (PROTOCOL section 3): only OI published before the open of D is usable on D. A few
+                # rows per file are stamped after 09:30 of D (ThetaData re-publishes intraday-listed strikes, almost
+                # all with OI 0, and rare corrections at 16:40 / 20:15); they are dropped.
+                o = o[(o.td < 0) | ((o.td == 0) & (o.ts < 570))]
             return o if len(o) else None
     return None
 
