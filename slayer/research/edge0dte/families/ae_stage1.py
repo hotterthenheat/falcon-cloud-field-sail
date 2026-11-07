@@ -183,7 +183,8 @@ class Boot:
             return dict(effect=np.nan, ci_lo=np.nan, ci_hi=np.nan, p=np.nan, n=a[4] + b[4], nd=0, n1=a[4], n0=b[4])
         with np.errstate(invalid='ignore', divide='ignore'):
             bs = a[2] / a[3] - b[2] / b[3]
-        r = _summ(a[0] / a[1] - b[0] / b[1], bs, a[4] + b[4], len(np.unique(np.concatenate([day[g1], day[~g1]]))))
+        val = np.isfinite(y) & np.isfinite(s) & (s != 0)
+        r = _summ(a[0] / a[1] - b[0] / b[1], bs, a[4] + b[4], len(np.unique(day[val])))
         r.update(n1=a[4], n0=b[4], e1=a[0] / a[1], e0=b[0] / b[1])
         return r
 
@@ -334,7 +335,8 @@ class Runner:
                    p_value=r['p'], p_method='boot2000_day', expected_sign=exp_sign, n_g1=r.get('n1', np.nan),
                    n_g0=r.get('n0', np.nan), eff_g1=r.get('e1', np.nan), eff_g0=r.get('e0', np.nan), cond_raw=cond_raw,
                    ic=np.nan, ic_lo=np.nan, ic_hi=np.nan, ic_p=np.nan, ic_expected_sign=np.nan, ols_beta=np.nan,
-                   ols_se=np.nan, ols_p=np.nan, boot_p=r['p'], note=note)
+                   ols_se=np.nan, ols_p=np.nan, boot_p=r['p'], note=note,
+                   uncond_raw=float(np.nanmean(self.df[f'V_{h}'].values - 1)) if kind == 'V' else np.nan)
         rec.update(yr)
         rec.update(hu)
         if ic is not None:

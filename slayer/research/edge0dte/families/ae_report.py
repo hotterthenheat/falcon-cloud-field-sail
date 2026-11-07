@@ -159,6 +159,12 @@ def main():
     s = res[(res.param_role == 'P') & res.ci_excl_0 & res.beyond_hurdle]
     if len(s):
         w(table(sort(s)))
+        w('')
+        for _, r in sort(s).iterrows():
+            if r.outcome == 'V':
+                w(f"* {r.row_id} {r.root} V {r.horizon}: events' mean V - 1 = {f(r.cond_raw)} vs the root's unconditional "
+                  f"mean V - 1 at that horizon = {f(r.uncond_raw)} (all DISCOVERY grid rows): most of the distance to the "
+                  f"short-premium hurdle is the unconditional variance premium, the conditional part is the effect column.")
     else:
         w('None.')
     w('')
@@ -223,7 +229,16 @@ def main():
     for x in na:
         w(f'* {x}')
     w('')
-    w('Leakage tests: `python3 -m families.ae_leak` (see the commit message for the result).')
+    w('## Leakage tests (`python3 -m families.ae_leak`)\n')
+    lf = os.path.join(AE, 'leak.log')
+    if os.path.exists(lf):
+        w('```')
+        for x in open(lf):
+            if x.startswith(('PASS', 'FAIL', 'TOTAL', 'test days', '  ')):
+                w(x.rstrip())
+        w('```')
+    else:
+        w('not run')
     open(os.path.join(RES, 'AE.md'), 'w').write('\n'.join(out) + '\n')
     print('wrote AE.md', len(out), 'lines')
     if '--ledger' in sys.argv:
