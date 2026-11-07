@@ -196,12 +196,44 @@ def main():
         for y in ('2020', '2021', '2022', '2023', '2024', '2025'):
             ss = [d for d in sessions if d[:4] == y]
             lines.append(f'| {sym} | {y} | {sum(1 for d in ss if days.get(d, 0) > 0)} | {len(ss)} |')
+    # ---- board quality (minutes with at least one valid two-sided quote)
+    lines += ['', '## 0DTE board quality (OBS)', '',
+              'Per expected root-session: share of the session\'s minutes (09:30 .. close-1) whose 1-minute snapshot has at '
+              'least one strike with a valid two-sided quote (bid > 0, ask > bid).', '',
+              '| root | year | sessions | median minute share | sessions < 90% | sessions < 50% |', '|---|---|---:|---:|---:|---:|']
+    low = []
+    for root in ROOTS:
+        by = collections.defaultdict(list)
+        for d in expected[root]:
+            f = _file('chain', root, d)
+            if f is None:
+                continue
+            try:
+                c = pd.read_parquet(f, columns=['m', 'bid', 'ask'])
+            except Exception:
+                continue
+            full = cal.close_min(d) - 570
+            ok = c[(c.bid > 0) & (c.ask > c.bid) & (c.m >= 570) & (c.m < cal.close_min(d))]
+            share = ok.m.nunique() / full
+            by[d[:4]].append(share)
+            if share < 0.9:
+                low.append((root, d, share))
+        for y in sorted(by):
+            v = pd.Series(by[y])
+            lines.append(f'| {root} | {y} | {len(v)} | {100 * v.median():.1f}% | {(v < 0.9).sum()} | {(v < 0.5).sum()} |')
+    if low:
+        lines += ['', 'Sessions below 90%: ' + ', '.join(f'{r} {d} ({100 * s:.0f}%)' for r, d, s in low)]
     lines += ['', '## Why sessions were missing in the previous report', '',
               'The 2026-11-07 WIP report counted 2021 entirely missing, 2020 and 2022 partial, 22 sessions of 2024 and '
-              '60 of 2025. None of these was a data hole in ThetaData: the old EDGE caches (v2data/edge) only held the '
+              '60 of 2025. None of these was a data hole in ThetaData and none was a session without a same-day expiry '
+              '(those are excluded above, never counted as missing): the old EDGE caches (v2data/edge) only held the '
               'periods earlier families had fetched, and the FOUNDATION gap fetcher (foundation/fetch_gaps.py) was '
-              'stopped by the container restart part-way through SPY 2021. FOUNDATION-2 resumed it; every request '
-              'returned data (see the table above: what is still missing is listed below with the reason).', '',
+              'stopped by the container restart part-way through SPY 2021 (1,704 of 3,455 board/OI jobs done, all ok). '
+              'FOUNDATION-2 resumed it: the remaining 1,744 jobs (SPY 2021-11 .. QQQ/IWM 2020-2024, then 2025) all '
+              'returned data (status ok, none empty, none failed). Two monthly bar files of the new cache were '
+              'truncated by an earlier fetch (QQQ 2020-04: 13 of 21 sessions, SPY 2025-05: 15 of 21) and were '
+              're-fetched in full (the truncated copies are kept as *.partial-bak). OI rows stamped after 09:30 of the '
+              'session (intraday-listed strikes, almost all OI 0) are dropped by the loader (leakage rule).', '',
               f'## Every missing expected root-session ({len(missing)})', '', '| root | day | reason |', '|---|---|---|']
     lines += [f'| {r} | {d} | {why} |' for r, d, why in missing]
     lines += ['', '## NYSE sessions without a same-day expiry, by root (excluded, not missing)', '']
