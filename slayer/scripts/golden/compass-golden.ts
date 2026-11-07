@@ -323,7 +323,12 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   const snap = await atMark('RUTW', mark, 'odte');
   const scored: { contract: string; p1: number; bid: number; ask: number; q: number }[] = [];
   const off = onScoredRow(r => scored.push({ contract: r.setup.contract, p1: r.p1, bid: r.setup.bid, ask: r.setup.ask, q: r.setup.quotedAt ?? 0 }));
+  /* the expectations were recorded on the score rule's pick (RUTW 2845C, the highest Model 1 that cleared): the cost
+     choice (data/compassCost.ts, on by default) is switched off for them; scripts/compass-cost-proof.ts covers it */
+  const { setCostPick } = await import('../../src/data/compassCost');
+  setCostPick(false);
   await scoreBook(snap.setups, mark, true, true);
+  setCostPick(null);
   off();
   recordPicks(mark);
   const latest = Math.max(...snap.setups.map(s => s.quotedAt ?? 0));
@@ -333,6 +338,7 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   const sig = wouldSignals().find(r => r.contract === 'RUTW 2845C') ?? null;
   const { seatsNow } = await import('../../src/data/compassModel');
   expectEqual('late: no official call, no card, no seat taken (the five later seats stay five)', [signals().length, pick, seatsNow().seats], [0, null, 5]);
+  expectEqual('late: the score rule\'s pick carries its cost read (rule, a level, a move in priced moves)', [sig?.cost?.rule ?? null, (sig?.cost?.level ?? 0) > 0, Number.isFinite(sig?.cost?.z)], ['score', true, true]);
   let outcome: ReturnType<typeof settleSignal> | null = null;
   let fineGot: { windows: number; exit: { px: number; why: string; at: number } | null } | null = null;
   if (sig) {

@@ -31,7 +31,8 @@ import {
   warmSession,
   type ScoreResult,
 } from './compassModel';
-import { recordPicks, setSessionClose, settleOpen } from './compassLedger';
+import { recordPicks, setSessionClose, settleOpen, signals } from './compassLedger';
+import { settleTwins } from './compassTwins';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import { nyYmd as ymd, sessionCloseMinOn } from '../core/calendar';
 import { REGULAR_OPEN_MIN, nextWindow } from '../core/session';
@@ -1158,7 +1159,8 @@ async function tick(): Promise<void> {
     if (MODEL_RISK_ON) bg('tail risk', tailPass(Date.now(), tail => setScanMeta({ tail })));
     if (Date.now() - settleAt > 60_000) {
       settleAt = Date.now();
-      bg('settlement', settleOpen(Date.now()));
+      /* then the calls' random-side twins (the forward test, data/compassTwins.ts), by the same rule, after them */
+      bg('settlement', settleOpen(Date.now()).then(() => settleTwins(signals(), Date.now())));
     }
     if (Date.now() - lateAt > 5_000) {
       lateAt = Date.now();

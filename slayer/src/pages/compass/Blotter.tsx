@@ -22,6 +22,7 @@ import { LIVE_RECONNECTING } from '../../copy/feeds';
 import { useThetaStatus } from '../../data/thetaQuote';
 import { Tip } from '../../components/ui/Tooltip';
 import { modelWordOf } from '../../data/compassParams';
+import ForwardRecord from '../../components/compass/ForwardRecord';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -256,6 +257,8 @@ const Blotter = () => {
       }
       sentence={offlineLine || backlogLine(feed.marks) ? <span data-blotter-offline>{offlineLine || backlogLine(feed.marks)}</span> : false}
     >
+      {/* the honest record first: every call against its random-side twin and a coin flip, from the same fills */}
+      {record.length > 0 && <ForwardRecord calls={record} />}
       {rows.length === 0 ? (
         <div className="border-t border-borderSubtle" data-blotter-empty>
           {feed.status === 'loading' && !lines.length ? (

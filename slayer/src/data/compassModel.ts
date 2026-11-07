@@ -64,6 +64,7 @@ import { shadowClears, shadowOn, shadowPick, shadowScore, shadowTrees, type Shad
 import { optionScanOpen, sessionDayOpen, sessionIso, sessionYmd, tapeClockOf } from './compassSession';
 import type { OptionRight, Setup } from '../types/compass';
 import { frozenTail, type FullQuote, type PathBar } from './compassOutcome';
+import { atmIvOf, costPick, costPickOn, costRead, type CostMark, type CostRead } from './compassCost';
 import { CORE, INDEX, INPUT_NAMES, NO_DAILY, SECTOR_OF, UNDER, atmPair, atmRows, barsBefore, curveFrom, decayOver, features, tapeOf, yearsLeft, type Bar, type Curve, type PinBook } from './compassFeatures';
 
 let ENTRY: Tree[] = [];
@@ -1507,8 +1508,9 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
      trees on every row, run through the same books on their own seats, never a call */
   const shadow = shadowOn() && (await shadowTrees());
   const shadowRows: ShadowRow[] = [];
-  const aPool: { setup: Setup; p1: number; prun: number | null; gex: number; retOpen: number }[] = [];
-  const bPool: { setup: Setup; p1: number; prun: number | null; gex: number; retOpen: number }[] = [];
+  /* atm: the ATM IV of the contract's own expiry at this mark (compassCost atmIvOf), for the cost read; spot: the tape */
+  const aPool: PoolRow[] = [];
+  const bPool: PoolRow[] = [];
   for (const [, list] of bySlot) {
     const ticker = list[0].ticker;
     const report = list[0].sleeve === 'weekly' ? reports.weekly : reports.odte;
@@ -1518,6 +1520,11 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       continue;
     }
     const { tape, horizon, atmList, iv, overnightRoot, tapeClock, left, session, trained } = slot;
+    const atmByExpiry = new Map<string, number | null>();
+    const atmOf = (expiryDate: string) => {
+      if (!atmByExpiry.has(expiryDate)) atmByExpiry.set(expiryDate, atmIvOf(list.filter(x => x.expiryDate === expiryDate), tape.S, now));
+      return atmByExpiry.get(expiryDate) ?? null;
+    };
     const notes: string[] = [];
     const scoredP = new Map<string, number>();
     const lineWhy = (p: number) => (p + 1e-12 < P1_MIN
@@ -1619,7 +1626,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       const span = strikeSpan(tape.S, list.map(row => row.strike), SPAN_INDEX.includes(s.ticker as typeof SPAN_INDEX[number]));
       const prior = seeded(s, minute - BOOK_B_LOOKBACK) ?? quoteAt(s.id, minute - BOOK_B_LOOKBACK);
       const retOpen = tape.op > 0 && tape.S > 0 ? tape.S / tape.op - 1 : NaN;
-      const row = { setup: { ...s, tapeSession: session, outsideTrained: !trained || undefined, flatAt: flatMs }, p1, prun, gex: x[27], retOpen };
+      const row: PoolRow = { setup: { ...s, tapeSession: session, outsideTrained: !trained || undefined, flatAt: flatMs }, p1, prun, gex: x[27], retOpen, atm: atmOf(s.expiryDate), spot: tape.S };
       if (bookAPass(tape.tt, dist, span, dte, s.bid, s.ask, p1, flatT, overnightRoot, tapeClock)) aPool.push(row);
       else if (prior && bookBPass(tape.tt, dist, span, dte, s.bid, s.ask, prior.bid, prior.ask, p1, flatT, overnightRoot, tapeClock)) bPool.push(row);
       else if (!prior && dist > span) notes.push(`${word} has no quote from 30 minutes earlier`);
@@ -1637,8 +1644,8 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
       rememberPass(hit, pct ?? 0, note.slice(cut + 1));
     }
   }
-  type Row = { setup: Setup; p1: number; prun: number | null; gex: number; retOpen: number; book: 'A' | 'B' };
-  const choose = (pool: { setup: Setup; p1: number; prun: number | null; gex: number; retOpen: number }[], book: 'A' | 'B'): Row[] => {
+  type Row = PoolRow & { book: 'A' | 'B' };
+  const choose = (pool: PoolRow[], book: 'A' | 'B'): Row[] => {
     const byRoot = new Map<string, typeof pool>();
     for (const row of pool) {
       const list = byRoot.get(row.setup.ticker) ?? [];
@@ -1660,7 +1667,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
           passed.set(list[0].setup.ticker, had.slice(0, 6));
           continue;
         }
-        out.push({ ...best(side), book });
+        out.push({ ...pickOf(side, best, now), book });
         continue;
       }
       /* A flat root with both sides clearing has no side named: the ask-side flow split that would break the tie is not read. */
@@ -1670,7 +1677,7 @@ async function scoreRows(setups: Setup[], now: number, merge: boolean, late: boo
         passed.set(list[0].setup.ticker, had.slice(0, 6));
         continue;
       }
-      out.push({ ...best(list), book });
+      out.push({ ...pickOf(list, best, now), book });
     }
     return out;
   };
@@ -1834,6 +1841,56 @@ export function paintQuotes(setups: Setup[]): void {
 }
 
 /** Book C. No booster. A missing tree does not close this window. No new ticket inside a high-impact release. */
+/** Book C's flat: ten minutes before the session's close (compassOutcome's 15:50) */
+const LOTTERY_FLAT_BEFORE = 10;
+
+/** A candidate in Book A's or Book B's pool at a mark. */
+interface PoolRow {
+  setup: Setup;
+  p1: number;
+  prun: number | null;
+  gex: number;
+  retOpen: number;
+  /** The ATM IV of the contract's own expiry at the mark (compassCost atmIvOf), or null */
+  atm: number | null;
+  /** The underlying at the mark */
+  spot: number;
+}
+
+/** The cost read of a pool row at `at`, held to its flat. */
+function poolCost(r: { setup: Setup; atm: number | null; spot: number }, at: number): CostRead | null {
+  if (r.atm == null || !(r.spot > 0) || !r.setup.flatAt || !r.setup.expiryDate) return null;
+  return costRead({ strike: r.setup.strike, right: r.setup.right, bid: r.setup.bid, ask: r.setup.ask, expiryDate: r.setup.expiryDate.slice(0, 10) }, { spot: r.spot, atmIv: r.atm, at, flatAt: r.setup.flatAt });
+}
+
+/** The contract a root is called on, among those its rule allowed on the side it takes (`xs`): the smallest mean move
+    it needs to pay back its round trip (compassCost costPick), or the score rule's own pick (`byScore`) when the cost
+    choice is off (COMPASS_COST_PICK=0) or nothing could be read. The pick carries the read and how it was chosen, and
+    the contract the other rule would have called when it differs, so the record can compare them. No cap, no gate:
+    a root that clears is called on some contract either way. */
+function pickOf<T extends { setup: Setup; atm: number | null; spot: number }>(xs: T[], byScore: (xs: T[]) => T, at: number): T {
+  const scorePick = byScore(xs);
+  const reads = new Map<T, CostRead | null>();
+  const read = (r: T) => {
+    if (!reads.has(r)) reads.set(r, poolCost(r, at));
+    return reads.get(r) ?? null;
+  };
+  const cheapest = costPick(xs, read);
+  const on = costPickOn();
+  const chosen = on && cheapest ? cheapest.pick : scorePick;
+  const got = read(chosen);
+  if (!got) return chosen;
+  const mark: CostMark = {
+    ...got,
+    rule: on && cheapest ? 'cost' : 'score',
+    pool: xs.length,
+    read: cheapest?.readN ?? 0,
+    ...(chosen !== scorePick ? { scorePick: scorePick.setup.contract } : {}),
+    ...(cheapest && cheapest.pick !== chosen ? { costPick: cheapest.pick.setup.contract } : {}),
+  };
+  return { ...chosen, setup: { ...chosen.setup, cost: mark } };
+}
+
 export async function scoreLottery(setups: Setup[], now = Date.now(), late = false): Promise<void> {
   const clock = nyParts(now);
   const minute = clock.hour * 60 + clock.minute;
@@ -1864,9 +1921,15 @@ export async function scoreLottery(setups: Setup[], now = Date.now(), late = fal
       if (a.strike !== b.strike) return a.strike - b.strike;
       return a.right === b.right ? 0 : a.right === 'C' ? -1 : 1;
     });
-    const win = list[0];
-    if (win) ranked.push(win);
-    void ticker;
+    const first = list[0];
+    if (!first) continue;
+    /* the contract on the nearest strike's side that makes the most sense to risk (compassCost: the smallest mean move
+       it needs to pay back its round trip, held to the sweep's flat); the nearest strike when none can be read */
+    const atm = atmIvOf(setups.filter(s => s.ticker === ticker && weekdayDte(day, s.expiryDate) === 0), spot, now);
+    const flatAt = nyWallTime(Number(day.slice(0, 4)), Number(day.slice(4, 6)), Number(day.slice(6, 8)), 0, (closeOn(day) ?? sessionCloseMinOn(`${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}`)) - LOTTERY_FLAT_BEFORE);
+    const side = list.filter(s => s.right === first.right).map(s => ({ setup: { ...s, flatAt }, atm, spot }));
+    const win = pickOf(side, xs => xs[0], now).setup;
+    ranked.push(win.cost ? { ...win, flatAt: first.flatAt } : first);
   }
   /* a late sweep counts its own would-calls against the five (it used to note every root's pick) */
   let open = late ? lotteryPicks.size + wouldRoot.C.size : lotteryPicks.size;

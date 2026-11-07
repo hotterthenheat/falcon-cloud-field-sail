@@ -34,7 +34,7 @@ const call = (o: Record<string, unknown>) => ({
   ...o,
 });
 const signals = [
-  call({ id: 'SPY-757-P-top-setups-odte', book: 'A', ticker: 'SPY', contract: 'SPY 757P', right: 'P', strike: 757, bid: 5.66, ask: 5.68, spot: 754.15, p1: 0.7563, prun: 0.4127, runner: false }),
+  call({ id: 'SPY-757-P-top-setups-odte', book: 'A', ticker: 'SPY', contract: 'SPY 757P', right: 'P', strike: 757, bid: 5.66, ask: 5.68, spot: 754.15, p1: 0.7563, prun: 0.4127, runner: false, cost: cards[0].cost }),
   call({ id: 'IWM-271-C-top-setups-odte', book: 'B', ticker: 'IWM', contract: 'IWM 271C', right: 'C', strike: 271, bid: 2.37, ask: 2.4, spot: 272.9, p1: 0.7281, prun: 0.6233, runner: true }),
   call({ id: 'SPXW-7420-C-top-setups-odte', book: 'C', ticker: 'SPXW', contract: 'SPXW 7420C', right: 'C', strike: 7420, bid: 1.35, ask: 1.4, spot: 7403.39, p1: null, prun: null, runner: false }),
 ];
@@ -62,7 +62,8 @@ const kept = {
   earlier: null,
   signals,
   would: [],
-  twins: [],
+  /* the first call's random-side twin, closed at a loss (data/compassTwins.ts) */
+  twins: [{ ...call({ id: 'SPY-751-C-top-setups-odte|twin', book: 'A', ticker: 'SPY', contract: 'SPY 751C', right: 'C', strike: 751, bid: 0, ask: 0, spot: 754.15, p1: null, prun: null, runner: false }), key: `${today}|SPY-757-P-top-setups-odte|twin`, twin: true, twinOf: `${today}|SPY-757-P-top-setups-odte`, outcome: { status: 'closed', fill: { at: now - 29 * 60_000, bid: 4.1, ask: 4.15 }, exit: { at: now - 20 * 60_000, px: 3.2, why: 'Stop' }, peak: 4.2, stop: 1.94, last: null, ret: -22.9, pnl: -95, heldMin: 9 } }],
   marks: [],
 };
 const store = new Map<string, string>([['slayer_compass_state_v2', JSON.stringify(kept)]]);
@@ -144,6 +145,7 @@ const { default: SetupScanBoard } = await import('../src/components/compass/Setu
 const noop = () => {};
 const cardText = render('scan cards', () => cards.map((s, i) => at('/compass', createElement(SetupScanCard, { setup: s, rank: i + 1, selected: false, onSelect: noop, onAnalysis: noop, expiryChip: '' }))).join(''));
 check('scan cards: each called card names its model', ['Model 1', 'Model 3', 'Model 2 riding'].every(w => cardText.includes(w)));
+check('scan cards: a call says what it needs, in the stock\'s terms', /Needs SPY ≤ 751\.9 by \d\d:\d\d \(0\.31× the priced move\)/.test(cardText));
 render('scan board, cards', () => at('/compass', createElement(SetupScanBoard, { setups: cards, layout: 'cards', selectedId: null, onSelect: noop, onAnalysis: noop, expiryChip: '' })));
 render('scan board, table', () => at('/compass', createElement(SetupScanBoard, { setups: cards, layout: 'table', selectedId: null, onSelect: noop, onAnalysis: noop, expiryChip: '' })));
 
@@ -179,6 +181,7 @@ for (const [where, path, load, props] of pages) {
   seen[where] = render(where, () => at(path, createElement(Page, props ?? {})));
 }
 /* the scan is on the kept state: the pages above read real rows, not an empty frame */
+check('Blotter: the forward test heads the record, the call against its twin', seen.Blotter.includes('The forward test') && /Model 1: .*pair/.test(seen.Blotter) && seen.Blotter.includes('Coin flip'));
 check('Compass board: shows the kept cards', seen['Compass board'].includes('SPY 757P') && seen['Compass board'].includes('Model 3'));
 const { BLOTTER_GRID } = await import('../src/pages/compass/Blotter');
 const blotterGrid = gridText('Blotter rows', BLOTTER_GRID.columns, (signals as unknown as Parameters<typeof BLOTTER_GRID.lineOf>[0][]).map(BLOTTER_GRID.lineOf), BLOTTER_GRID.tooltips);

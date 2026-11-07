@@ -14,6 +14,7 @@ import { takeProfitPx, targetPx } from '../../data/compassParams';
 import { STOP_KEEP } from '../../data/contractQuote';
 import { Tip } from '../ui/Tooltip';
 import { usd2 as money } from '../../core/format';
+import { costWords } from './costWords';
 
 const Stat = ({ label, value, ink = 'text-textPrimary', right = false }: { label: string; value: string; ink?: string; right?: boolean }) => (
   <span className={`flex flex-col gap-0.5 min-w-0 ${right ? 'items-end text-right' : ''}`}>
@@ -97,6 +98,8 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
   const pnl = Number.isFinite(closedOutPnl) ? closedOutPnl : livePnl;
   const pnlWord = Number.isFinite(pnl) ? pctWord(pnl) : '—';
   const place = placeWord(setup);
+  /* what it needs, in the stock's terms, read at the call (the record's copy once called) */
+  const cost = costWords(signal?.cost ?? setup.cost, setup.ticker, setup.right, signal?.firedAt ?? setup.seenAt ?? 0);
   /* the hold in words, never the score the model read */
   const model = setup.band === 'lottery' ? holdOf(setup) : setup.p1 != null ? `${holdOf(setup)}${MODELS_VALIDATED ? '' : ` ${UNVALIDATED_LINE}`}` : '';
   const when = [
@@ -156,6 +159,11 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
             <Stat label={closedOut ? 'Exit' : 'Bid'} value={closedOut?.exit ? money(closedOut.exit.px) : Number.isFinite(liveBid) ? money(liveBid) : '—'} />
             <Stat label="P&L" value={pnlWord} ink={!Number.isFinite(pnl) ? 'text-textMuted' : returnInk(pnl)} right />
           </div>
+          {cost ? (
+            <Tip label={cost.hover}>
+              <p className="font-mono text-t11 text-textPrimary tnum whitespace-normal" data-card-needs>{cost.line}</p>
+            </Tip>
+          ) : null}
           <div className="flex items-center gap-x-3 gap-y-1 flex-wrap font-mono text-t10 text-textSecondary tnum" data-card-distances>
             <span>{signal ? 'At call' : 'Quote'} <span className="text-textPrimary">{signal ? `${signal.bid.toFixed(2)} × ${signal.ask.toFixed(2)}` : setup.ask > 0 ? `${setup.bid.toFixed(2)} × ${setup.ask.toFixed(2)}` : '—'}</span></span>
             <span>{stopPx > 0 ? <>{standing?.name ?? 'Stop'} <span className="text-warn font-semibold">{money(stopPx)}</span> {away(stopPx)}</> : setup.band === 'lottery' ? 'No stop' : 'Stop —'}</span>

@@ -1,5 +1,7 @@
 /* Compass: the advisory signal engine (enter/exit guidance only), its scanners, setup feed and contract chain. */
 
+import type { CostMark } from '../data/compassCost';
+
 /* Two axes on one board (docs/compass-redesign-port.md): the sleeve is the contract tenor, the scanner the thesis.
    Every scanner runs on every sleeve. */
 
@@ -213,6 +215,9 @@ export interface Setup {
   epsilon?: number;
   invalidationPrice: number;
   invalidationReason: string;
+  /** What the contract costs to hold to its flat and the move it needs, read at the call, and how it was chosen
+      (data/compassCost.ts) */
+  cost?: CostMark;
 }
 
 /** One name's market state as a scan sees it. The engine takes the universe as an argument (live quotes or replayed

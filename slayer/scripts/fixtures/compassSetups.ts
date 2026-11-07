@@ -51,7 +51,11 @@ const base = (o: Partial<Setup> & Pick<Setup, 'ticker' | 'strike' | 'right' | 'b
 /** Model 1 (book A), a Model 1 call Model 2 rides (book B, the wing), Model 3 (book C, the late sweep), and a closest
     row that is not a call: each carries the score the engine read, which no page may print. */
 export const FIXTURE_SETUPS: Setup[] = [
-  base({ ticker: 'SPY', strike: 757, right: 'P', bid: 5.66, ask: 5.68, spot: 754.15, p1: 0.756, prun: 0.41, runner: false, band: 'top' }),
+  base({
+    ticker: 'SPY', strike: 757, right: 'P', bid: 5.66, ask: 5.68, spot: 754.15, p1: 0.756, prun: 0.41, runner: false, band: 'top',
+    /* the shape of the cost read the engine records on a call (data/compassCost.ts); the numbers are the proof's own */
+    cost: { roundTrip: 0.02, level: 751.9, by: Date.parse('2026-11-06T20:55:00Z'), z: 0.31, mu: 0.024, atmIv: 0.21, iv: 0.22, hYears: 0.0036, rule: 'cost', pool: 3, read: 3, scorePick: 'SPY 756P' },
+  }),
   base({ ticker: 'IWM', strike: 271, right: 'C', bid: 2.37, ask: 2.4, spot: 272.9, p1: 0.728, prun: 0.62, runner: true, band: 'wing' }),
   base({ ticker: 'SPXW', strike: 7420, right: 'C', bid: 1.35, ask: 1.4, spot: 7403.39, band: 'lottery', whyText: 'Model 3. No model score.' }),
   base({ ticker: 'GLD', strike: 373, right: 'P', bid: 0.42, ask: 0.53, spot: 373.4, p1: 0.802, prun: 0.3, band: 'closest', verdict: 'WATCH', whyText: 'Closest: did not clear.' }),
