@@ -277,6 +277,11 @@ have all the gex in those formatting").
   left out, the flagged AM line), the listing's own-sign DEX for reference, the carry-model note; for the flow book the
   valuation time and implied spot, rate and carry, the inventory, the prints and the classifier's shares, the cancels,
   the population, GEX change for +1% and the hedge. It changes with the switch.
+- **Speed** (2026-11-07, Friday's close book, dev server on a shared machine, the old pipeline measured in the same
+  minutes by switching the engine off in the page): the matrix's first figures SPY 3.2–4.4 s (old 3.1–5.3 s), SPX
+  3.8–6.1 s (old 4.2–5.1 s); the matrix settles at its first paint (old: 11–16 s while the per-date reads land). The
+  switch: to the flow book 0.8–1.6 s the first time (the board is asked then), back 0.4–0.75 s. The SPX open-interest
+  board is 2.2 MB gzipped (12,303 cells × 28 figures, full precision so Σ cells is the board exactly).
 - **The proof** (`scripts/twobook-map-proof.ts`, in CI, on recorded SPY and SPX books in `scripts/fixtures/twobook/`,
   written by `scripts/twobook-map-record.mjs`): each board rebuilt from its recorded inputs equals the server's answer;
   Σ cells, Σ per-date chains and Σ whole-book chain equal the board totals for all ten (1e-9 relative); every matrix cell
