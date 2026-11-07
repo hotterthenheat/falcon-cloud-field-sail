@@ -1,5 +1,7 @@
 /* Compass: the advisory signal engine (enter/exit guidance only), its scanners, setup feed and contract chain. */
 
+import type { CostMark } from '../data/compassCost';
+
 /* Two axes on one board (docs/compass-redesign-port.md): the sleeve is the contract tenor, the scanner the thesis.
    Every scanner runs on every sleeve. */
 
@@ -173,6 +175,9 @@ export interface Setup {
   spot?: number;
   /** Exchange time of the quote, epoch ms. */
   quotedAt?: number;
+  /** Size displayed at the bid and the ask, when the feed sent it (a validity check: compassParams sizeShown) */
+  bidSize?: number;
+  askSize?: number;
   /** When Compass first listed this contract, epoch ms. Not a model call. */
   seenAt?: number;
   /** Scored after its mark from the quotes ThetaData recorded at that mark (the live scan missed it) */
@@ -213,6 +218,9 @@ export interface Setup {
   epsilon?: number;
   invalidationPrice: number;
   invalidationReason: string;
+  /** What the contract costs to hold to its flat and the move it needs, read at the call, and how it was chosen
+      (data/compassCost.ts) */
+  cost?: CostMark;
 }
 
 /** One name's market state as a scan sees it. The engine takes the universe as an argument (live quotes or replayed

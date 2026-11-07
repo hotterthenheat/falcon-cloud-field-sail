@@ -62,6 +62,8 @@ import {
   type PrintType,
 } from './printTags';
 import { printSetsPrice } from './thetaEligible';
+import { FlowInventory, contractKey } from '../engine/twobook';
+import { flowBooks, type FlowBoardWire, type FlowInputs, type FlowTapeView } from './twobook/flowBook';
 
 /** 2: a stock mark carries the quote it printed against */
 export const TAPE_FORMAT = 2;
@@ -219,6 +221,8 @@ export interface OptionTape {
   saved: boolean;
   /** The terminal serves this day one expiry at a time (the current day, until it is processed) */
   byExpiry: boolean;
+  /** Model 2's signed inventory (docs/TWO_BOOK_SPEC_V2.md §4.1–§4.2): every print read, classified, prints only */
+  flow: FlowInventory;
 }
 
 const dteBucket = (dte: number) => (dte <= 14 ? 0 : dte <= 60 ? 1 : 2);
@@ -237,7 +241,7 @@ export function newOptionTape(name: string, day: string, open: number, close: nu
     roots: optionRootsOf(name).map(root => ({ root, through: open, vol: new Map(), oi: null, oiTried: false, exps: null, pend: null, passAt: 0 })),
     spot: new Map(), spotThrough: open, spotReadAt: 0,
     prints: [], cells: new Map(), cellList: [], mix: new Map(), seq: 0,
-    asked: 0, running: false, fault: null, retryAt: 0, saved: false, byExpiry: false,
+    asked: 0, running: false, fault: null, retryAt: 0, saved: false, byExpiry: false, flow: new FlowInventory(),
   };
 }
 
@@ -329,6 +333,15 @@ export function ingestOptions(t: OptionTape, rootIdx: number, csv: string): numb
     const conds = ['condition', 'ext_condition1', 'ext_condition2', 'ext_condition3', 'ext_condition4'].map(k => num(f[c.get(k) ?? -1])).filter(Number.isFinite);
     const size = num(f[c.get('size') ?? -1]);
     const price = num(f[c.get('price') ?? -1]);
+    /* Model 2 sees EVERY print, before any filter of the pane's: §4.1 decides what counts (255 is "no condition") */
+    {
+      const fx = unq(f[c.get('expiration') ?? -1]).slice(0, 10);
+      const fk = num(f[c.get('strike') ?? -1]);
+      const fr = unq(f[c.get('right') ?? -1]).startsWith('C') ? 'C' : 'P';
+      const tms = stampMs(f[c.get('trade_timestamp') ?? -1] ?? '');
+      const qts = stampMs(f[c.get('quote_timestamp') ?? -1] ?? '');
+      t.flow.add({ key: contractKey(r.root, fx, fk, fr), conditions: conds, size, price, bid: num(f[c.get('bid') ?? -1]), ask: num(f[c.get('ask') ?? -1]), quoteAgeMs: tms - qts, seq: num(f[c.get('sequence') ?? -1]) });
+    }
     if (!(size > 0) || !(price > 0)) return;
     const premium = price * size * 100;
     const tags = optionTagsOf(conds, size, premium);
@@ -378,6 +391,16 @@ export function ingestOptions(t: OptionTape, rootIdx: number, csv: string): numb
     taken++;
   });
   return taken;
+}
+
+/* Model 2's inventory as kept on disk beside a finished day's tape */
+const flowSaved = (f: FlowInventory) => ({ inv: [...f.inv.entries()], buckets: [...f.buckets.entries()], prints: f.prints, linked: f.linked, unlinked: f.unlinked });
+function flowRestore(f: FlowInventory, k: ReturnType<typeof flowSaved>): void {
+  for (const [key, c] of k.inv) f.inv.set(key, c);
+  for (const [b, v] of k.buckets) f.buckets.set(b, v);
+  f.prints = k.prints;
+  f.linked = k.linked;
+  f.unlinked = k.unlinked;
 }
 
 /* ---- the stock tape ------------------------------------------------------------------------------------------ */
@@ -474,6 +497,10 @@ export interface Tapes {
   options: (ticker: string, since: number) => OptionTapeWire | null;
   stock: (ticker: string, since: number) => StockTapeWire | null;
   stats: () => { reads: number; readsLastMinute: number; byKind: Record<string, number>; tapes: string[]; inFlight: number };
+  /** Model 2's board for the name (src/data/twobook/flowBook.ts), null with no session to read */
+  flowBook: (ticker: string) => Promise<FlowBoardWire> | null;
+  /** What the flow book last valued for a name (recording a fixture; not served in production) */
+  flowInputs: (ticker: string) => FlowInputs | null;
   stop: () => void;
 }
 
@@ -814,6 +841,7 @@ export function startTapes(o: TapeOptions): Tapes {
     if (done() && !t.saved && t.day < nyWall(now()).iso && !(t.kind === 'options' && t.byExpiry)) {
       t.saved = true;
       save(t.day, t.name, t.kind, wire());
+      if (t.kind === 'options') save(t.day, t.name, 'flow', { format: TAPE_FORMAT, ...flowSaved((t as OptionTape).flow) });
       log(`[tape] ${t.name} ${t.day} ${t.kind}: kept`);
     }
   };
@@ -825,6 +853,31 @@ export function startTapes(o: TapeOptions): Tapes {
     for (const t of stocks.values()) if (at - t.asked < IDLE_MS && t.through < t.close) void run(t, stepStock, () => t.through >= t.close, () => stockWire(t, 0), () => t.through);
   };
   const timer = setInterval(tick, TICK_MS);
+
+  /* the name's option tape for the session, opened (or restored) and marked asked */
+  const openOptions = (ticker: string): OptionTape | null => {
+    const name = ticker.toUpperCase();
+    const day = tapeDay(now());
+    if (!isSessionDay(day)) return null;
+    const win = regularWindow(day, productOf(name, true));
+    if (!win) return null;
+    const key = `${name}|${day}`;
+    let t = opts.get(key);
+    if (!t) {
+      const kept = load<OptionTapeWire>(day, name, 'options');
+      t = kept ? restoreOptions(kept) : newOptionTape(name, day, win.from, win.to);
+      /* today is not processed yet: the terminal serves it one expiry at a time */
+      if (!t.saved && day === nyWall(now()).iso) t.byExpiry = true;
+      opts.set(key, t);
+      evict(opts);
+    }
+    const first = t.asked === 0;
+    t.asked = now();
+    if (first) tick();
+    return t;
+  };
+  /* Model 2's boards: the quote and rate reads go through the same gate as the tapes' */
+  const books = flowBooks({ read: (p, kind) => read(p, kind, false), now, log });
 
   /* a kept day comes back as a frozen tape: the rows as the wire had them */
   const restoreOptions = (w: OptionTapeWire): OptionTape => {
@@ -838,6 +891,21 @@ export function startTapes(o: TapeOptions): Tapes {
     t.cellList = w.cells;
     t.mix = new Map(w.mix.map(m => [m[0], m]));
     t.saved = true;
+    const kept = load<ReturnType<typeof flowSaved> & { format: number }>(w.day, w.ticker, 'flow');
+    if (kept) flowRestore(t.flow, kept);
+    /* a day kept before the flow book existed has no inventory: read it again (it is not a frozen tape then) */
+    else {
+      t.saved = false;
+      t.prints = [];
+      t.cellList = [];
+      t.cells = new Map();
+      t.mix = new Map();
+      for (const r of t.roots) {
+        r.through = t.open;
+        r.oiTried = false;
+        r.oi = null;
+      }
+    }
     return t;
   };
   const restoreStock = (w: StockTapeWire, t: StockTape): StockTape => {
@@ -852,26 +920,33 @@ export function startTapes(o: TapeOptions): Tapes {
 
   return {
     options(ticker, since) {
-      const name = ticker.toUpperCase();
-      const day = tapeDay(now());
-      if (!isSessionDay(day)) return null;
-      const win = regularWindow(day, productOf(name, true));
-      if (!win) return null;
-      const key = `${name}|${day}`;
-      let t = opts.get(key);
-      if (!t) {
-        const kept = load<OptionTapeWire>(day, name, 'options');
-        t = kept ? restoreOptions(kept) : newOptionTape(name, day, win.from, win.to);
-        /* today is not processed yet: the terminal serves it one expiry at a time */
-        if (!kept && day === nyWall(now()).iso) t.byExpiry = true;
-        opts.set(key, t);
-        evict(opts);
-      }
-      const first = t.asked === 0;
-      t.asked = now();
-      if (first) tick();
-      return optionWire(t, since);
+      const t = openOptions(ticker);
+      return t ? optionWire(t, since) : null;
     },
+    flowBook(ticker) {
+      const t = openOptions(ticker);
+      if (!t) return null;
+      const view: FlowTapeView = {
+        name: t.name,
+        day: t.day,
+        open: t.open,
+        close: t.close,
+        through: optionThrough(t),
+        live: optionLive(t) && optionThrough(t) < t.close,
+        complete: optionThrough(t) >= t.close,
+        byExpiry: t.byExpiry,
+        exps: Object.fromEntries(t.roots.map(r => [r.root, t.byExpiry ? r.exps : null])),
+        inv: t.flow.inv,
+        buckets: t.flow.buckets,
+        prints: t.flow.prints,
+        linked: t.flow.linked,
+        unlinked: t.flow.unlinked,
+        spotRef: t.spot.size ? (t.spot.get(Math.max(...t.spot.keys())) ?? 0) : 0,
+        fault: t.fault,
+      };
+      return books.board(view);
+    },
+    flowInputs: (ticker: string) => books.inputs(ticker),
     stock(ticker, since) {
       const name = ticker.toUpperCase();
       const day = tapeDay(now());
@@ -935,7 +1010,21 @@ export function tapeRoute(tapes: Tapes, req: Req, res: Res): void {
   }
   const t = String(url.searchParams.get('ticker') ?? '').trim().toUpperCase();
   const since = Number(url.searchParams.get('since') ?? 0);
-  if (!TICKER.test(t) || (leaf !== 'options' && leaf !== 'stock')) return send(400, { error: 'ask /api/tape/options or /api/tape/stock with a ticker' });
+  if (TICKER.test(t) && leaf === '__flowinputs') {
+    if (process.env.VERCEL_ENV === 'production') return send(404, { error: 'not found' });
+    const got = tapes.flowInputs(t);
+    return got ? send(200, got) : send(404, { error: 'no flow book valued for this name yet' });
+  }
+  if (TICKER.test(t) && leaf === 'flowbook') {
+    const job = tapes.flowBook(t);
+    if (!job) return send(404, { error: 'no session to read', code: 'no_session' });
+    job.then(
+      wire => send(200, wire),
+      e => send(503, { error: `the flow book could not be valued: ${e instanceof Error ? e.message : e}`, code: 'flowbook_failed' }),
+    );
+    return;
+  }
+  if (!TICKER.test(t) || (leaf !== 'options' && leaf !== 'stock')) return send(400, { error: 'ask /api/tape/options, /api/tape/stock or /api/tape/flowbook with a ticker' });
   const wire = leaf === 'options' ? tapes.options(t, Number.isFinite(since) ? since : 0) : tapes.stock(t, Number.isFinite(since) ? since : 0);
   if (!wire) return send(404, { error: 'no session to read', code: 'no_session' });
   const stamp = `${wire.through}|${wire.fault ?? ''}|${since}|${'prints' in wire ? wire.prints.length : wire.marks.length}`;

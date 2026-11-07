@@ -9,6 +9,27 @@ endpoint name suggests.
 - **Pinpoint** reads its greeks, exposure, levels and flow from Unusual Whales, and from ThetaData only its live price
   and chart candles (stock and index snapshots and bars) and the one open-interest read below. No ThetaData greeks on
   Pinpoint.
+- **Pinpoint's two books** (owner, 2026-11-07: "pinpoint has 2 models, one is the spot that comes from the keys and then
+  another is thetadata math that we use to math dealer flow gex"; spec `docs/TWO_BOOK_SPEC_V2.md`, build
+  `docs/TWO_BOOK.md`):
+  - **Model 1, the open-interest book**, is Unusual Whales only: `/stock/{t}/spot-exposures/expiry-strike` (every page),
+    `/stock/{t}/volatility/stats` (IV30) and `/stock/{t}/option-contracts` (every page: per-contract OI and IV), read on
+    the server through the hub's background lane and shared by every viewer (`GET /api/twobook/oi`,
+    `server/twoBookApi.mjs`, `src/data/twobook/model1Server.ts`). Its six house metrics are computed by the house engine
+    from those rows; no ThetaData read.
+  - **Model 2, the flow book**, reads ThetaData on the server: the option prints with the NBBO in force at each
+    (`/option/history/trade_quote`, exclusive, with OPRA conditions — the server's option tape, `src/data/tapeServer.ts`,
+    which now also classifies every print into the book's signed inventory), the current NBBO of the name's strip
+    (`/option/snapshot/quote`, one read per root per board, every expiry the inventory holds, 30 strikes either side) and
+    SOFR (`/interest_rate/history/eod`). One board per name on the server, held 20 s (`GET /api/tape/flowbook`,
+    `src/data/twobook/flowBook.ts`); the browser asks the server only. Never Unusual Whales, never open interest.
+  - Pinpoint also lists the names whose options only ThetaData lists: their flow book is served and their open-interest
+    book says it is unavailable.
+  - Every Pinpoint view draws one of these two boards, cell by cell (`docs/TWO_BOOK.md` §4): the Map's switch picks the
+    book; the browser's own Unusual Whales reads for a name's book are the core read only (price, bars, vols, the term
+    structure — `src/data/book/load.ts engineChains`), plus the Weigher's one date of option-contracts for its
+    per-contract gamma. Trace and Dossier keep their own Unusual Whales reads.
+  - On screen neither vendor is named ("open-interest book", "flow book", "listed open interest", "today's prints").
 - **Building's open-interest change** (Pinpoint's Building and Terrain's Building tab) is ThetaData's, allowed by the
   owner on 2026-11-01: the all-expiration open interest (`/option/history/open_interest?expiration=*`) for the two
   latest report dates, every listed contract, compared contract by contract. Read on the server, never by the browser:
@@ -42,6 +63,43 @@ endpoint name suggests.
   `/api/tape/*`), at most two terminal reads at once; the browser asks the server only. **Trace and the Dossier are
   untouched:** their dark-pool room and tape stay on Unusual Whales. Other pages that host the chart keep the vendor's
   tape for the flow pane.
+
+- **The ticker universe** (`src/data/generated/tickerUniverse.json`, written by `scripts/build-ticker-universe.mjs`,
+  refreshed daily): every symbol either key lists, with the desks that can serve it. **Terrain** offers what ThetaData
+  quotes with bars (a stock or fund quoted in the last 10 sessions with a bar in the last 30 days) and every index it
+  priced in the last 10 sessions. **Pinpoint** offers the names whose Unusual Whales expiry list
+  (`/stock/{t}/greek-exposure/expiry`, the list Pinpoint reads) has a live date; a name only ThetaData lists options on
+  is not offered there. The option desks (Weigher, Paper, Backtest) offer ThetaData roots with a live expiration. The
+  build reads ThetaData one request at a time and Unusual Whales one request at a time, 0.45 s apart (about 75 minutes
+  for the vendor's expiry walk); `--master <csv>` also writes the full table both vendors' expiry lists sit in.
+  `/option-trades/optionable-tickers` ("which symbols have listed options") is API Advanced only on this key (422), so
+  the screener (`/screener/stocks`, paged with `offset` as a page number, 500 a page) and the expiry walk stand in.
+  **Trace's** search offers the names Unusual Whales lists options on (the `v` flag; Trace reads Unusual Whales only),
+  not ThetaData's (`o`, the Weigher, Paper and Backtest).
+
+- **Expiration lists are checked against the contracts** (from the 2026-11-07 ticker audit, `reports/expiry_mismatches.csv`).
+  ThetaData's `/option/list/expirations` carries dates no contract was ever listed on (56 on names both vendors carry:
+  SPX 2088-07-10 … 2090-06-18, TT 2027-04-16, PWR 2027-08-20, RIO 2031-01-01; about a thousand more on roots only it
+  lists) and lags new listings by a session or more (18 dates first quoted on 2026-11-06: SPX 2026-12-15, NDX
+  2026-12-14, RUT 2026-11-23, SPY 2027-04-16 …). So the proxy answers every `/option/list/expirations` read — every
+  page's and every server reader's, Terrain, the Weigher, Paper and Backtest, Compass, the tapes — with the checked
+  list (`server/expiryCheck.mjs`, arithmetic in `shared/expiryEvidence.mjs`): a date from today on is offered only
+  with at least one contract behind it in the root's current NBBO snapshot (`/option/snapshot/quote?expiration=*`), its
+  current open-interest report (`/option/snapshot/open_interest?expiration=*`) or the contracts quoted on the last
+  finished session (`/option/list/contracts/quote?date=D`), and a date those carry that the list lacks is added the
+  day its contracts appear. Earlier dates pass as listed. Three reads a root (the snapshot kept 10 minutes, the report
+  an hour, the session's list a day), through the same slots as any read; when none answers, the list goes out as the
+  last universe build judged it (`expiries.phantom` / `expiries.added` in the generated file), and every verdict is
+  logged once a day (`[expiries] SPX: … dropped …`). The universe build does the same with the whole market's quoted
+  and traded contracts of the session, so the `o` flag means a live date with contracts.
+  Unusual Whales' expiry list has the opposite fault on a few index products (CBTX, CBTXW, SPEQW, SPEQX; ISHP on
+  2026-11-06): dates with no exposure and no contract on either vendor. The build lists them (`expiries.noContracts`)
+  and every expiry picker hides them (`src/data/expiryListing.ts`, logged once); a date with no exposure yet that does
+  have contracts (SPX 2026-12-15, a new listing with no open interest) stays. Two dates Unusual Whales was missing on
+  2026-11-06, SUPN 2027-06-17 and XNDX 2026-11-20, are its own omissions (quoted on ThetaData, 40 and 18 contracts):
+  nothing in the app can add them to its list, and no page that reads it needs them. Proof:
+  `scripts/expiry-evidence-proof.ts` (the audit's cases, recorded in `scripts/fixtures/expiry-audit-2026-11-06.json`);
+  against the live terminal, `node scripts/expiry-check-live.mjs`.
 
 Set by the owner on 2026-10-22 (Pinpoint and Dossier on Unusual Whales), 2026-10-29 (Trace on Unusual Whales
 only; ThetaData for Pinpoint's live price and candles) and 2026-11-01 (ThetaData's open interest for Building).

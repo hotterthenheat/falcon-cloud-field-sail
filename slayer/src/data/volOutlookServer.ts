@@ -17,7 +17,10 @@
     two spans at a time, and every read of the second name waits until, with it, at least KEEP_FREE of the terminal's
     eight slots stay free and no other reader is queued for one. Alone on the terminal the two names hold four slots
     and leave four; once the Compass engine or a chart takes slots, the second name pauses after its reads in flight
-    and the first goes on as before. With no slot count (a test, a host without the hub) one name is read at a time.
+    and the first goes on as before. The first name is counted at its full width (SPAN_READS) whether or not all its
+    reads are in flight: it never waits for room, so a slot it frees for a moment (its last span of a name, the turn
+    to the next name) is not the second name's to take. With no slot count (a test, a host without the hub) one name
+    is read at a time.
   - Kept on disk, <dir>/<TICKER>.json (the wire format, NaN spelled out), so a restart reads only what it lacks.
   - An ask for a name not read yet answers 202 with its progress and queues it; the tile asks again every few seconds.
 
@@ -29,7 +32,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { takeWire, writeWire } from '../../shared/jsonWire.mjs';
-import { readSessions, sessionWindow, sessionsFromWire, sessionsToWire, SERVED_VERSION, type ServedSessions, type Sessions } from './volOutlook';
+import { readSessions, sessionWindow, sessionsFromWire, sessionsToWire, SERVED_VERSION, SPAN_READS, type ServedSessions, type Sessions } from './volOutlook';
 import { thetaAnswer } from './compassServer';
 
 type Req = { url?: string; method?: string; headers: Record<string, string | string[] | undefined> };
@@ -134,9 +137,28 @@ export function startVolOutlookServer(o: VolServerOptions): VolServer {
       return { status: 503, data: null, error: 'terminal_down' };
     }
   };
+  /* the first lane's reads in flight, counted in the same turn as read() takes its slot */
+  let firstReads = 0;
+  const readFirst = async (p: string) => {
+    firstReads++;
+    try {
+      return await read(p);
+    } finally {
+      firstReads--;
+    }
+  };
   /* No race between two reads that both see room: read() reaches the hub's slot count (server/thetaProxy.mjs slot) in
-     the same turn, with no await before it, so the next look already counts it, or sees it queued. */
-  const room = () => !!o.slots && roomForRead(o.slots());
+     the same turn, with no await before it, so the next look already counts it, or sees it queued.
+     The first lane never asks for room, so its slots are counted as held at its full width (SPAN_READS) even while it
+     holds fewer — at the end of a name one span is still read and the other slot is free for a moment, and a second
+     name's read taken then would leave the first lane's next name, at full width, under KEEP_FREE free (2026-11-07:
+     8 − 1 other − 2 − 2 = 3 free, scripts/vol-outlook-proof.ts "lanes: … the first name's free slot"). */
+  const room = () => {
+    if (!o.slots) return false;
+    const s = o.slots();
+    const owed = Math.max(0, SPAN_READS - firstReads);
+    return roomForRead({ ...s, busy: s.busy + owed, busyHistory: s.busyHistory + owed });
+  };
   /* a second lane's read waits for room; the first lane's never does (one name at a time, as before) */
   const readWhenRoom = async (p: string) => {
     while (!stopped && !room()) await new Promise(r => setTimeout(r, ROOM_POLL_MS));
@@ -149,7 +171,7 @@ export function startVolOutlookServer(o: VolServerOptions): VolServer {
     /* a copy from an earlier window serves as far as it reaches back (readSessions keeps the run from the new start) */
     const prior: Sessions | null = have ? { days: have.days, tail: have.tail } : null;
     const t0 = Date.now();
-    const got = await readSessions(t, prior, w.start, w.last, lane === 0 ? read : readWhenRoom, (done, of) => progress.set(t, { done, of }));
+    const got = await readSessions(t, prior, w.start, w.last, lane === 0 ? readFirst : readWhenRoom, (done, of) => progress.set(t, { done, of }));
     progress.delete(t);
     if (got.offline) {
       log(`[vol-outlook] ${t}: the terminal did not answer; asked again on the next pass`);

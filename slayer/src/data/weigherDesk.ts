@@ -15,7 +15,7 @@ import { nyIsoDate, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { inRegular, productOf, sessionAt } from '../core/session';
 import type { OptionRight } from '../types/compass';
 import type { StrikeNode } from '../types/market';
-import { peekEntry } from './book/store';
+import { peekEntry, peekLoaded } from './book/store';
 import { sameName } from './spotGexBook';
 import { carryFor, rateOn, setForward, type ForwardRead } from '../core/carry';
 import { type ParityPair } from '../core/parity';
@@ -696,7 +696,8 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
     book has already read for that date (data/book/load.ts fillExpiryFacts → book/scale.ts foldContracts, `row.gamma`
     into callGamma / putGamma). Null until that date's rows are read; nothing is asked here. */
 export function vendorGammaRows(ticker: string, expiryIso: string): readonly StrikeNode[] | null {
-  const e = peekEntry(sameName(ticker));
+  /* the loaded entry's own contract rows (book/load.ts wantDateFacts), not a page's chains (the two-book engine's) */
+  const e = peekLoaded(sameName(ticker));
   if (!e || e.status !== 'live' || !expiryIso || !e.factsDates?.has(expiryIso)) return null;
   const nodes = e.byDate[expiryIso];
   return nodes?.length ? nodes : null;

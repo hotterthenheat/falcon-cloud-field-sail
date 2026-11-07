@@ -11,6 +11,7 @@ import { volOutlookMount } from './server/volOutlookApi.mjs';
 import { proxyRegime } from './server/regimeApi.mjs';
 import { proxyOiChange } from './server/oiChangeApi.mjs';
 import { tapeMount } from './server/tapeApi.mjs';
+import { twoBookMount } from './server/twoBookApi.mjs';
 import { proxyTerrain } from './server/terrainApi.mjs';
 
 try {
@@ -57,6 +58,12 @@ const TAPES = './src/data/tapeServer.ts';
 const tape = tapeMount(() => import(TAPES), __dirname);
 app.use('/api/tape', (req, res) => {
   void tape.handle(req, res);
+});
+/* Pinpoint's open-interest book (server/twoBookApi.mjs): one board per name, shared by every viewer */
+const TWO_BOOK = './src/data/twobook/model1Server.ts';
+const twoBook = twoBookMount(() => import(TWO_BOOK));
+app.use('/api/twobook/oi', (req, res) => {
+  void twoBook.handle(req, res);
 });
 /* Terrain's option chain and its prior close (server/terrainApi.mjs): read once here for every pane and viewer */
 app.use('/api/terrain', (req, res) => {

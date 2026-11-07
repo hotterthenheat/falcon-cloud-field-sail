@@ -3,8 +3,9 @@
 
 import { FLIP_RULE } from '../../data/flipLevel';
 import { ASSUMPTION_WORDS, freshnessOf } from '../../data/levelSureness';
-import { GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
+import { greekUnit, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { peekEntry, peekGammaPriced } from '../../data/book/store';
+import { BOOK_MODE_WORDS } from '../../data/bookMode';
 import { peekOiChange } from '../../data/book/oiChange';
 import { levelsForName } from '../../data/levelsScope';
 import { nyClock, nyDay, nyIsoDate, nySessionPhase } from '../../core/nyTime';
@@ -22,10 +23,17 @@ const isLive = (ticker?: string): boolean => {
 /** The source, in two words — for the door and the chip */
 /* The card's source line follows the book actually on screen, never a hard-coded flag. */
 export function sourceWords(ticker?: string): { short: string; long: string; live: boolean } {
+  const e = ticker ? peekEntry(ticker) : undefined;
+  if (e?.engine?.mode === 'flow')
+    return {
+      short: BOOK_MODE_WORDS.flow.label,
+      long: `${BOOK_MODE_WORDS.flow.line}. All ten figures are the house model on current quotes; the whole book is the sum of its cells (Sources & units has the board)`,
+      live: true,
+    };
   if (isLive(ticker))
     return {
-      short: 'Market-data book',
-      long: "The live book from our market-data feed, refreshed every minute: gamma as dollars per 1% move, vanna as dollars of delta per vol point, charm as dollars of delta per session. The whole book is the sum of its expiries, not a separate whole-book total, which is a second snapshot and can differ (MU +$212M against +$155M summed)",
+      short: BOOK_MODE_WORDS.oi.label,
+      long: `${BOOK_MODE_WORDS.oi.line}. Gamma, delta, vanna and charm are the listing's own exposures converted to house units; vega and the five higher greeks are the house model on the same contracts. The whole book is the sum of its cells (Sources & units has the board)`,
       live: true,
     };
   return { short: 'House book', long: "the terminal's own chain and tape", live: false };
@@ -34,6 +42,13 @@ export function sourceWords(ticker?: string): { short: string; long: string; liv
 /** When and at what price the rows on screen were priced (the feed's own minute), and when their open interest was counted. */
 export function bookFreshness(ticker: string): string {
   if (!isLive(ticker)) return freshnessOf(ticker);
+  const eng = peekEntry(ticker)?.engine;
+  if (eng?.at != null && eng.price != null) {
+    const when = `${nyClock(eng.at, { zone: true })}${nyIsoDate(eng.at) === nyIsoDate() ? '' : ` ${nyDay(eng.at, { weekday: true })}`}`;
+    return eng.mode === 'flow'
+      ? `The flow book is valued at ${when}, at ${eng.price.toFixed(2)} (the spot the forwards imply) · today's prints, revalued about every half minute in the session`
+      : `Open interest is the daily count, set once a day before the open · the book is priced at ${eng.price.toFixed(2)}, ${when} (one timestamp for every row)`;
+  }
   const front = Object.keys(peekEntry(ticker)?.byDate ?? {}).filter(d => d >= nyIsoDate()).sort()[0] ?? null;
   const all = peekGammaPriced(ticker, null);
   const one = front ? peekGammaPriced(ticker, front) : null;
@@ -106,11 +121,11 @@ export const DataCard = ({ ticker, surface, greeks, expiries, rings, view }: Car
           Every cell is dollars of stock dealers must trade to stay hedged, for one unit of the thing named, summed over the contracts at that strike and date.
         </p>
         <ul className="mt-1.5 flex flex-col gap-1">
-          <Formula greek="GEX" words="gamma × OI × 100 × spot² × 1%" unit={GREEK_UNIT.gex} />
-          <Formula greek="DEX" words="delta × OI × 100 × spot (dollars of stock)" unit={GREEK_UNIT.dex} />
-          <Formula greek="VEX" words="vega × OI × 100, each contract at its own vol on the trading clock" unit={GREEK_UNIT.vex} />
-          <Formula greek="VANNA" words="∂delta/∂vol × OI × 100 × spot × 1%" unit={GREEK_UNIT.vanna} />
-          <Formula greek="CHARM" words="∂delta/∂time × OI × 100 × spot ÷ 252" unit={GREEK_UNIT.charm} />
+          <Formula greek="GEX" words="gamma × contracts × multiplier × spot² × 1%" unit={greekUnit('gex', surface.timeUnit)} />
+          <Formula greek="DEX" words="delta × contracts × multiplier × spot (dollars of stock)" unit={greekUnit('dex', surface.timeUnit)} />
+          <Formula greek="VEX" words="vega × contracts × multiplier × 1%" unit={greekUnit('vex', surface.timeUnit)} />
+          <Formula greek="VANNA" words="∂delta/∂vol × contracts × multiplier × spot × 1%" unit={greekUnit('vanna', surface.timeUnit)} />
+          <Formula greek="CHARM" words="−∂delta/∂time × contracts × multiplier × spot ÷ 365 (÷ 24 per hour)" unit={greekUnit('charm', surface.timeUnit)} />
         </ul>
       </div>
       <div>

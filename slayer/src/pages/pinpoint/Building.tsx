@@ -4,13 +4,15 @@
 
 import { daySigmaOfIv } from '../../data/expectedMove';
 import { nyClock } from '../../core/nyTime';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { bookCandles, bookHistory } from '../../data/book/levels';
 import { ensureBook } from '../../data/book/load';
 import { peekDaySigma, peekIv } from '../../data/book/move';
 import { snapshotOf, usePinpointFeed } from '../../data/book/feed';
 import { useBookRev } from '../../data/book/store';
+import { holdOiBook } from '../../data/twobook/engineBook';
+import { BOOK_MODE_WORDS, useBookMode } from '../../data/bookMode';
 import { ensureOiChange, peekOiChange } from '../../data/book/oiChange';
 import { useTicker } from '../../context/MarketDataContext';
 import { useFocus } from '../../context/FocusContext';
@@ -66,6 +68,11 @@ const Building = () => {
   /* a phone reads the compact ledger too — the full one is 1060px wide and ran off a 390px screen */
   const phone = useIsPhone();
   const { activeTicker, changeTicker } = useTicker();
+  /* Building's subject is the open-interest change, so it reads the open-interest book (Model 1) whatever the Map's switch
+     says: the change, the walls and the "now" beside it are one book (the flow book carries no open interest). Held
+     before the first paint, released on the way out; the line under the title says so while the switch reads Flow. */
+  useLayoutEffect(() => holdOiBook(), []);
+  const switchMode = useBookMode();
   const marketData = usePinpointFeed(activeTicker);
   const bookRev = useBookRev();
   const { focus, toggleFocus, clearFocus } = useFocus();
@@ -218,6 +225,11 @@ const Building = () => {
           {first.overnight ? `What the overnight open-interest count added and took off · ${oiWhen(first.oiDates, first.oiSource).short}` : `${clock.inSession ? "Today's trading" : 'The last session'}, from volume until the open-interest count loads`}
         </p>
       </div>
+      {switchMode === 'flow' && (
+        <p className="px-5 -mt-1.5 pb-2 font-mono text-t10 uppercase tracking-widest text-textMuted" title={`${BOOK_MODE_WORDS.oi.label}: ${BOOK_MODE_WORDS.oi.line}. Building values the overnight change of open interest, which only this book holds, so the page and its head read it while the Map's switch is on ${BOOK_MODE_WORDS.flow.label}.`} data-build-book="oi">
+          {BOOK_MODE_WORDS.oi.label} · Building reads open interest, so the Map&apos;s flow switch does not apply here
+        </p>
+      )}
       <BuildingControls clock={clock} order={order} onOrder={setOrder} window={window} onWindow={setWindow} show={show} onShow={setShow} names={namesDoor} updatedAt={scan.at} moved={counted ? moved : null} total={total} lenses={panes.length < 2} />
 
       {/* THE PANES — side by side at desk width, a hairline between; stacked on a phone */}

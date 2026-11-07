@@ -10,7 +10,6 @@ import { threadRampCss } from './nodeThreads';
 import { nodeConcept } from './nodeConcept';
 import { fmtUsd } from '../../data/gex';
 import { FIELD_MODE_WORDS, setFieldMode, useFieldMode } from '../../data/fieldMode';
-import { BOOK_MODE_WORDS } from '../../data/bookMode';
 import { useDeskPrefs } from '../../data/deskPrefs';
 import { exposureTodayFrom, ledgerFlowNet, priorSessionWords, useExposureLogRev, useFieldPoll, useServerExposure, type FieldMode, type ServerExposure } from '../../data/book/exposureLog';
 import { useBookRev } from '../../data/book/store';
@@ -31,8 +30,8 @@ function sinceWords(first: number | null, server: ServerExposure, now = Date.now
 }
 
 const MODES: readonly { value: FieldMode; label: string }[] = [
-  { value: 'flow', label: BOOK_MODE_WORDS.flow.label },
-  { value: 'oi', label: BOOK_MODE_WORDS.oi.label },
+  { value: 'flow', label: FIELD_MODE_WORDS.flow.name },
+  { value: 'oi', label: FIELD_MODE_WORDS.oi.name },
 ];
 
 interface FieldKeyProps {
@@ -72,7 +71,7 @@ function FieldKey({ ticker, cut, cutWords, scale, oiNet, compact = false, light 
   const title = [
     `${words.name}: ${words.line}.`,
     scale > 0 ? `Full light: ${fmtUsd(scale)} per 1% move — short gamma (pushes a move along) left, long gamma (holds it back) right.` : 'No reading in this session yet.',
-    `Net GEX ${netWords} · ${BOOK_MODE_WORDS[mode].label} · ${cutWords} · ${since}.`,
+    `Net GEX ${netWords} · ${FIELD_MODE_WORDS[mode].name} · ${cutWords} · ${since}.`,
     yesterday ?? '',
   ]
     .filter(Boolean)

@@ -575,7 +575,10 @@ const MapDesk = () => {
             onNameDates={setNameDates}
             headSlot={bandUp && headBand ? headBand : bandSlot}
             onBandNeed={setBandNeed}
-            pack={!split && bookW > 0}
+            /* packed to its panes only while the day stands beside it (the box is then the panes' width); where the day
+               wraps under, the box is the row's width and the panes fill it — packed there, the matrix stopped at its
+               natural width and left a dead strip after the last column (the owner's screenshot, 2026-11-07) */
+            pack={!split && bookW > 0 && dayBeside}
           />
           ) : (
             <div className="px-4 py-6 font-mono text-t11 text-textMuted">Still reading {scopes.calendar}</div>

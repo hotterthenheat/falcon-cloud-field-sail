@@ -10,6 +10,8 @@ import { uwCall } from '../whales';
 import { bigIvDates, ownIvDates, type LiveGamma } from './scale';
 import { sessionAt } from '../../core/session';
 import { keepBook } from './kept';
+import { engineView, type EngineFacts } from './engineView';
+import { onEngineChange } from '../twobook/engineBook';
 
 export const BOARD_MS = 90_000;
 export const FULL_MS = 45_000;
@@ -94,6 +96,8 @@ export interface Entry {
   gammaLive?: boolean;
   /** When the price in `spot` was printed (epoch ms): the state's tape time, the newest bar's, or the price refresh's quote */
   priceAt?: number;
+  /** Set on the entry pages read (engineView.ts): its chains are the two-book engine's, and which book they are */
+  engine?: EngineFacts;
 }
 
 export const cache = new Map<string, Entry>();
@@ -106,6 +110,11 @@ export const emit = () => {
   listeners.forEach(fn => fn());
   keepSoon();
 };
+/* a board from the engine, or the book toggle, redraws every page that reads a name's book */
+onEngineChange(() => {
+  rev += 1;
+  listeners.forEach(fn => fn());
+});
 
 /* Each name's book is kept (book/kept.ts) once it has its front date in, at most once every few seconds */
 const KEEP_QUIET_MS = 5_000;
@@ -172,8 +181,14 @@ export const LADDER_DTE: [string, number][] = [
 
 /** Each name's kept copy (book/kept.ts), served until its fresh read has its front date in */
 export const keptBooks = new Map<string, Entry>();
-/** A name's book as readers see it: the fresh read once its front date is in, else the kept copy while there is one */
+/** A name's book as readers see it: the fresh read once its front date is in, else the kept copy while there is one —
+    with its chains the two-book engine's (engineView.ts) */
 export function peekEntry(ticker: string): Entry | undefined {
+  const e = peekLoaded(ticker);
+  return e && e.status === 'live' ? engineView(e) : e;
+}
+/** The loaded entry itself (its old chains included) — the loaders and the kept copy only */
+export function peekLoaded(ticker: string): Entry | undefined {
   const t = ticker.toUpperCase();
   const fresh = cache.get(t);
   const kept = keptBooks.get(t);

@@ -22,6 +22,7 @@ import { APP_VERSION as VERSION } from '../../data/appVersion';
 import { chime } from '../../core/sound';
 import { TIMEFRAMES, frameServed, type Timeframe } from '../../data/timeframe';
 import { CLOCK_ZONES, setDeskPrefs, useDeskPrefs, type ClockZone } from '../../data/deskPrefs';
+import { BUDGET_MAX, BUDGET_MIN, parseBudget, setBudget, useBudget } from '../../data/compassBudget';
 import { SAMPLE_PROFILE, setProfile, thisDevice, useProfile, type SignInWay } from '../../data/profile';
 import { ACCOUNTS_ON } from '../../data/supabase';
 import { checkPassword, deleteAccount, leaveAfterDelete, reloadProfile, setPassword, signOut, useAccount } from '../../data/account';
@@ -1092,6 +1093,7 @@ const Settings = () => {
   const ledgerPalette = useLedgerPalette();
   const unit = useDistanceUnit();
   const desk = useDeskPrefs();
+  const compassBudget = useBudget();
   const plan = planOf(useBilling().plan);
   /* the rail shows the owners' section to an owner — and on a build without the account service, where every launch page
      is a preview on a sample */
@@ -1231,6 +1233,18 @@ const Settings = () => {
             </Row>
             <Row name="Clock" line="New York's time or your own on every chart's axis and crosshair" testId="clock">
               <DropdownSelect<ClockZone> label="Clock" value={desk.clock} options={CLOCK_OPTIONS} onChange={v => setDeskPrefs({ clock: v })} title="Whose clock the axes keep" testId="settings-clock" align="end" />
+            </Row>
+            {/* Compass sizes every call to it and, when one contract is over it, offers the next best that fits (data/compassBudget.ts) */}
+            <Row name="Compass budget" line="The dollars you put at risk on one Compass call. Each call card says how many contracts it buys, or the next best that fits. It never changes which contract is called." testId="compass-budget">
+              <Field
+                value={String(compassBudget)}
+                prefix="$"
+                width={120}
+                label="Compass budget"
+                testId="settings-compass-budget"
+                check={v => (parseBudget(v) == null ? `A whole number of dollars, ${BUDGET_MIN} to ${BUDGET_MAX.toLocaleString('en-US')}` : null)}
+                onSave={v => setBudget(parseBudget(v) ?? compassBudget)}
+              />
             </Row>
           </Section>
           )}

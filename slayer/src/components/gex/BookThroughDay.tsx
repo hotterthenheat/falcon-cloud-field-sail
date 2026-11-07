@@ -2,7 +2,6 @@
    spot quiet on its own scale; on the feed the minute net is the vendor's minute gamma. Drawn by lightweight-charts (dayChart.ts). */
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { BOOK_MODE_WORDS } from '../../data/bookMode';
 import { BaselineSeries, createChart, LineSeries, LineStyle, type IChartApi, type ISeriesApi, type LineData, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { sessionBars } from '../../data/levelview';
 import { bookMinuteKind, useBookMinutes } from '../../data/book/minutes';
@@ -161,7 +160,9 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
       /* a figure the chart cannot draw is not drawn (the library throws past ±9×10^13 and the page stops) */
       return pts.map((p, i) => ({ time: p.time, min: p.min, net: read.path[i], spot: p.price })).filter(m => Number.isFinite(m.net) && Math.abs(m.net) < 1e13);
     }
-    const pool = vendor ?? [];
+    /* a book from the two-book engine is drawn off its own legs only (above) — never the vendor's volume-based minute
+       gamma, which is neither book (docs/TWO_BOOK_SPEC_V2.md §6) */
+    const pool = snapshot.book ? [] : vendor ?? [];
     let kept = pool.filter(m => m.min >= lo && m.min <= hi && m.min <= endMin);
     if (kept.length < 2) kept = pool.filter(m => m.min <= endMin);
     if (kept.length >= 2 && !isRamp(kept.map(m => m.net))) {
@@ -428,7 +429,7 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
   const scoped = !!snapshot.liveBook;
   const kindWord = scoped
     ? `Net GEX through ${barDay && barDay !== nyIsoDate() ? longDay(barDay) : 'the day'} · ${bookLabel ?? 'these contracts'} at each minute's price`
-    : kind === 'oi' ? `Dealer gamma through the day · all expiries, the session's own included${lineDayWords}` : `Dealer hedging · ${BOOK_MODE_WORDS.flow.label}${lineDayWords}`;
+    : kind === 'oi' ? `Dealer gamma through the day · all expiries, the session's own included${lineDayWords}` : `Dealer hedging · traded today${lineDayWords}`;
   const kindTitle = scoped
     ? `The net GEX of the contracts the Levels card reads (${bookLabel ?? 'its scope'}) — the settled book at each minute's price${barDay && barDay !== nyIsoDate() ? ` through ${longDay(barDay)}'s session` : ''}. The feed's own minute series does the same for the whole book; this is the same measure on the headline's contracts, so the line ends at the Net GEX beside it, in its sign: green above zero (dealers long gamma, their hedging absorbs), red below (it amplifies)`
     : kind === 'oi'

@@ -17,8 +17,18 @@
 */
 import { freezeClock } from './golden/uwFixtures';
 
+/* The proof's instants. freezeClock pins Date to an instant but lets it run on from there (the golden tests' timers need
+   that), so reading the clock after it gives that instant plus however long the proof took to get there: under CPU load
+   noon became 12:00:00.001 and 240 minutes to the close 239.99998. The cone code takes `now` as an argument, so every
+   check below passes the exact instant; what the book reads off the running clock (book/move.ts: today's date, the
+   session's phase) is the same for the few milliseconds the proof takes. */
+const pinAt = (iso: string): number => {
+  freezeClock(iso);
+  return Date.parse(iso);
+};
+
 /* Thursday 2026-11-05, 18:40 ET: after the close, the coming session is Friday Nov 6 */
-freezeClock('2026-11-05T23:40:00Z');
+const AFTER_CLOSE = pinAt('2026-11-05T23:40:00Z');
 const { cache } = await import('../src/data/book/store');
 const { emptyNode } = await import('../src/data/book/scale');
 const { peekDaySigma, peekMoveToClose } = await import('../src/data/book/move');
@@ -66,7 +76,7 @@ const want1 = S * IV * Math.sqrt(1 / 365);
 /* ---- 1. SPY after the close: one session out is the book's 1σ ---- */
 {
   cache.set('SPYX', base('SPYX', S, { termIv: { '2026-11-06': IV }, termMove: { '2026-11-06': 9.61761161916966 }, termDte: { '2026-11-06': 1 }, termK: 0.684 }));
-  const now = Date.now();
+  const now = AFTER_CLOSE;
   const sig = bookConeSigma('SPYX', now);
   check(`SPY after the close: no session running (closeMin ${sig?.closeMin}), the move to the close is none`, sig?.closeMin === 0 && sig?.toClose === null);
   near('SPY: the session 1σ is peekDaySigma', sig?.session, peekDaySigma('SPYX') ?? NaN, 1e-12);
@@ -99,7 +109,7 @@ const want1 = S * IV * Math.sqrt(1 / 365);
   const chain = [node(7325, 0.2575, 0.4022), node(7330, 0.2746, 0.4133), node(7335, 0.2943, 0.376), node(7340, 0.2553, 0.3824), node(7345, 0.2554, 0.4107)];
   cache.set('SPXX', base('SPXX', X, { iv: 0.2166, termIv: { '2026-11-20': 0.240905864732588 }, byDate: { '2026-11-06': chain }, factsDates: new Set(['2026-11-06']) }));
   const want = X * ((0.2943 + 0.376) / 2) * Math.sqrt(1 / 252);
-  const now = Date.now();
+  const now = AFTER_CLOSE;
   const sig = bookConeSigma('SPXX', now);
   const fc = sig ? bookCone(X, { today: 0, next: 390 }, sig, now) : null;
   near("SPX Nov 6: the cone's session tip is its own contracts' S·σ_ATM·√(1/252) (the 30-day vol said $78–101)", fc?.sigmaNext, want, 1e-9);
@@ -109,16 +119,16 @@ const want1 = S * IV * Math.sqrt(1 / 365);
 /* ---- 5. no expected move, no cone ---- */
 {
   cache.set('NONE', base('NONE', 100, {}));
-  check('a book with no expected move: no book sigma (the chart keeps its own cone)', bookConeSigma('NONE') === null);
-  check('no spot: no cone', bookCone(0, { today: 0, next: 390 }, { closeMin: 0, toClose: null, session: 1 }, Date.now()) === null);
+  check('a book with no expected move: no book sigma (the chart keeps its own cone)', bookConeSigma('NONE', AFTER_CLOSE) === null);
+  check('no spot: no cone', bookCone(0, { today: 0, next: 390 }, { closeMin: 0, toClose: null, session: 1 }, AFTER_CLOSE) === null);
 }
 
 /* ---- 4. in the session: Friday Nov 6, 12:00 ET, 240 minutes to the close ---- */
-freezeClock('2026-11-06T17:00:00Z');
+const NOON = pinAt('2026-11-06T17:00:00Z');
 {
   const move = 6.1;
   cache.set('SPYD', base('SPYD', S, { termMove: { '2026-11-06': move }, termK: 0.684, dayIv: IV, expiries: [{ date: '2026-11-06', dte: 0 }, { date: '2026-11-09', dte: 3 }] }));
-  const now = Date.now();
+  const now = NOON;
   const sig = bookConeSigma('SPYD', now);
   check(`Nov 6 noon: 240 minutes to the close (${sig?.closeMin})`, sig?.closeMin === 240);
   const toClose = peekMoveToClose('SPYD', null, 240);

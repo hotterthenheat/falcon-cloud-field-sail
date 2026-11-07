@@ -21,6 +21,8 @@ import { EmptyBox, ErrorBox, LoadingBox, asOfText } from '../../components/ui/st
 import { LIVE_RECONNECTING } from '../../copy/feeds';
 import { useThetaStatus } from '../../data/thetaQuote';
 import { Tip } from '../../components/ui/Tooltip';
+import { modelWordOf } from '../../data/compassParams';
+import ForwardRecord from '../../components/compass/ForwardRecord';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -55,7 +57,8 @@ interface Line {
   label: string;
   right: 'C' | 'P';
   book: Signal['book'];
-  p1: number | null;
+  /** "Model 1", "Model 1 · Model 2 riding", "Model 3" or "Model Risk": never a book letter, never a score */
+  model: string;
   fired: number;
   bid: number;
   ask: number;
@@ -105,7 +108,7 @@ const lineOf = (s: Signal): Line => {
     label: s.contract,
     right: s.right,
     book: s.book,
-    p1: s.p1,
+    model: modelWordOf(s),
     fired: s.firedAt,
     bid: s.bid,
     ask: s.ask,
@@ -135,8 +138,7 @@ const COLUMNS: Column<Line>[] = [
     ? <Tip label={`Scored late from recorded quotes (${nyClock(r.mark)} ET mark): the live scan missed it.`}><span className="tnum text-warn">{nyClock(r.mark)} late</span></Tip>
     : <span className="tnum text-textPrimary">{nyClock(r.fired)}</span>) },
   { key: 'contract', header: 'Contract', sortValue: r => r.label, render: r => <ContractLabel contract={r.label} right={r.right} logo={r.ticker} size="sm" /> },
-  { key: 'book', header: 'Book', sortValue: r => r.book, render: r => <span className="text-textPrimary">{r.book}</span> },
-  { key: 'p1', header: 'Model 1', align: 'right', sortValue: r => r.p1 ?? -1, render: r => (r.p1 == null ? blank : <span className="tnum text-textPrimary">{(r.p1 * 100).toFixed(1)}%</span>) },
+  { key: 'model', header: 'Model', sortValue: r => r.model, render: r => <span className="text-textPrimary whitespace-normal">{r.model}</span> },
   { key: 'quote', header: 'Quote at call', align: 'right', sortValue: r => r.ask, render: r => <span className="tnum text-textSecondary">{r.bid.toFixed(2)} × {r.ask.toFixed(2)}</span> },
   { key: 'paid', header: 'Filled', align: 'right', sortValue: r => r.paid, render: r => (r.paid > 0 ? <span className="tnum text-textPrimary">{usd(r.paid)}</span> : blank) },
   { key: 'exitPx', header: 'Exit', align: 'right', sortValue: r => r.exitPx ?? -1, render: r => (r.exitPx == null ? blank : <span className="tnum text-textPrimary">{usd(r.exitPx)}</span>) },
@@ -146,10 +148,10 @@ const COLUMNS: Column<Line>[] = [
   { key: 'pnl', header: 'P&L', align: 'right', sortValue: r => r.pnl ?? -1e9, render: r => <LiveDol signal={r.sig} /> },
   { key: 'result', header: 'Result', align: 'right', sortValue: r => r.result, render: r => <Tip label={r.why || undefined}><span className={RESULT_INK[r.result]}>{RESULT_WORD[r.result]}</span></Tip> },
 ];
-const WIDTHS: Record<string, number> = { day: 62, fired: 88, contract: 156, book: 52, p1: 74, quote: 124, paid: 78, exitPx: 78, out: 62, held: 70, ret: 74, pnl: 86, result: 82 };
+const WIDTHS: Record<string, number> = { day: 62, fired: 88, contract: 156, model: 132, quote: 124, paid: 78, exitPx: 78, out: 62, held: 70, ret: 74, pnl: 86, result: 82 };
 const TOOLTIPS: Record<string, string> = {
   fired: 'When the scan sent the call, New York time.',
-  p1: 'Model 1 at the call. Model 3 and Model Risk do not have one.',
+  model: 'The model that made the call: Model 1 (Model 2 riding when its exit rides the ratchet), Model 3 (the late sweep) or Model Risk.',
   quote: 'The bid and ask the model read when it called.',
   paid: 'The ask of the first quote a full minute after the call.',
   exitPx: 'The bid it left on, or the take-profit price.',
@@ -255,6 +257,8 @@ const Blotter = () => {
       }
       sentence={offlineLine || backlogLine(feed.marks) ? <span data-blotter-offline>{offlineLine || backlogLine(feed.marks)}</span> : false}
     >
+      {/* the honest record first: every call against its random-side twin and a coin flip, from the same fills */}
+      {record.length > 0 && <ForwardRecord calls={record} />}
       {rows.length === 0 ? (
         <div className="border-t border-borderSubtle" data-blotter-empty>
           {feed.status === 'loading' && !lines.length ? (
@@ -292,7 +296,7 @@ const Blotter = () => {
               title={<ContractLabel contract={r.label} right={r.right} logo={r.ticker} size="sm" />}
               aside={<LivePct signal={r.sig} />}
               figures={[
-                <span key="i">{dayCell(r.date)} · {r.late ? `${nyClock(r.mark)} ET mark, scored late` : `${nyClock(r.fired)} ET`} · Book {r.book}{r.p1 != null ? ` · ${(r.p1 * 100).toFixed(1)}%` : ''}</span>,
+                <span key="i">{dayCell(r.date)} · {r.late ? `${nyClock(r.mark)} ET mark, scored late` : `${nyClock(r.fired)} ET`} · {r.model}</span>,
                 <span key="p">{r.paid > 0 ? `Filled ${usd(r.paid)}` : `Quote ${r.bid.toFixed(2)} × ${r.ask.toFixed(2)}`}{r.exitPx != null ? ` · exit ${usd(r.exitPx)}${r.out ? ` ${nyClock(r.out)}` : ''}` : ''}</span>,
                 <span key="h">{RESULT_WORD[r.result]}{r.held != null ? ` · ${heldWords(r.held)}` : ''} · <LiveDol signal={r.sig} /></span>,
               ]}
@@ -318,7 +322,7 @@ const ReviewPanel = ({ signal, onClose }: { signal: Signal; onClose: () => void 
       </div>
       <p className="font-mono text-t12 text-textPrimary">
         {signal.contract}
-        <span className="text-textMuted"> · Book {signal.book}</span>
+        <span className="text-textMuted"> · {modelWordOf(signal)}</span>
         {pnl != null && <span className={pnl > 0 ? 'text-bull' : 'text-bear'}> · {pnl > 0 ? '+' : '−'}${Math.abs(pnl).toFixed(2)}</span>}
       </p>
       <p className="mt-1 font-mono text-t11 text-textSecondary">
@@ -327,5 +331,9 @@ const ReviewPanel = ({ signal, onClose }: { signal: Signal; onClose: () => void 
     </div>
   );
 };
+
+/** The grid's columns, hover text and row builder, for scripts/compass-words-proof.ts (the grid itself renders only in
+    a browser) */
+export const BLOTTER_GRID = { columns: COLUMNS, tooltips: TOOLTIPS, lineOf };
 
 export default Blotter;

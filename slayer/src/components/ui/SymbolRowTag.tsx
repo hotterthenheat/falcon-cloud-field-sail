@@ -14,7 +14,8 @@ const SymbolRowTag = ({ symbol, room }: SymbolRowTagProps) => {
   if (!e) return null;
   const parts: string[] = [];
   if (e.kind !== 'stock') parts.push(kindLabel(e.kind));
-  if (room !== 'option' && room !== 'compass' && !e.options && (e.kind === 'stock' || e.kind === 'etf')) parts.push('no options');
+  /* Trace reads the vendor's options, the other desks the terminal's */
+  if (room !== 'option' && room !== 'trace' && room !== 'compass' && !(room === 'pinpoint' ? e.vendorOptions : e.options) && (e.kind === 'stock' || e.kind === 'etf')) parts.push('no options');
   if (!parts.length) return null;
   return (
     <span className="ml-auto shrink-0 pl-1 font-mono text-t9 uppercase tracking-wider text-textMuted" data-symbol-tag={symbol}>
@@ -25,11 +26,11 @@ const SymbolRowTag = ({ symbol, room }: SymbolRowTagProps) => {
 
 /** On an option desk, the line for a typed symbol that is listed but has no options ("KO has no listed options …"), or
     null when the query is no such symbol */
-export function noOptionsLine(query: string): string | null {
+export function noOptionsLine(query: string, vendor = false): string | null {
   const q = normalSymbol(query);
   if (!q) return null;
   const e = directoryEntry(q);
-  if (!e || e.options) return null;
+  if (!e || (vendor ? e.vendorOptions : e.options)) return null;
   return `${e.symbol} has no listed options — this desk needs an options chain.`;
 }
 

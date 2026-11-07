@@ -30,6 +30,7 @@ import { poolStudies, type Label, type PooledStudy, type ScoredLine, type StudyD
 import { nyParts } from '../core/nyTime';
 import { onShadowCall, setShadow } from './compassShadow';
 import { groupBOn } from './compassParams';
+import { importTwins, onTwinsChange, twinRows, type Twin } from './compassTwins';
 import type { Setup } from '../types/compass';
 
 export const RECORD_FORMAT = 'compass-record/1';
@@ -72,6 +73,8 @@ export interface CompassState {
   signals: Signal[];
   /** What late marks would have called, the same sessions; not calls */
   would: Signal[];
+  /** The random-side twin of each call in `signals` (data/compassTwins.ts): the forward test; never calls */
+  twins: Twin[];
   marks: MarkRow[];
 }
 
@@ -176,6 +179,19 @@ function econRows(body: string): EconRow[] {
 /* ---- the engine ---- */
 
 const dayFile = (dir: string, day: string) => path.join(dir, `${day}.json`);
+/** A session's random-side twins (data/compassTwins.ts), beside its record */
+const twinFile = (dir: string, day: string) => path.join(dir, 'twins', `${day}.json`);
+export const TWINS_FORMAT = 'compass-twins/1';
+
+/** One session's twins, or none. */
+export function readTwins(dir: string, day: string): Twin[] {
+  try {
+    const got = JSON.parse(fs.readFileSync(twinFile(dir, day), 'utf8')) as { format?: string; day?: string; twins?: Twin[] };
+    return got && got.format === TWINS_FORMAT && got.day === day && Array.isArray(got.twins) ? got.twins : [];
+  } catch {
+    return [];
+  }
+}
 
 /** A call recorded from a late mark is what that mark would have called: it moves to `would` on every read. */
 function splitLate(f: DayFile): DayFile & { demoted: Signal[] } {
@@ -383,6 +399,11 @@ export function startCompassEngine(o: EngineOptions): Engine {
     const mine = readDay(o.dir, today)?.calls ?? [];
     return [...mine, ...older];
   };
+  /** The twins of the same sessions' calls */
+  const recentTwins = (today: string): Twin[] => {
+    const days = [...recordDays(o.dir).filter(d => d < today).slice(-4), today];
+    return days.flatMap(d => readTwins(o.dir, d));
+  };
   const recentWould = (today: string): Signal[] => {
     const days = [...recordDays(o.dir).filter(d => d < today).slice(-4), today];
     return days.flatMap(d => readDay(o.dir, d)?.would ?? []);
@@ -394,6 +415,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
     if (!f) rollModelDay(today.replace(/-/g, ''));
     importSignals(recentCalls(today));
     importWould(recentWould(today));
+    importTwins(recentTwins(today));
     if (f?.demoted.length) {
       /* their seats go back: only a root a live call holds stays taken */
       const live = { A: new Set<string>(), B: new Set<string>(), C: new Set<string>() };
@@ -461,6 +483,24 @@ export function startCompassEngine(o: EngineOptions): Engine {
     }
   };
 
+  /* each session's twins as last written: a day's file is written again only when its twins changed */
+  const twinsSeen = new Map<string, string>();
+  const writeTwins = () => {
+    const byDay = new Map<string, Twin[]>();
+    for (const t of twinRows()) byDay.set(sessionOf(t), [...(byDay.get(sessionOf(t)) ?? []), t]);
+    for (const [d, list] of byDay) {
+      const text = JSON.stringify({ format: TWINS_FORMAT, day: d, savedAt: 0, twins: list });
+      if (twinsSeen.get(d) === text) continue;
+      try {
+        fs.mkdirSync(path.join(o.dir, 'twins'), { recursive: true });
+        writeAtomic(twinFile(o.dir, d), text.replace('"savedAt":0', `"savedAt":${Date.now()}`));
+        twinsSeen.set(d, text);
+      } catch (e) {
+        log(`[compass] the twins of ${d} could not be written: ${(e as Error).message}`);
+      }
+    }
+  };
+
   const save = () => {
     if (readOnly || !dirty) return;
     dirty = false;
@@ -470,6 +510,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
       log(`[compass] the record could not be written: ${(e as Error).message}`);
     }
     writePast();
+    writeTwins();
   };
 
   const changed = () => {
@@ -485,7 +526,8 @@ export function startCompassEngine(o: EngineOptions): Engine {
 
   load(day);
   notePast();
-  const offs = [onModelChange(changed), onSignalsChange(changed), onMarks(changed), onScanMeta(changed)];
+  for (const t of twinRows()) twinsSeen.set(sessionOf(t), '');
+  const offs = [onModelChange(changed), onSignalsChange(changed), onMarks(changed), onScanMeta(changed), onTwinsChange(changed)];
 
   /* the model lock's reason, logged when it changes (a hash miss used to close scoring without a line in the log) */
   let lockSaid = lockReason();
@@ -688,6 +730,7 @@ export function startCompassEngine(o: EngineOptions): Engine {
       earlier: null,
       signals: signals(),
       would: wouldSignals(),
+      twins: twinRows(),
       marks: exportMarks(),
     };
     s.earlier = s.model.day === modelDay() && (s.model.picks?.length || s.model.scanned?.odte || s.model.scanned?.weekly) ? null : earlierOf(day);

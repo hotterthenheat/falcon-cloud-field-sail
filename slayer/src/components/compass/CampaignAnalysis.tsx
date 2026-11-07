@@ -18,7 +18,7 @@ import { levelsForName } from '../../data/levelsScope';
 import { peekChange } from '../../data/book/day';
 import { leftOf } from '../../data/compassModel';
 import { entryGate, quoteContract, quoteMissing, quoteStale } from '../../data/contractQuote';
-import { MODEL_WORD, RIDING_WORD, SPREAD_MAX, STOP_KEEP, spreadPass, weekdayDte } from '../../data/compassParams';
+import { MODEL_WORD, RIDING_WORD, SPREAD_MAX, STOP_KEEP, quoteTradable, spreadPass, weekdayDte } from '../../data/compassParams';
 import { BLOCK_MIN_PREMIUM, BLOCK_MIN_SIZE } from '../../data/tape';
 import type { FlowPrint } from '../../types/trace';
 import { nameTape, optionScanOpen, sessionYmd } from '../../data/compassSession';
@@ -350,7 +350,8 @@ const CampaignAnalysis = ({
   const quoting = tape.option === 'open' || tape.option === 'overnight' || tape.option === 'pre' || tape.option === 'curb';
   const stale = quoting && quoteStale(quoteAt, Date.now(), missing);
   const spreadCap = SPREAD_MAX;
-  const quoteOk = !missing && !stale && spreadPass(bidPx, q.ask);
+  /* a Model 3 ticket needs a valid quote; Model 1's contracts also need its trained quotes (compassParams inModel1Domain) */
+  const quoteOk = !missing && !stale && (setup.band === 'lottery' ? quoteTradable(bidPx, q.ask) : spreadPass(bidPx, q.ask));
   const tapeOpen = optionScanOpen(setup.ticker, setup.expiry === '0DTE' ? 0 : 1) || (ticket && tape.option !== 'closed');
   const gate = entryGate({ sessionOpen: tapeOpen, expired, quoteOk, executionQuote: false });
   const line = basis > 0 ? basis : setup.ask > 0 ? setup.ask : 0;

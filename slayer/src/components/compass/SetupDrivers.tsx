@@ -42,7 +42,8 @@ export function neighborRows(ticker: string, chain: readonly ChainRow[], spot: n
       const spreadPct = Number.isFinite(mid) && mid > 0 ? (r.ask - r.bid) / mid : NaN;
       const raw = strikes.indexOf(r.strike) - ai;
       const steps = r.right === 'C' ? raw : -raw;
-      const reason = !(r.bid > BID_MIN) ? `Bid at or under $${BID_MIN.toFixed(2)}` : !(spreadPct <= SPREAD_MAX + 1e-9) ? `Spread over ${Math.round(SPREAD_MAX * 100)}%` : '';
+      /* outside Model 1's trained quotes (the trees never saw such a contract), not a price limit */
+      const reason = !(r.bid > BID_MIN) ? `Bid at or under $${BID_MIN.toFixed(2)}: outside Model 1's trained quotes` : !(spreadPct <= SPREAD_MAX + 1e-9) ? `Spread over ${Math.round(SPREAD_MAX * 100)}%: outside Model 1's trained quotes` : '';
       return {
         strike: r.strike,
         right: r.right,

@@ -59,7 +59,9 @@ const ExpiryRangeCard = ({ label = 'Expiries', days, from, through, onChange, ce
   const t = today();
   const byDay = new Map<string, ExpiryDay>();
   for (const d of days) if (!byDay.has(isoDate(d.date))) byDay.set(isoDate(d.date), d);
-  const at = (i: number) => days[Math.max(0, Math.min(days.length - 1, i))];
+  /* by value, not by place: a list may leave a day out (a date with no contract behind it, data/expiryListing.ts), and
+     an index that is not drawn reads as the next day that is */
+  const at = (i: number) => days.find(d => d.value >= i) ?? days[days.length - 1];
   const a = at(from);
   const b = at(through);
   const one = a.value === b.value;

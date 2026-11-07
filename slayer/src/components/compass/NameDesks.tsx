@@ -180,7 +180,6 @@ const NameDesks = ({ ticker, sleeve }: { ticker: string; sleeve: 'odte' | 'weekl
                   return (
                     <li key={`${row.sleeve}|${row.contract}`} className="flex items-center gap-2 min-w-0 h-7" title={row.why}>
                       <ContractLabel contract={row.contract} right={right} logo={row.ticker} size="sm" className="min-w-0" />
-                      {row.p1 > 0 && <span className="shrink-0 ml-auto font-mono text-t11 tnum text-textMuted">{(row.p1 * 100).toFixed(1)}%</span>}
                     </li>
                   );
                 })}

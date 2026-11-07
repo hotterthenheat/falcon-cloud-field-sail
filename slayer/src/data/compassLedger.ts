@@ -13,6 +13,7 @@ import { compassHost } from './compassHost';
 import { nyIsoDate, nyParts, nyWallStamp } from '../core/nyTime';
 import { REGULAR_CLOSE_MIN, REGULAR_OPEN_MIN } from '../core/session';
 import type { TailTicket } from './modelRisk';
+import type { CostMark } from './compassCost';
 
 export interface Signal {
   /** `${day}|${id}`: one contract can fire on more than one session */
@@ -58,6 +59,8 @@ export interface Signal {
   outsideTrained?: true;
   /** When its session flats it, epoch ms (absent: the day's 15:55, or five before an early close) */
   flatAt?: number;
+  /** The contract's cost read at the call and how it was chosen (data/compassCost.ts); absent on rows from before it */
+  cost?: CostMark;
 }
 
 let rows: Signal[] = [];
@@ -163,6 +166,7 @@ function signalOfPick(pick: Setup, book: SignalBook): Signal | null {
     ...(pick.tapeSession ? { tapeSession: pick.tapeSession } : {}),
     ...(pick.outsideTrained ? { outsideTrained: true as const } : {}),
     ...(pick.flatAt && book !== 'C' ? { flatAt: pick.flatAt } : {}),
+    ...(pick.cost ? { cost: pick.cost } : {}),
   };
 }
 
@@ -500,6 +504,43 @@ export function heldOpen(sig: SignalCore, path: readonly PathQuote[], under: rea
 
 let reading = false;
 
+/** One call's settlement read again from its contract's path: the next copy of the row, or null when the path did not
+    answer (the next pass asks again). The one rule every row settles by: official calls, would-calls and the
+    random-side twins of the forward test (data/compassTwins.ts). */
+export async function settledCopy(sig: Signal, now = Date.now()): Promise<Signal | null> {
+  const read = await contractPath(sig, sig.outcome?.fill?.at ?? null);
+  /* this contract's path did not answer: the next one is still read (one fault used to stop every later call's
+     settlement for that minute, newest first, so an old open call behind a failing one never settled) */
+  if (!read) return null;
+  /* a frozen copy at the end of the read (a store behind real time, filled forward to now: compassOutcome
+     frozenTail) is not the contract's path: the call is settled on the rows before it, as of that instant, and read
+     again on the next pass. Fills and exits were priced on it (2026-11-06 10:21–10:31: five of nine calls, frozen
+     on the record). */
+  const trust = trustedPath(read, now);
+  const quotes = trust.path;
+  const under = await underCloses(sig.ticker, ymd(sig.day));
+  /* Books A and B: the stop and target minutes are judged on their 1-second quotes, and a close is final only
+     once every one of them before the exit was read (a read that failed let the call close, and freeze, on the
+     minute quotes) */
+  const fine: FinePath = sig.book === 'C' ? { path: quotes, unread: [] } : await fineExits(sig, quotes);
+  let out = heldOpen(sig, fine.path, under, settleSignal(sig, fine.path, under, trust.cutAt == null ? Date.now() : trust.asOf), fine.unread);
+  if (sig.book === 'C' && out.fill && !sig.outcome?.fill) {
+    const sec = await contractPath(sig, out.fill.at);
+    const secTrust = sec ? trustedPath(sec, now) : null;
+    /* its seconds did not answer: held open at the fill and read again next pass, not closed on the minutes */
+    out = secTrust ? settleSignal(sig, secTrust.path, under, secTrust.cutAt == null ? Date.now() : secTrust.asOf) : heldOpen(sig, quotes, under, out, [[out.fill.at, out.fill.at + 125_000]]);
+  }
+  const after = quotes.filter(q => q.t > sig.firedAt && q.t % 60_000 === 0 && (!out.exit || q.t <= out.exit.at));
+  return { ...sig, outcome: out, pathAt: Date.now(), spark: after.map(q => q.bid).filter(b => b >= 0) };
+}
+
+/** A row that still needs its path read: not frozen (closed or unavailable), not Model Risk, not read in the last 50 s. */
+export function settleDue(sig: Signal, now = Date.now()): boolean {
+  if (sig.book === 'R') return false;
+  if (sig.outcome && (sig.outcome.status === 'closed' || sig.outcome.status === 'unavailable')) return false;
+  return now - sig.pathAt >= 50_000;
+}
+
 /** Read the path of every signal still open and settle it. A closed outcome is frozen and never asked for again. The
     official engine runs this once a minute; a browser only shows the result. */
 export async function settleOpen(now = Date.now()): Promise<void> {
@@ -507,33 +548,10 @@ export async function settleOpen(now = Date.now()): Promise<void> {
   reading = true;
   try {
     for (const sig of [...rows, ...wouldRows]) {
-      if (sig.book === 'R') continue;
-      if (sig.outcome && (sig.outcome.status === 'closed' || sig.outcome.status === 'unavailable')) continue;
-      if (now - sig.pathAt < 50_000) continue;
-      const read = await contractPath(sig, sig.outcome?.fill?.at ?? null);
-      /* this contract's path did not answer: the next one is still read (one fault used to stop every later call's
-         settlement for that minute, newest first, so an old open call behind a failing one never settled) */
-      if (!read) continue;
-      /* a frozen copy at the end of the read (a store behind real time, filled forward to now: compassOutcome
-         frozenTail) is not the contract's path: the call is settled on the rows before it, as of that instant, and read
-         again on the next pass. Fills and exits were priced on it (2026-11-06 10:21–10:31: five of nine calls, frozen
-         on the record). */
-      const trust = trustedPath(read, now);
-      const quotes = trust.path;
-      const under = await underCloses(sig.ticker, ymd(sig.day));
-      /* Books A and B: the stop and target minutes are judged on their 1-second quotes, and a close is final only
-         once every one of them before the exit was read (a read that failed let the call close, and freeze, on the
-         minute quotes) */
-      const fine: FinePath = sig.book === 'C' ? { path: quotes, unread: [] } : await fineExits(sig, quotes);
-      let out = heldOpen(sig, fine.path, under, settleSignal(sig, fine.path, under, trust.cutAt == null ? Date.now() : trust.asOf), fine.unread);
-      if (sig.book === 'C' && out.fill && !sig.outcome?.fill) {
-        const sec = await contractPath(sig, out.fill.at);
-        const secTrust = sec ? trustedPath(sec, now) : null;
-        /* its seconds did not answer: held open at the fill and read again next pass, not closed on the minutes */
-        out = secTrust ? settleSignal(sig, secTrust.path, under, secTrust.cutAt == null ? Date.now() : secTrust.asOf) : heldOpen(sig, quotes, under, out, [[out.fill.at, out.fill.at + 125_000]]);
-      }
-      const after = quotes.filter(q => q.t > sig.firedAt && q.t % 60_000 === 0 && (!out.exit || q.t <= out.exit.at));
-      const next: Signal = { ...sig, outcome: out, pathAt: Date.now(), spark: after.map(q => q.bid).filter(b => b >= 0) };
+      if (!settleDue(sig, now)) continue;
+      const next = await settledCopy(sig, now);
+      if (!next) continue;
+      const out = next.outcome!;
       if (sig.would) {
         wouldRows = wouldRows.map(r => (r.key === sig.key ? next : r));
         save();

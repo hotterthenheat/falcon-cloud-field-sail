@@ -12,13 +12,14 @@ import { uwCall, whalesMinuteBars, whalesFlowStrike, whalesGreekExpiry, whalesGr
 import { applyDay, needDay } from './day';
 import { historyFrom, noteSplit, vexOntoAll } from './levels';
 import { dayFracOf, dayIvOf, impliedMoveOf, termDteOf, termIvOf, termKOf, termMoveOf } from './move';
-import { carryFacts, chainFrom, flowMap, foldContracts, liveGammaRows, num, oiMap, paintLegs, pricedClockOf, type LiveGamma, withLiveGamma } from './scale';
+import { carryFacts, chainFrom, emptyNode, flowMap, foldContracts, liveGammaRows, num, oiMap, paintLegs, pricedClockOf, type LiveGamma, withLiveGamma } from './scale';
 import { BOARD_MS, BOOK_LISTINGS, FULL_MS, LIVE_GAMMA_MS, cache, chartAll, chartSpan, closestDate, datesComplete, emit, emptyDates, factsFirst, gammaPriced, gen, horizonFactsMissing, hotGet, isHot, keptBooks, liveGammaCache, liveGammaWait, peekEntry, recordAsked, recordIso, settledLive, type BookMode, type Entry } from './store';
 import { readKept } from './kept';
 import { noteExposureRows } from './exposureLog';
-import { hasListedOptions } from '../symbolDirectory';
+import { hasListedOptions, hasVendorOptions, noContractDates } from '../symbolDirectory';
 import { CLOSE_MIN, candlesFrom, isCashIndex, cashToOf, closesFromTape, parseTape, pushPrint, quoteFromBars, regularCloseOf, thetaTape, twoCashSessions, uwBarsOf } from './tape';
 import { bookMinuteBars, peekPrint } from '../thetaTape';
+import { legacyBook, wantEngine } from '../twobook/engineBook';
 
 
 /** The live open-interest gamma per strike (retail sign: calls +, puts −, dollars per 1%) — every expiry when `date` is
@@ -202,7 +203,7 @@ async function fillExpiryFacts(entry: Entry, token: number, only?: readonly stri
   /* laid onto the book's current copy, so a refresh while the contracts were read does not throw them away */
   void token;
   const still = () => cache.get(entry.ticker)?.status === 'live';
-  const dates = only ? only.filter(d => d in entry.byDate) : Object.keys(entry.byDate);
+  const dates = only ? only.filter(d => engineChains() || d in entry.byDate) : Object.keys(entry.byDate);
   if (!dates.length) return;
   /* One expiry at a time (the whole-name walk of option-contracts pages unstably); a date whose read fails is left unread
      so it is asked again, never taken as having no contracts. */
@@ -226,6 +227,11 @@ async function fillExpiryFacts(entry: Entry, token: number, only?: readonly stri
     if (!book) continue;
     const chain = byDate[date];
     if (chain && book.size) byDate[date] = paintLegs(chain, book, true, current.spot, date, current.ticker);
+    /* no chain of the date's own (the engine's chains are the pages'): the contracts' own facts alone, for the Weigher */
+    else if (engineChains() && book.size)
+      byDate[date] = [...book.entries()]
+        .map(([k, l]) => ({ ...emptyNode(k), callOI: l.callOI, putOI: l.putOI, callIv: l.callIv || undefined, putIv: l.putIv || undefined, callGamma: l.callGamma || undefined, putGamma: l.putGamma || undefined }))
+        .sort((a, b) => a.strike - b.strike);
     facts.add(date);
   }
   current.byDate = byDate;
@@ -482,18 +488,41 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   if (typeof requestIdleCallback === 'function') requestIdleCallback(buildHist, { timeout: 700 });
   else window.setTimeout(buildHist, 32);
   void attachSpxCloses(ticker, token);
+  if (engineChains()) {
+    engineReady(ticker, token);
+    return;
+  }
   if (entry.wantFull) {
     void loadFront(entry, token);
     await loadExpiries(entry, token);
   } else await loadFront(entry, token);
 }
 
-/** The vendor's expiry listing, nearest first */
-function listingOf(rows: unknown): { date: string; dte: number }[] {
+/* Every page draws the two-book engine's chains (book/engineView.ts, from /api/twobook/oi and /api/tape/flowbook): the
+   per-date reads below (each date's strike rows, its contracts, the live gamma walks) built the chains the engine now
+   replaces, so they are not made — the vendor's calls go to the engine's one board per name instead. What the core read
+   still gives the pages: the price, the bars, the vols, the term structure. The functions stay for the goldens that test
+   them on recorded rows. */
+const engineChains = (): boolean => !legacyBook();
+function engineReady(ticker: string, token: number): void {
+  const cur = cache.get(ticker);
+  if (!cur || gen.get(ticker) !== token || cur.status !== 'live') return;
+  cur.frontFacts = true;
+  if (cur.wantFull) {
+    cur.full = true;
+    cur.everFull = true;
+  }
+  emit();
+}
+
+/** The vendor's expiry listing, nearest first — without the dates the listing carries that have no contract behind them
+    (symbolDirectory noContractDates: the open-interest book's population is the contracts that exist) */
+function listingOf(rows: unknown, ticker: string): { date: string; dte: number }[] {
   if (!Array.isArray(rows)) return [];
+  const none = noContractDates(ticker);
   return (rows as UwGreekStrike[])
     .map(r => ({ date: String(r.expiry || ''), dte: num(r.dte) }))
-    .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.date))
+    .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.date) && !none.has(r.date))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -528,11 +557,10 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
     return;
   }
   /* the calls that fill a Board row's "Today" levels jump the key's queue */
-  let listed: { date: string; dte: number }[] = [];
   const hot = isHot(entry.ticker);
   const got = await uwCall(`/stock/${encodeURIComponent(entry.ticker)}/greek-exposure/expiry`, hot);
   if (got.error) return;
-  listed = listingOf(got.data);
+  const listed = listingOf(got.data, entry.ticker);
   keepTotals(entry, got.data);
   if (!still() || !listed.length) return;
   /* the first live listing when nothing is within four days */
@@ -700,6 +728,7 @@ async function loadBoardDatesNow(ticker: string, token: number, listed?: { date:
 /** The Levels card reads "All expiries": a name read for the Board alone loads every live date's strikes (the flip
     re-prices each at its own clock). A no-op for a full book or one already complete. */
 export function ensureScopeDates(ticker: string, scope: LevelsScope = readLevelsScope()): void {
+  if (engineChains()) return;
   const e = cache.get(sameName(ticker));
   if (!e || e.status !== 'live' || e.full || scope !== 'ALL' || (datesComplete(e) && !horizonFactsMissing(e).length)) return;
   void loadBoardDates(e.ticker, gen.get(e.ticker) ?? 0);
@@ -716,7 +745,9 @@ const factsAsked = new Set<string>();
 export function wantDateFacts(ticker: string, dates: readonly string[]): void {
   const e = cache.get(sameName(ticker));
   if (!e || e.status !== 'live') return;
-  const need = dates.filter(d => e.byDate[d]?.length && !e.factsDates?.has(d) && !factsAsked.has(`${e.ticker}|${d}`));
+  /* with the engine's chains the loaded entry holds no dates of its own: a date's contracts are read for the Weigher's
+     per-contract gamma (weigherDesk.ts vendorGammaRows reads the loaded entry, never a page's chains) */
+  const need = dates.filter(d => (engineChains() || e.byDate[d]?.length) && !e.factsDates?.has(d) && !factsAsked.has(`${e.ticker}|${d}`));
   if (!need.length) return;
   for (const d of need) factsAsked.add(`${e.ticker}|${d}`);
   void fillExpiryFacts(e, gen.get(e.ticker) ?? 0, need).finally(() => {
@@ -754,7 +785,7 @@ async function loadExpiriesNow(entry: Entry, token: number): Promise<void> {
   let listed: { date: string; dte: number }[] = [];
   try {
     const rows = await whalesGreekExpiry(entry.ticker);
-    listed = listingOf(rows);
+    listed = listingOf(rows, entry.ticker);
     keepTotals(entry, rows);
   } catch {
     listed = [];
@@ -952,8 +983,12 @@ export function ensureBook(ticker: string, mode: BookMode = 'board', force = fal
   if (typeof window === 'undefined') return;
   const t = sameName(ticker);
   if (!t) return;
-  /* a name with no listed options has no book: nothing is asked of the vendor for it */
-  if (hasListedOptions(t) === false) return;
+  /* a name with no listed options has no book, nor one the vendor lists no options on (the book is the vendor's: a
+     name only the terminal lists options on would read empty answers): nothing is asked of the vendor for it */
+  if (hasListedOptions(t) === false && hasVendorOptions(t) !== true) return;
+  if (hasVendorOptions(t) === false) return;
+  /* the figures every page draws are the two-book engine's (book/engineView.ts): its boards are asked beside the read */
+  wantEngine(t);
   const e = cache.get(t);
   if (e?.status === 'loading') {
     if (mode === 'full') e.wantFull = true;
@@ -975,7 +1010,8 @@ export function ensureBook(ticker: string, mode: BookMode = 'board', force = fal
     e.wantFull = true;
     const token = (gen.get(t) ?? 0) + 1;
     gen.set(t, token);
-    void loadExpiries(e, token);
+    if (engineChains()) engineReady(t, token);
+    else void loadExpiries(e, token);
     return;
   }
   load(t, mode);

@@ -1,13 +1,21 @@
-/* The listed names each desk may offer: every listing on the equity desks (Terrain, the Dossier), names with listed
-   options on the option desks (Weigher, Pinpoint, Trace, Paper, Backtest), the 456 on Compass. */
+/* The listed names each desk may offer: on Terrain every listing the terminal quotes with bars (and every index it
+   prices); on Pinpoint every name the vendor lists options on (Pinpoint reads its options from the vendor only); every
+   listing on the Dossier; names with the terminal's listed options on the option desks (Weigher, Paper, Backtest);
+   names the vendor lists options on in Trace (Trace reads the vendor only, docs/DATA_SOURCES.md); the 456 on Compass. The rows and their desks come from the generated directory
+   (scripts/build-ticker-universe.mjs). */
 
 import { useSyncExternalStore } from 'react';
 import { thetaCall, thetaUseHere } from './theta';
 import type { TickerListing } from './tickers';
-import { directoryEntry, directoryOptionCount, directoryReady, directorySize, hasListedOptions, loadDirectory, normalSymbol, searchDirectory } from './symbolDirectory';
+import { directoryCount, directoryEntry, directoryReady, hasListedOptions, loadDirectory, normalSymbol, passes, pinpointServes, renamedTo, searchDirectory, type DirectoryFilter } from './symbolDirectory';
 import { COMPASS_TICKERS } from './compassUniverse';
 
-type NameRoom = 'equity' | 'option' | 'compass' | 'listed';
+export type NameRoom = 'equity' | 'terrain' | 'option' | 'trace' | 'pinpoint' | 'compass' | 'listed';
+/** The rooms whose names come from the directory */
+type DirectoryRoom = 'equity' | 'terrain' | 'option' | 'trace' | 'pinpoint';
+/** What each room keeps of the directory: Trace the vendor's optionable names (it reads the vendor only), the option
+    desks the terminal's */
+const ROOM_FILTER: Record<DirectoryRoom, DirectoryFilter | undefined> = { equity: undefined, terrain: 'terrain', option: 'options', trace: 'vendor', pinpoint: 'pinpoint' };
 
 const FEATURED = [
   'SPY', 'QQQ', 'IWM', 'NVDA', 'TSLA', 'AAPL', 'MSFT', 'AMZN', 'META', 'GOOGL',
@@ -148,12 +156,15 @@ export function ensureListed(): void {
 export function roomOf(path = typeof location !== 'undefined' ? location.pathname : ''): NameRoom {
   if (path.startsWith('/pulse')) return 'listed';
   if (path.startsWith('/compass')) return 'compass';
-  /* Terrain charts any listing. The Weigher weighs an options chain, so it offers only names with listed options. */
-  if (path.startsWith('/terrain') || path.startsWith('/dossier')) return 'equity';
+  /* Terrain charts what the terminal quotes. Pinpoint reads the vendor's options. The Weigher weighs the terminal's
+     options chain, so it offers only names with listed options there. */
+  if (path.startsWith('/terrain')) return 'terrain';
+  if (path.startsWith('/dossier')) return 'equity';
+  if (path.startsWith('/pinpoint')) return 'pinpoint';
+  /* Trace reads the vendor only: it offers the names the vendor lists options on */
+  if (path.startsWith('/trace')) return 'trace';
   if (
     path.startsWith('/weigher')
-    || path.startsWith('/pinpoint')
-    || path.startsWith('/trace')
     || path.startsWith('/practice/paper')
     || path.startsWith('/practice/backtest')
   ) return 'option';
@@ -189,41 +200,43 @@ export function searchRoom(room: Exclude<NameRoom, 'listed'>, query: string, lim
 
 const FOLDED = new Set(Object.keys(SAME_AS));
 
-export function searchListed(kind: 'equity' | 'option', query: string, limit: number, fallback: readonly TickerListing[], nameOf: (symbol: string) => string): TickerListing[] {
+export function searchListed(kind: DirectoryRoom, query: string, limit: number, fallback: readonly TickerListing[], nameOf: (symbol: string) => string): TickerListing[] {
   const q = query.trim().toUpperCase();
   const row = (symbol: string): TickerListing => ({ symbol, name: nameOf(symbol) });
   if (!directoryReady()) {
     askDirectory();
     /* An option desk must not offer equity names before the directory lands. The cash indexes are the only roots that
        are options for certain. */
-    if (kind === 'option') {
+    if (kind === 'option' || kind === 'trace' || kind === 'pinpoint') {
       const indexes = OPTION_INDEXES.filter(s => !q || s.includes(q) || nameOf(s).toUpperCase().includes(q));
       return indexes.slice(0, limit).map(row);
     }
     return fallback.slice(0, limit);
   }
-  const optionsOnly = kind === 'option';
+  const only = ROOM_FILTER[kind];
+  const keeps = (e: NonNullable<ReturnType<typeof directoryEntry>>) => passes(e, only);
   if (!q) {
     const out: TickerListing[] = [];
     const seen = new Set<string>();
     for (const symbol of FEATURED) {
       if (FOLDED.has(symbol) || seen.has(symbol)) continue;
       const e = directoryEntry(symbol);
-      if (!e || (optionsOnly && !e.options)) continue;
+      if (!e || !keeps(e)) continue;
       seen.add(symbol);
       out.push(row(symbol));
     }
-    for (const e of searchDirectory('', { limit: limit + out.length, optionsOnly, exclude: FOLDED })) {
+    for (const e of searchDirectory('', { limit: limit + out.length, only, exclude: FOLDED })) {
       if (out.length >= limit) break;
       if (!seen.has(e.symbol)) out.push(row(e.symbol));
     }
     return out;
   }
   const asked = SAME_AS[q] ?? q;
-  const hits = searchDirectory(asked, { limit, optionsOnly, exclude: FOLDED }).map(e => row(e.symbol));
-  /* a listing newer than the directory: the terminal's live list carries it, offered when typed in full */
+  const hits = searchDirectory(asked, { limit, only, exclude: FOLDED }).map(e => row(e.symbol));
+  /* a listing newer than the directory: the terminal's live list carries it, offered when typed in full (not on
+     Pinpoint or Trace: the terminal's lists say nothing of the vendor's options) */
   const typed = normalSymbol(asked);
-  if (!directoryEntry(typed) && (kind === 'equity' ? stockSet : optionSet).has(typed) && /^[A-Z][A-Z0-9.]{0,7}$/.test(typed)) hits.unshift(row(typed));
+  if (kind !== 'pinpoint' && kind !== 'trace' && !directoryEntry(typed) && !renamedTo(typed) && (kind === 'option' ? optionSet : stockSet).has(typed) && /^[A-Z][A-Z0-9.]{0,7}$/.test(typed)) hits.unshift(row(typed));
   return hits.slice(0, limit);
 }
 
@@ -232,7 +245,7 @@ export function roomCount(room: NameRoom): number {
   if (room === 'compass') return COMPASS_TICKERS.length;
   if (room === 'listed') return 0;
   if (!directoryReady()) return 0;
-  return (room === 'option' ? directoryOptionCount() : directorySize()) - FOLDED.size;
+  return directoryCount(ROOM_FILTER[room]) - FOLDED.size;
 }
 
 let optionRoots: string[] = [];
@@ -243,9 +256,9 @@ export function optionSymbols(): readonly string[] {
     askDirectory();
     return options;
   }
-  if (optionRootsAt !== directorySize()) {
+  if (optionRootsAt !== directoryCount()) {
     optionRoots = searchDirectory('', { limit: Infinity, optionsOnly: true }).map(e => e.symbol);
-    optionRootsAt = directorySize();
+    optionRootsAt = directoryCount();
   }
   return optionRoots;
 }
@@ -260,6 +273,17 @@ export function isOptionRoot(symbol: string): boolean {
   if (directoryReady()) return optionSet.has(s);
   askDirectory();
   return optionSet.size ? optionSet.has(s) : true;
+}
+
+/** Pinpoint can serve the symbol: the vendor lists options on it. Before the directory lands a symbol is given the
+    benefit of the doubt (the cash indexes always are). */
+export function isPinpointName(symbol: string): boolean {
+  const s = symbol.toUpperCase();
+  if (OPTION_INDEXES.includes(s) || SAME_AS[s]) return true;
+  const known = pinpointServes(s);
+  if (known !== null) return known;
+  if (!directoryReady()) askDirectory();
+  return true;
 }
 
 /** Options are listed on the symbol: true or false once the directory is known, null before */

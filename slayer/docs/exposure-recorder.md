@@ -94,6 +94,18 @@ today's flow gamma]` in the dealer sign, as `exposureLog.ts` keeps them. A finis
 a quarter of the size); days older than ten are removed (`EXPOSURE_KEEP_DAYS`). SPY, the largest, writes a few
 megabytes a day before gzip; most names far less.
 
+## The engine's record, beside it (2026-11-07, `docs/OLD_PATH_AUDIT.md` item 1)
+
+The listing's rows above are not the engine's open-interest book: no one-timestamp rule, and after 16:00 the whole-book
+rows still hold the day's expired contracts. Each pass therefore also writes, for every recorded name, the open-interest
+board the server **already holds** (`src/data/twobook/model1Server.ts`, built for a viewer — the recorder never builds
+one, so this costs no vendor call): one line per new board instant, every strike within 5% of the board's price, its GEX
+= Σ of the board's cells at that strike (house units, the listing's sign, the engine's population). It goes to its own
+file, `YYYY-MM-DD/<TICKER>.engine.jsonl`, cut `M1`, flow slot 0 (the open-interest book has no traded-today figure), and
+is served apart: `GET /api/exposure/day?ticker=T&day=…&basis=engine`. The default answer is the listing's record as
+before, now marked `basis: 'listing'`; the two are never merged into one series. The pass report counts `engine` lines.
+Proof: `scripts/old-path-proof.ts`.
+
 ## The API (read-only)
 
 - `GET /api/exposure/day?ticker=T&day=YYYY-MM-DD[&since=ms]`: the name's series for the day in the shape the browser's

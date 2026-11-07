@@ -10,6 +10,7 @@ import { volOutlookMount } from './server/volOutlookApi.mjs';
 import { proxyRegime } from './server/regimeApi.mjs';
 import { proxyOiChange } from './server/oiChangeApi.mjs';
 import { tapeMount } from './server/tapeApi.mjs';
+import { twoBookMount } from './server/twoBookApi.mjs';
 import { proxyTerrain } from './server/terrainApi.mjs';
 import { superviseTheta } from './theta/supervisor.mjs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -25,6 +26,7 @@ const dataProxies = (): Plugin => {
     exposure?: ReturnType<typeof exposureMount>,
     vol?: ReturnType<typeof volOutlookMount>,
     tape?: ReturnType<typeof tapeMount>,
+    twoBook?: ReturnType<typeof twoBookMount>,
   ) => {
     if (compass) use('/api/compass', (req, res) => void compass.handle(req, res));
     if (exposure) use('/api/exposure', (req, res) => void exposure.handle(req, res));
@@ -34,6 +36,8 @@ const dataProxies = (): Plugin => {
     /* Building's complete open-interest change (server/oiChangeApi.mjs): one terminal read a report date, for every viewer */
     use('/api/oi-change', (req, res) => void proxyOiChange(req, res));
     if (tape) use('/api/tape', (req, res) => void tape.handle(req, res));
+    /* Pinpoint's open-interest book (server/twoBookApi.mjs): one board per name, for every viewer */
+    if (twoBook) use('/api/twobook/oi', (req, res) => void twoBook.handle(req, res));
     /* Terrain's option chain and its prior close (server/terrainApi.mjs): read once here for every pane and viewer */
     use('/api/terrain', (req, res) => void proxyTerrain(req, res));
     /* a name's card for Terrain's name search (server/nameCard.mjs): four hub reads in one answer */
@@ -81,7 +85,8 @@ const dataProxies = (): Plugin => {
       const vol = volOutlookMount(() => server.ssrLoadModule('/src/data/volOutlookServer.ts'));
       /* the option and stock tapes (src/data/tapeServer.ts): one per name, read here and shared by every viewer */
       const tape = tapeMount(() => server.ssrLoadModule('/src/data/tapeServer.ts'));
-      mount((path, fn) => server.middlewares.use(path, fn), compass, exposure, vol, tape);
+      const twoBook = twoBookMount(() => server.ssrLoadModule('/src/data/twobook/model1Server.ts'));
+      mount((path, fn) => server.middlewares.use(path, fn), compass, exposure, vol, tape, twoBook);
       server.httpServer?.once('listening', () => void compass.start());
       server.httpServer?.once('listening', () => void exposure.start());
       server.httpServer?.once('listening', () => void vol.start());
@@ -113,7 +118,9 @@ const dataProxies = (): Plugin => {
       const vol = volOutlookMount(async () => (await import('tsx/esm/api')).tsImport(volFile, import.meta.url));
       const tapeFile = pathToFileURL(nodePath.join(process.cwd(), 'src/data/tapeServer.ts')).href;
       const tape = tapeMount(async () => (await import('tsx/esm/api')).tsImport(tapeFile, import.meta.url));
-      mount((path, fn) => server.middlewares.use(path, fn), compass, exposure, vol, tape);
+      const twoBookFile = pathToFileURL(nodePath.join(process.cwd(), 'src/data/twobook/model1Server.ts')).href;
+      const twoBook = twoBookMount(async () => (await import('tsx/esm/api')).tsImport(twoBookFile, import.meta.url));
+      mount((path, fn) => server.middlewares.use(path, fn), compass, exposure, vol, tape, twoBook);
       server.httpServer?.once('listening', () => void compass.start());
       server.httpServer?.once('listening', () => void exposure.start());
       server.httpServer?.once('listening', () => void vol.start());

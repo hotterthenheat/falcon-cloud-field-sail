@@ -19,7 +19,7 @@ import { nyClock } from '../../core/nyTime';
 import { compassFeed, holdCompassFeed } from '../../data/compassFeed';
 import Freshness, { useBeat } from '../../components/ui/Freshness';
 
-export const COMPASS_LINE = 'Book A and Book B, 0 to 7 days. Book C is same-day only.';
+export const COMPASS_LINE = 'Model 1 calls, 0 to 7 days. Model 3 is same-day only.';
 /** The Tracker's line under the same head. Last page of Compass. */
 export const TRACKER_LINE = 'The signals in play, each on its own quotes since the call.';
 export const BLOTTER_LINE = 'The official record: every call the scan fired, the quote it fired on, the fill, the exit.';

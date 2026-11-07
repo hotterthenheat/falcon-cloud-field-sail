@@ -40,14 +40,16 @@ export function useFieldMode(): FieldMode {
   );
 }
 
-/** The models' names, as the legend and the toggle print them */
+/** The models' names, as the legend and the toggle print them. "Traded today" is the listed rows' gamma of the day's
+    trades by side (data/book/exposureLog.ts) — a history of the vendor's figures, not the flow book (Pinpoint → Books,
+    which signs every print itself) and never open interest plus flow. */
 export const FIELD_MODE_WORDS: Record<FieldMode, { name: string; line: string }> = {
   oi: {
-    name: BOOK_MODE_WORDS.oi.label,
+    name: 'Open interest',
     line: `${BOOK_MODE_WORDS.oi.line}, dollars per 1%. A level stays on its strike until a newer reading replaces it`,
   },
   flow: {
-    name: BOOK_MODE_WORDS.flow.label,
-    line: `${BOOK_MODE_WORDS.flow.line}, dollars per 1%. A level stays on its strike until a newer reading replaces it — a level, not the change from bar to bar`,
+    name: 'Traded today',
+    line: 'The listed gamma of today’s trades by side, dollars per 1%. A level stays on its strike until a newer reading replaces it — a level, not the change from bar to bar',
   },
 };

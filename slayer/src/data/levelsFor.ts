@@ -220,7 +220,7 @@ const dateSnaps = new WeakMap<object, Map<string, NonNullable<ReturnType<typeof 
 /** The hook: both scopes' levels for a name, kept fresh as its book lands. A `date` reads that one expiry instead. */
 export function useLevelsFor(ticker: string | null | undefined, scope: LevelsScope, date?: string | null): TickerLevels | null {
   const rev = useBookRev();
-  /* the Open interest / Flow toggle re-reads the levels */
+  /* the book the levels read (always the open-interest book since the two-book spec) */
   const mode = useBookMode();
   useEffect(() => {
     if (ticker && scope === 'ALL' && !date) ensureScopeDates(ticker.toUpperCase(), 'ALL');

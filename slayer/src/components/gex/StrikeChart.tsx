@@ -58,7 +58,7 @@ import {
 } from '../../data/timeframe';
 import { BEAD_INK_CSS, GexTrailsPrimitive, signedDollars, type BeadHit, type EdgeLevel } from './gexNodesPrimitive';
 import { nodeConcept } from './nodeConcept';
-import { BOOK_MODE_WORDS } from '../../data/bookMode';
+import { FIELD_MODE_WORDS } from '../../data/fieldMode';
 import { ExpectedMovePrimitive, type ConeHit } from './expectedMovePrimitive';
 import { rgbOf, THERMAL_YELLOW } from './thermalFieldPrimitive';
 import { EMBER, GLACIER, resolveInk } from './paletteInk';
@@ -6441,7 +6441,7 @@ const StrikeChart = ({
             const kept = !!pinnedBead;
             const tr = trailsRef.current;
             /* the cell is the book's level at this strike, carried across the session — not the change across the bar */
-            const greekWord = `${trailsGreek === 'gex' ? 'Gamma' : trailsGreek === 'dex' ? 'Delta' : 'Vega $'} · ${BOOK_MODE_WORDS[fieldMode].label}`;
+            const greekWord = `${trailsGreek === 'gex' ? 'Gamma' : trailsGreek === 'dex' ? 'Delta' : 'Vega $'} · ${FIELD_MODE_WORDS[fieldMode].name}`;
             /* The side as the figure's sub, what it does as a line of its own — on the value's line the words ran
                past the card's edge and dragged every figure with them */
             const side = b.value >= 0 ? 'positive' : 'negative';

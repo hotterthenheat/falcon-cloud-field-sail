@@ -2,6 +2,7 @@
    (both as percent from their own open, the gap beneath). The first name follows the frame; the second opens on the index twin. */
 
 import { nyClock } from '../../core/nyTime';
+import { flowFocus } from '../../data/twobook/engineBook';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -86,6 +87,11 @@ const Compare = () => {
 
   /* THE CLOCK — New York time, re-read every 15s; the expected move runs on it */
   const [clockRaw, setClockRaw] = useState(() => readSessionClock());
+  /* both names follow the Map's book switch (twobook/engineBook.ts) */
+  useEffect(() => {
+    flowFocus(aTicker);
+    flowFocus(bTicker);
+  }, [aTicker, bTicker]);
   useEffect(() => {
     const id = globalThis.setInterval(() => setClockRaw(readSessionClock()), 15_000);
     return () => globalThis.clearInterval(id);

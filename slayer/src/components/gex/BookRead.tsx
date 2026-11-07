@@ -13,7 +13,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { PanelRightClose, PanelRightOpen, X } from 'lucide-react';
 import { GREEK_EXPLAIN, GREEK_LABEL } from '../../data/compare';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
-import { todayColumn, GREEKS, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
+import { todayColumn, GREEKS, greekUnit, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { readRegime } from '../../data/flipLevel';
 import { readSessionClock } from '../../data/moc';
@@ -233,7 +233,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
     if (best !== current) setCurrent(best);
   };
 
-  const unit = GREEK_UNIT[greek];
+  const unit = greekUnit(greek, surface.timeUnit);
   const label = GREEK_LABEL[greek];
   /* Under 620 px the read takes the whole column; a 62% panel there cut the level names. */
   const asideRef = useRef<HTMLElement | null>(null);

@@ -332,6 +332,8 @@ const App = () => {
               <Route path="wall" element={<Navigate to="/pinpoint/map" replace />} />
               <Route path="targets" element={<Navigate to="/pinpoint/agenda" replace />} />
               <Route path="board" element={<Board />} />
+              {/* the two books are the Map's switch now (its Sources & units card) */}
+              <Route path="books" element={<Navigate to="/pinpoint/map" replace />} />
               <Route path="compare" element={<Compare />} />
               <Route path="ranked-targets" element={<Navigate to="/pinpoint/agenda" replace />} />
               {['exposure-profile', 'session', 'history', 'oi-heat', 'strike-profile', 'vanna-charm', 'expiry-ladder', 'greek-surfaces', 'pain-map', 'model-error', 'vol-lab'].map(p => (

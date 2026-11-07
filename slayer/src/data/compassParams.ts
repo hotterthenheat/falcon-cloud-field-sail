@@ -23,6 +23,14 @@ export const IV_BISECTS = 60;
 export const IV_FEATURE_MIN = 0.011;
 const IV_FALLBACK = 0.3;
 
+/* MODEL 1'S TRAINED QUOTES, not a scanner limit (owner, 2026-11-07: "remove the hard coded limits"). The entry and
+   runner trees were trained only on contracts with a bid over $0.15 and a spread within 8% of the mid: the trees' own
+   files say so (public/models/model_*_all6months.txt, feature_infos: column 32, the mid, starts at 0.165 in the entry
+   tree and 0.16 in the runner tree; column 33, spread / mid, spans [0, 0.0799999982] in both, and both trees split on
+   it), and every row the live scorer has logged since agrees (.cache/compass/rows: max spread / mid 0.0799999982, min
+   mid 0.16, 227,282 rows). A contract outside that box is outside what the trees have ever seen, so Model 1 does not
+   score it (inModel1Domain). The two numbers define Model 1's input, nothing else: Model 3 and Model Risk do not read
+   them, and among the contracts Model 1 clears, the cost rule (compassCost) chooses. */
 export const BID_MIN = 0.15;
 export const SPREAD_MAX = 0.08;
 const SPREAD_EPS = 1e-9;
@@ -40,8 +48,14 @@ export const SPAN_INDEX = ['SPXW', 'SPX', 'NDXP', 'NDX', 'XSP', 'RUTW', 'RUT', '
 export const DRIVE = 0.0035;
 const REVERSAL = 0.004;
 export const QUOTE_MAX_AGE_MS = 90_000;
-const BOOK_B_ASK = 1;
 const BOOK_B_HALVE = 0.5;
+/* THE WING, by its shape instead of its price (2026-11-07). Book B used to need an ask of $1.00 or less: a cheap wing on
+   SPY, but on SPXW only the farthest strikes ever qualified (58 of 2,645 band contracts in the record) and on NDXP and
+   RUTW none did, while on a $40 name every band contract did. What the cap let through, on every root, in the record
+   (.cache/compass/rows, 2026-10-29 to 11-06, band contracts out of the money, |delta| on the trading clock at the
+   contract's own IV): p50 0.080, p90 0.144, max 0.199; what it shut out: p10 0.167, p50 0.269. A wing is now a band
+   contract at 0.15 delta or less (the p90 of what the cap passed, rounded): the same shape on any root at any price. */
+export const WING_DELTA_MAX = 0.15;
 export const BOOK_B_LOOKBACK = 30;
 
 /* No fees (owner, 2026-10-31): Compass does not place trades, it publishes entries and exits. A call's P&L is
@@ -61,8 +75,33 @@ const TP4_BID = 4;
 export const TP4_TRAIL = 0.75;
 export const FLAT_T = 385;
 
+/** Model 3's live price cap while COMPASS_M3_SHAPE is off (lotteryEntry); the Weigher's copy of the gate reads it too. */
 export const LOTTERY_ASK_MAX = 1.65;
+/* MODEL 3'S CONTRACT BY SHAPE, behind COMPASS_M3_SHAPE=1 (off by default: the lead, 2026-11-07). The in-sample replay
+   (scripts/compass-limits-insample.ts) moved Model 3 from −$394 to −$1,407 on 12 changed picks, mostly SPXW's
+   at-the-money $16 contracts, and neither rule has evidence behind it: the 2020–2024 backtest of the current Model 3
+   against the limits-removed one decides. Until it does the live sweep keeps lotteryEntry, unchanged.
+   With the switch on: the late sweep used to take the nearest strike
+   asking $1.65 or less: at the money on IWM, QQQ, SPY, XSP and INTC (|delta| 0.41 to 0.69 in the record's 15 picks),
+   and only on SPXW, where the money costs more, pushed out to 0.075–0.16 delta by the price alone. The sweep is the
+   at-the-money-or-out late ticket: 0.55 delta or less (every recorded at-the-money pick, 0.41 to 0.53, is inside; an
+   in-the-money contract is not a lottery ticket). Among those on the nearest strike's side the cost rule chooses. */
+export const LOTTERY_DELTA_MAX = 0.55;
+/** At most this many Model 3 calls a session (a count of seats, not a price or a size) */
 export const LOTTERY_CAP = 5;
+
+/** COMPASS_M3_SHAPE=1: Model 3 picks by shape (lotteryShape, compassCost lotterySide); off (the default): today's rule
+    (lotteryEntry, compassCost lotterySideNow). Read through globalThis like the other switches. */
+let m3ShapeOverride: boolean | null = null;
+export function m3ShapeOn(): boolean {
+  if (m3ShapeOverride != null) return m3ShapeOverride;
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+  return env.COMPASS_M3_SHAPE === '1';
+}
+/** Proofs only: force COMPASS_M3_SHAPE on or off (null: back to the environment). */
+export function setM3Shape(on: boolean | null): void {
+  m3ShapeOverride = on;
+}
 const LOTTERY_X3_SEC = 120;
 const LOTTERY_X2_SEC = 30;
 const LOTTERY_X3 = 3;
@@ -123,6 +162,13 @@ export const RIDING_WORD = 'Model 2 riding';
 /** The model a call came from, by its book: Core and Wing are Model 1's books, the late sweep is Model 3. */
 export function modelOfBook(book: 'A' | 'B' | 'C' | 'R' | string): string {
   return book === 'R' ? 'Model Risk' : book === 'C' ? MODEL_WORD[3] : book === 'A' || book === 'B' ? MODEL_WORD[1] : '';
+}
+
+/** A recorded call's model as a row reads it: "Model 1", "Model 1 · Model 2 riding" (a runner, or the far wing, whose
+    exit Model 2 rides), "Model 3" or "Model Risk". Never a book letter, never a score. */
+export function modelWordOf(call: { book: 'A' | 'B' | 'C' | 'R' | string; runner?: boolean }): string {
+  const word = modelOfBook(call.book);
+  return (call.book === 'A' || call.book === 'B') && (call.runner || call.book === 'B') ? `${word} · ${RIDING_WORD}` : word;
 }
 
 /** The model a card came from, by its band; empty for a contract that is not a call. */
@@ -452,12 +498,44 @@ export function quoteValid(bid: number, ask: number): boolean {
   return bid >= 0 && ask > 0 && ask >= bid;
 }
 
-export function spreadPass(bid: number, ask: number): boolean {
+/* ---- VALIDITY CHECKS: is the quote real data? Not limits. ----------------------------------------------------------
+   A contract is chosen only on a quote that can be traded as read: two-sided (a bid over zero and an ask over the bid),
+   stamped recently (QUOTE_MAX_AGE_MS), with size displayed on both sides when the feed says what it is. None of these
+   is a price, a spread or a size someone picked: a quote that fails one is not a quote. */
+
+/** Validity: a two-sided quote, a bid over zero and an ask over the bid (crossed, locked, one-sided or missing: no) */
+export function quoteTradable(bid: number, ask: number): boolean {
+  return Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > bid;
+}
+
+/** Validity: the quote is stamped no older than QUOTE_MAX_AGE_MS before `now` and not from the future (a minute's grace
+    for an answer that waited for its slot) */
+export function quoteFreshAt(quotedAt: number | undefined, now: number): boolean {
+  return !!quotedAt && quotedAt <= now + 60_000 && now - quotedAt <= QUOTE_MAX_AGE_MS;
+}
+
+/** Validity: size displayed on both sides. A feed that does not say (undefined) is not refused for it. */
+export function sizeShown(bidSize: number | undefined, askSize: number | undefined): boolean {
+  if (bidSize == null && askSize == null) return true;
+  return Number(bidSize) > 0 && Number(askSize) > 0;
+}
+
+/** Validity, all of it: tradable, fresh at `now`, size shown */
+export function quoteUsable(q: { bid: number; ask: number; quotedAt?: number; bidSize?: number; askSize?: number }, now: number): boolean {
+  return quoteTradable(q.bid, q.ask) && quoteFreshAt(q.quotedAt, now) && sizeShown(q.bidSize, q.askSize);
+}
+
+/** Model 1's trained quotes (BID_MIN, SPREAD_MAX above): a bid over $0.15 and a spread within 8% of the mid. The trees
+    score nothing else. This is the model's definition, not a limit on what Compass may call. */
+export function inModel1Domain(bid: number, ask: number): boolean {
   if (!(bid > BID_MIN) || !quoteValid(bid, ask)) return false;
   const mid = (ask + bid) / 2;
   if (!(mid > 0)) return false;
   return (ask - bid) / mid <= SPREAD_MAX + SPREAD_EPS;
 }
+
+/** The old name of inModel1Domain (study, contract page and Weigher read it under this name) */
+export const spreadPass = inModel1Domain;
 
 export function ivFeature(iv: number): number {
   return iv > IV_FEATURE_MIN ? iv : NaN;
@@ -526,18 +604,26 @@ export function bookAPass(t: number, dist: number, span: number, dte: number, bi
     && entryTimeOk(t, flatT, overnightRoot, clock)
     && dist <= span
     && dte >= DTE_MIN && dte <= DTE_MAX
-    && spreadPass(bid, ask)
+    && inModel1Domain(bid, ask)
     && p1 >= P1_MIN;
 }
 
-export function bookBPass(t: number, dist: number, span: number, dte: number, bid: number, ask: number, priorBid: number, priorAsk: number, p1: number, flatT = FLAT_T, overnightRoot = true, clock: TapeClock = {}): boolean {
+/** A wing by its shape: |delta| at or under WING_DELTA_MAX. NaN (the delta did not solve) is not a wing. */
+export function wingShape(absDelta: number): boolean {
+  return Number.isFinite(absDelta) && absDelta <= WING_DELTA_MAX + 1e-12;
+}
+
+/** Book B, the far wing: in the band past the span, a wing by its delta (wingShape; it was an ask of $1.00 or less),
+    at most half its ask of 30 minutes earlier, in Model 1's trained quotes, over the line. `absDelta` is the contract's
+    |delta| at its own IV on the trading clock (compassCost deltaOf). */
+export function bookBPass(t: number, dist: number, span: number, dte: number, bid: number, ask: number, priorBid: number, priorAsk: number, absDelta: number, p1: number, flatT = FLAT_T, overnightRoot = true, clock: TapeClock = {}): boolean {
   const band = bookBRange(span);
   return onScanGrid(t)
     && entryTimeOk(t, flatT, overnightRoot, clock)
     && dte >= DTE_MIN && dte <= DTE_MAX
     && dist >= band.inner && dist <= band.outer
-    && ask <= BOOK_B_ASK
-    && spreadPass(bid, ask)
+    && wingShape(absDelta)
+    && inModel1Domain(bid, ask)
     && quoteValid(priorBid, priorAsk)
     && priorAsk > 0
     && ask <= BOOK_B_HALVE * priorAsk
@@ -606,8 +692,16 @@ export function lotteryExit(entryAsk: number, bid: number, seconds: number): { w
   return null;
 }
 
+/** Model 3's live rule while COMPASS_M3_SHAPE is off (unchanged from before the limits work): a bid over $0.15, an ask
+    of $1.65 or less, a spread within 8%. */
 export function lotteryEntry(bid: number, ask: number): boolean {
-  return bid > BID_MIN && ask > 0 && ask <= LOTTERY_ASK_MAX && ask >= bid && spreadPass(bid, ask);
+  return bid > BID_MIN && ask > 0 && ask <= LOTTERY_ASK_MAX && ask >= bid && inModel1Domain(bid, ask);
+}
+
+/** Model 3's contract with COMPASS_M3_SHAPE on: a tradable quote at the money or out of it, |delta| at or under
+    LOTTERY_DELTA_MAX (no bid floor, spread cap or price cap). `absDelta` as in bookBPass. */
+export function lotteryShape(bid: number, ask: number, absDelta: number): boolean {
+  return quoteTradable(bid, ask) && Number.isFinite(absDelta) && absDelta <= LOTTERY_DELTA_MAX + 1e-12;
 }
 
 /** Book C. 15:20:00 through 15:49:59 ET: 40 to 10 minutes before the close, so 12:20:00 through 12:49:59 on a 13:00

@@ -6,6 +6,7 @@
 import { useSyncExternalStore } from 'react';
 import { importModelState, type ModelPack } from './compassModel';
 import { importSignals, importWould, type Signal } from './compassLedger';
+import { importTwins, type Twin } from './compassTwins';
 import { importMarks, setScanMeta, type MarkRow, type ScanMeta } from './compassScan';
 import { noteCompassCall } from './compassAlerts';
 import { feedHeaders } from './feedGate';
@@ -29,6 +30,8 @@ interface Served {
   signals: Signal[];
   /** What late marks would have called (not calls) */
   would?: Signal[];
+  /** The calls' random-side twins (the forward test) */
+  twins?: Twin[];
   marks: MarkRow[];
 }
 
@@ -86,6 +89,7 @@ function apply(s: Served, status: FeedStatus): void {
   importModelState(s.model, s.earlier);
   importSignals(s.signals);
   importWould(s.would ?? []);
+  importTwins(s.twins ?? []);
   importMarks(s.marks);
   setScanMeta(s.meta);
   /* a call this browser has not seen before chimes for the reader who asked to hear it (data/compassAlerts.ts);

@@ -24,7 +24,7 @@ import { bellDay, cadenceWords, dayWordOf, expirySpan, longDay, recordDay, recor
 import { buildBoardRow, netGexTitle, type BoardRow } from '../../data/board';
 import { strikeTag, todayWords } from '../../data/agenda';
 import { addBoardName, removeBoardName, useBoardNames } from '../../data/boardNames';
-import { isOptionRoot, useListedRev } from '../../data/listedNames';
+import { isPinpointName, useListedRev } from '../../data/listedNames';
 import { tickerName } from '../../data/tickers';
 import TickerLookup from '../../components/ui/TickerLookup';
 import useFocusTrap from '../../components/ui/useFocusTrap';
@@ -45,6 +45,8 @@ import { LivePrice } from '../../components/gex/LivePrice';
 import { AsOf, EmptyBox, ErrorBox, LoadingBox } from '../../components/ui/states';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { fmtStrike } from '../../core/format';
+import { BOOK_MODE_WORDS, bookMode, useBookMode } from '../../data/bookMode';
+import { bookFor, followsToggle } from '../../data/twobook/engineBook';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal */
 const ROLE_INK: Record<string, string> = { 'call wall': CALL_WALL, 'put wall': PUT_WALL, supreme: SUPREME, flip: FLIP };
@@ -281,6 +283,20 @@ const SupremeCell = ({ data }: ICellRendererParams<BoardRow>) =>
     </span>
   ) : null;
 
+/* WHICH BOOK A ROW IS (docs/OLD_PATH_AUDIT.md item 2): with the Map's switch on Flow, the names the Map follows are
+   drawn from the flow book and every other row from the open-interest book — one screen, two books, so each row says
+   which (the rule: never two books on one screen without saying so). On the open-interest switch nothing is added. */
+const RowBook = ({ ticker }: { ticker: string }) => {
+  if (bookMode() !== 'flow') return null;
+  const b = bookFor(ticker);
+  return (
+    /* inline on the figure's line, so the row keeps its height: "flow" or "OI" (the status line spells both out) */
+    <span className={`ml-1.5 whitespace-nowrap text-t9 font-normal uppercase tracking-wider ${b === 'flow' ? 'text-silver' : 'text-textMuted'}`} title={`${BOOK_MODE_WORDS[b].label}: ${BOOK_MODE_WORDS[b].line}`} data-board-row-book={b}>
+      {b === 'flow' ? 'flow' : 'OI'}
+    </span>
+  );
+};
+
 /* Net GEX in the retail sign: positive = dealers long gamma = absorbs (green), negative amplifies (red); when the net
    and the side of the flip disagree, the hover says so. */
 const NetCell = ({ data }: ICellRendererParams<BoardRow>) =>
@@ -288,9 +304,10 @@ const NetCell = ({ data }: ICellRendererParams<BoardRow>) =>
     <Pending data={data} />
   ) : data ? (
     <TickFigure value={data.netGex} title={netGexTitle(data.netGex, data.regime)} className={`inline-flex flex-col justify-center leading-[14px] font-mono text-t11 font-semibold ${data.netGex > 0 ? 'text-bull' : data.netGex < 0 ? 'text-bear' : 'text-textMuted'}`}>
-      <span>
+      <span className="whitespace-nowrap">
         {data.netGex > 0 ? '+' : ''}
         {fmtUsd(data.netGex)}
+        <RowBook ticker={data.ticker} />
       </span>
       <RegimeWord data={data} />
       <ExpiryMark data={data} />
@@ -404,6 +421,7 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
             <span className={row.netGex > 0 ? 'text-bull' : row.netGex < 0 ? 'text-bear' : 'text-textMuted'}>
               {row.netGex > 0 ? '+' : ''}
               {fmtUsd(row.netGex)}
+              <RowBook ticker={row.ticker} />
             </span>
           </div>
           <div className="flex flex-col min-w-0">
@@ -458,9 +476,12 @@ const Board = () => {
   /* the names on the board — the list the user keeps */
   const stored = useBoardNames();
   const listedRev = useListedRev();
-  const names = useMemo(() => stored.filter(isOptionRoot), [stored, listedRev]);
+  const names = useMemo(() => stored.filter(isPinpointName), [stored, listedRev]);
   usePinpointFeed(names[0]);
   const bookRev = useBookRev();
+  /* the switch: on Flow the status line names the rows drawn from the flow book (RowBook marks each row) */
+  const switchMode = useBookMode();
+  const flowRows = switchMode === 'flow' ? names.filter(followsToggle) : [];
   const [rows, setRows] = useState<BoardRow[]>([]);
   const [scanAt, setScanAt] = useState('');
   const lastRef = useRef(0);
@@ -746,6 +767,11 @@ const Board = () => {
             </>
           )}
           <span>{keptAt != null || scanAt ? '· ' : ''}{cadence}</span>
+          {switchMode === 'flow' && (
+            <span className="normal-case tracking-normal text-textSecondary" title={`The Map's switch is on the ${BOOK_MODE_WORDS.flow.label.toLowerCase()}: it is read for the names the Map follows. Every other row is the ${BOOK_MODE_WORDS.oi.label.toLowerCase()} — the two are never added, and each row says which it is.`} data-board-books={flowRows.join(',') || 'none'}>
+              · {flowRows.length ? `Flow book (flow): ${flowRows.join(', ')} · every other row: open-interest book (OI)` : 'Every row: open-interest book (the flow book is read for the names the Map follows)'}
+            </span>
+          )}
         </span>
       </div>
       {bookDown && rows.length === 0 ? (

@@ -8,7 +8,8 @@ interface GexSubpage {
   icon: LucideIcon;
 }
 
-/* Pinpoint's pages: Map (MapDesk.tsx), Agenda (Targets and Building), Board and Compare. Old paths redirect to the Map (App.tsx). */
+/* Pinpoint's pages: Map (MapDesk.tsx), Agenda (Targets and Building), Board and Compare. Old paths redirect to the Map (App.tsx);
+   the two books are the Map's own switch (its Sources & units card holds what the retired Books page showed). */
 export const GEX_SUBPAGES: GexSubpage[] = [
   {
     path: '/pinpoint/map',

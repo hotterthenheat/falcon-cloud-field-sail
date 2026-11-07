@@ -1,0 +1,478 @@
+diff --git a/slayer/src/components/layout/CommandPalette.tsx b/slayer/src/components/layout/CommandPalette.tsx
+index 34d11fc..f4c8d5f 100644
+--- a/slayer/src/components/layout/CommandPalette.tsx
++++ b/slayer/src/components/layout/CommandPalette.tsx
+@@ -12,6 +12,8 @@ import { armDrawTool, canArmDrawTool, searchDrawTools } from '../gex/drawTools';
+ import { ensureListed, roomOf, searchRoom, useListedRev } from '../../data/listedNames';
+ import { askCompanyNames, companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
+ import { sendDeskCmd } from '../../data/terrainCmd';
++import NameHoverCard, { useNameHover } from './NameHoverCard';
++import { useIsBelowXl } from '../ui/useMediaQuery';
+ 
+ type TickerModule = typeof import('../../data/tickers');
+ 
+@@ -27,6 +29,9 @@ interface PaletteAction {
+   hint: string;
+   run: () => void;
+   icon?: React.ReactNode;
++  /** A name's row: the symbol and the company, for the name's card beside the list */
++  symbol?: string;
++  name?: string;
+ }
+ 
+ /* The names offered before anything is typed */
+@@ -105,6 +110,8 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
+       return rows.map(t => ({
+         id: `ticker-${t.symbol}`,
+         group: 'Ticker' as const,
++        symbol: t.symbol,
++        name: t.name,
+         label: t.name && t.name.toUpperCase() !== t.symbol ? `${t.symbol} · ${t.name}` : t.symbol,
+         hint: t.symbol === activeTicker ? 'active' : 'set the name',
+         icon: <CompanyLogo ticker={t.symbol} size={14} />,
+@@ -116,6 +123,8 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
+       return rows.map(t => ({
+         id: `ticker-${t.symbol}`,
+         group: 'Ticker' as const,
++        symbol: t.symbol,
++        name: t.name,
+         label: t.name && t.name.toUpperCase() !== t.symbol ? `${t.symbol} · ${t.name}` : t.symbol,
+         hint: t.symbol === activeTicker ? 'active' : '',
+         icon: <CompanyLogo ticker={t.symbol} size={14} />,
+@@ -125,6 +134,8 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
+     return QUICK_NAMES.map(tk => ({
+       id: `ticker-${tk}`,
+       group: 'Ticker' as const,
++      symbol: tk,
++      name: companyName(tk),
+       label: (() => {
+         const n = companyName(tk);
+         return n && n.toUpperCase() !== tk ? `Set ticker → ${tk} · ${n}` : `Set ticker → ${tk}`;
+@@ -202,6 +213,14 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
+     setHighlight(0);
+   }, [query]);
+ 
++  /* THE NAME'S CARD: the name row the pointer or the arrows rest on (NameHoverCard.tsx — a beat to settle, a longer
++     rest to ask the server once); beside the list from xl up, under it below */
++  const stacked = useIsBelowXl();
++  const hiAction = filtered[Math.min(highlight, Math.max(0, filtered.length - 1))];
++  const hiSym = open && hiAction?.symbol ? hiAction.symbol : null;
++  const { settled, asked } = useNameHover(open, hiSym);
++  const cardRow = settled ? filtered.find(f => f.symbol === settled) ?? null : null;
++
+   if (!open) return null;
+ 
+   const runAction = (action: PaletteAction | undefined) => {
+@@ -231,7 +250,8 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
+   return (
+     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[18vh] px-4" onKeyDown={onKeyDown}>
+       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
+-      <div className="relative w-full max-w-lg border border-borderMuted bg-panel rounded-lg shadow-2xl shadow-black overflow-hidden animate-slide-in">
++      <div className="relative w-full max-w-lg">
++      <div className="relative w-full border border-borderMuted bg-panel rounded-lg shadow-2xl shadow-black overflow-hidden animate-slide-in" data-palette>
+         <div className="relative">
+           <input
+             ref={inputRef}
+@@ -243,7 +263,7 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
+           {/* the names arrive as their own chunk on the first open; typed before they land, the search says it is on its way (ui/Working.tsx) */}
+           <Working active={open && !tickMod && query.trim().length > 0} className="absolute right-3.5 top-1/2 -translate-y-1/2" />
+         </div>
+-        <div className="max-h-72 overflow-y-auto py-1.5">
++        <div className={`${stacked && cardRow ? 'max-h-48' : 'max-h-72'} overflow-y-auto py-1.5`}>
+           {filtered.length === 0 && (
+             <div className="px-4 py-6 text-center font-mono text-[11px] text-textMuted">No matches</div>
+           )}
+@@ -272,6 +292,11 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
+             );
+           })}
+         </div>
++        {stacked && cardRow?.symbol && (
++          <div className="border-t border-borderSubtle px-4 py-2.5" aria-label="The highlighted name's card" data-palette-card="stacked">
++            <NameHoverCard symbol={cardRow.symbol} name={cardRow.name ?? ''} asked={asked} compact />
++          </div>
++        )}
+         <div className="flex items-center gap-4 px-4 py-2 border-t border-borderSubtle font-mono text-t10 text-textMuted select-none">
+           <span>↑↓ navigate</span>
+           <span className="flex items-center gap-1">
+@@ -280,6 +305,12 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
+           <span className="ml-auto">esc close</span>
+         </div>
+       </div>
++      {!stacked && cardRow?.symbol && (
++        <aside className="absolute top-0 left-[calc(100%+10px)] w-[300px] max-h-[72vh] overflow-y-auto overscroll-contain border border-borderMuted bg-panel/95 backdrop-blur-xl rounded-lg shadow-2xl shadow-black px-4 py-3 animate-fade-in" aria-label="The highlighted name's card" data-palette-card="side">
++          <NameHoverCard symbol={cardRow.symbol} name={cardRow.name ?? ''} asked={asked} />
++        </aside>
++      )}
++      </div>
+     </div>
+   );
+ };
+diff --git a/slayer/src/components/layout/NameHoverCard.tsx b/slayer/src/components/layout/NameHoverCard.tsx
+new file mode 100644
+index 0000000..7ce23dc
+--- /dev/null
++++ b/slayer/src/components/layout/NameHoverCard.tsx
+@@ -0,0 +1,363 @@
++/* THE NAME'S CARD in the ⌘K palette: the name the pointer or the arrow keys rest on, read in one glance — its price
++   and the day, its walls when its book is already in this browser, Compass's call on it when there is one today, its
++   next report, its wire and whose hands are in it.
++
++   Two beats, so a sweep down the list costs nothing (useNameHover): THE SETTLE (140 ms at rest) names the card and
++   paints what this browser already holds (the quote store, the book); THE ASK (450 ms at rest on the same name) asks
++   the server for the name's card once (data/nameCard.ts, one request, kept five minutes), and only then are the slow
++   tables' hooks mounted, on rows already in hand. Every slot is the size of what is coming: a slot still reading shows
++   the skeleton in the shape of its lines, a slot with nothing says so in the same tile, and nothing reshapes. */
++
++import { useEffect, useMemo, useState, type ReactNode } from 'react';
++import { CalendarDays, Compass, Landmark, Layers, Newspaper, Users, type LucideIcon } from 'lucide-react';
++import CompanyLogo from '../ui/CompanyLogo';
++import { Skeleton } from '../ui/Skeleton';
++import { askCard, useNameCard, type CardState } from '../../data/nameCard';
++import { peekQuote, useLiveQuote, type LiveQuote } from '../../data/liveQuote';
++import { changeInk, dayMoveWords } from '../../data/book/day';
++import { useBookRev } from '../../data/book/store';
++import { scopeWalls } from '../../data/book/levels';
++import { useNameLevels } from '../../data/levelsScope';
++import { useNextReport, untilWords } from '../../data/earningsFeed';
++import { useInsiderFlow, useTickerCongress, useTickerNews } from '../../data/liveRecord';
++import { useSignals } from '../../data/compassLedger';
++import { useCompassFeed } from '../../data/compassFeed';
++import { RIDING_WORD, modelOfBook } from '../../data/compassParams';
++import { nyIsoDate } from '../../core/nyTime';
++import { CALL_WALL, PUT_WALL } from '../gex/paletteInk';
++
++export const SETTLE_MS = 140;
++export const ASK_MS = 450;
++
++/** The two beats: the settled name (a beat after the rest) and whether its card has been asked (a longer rest) */
++export function useNameHover(open: boolean, sym: string | null): { settled: string | null; asked: boolean } {
++  const [settled, setSettled] = useState<string | null>(null);
++  const [asked, setAsked] = useState<string | null>(null);
++  useEffect(() => {
++    if (!open) {
++      setSettled(null);
++      return;
++    }
++    const id = window.setTimeout(() => setSettled(sym), SETTLE_MS);
++    return () => window.clearTimeout(id);
++  }, [open, sym]);
++  useEffect(() => {
++    if (!open || !sym) {
++      setAsked(null);
++      return;
++    }
++    const id = window.setTimeout(() => {
++      setAsked(sym);
++      askCard(sym);
++    }, ASK_MS);
++    return () => window.clearTimeout(id);
++  }, [open, sym]);
++  return { settled, asked: !!settled && asked === settled };
++}
++
++const fmtPrice = (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
++const fmtLevel = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
++const pctSigned = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}%`;
++const dollars = (v: number) => (v >= 1e9 ? `$${(v / 1e9).toFixed(1)}B` : v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `$${Math.round(v / 1e3)}K` : `$${Math.round(v)}`);
++const ago = (minutes: number) => (minutes < 1 ? 'now' : minutes < 60 ? `${Math.round(minutes)}m` : minutes < 24 * 60 ? `${Math.floor(minutes / 60)}h` : `${Math.floor(minutes / (24 * 60))}d`);
++const BULL = 'rgb(var(--bull))';
++const BEAR = 'rgb(var(--bear))';
++
++/* the slots' floors: a slot reading, empty and full stands the same height */
++const FLOOR = { price: 'h-[44px]', walls: 'min-h-[50px]', compass: 'min-h-[34px]', report: 'min-h-[62px]', wire: 'min-h-[74px]', hands: 'min-h-[50px]', congress: 'min-h-[32px]' } as const;
++
++const Head = ({ icon: Icon, ink, children, right }: { icon: LucideIcon; ink: string; children: ReactNode; right?: ReactNode }) => (
++  <div className="flex items-center gap-1.5 h-5 mb-1">
++    <Icon className="w-[13px] h-[13px] shrink-0" style={{ color: ink }} strokeWidth={1.75} aria-hidden />
++    <span className="text-t11 font-semibold text-textMuted truncate">{children}</span>
++    {right != null && <span className="ml-auto shrink-0 inline-flex items-center gap-1">{right}</span>}
++  </div>
++);
++const Tile = ({ children, floor, className = '' }: { children: ReactNode; floor: string; className?: string }) => (
++  <div className={`rounded-[10px] border border-ink/[0.06] bg-ink/[0.03] px-3 py-2 ${floor} ${className}`}>{children}</div>
++);
++const Quiet = ({ floor, children }: { floor: string; children: ReactNode }) => (
++  <Tile floor={floor} className="flex items-center">
++    <p className="text-t11 text-textMuted">{children}</p>
++  </Tile>
++);
++const Pair = ({ label, value, ink, sub }: { label: ReactNode; value: ReactNode; ink?: string; sub?: ReactNode }) => (
++  <div className="min-w-0 leading-tight">
++    <div className="text-t11 text-textMuted truncate">{label}</div>
++    <div className="font-mono text-t13 tnum text-textPrimary truncate" style={ink ? { color: ink } : undefined}>
++      {value}
++    </div>
++    {sub != null && <div className="font-mono text-t11 tnum text-textMuted truncate">{sub}</div>}
++  </div>
++);
++const Pill = ({ children, title }: { children: ReactNode; title?: string }) => (
++  <span className="inline-flex items-center h-5 px-1.5 rounded-md bg-ink/[0.08] font-mono text-t11 font-semibold tnum text-textPrimary whitespace-nowrap" title={title}>
++    {children}
++  </span>
++);
++const Bar = ({ w, h = 11 }: { w: number | string; h?: number }) => <Skeleton line style={{ width: w, height: h }} />;
++const PairBones = () => (
++  <div className="flex flex-col gap-[3px] py-[2px]">
++    <Bar w={44} h={9} />
++    <Bar w={56} h={12} />
++  </div>
++);
++const Bones = ({ floor, kind, lines = 2, pairs = 0 }: { floor: string; kind: string; lines?: number; pairs?: number }) => (
++  <Tile floor={floor}>
++    <div className="flex flex-col gap-[6px]" data-name-card-bones={kind}>
++      {pairs > 0 ? (
++        <div className="grid gap-x-3" style={{ gridTemplateColumns: `repeat(${pairs}, minmax(0,1fr))` }}>
++          {Array.from({ length: pairs }, (_, i) => (
++            <PairBones key={i} />
++          ))}
++        </div>
++      ) : null}
++      {Array.from({ length: lines }, (_, i) => (
++        <Bar key={i} w={i % 2 ? '72%' : '94%'} h={10} />
++      ))}
++    </div>
++  </Tile>
++);
++
++/* ── each slow table's slot, mounted only once its rows are in hand (the card seeded them) ── */
++
++const ReportSlot = ({ symbol }: { symbol: string }) => {
++  const next = useNextReport(symbol);
++  if (!next) return <Quiet floor={FLOOR.report}>no report on the calendar</Quiet>;
++  const e = next.event;
++  const implied = e && e.impliedMovePct > 0 ? e.impliedMovePct : null;
++  const usual = e && e.histAvgMovePct > 0 ? e.histAvgMovePct : null;
++  const rich = implied != null && usual != null ? (implied > usual * 1.15 ? 'rgb(var(--warn))' : implied < usual * 0.85 ? BULL : undefined) : undefined;
++  return (
++    <Tile floor={FLOOR.report} className="animate-fade-in">
++      <div className="flex items-center gap-1.5 h-5 text-t13 text-textPrimary" data-name-card-report={next.iso}>
++        <span className="font-mono font-semibold tnum shrink-0">{next.dateLabel}</span>
++        <span className="text-textSecondary truncate min-w-0">· {next.slot === 'BMO' ? 'before the open' : 'after the close'}</span>
++        <span className="ml-auto shrink-0">
++          <Pill title={next.confirmed ? 'the company set the date' : 'an estimate, not the company’s date'}>{untilWords(next.daysOut)}</Pill>
++        </span>
++      </div>
++      <div className="grid grid-cols-2 gap-x-3 mt-1.5">
++        <Pair label="Implied move" value={implied != null ? `±${implied.toFixed(1)}%` : '—'} ink={rich} />
++        <Pair label="Usual move" value={usual != null ? `±${usual.toFixed(1)}%` : '—'} />
++      </div>
++    </Tile>
++  );
++};
++
++const WireSlot = ({ symbol, compact }: { symbol: string; compact: boolean }) => {
++  const news = useTickerNews(symbol);
++  const rows = useMemo(() => [...news.events].sort((a, b) => b.item.atMs - a.item.atMs), [news]);
++  if (news.status === 'loading' && !rows.length) return <Bones floor={FLOOR.wire} kind="wire" lines={compact ? 2 : 4} />;
++  if (!rows.length) return <Quiet floor={FLOOR.wire}>{news.status === 'live' ? 'quiet on the wire today' : 'the wire did not answer'}</Quiet>;
++  return (
++    <Tile floor={FLOOR.wire} className="flex flex-col gap-2 animate-fade-in">
++      {rows.slice(0, compact ? 1 : 2).map(h => {
++        const s = h.item.sentiment;
++        const lean = s != null && s > 0.12 ? BULL : s != null && s < -0.12 ? BEAR : 'rgb(var(--text-muted))';
++        return (
++          <div key={h.id} className="flex items-start gap-2" title={h.item.headline} data-name-card-story>
++            <span className="mt-[5px] w-1.5 h-1.5 rounded-full shrink-0" style={{ background: lean }} aria-hidden />
++            <div className="min-w-0 flex-1 leading-snug">
++              <div className="text-t11 text-textPrimary line-clamp-1">{h.item.headline}</div>
++              <div className="text-t11 text-textMuted truncate">
++                {h.item.source} <span className="font-mono tnum">· {ago(h.item.minutesAgo)}</span>
++              </div>
++            </div>
++          </div>
++        );
++      })}
++    </Tile>
++  );
++};
++
++const InsidersSlot = ({ symbol }: { symbol: string }) => {
++  const flow = useInsiderFlow(symbol, 90);
++  if (flow.status === 'loading') return <Bones floor={FLOOR.hands} kind="insiders" lines={0} pairs={2} />;
++  if (flow.status !== 'live') return <Quiet floor={FLOOR.hands}>the filings did not answer</Quiet>;
++  if (flow.bought === 0 && flow.sold === 0) return <Quiet floor={FLOOR.hands}>no open-market filings</Quiet>;
++  const share = flow.bought / (flow.bought + flow.sold);
++  return (
++    <Tile floor={FLOOR.hands} className="animate-fade-in">
++      <div className="grid grid-cols-2 gap-x-3" data-name-card-insiders>
++        <Pair label="Bought" value={flow.bought > 0 ? dollars(flow.bought) : '—'} ink={flow.bought > 0 ? BULL : undefined} />
++        <Pair label="Sold" value={flow.sold > 0 ? dollars(flow.sold) : '—'} ink={flow.sold > 0 ? BEAR : undefined} />
++      </div>
++      <div className="mt-1.5 flex h-1 rounded-full overflow-hidden bg-ink/[0.06]" aria-hidden>
++        <span className="h-full" style={{ width: `${Math.round(share * 100)}%`, background: BULL }} />
++        <span className="h-full flex-1" style={{ background: BEAR }} />
++      </div>
++    </Tile>
++  );
++};
++
++const CongressSlot = ({ symbol }: { symbol: string }) => {
++  const c = useTickerCongress(symbol, 180);
++  const rows = useMemo(() => [...c.trades].sort((a, b) => a.tradedDaysAgo - b.tradedDaysAgo), [c]);
++  if (c.status === 'loading') return <Bones floor={FLOOR.congress} kind="congress" lines={1} />;
++  if (c.status !== 'live') return <Quiet floor={FLOOR.congress}>the reports did not answer</Quiet>;
++  if (!rows.length) return <Quiet floor={FLOOR.congress}>no reports in 180 days</Quiet>;
++  const r = rows[0];
++  const buy = r.type === 'Purchase';
++  return (
++    <Tile floor={FLOOR.congress} className="flex items-center animate-fade-in">
++      <div className="flex items-baseline gap-2 w-full text-t11" title={`${r.member.name} — ${r.type}, ${r.tradedDaysAgo} days ago`} data-name-card-congress={rows.length}>
++        <span className="font-semibold shrink-0" style={{ color: buy ? BULL : BEAR }}>{buy ? 'purchase' : r.type === 'Exchange' ? 'exchange' : 'sale'}</span>
++        <span className="min-w-0 truncate text-textPrimary">{r.member.name}</span>
++        <span className="ml-auto shrink-0 font-mono tnum text-textMuted">{rows.length > 1 ? `${rows.length} reports · ` : ''}{r.tradedDaysAgo}d</span>
++      </div>
++    </Tile>
++  );
++};
++
++/** A slot of a slow table: the skeleton until the card answers, the hook's own slot once its rows are seeded */
++const Slow = ({ card, table, floor, kind, lines, pairs, children }: { card: CardState | null; table: keyof CardState['tables']; floor: string; kind: string; lines?: number; pairs?: number; children: ReactNode }) => {
++  if (!card || card.status === 'loading') return <Bones floor={floor} kind={kind} lines={lines} pairs={pairs} />;
++  if (card.tables[table] !== 'ready') return <Quiet floor={floor}>not read just now — rest on the name again shortly</Quiet>;
++  return <>{children}</>;
++};
++
++/* ── the price: the quote store, asked only once the name has been rested on ── */
++const PriceLine = ({ q }: { q: LiveQuote | null }) => {
++  if (!q) {
++    return (
++      <div className={`${FLOOR.price} flex flex-col justify-center gap-[5px]`} data-name-card-bones="price">
++        <Bar w={96} h={18} />
++        <Bar w={140} h={10} />
++      </div>
++    );
++  }
++  const move = dayMoveWords({ dayPct: q.phase === 'pre' ? q.lastSessionPct : q.changePct, extPct: q.extPct, phase: q.phase });
++  const main = q.phase === 'pre' ? q.lastSessionPct : q.changePct;
++  return (
++    <div className={`${FLOOR.price} leading-tight animate-fade-in`} data-name-card-price={q.regularPrice}>
++      <div className="font-mono text-t20 tnum text-textPrimary">{fmtPrice(q.regularPrice)}</div>
++      {move && (
++        <div className="font-mono text-t11 tnum whitespace-nowrap truncate" title={move.title}>
++          <span style={{ color: changeInk(main) }}>{move.main}</span>
++          {move.when && <span className="text-textMuted"> {move.when}</span>}
++          {move.ext && <span className="text-textMuted"> · {move.ext}</span>}
++        </div>
++      )}
++    </div>
++  );
++};
++const LivePrice = ({ symbol }: { symbol: string }) => <PriceLine q={useLiveQuote(symbol)} />;
++
++/* ── the walls: the book in this browser, peeked, never asked for here ── */
++const Walls = ({ symbol, spot }: { symbol: string; spot: number | null }) => {
++  useBookRev();
++  const scope = useNameLevels(symbol);
++  const w = scopeWalls(symbol, scope);
++  const marks = w
++    ? [
++        { word: 'Call wall', at: w.callWall, ink: CALL_WALL },
++        { word: 'Put wall', at: w.putWall, ink: PUT_WALL },
++      ].filter((m): m is { word: string; at: number; ink: string } => m.at != null && Number.isFinite(m.at) && m.at > 0)
++    : [];
++  if (!marks.length) return <Quiet floor={FLOOR.walls}>{w ? 'no walls on the book' : 'the walls read once the name is open'}</Quiet>;
++  return (
++    <Tile floor={FLOOR.walls} className="animate-fade-in">
++      <div className="grid grid-cols-2 gap-x-3" data-name-card-walls>
++        {marks.map(m => (
++          <Pair key={m.word} label={`${m.word} · ${scope === 'ALL' ? 'all' : 'today'}`} value={fmtLevel(m.at)} ink={m.ink} sub={spot && spot > 0 ? pctSigned(((m.at - spot) / spot) * 100) : undefined} />
++        ))}
++      </div>
++    </Tile>
++  );
++};
++
++/* ── Compass: its call on the name today, only while it stands — the model by name, never a score ── */
++const CompassCall = ({ symbol }: { symbol: string }) => {
++  const feed = useCompassFeed();
++  const rows = useSignals();
++  const today = nyIsoDate();
++  const call = feed.day === today && (feed.status === 'live' || feed.status === 'kept') ? rows.find(r => r.ticker === symbol && r.day === today && !r.would && !r.outcome?.exit) ?? null : null;
++  if (!call) return <Quiet floor={FLOOR.compass}>no Compass call on it today</Quiet>;
++  return (
++    <Tile floor={FLOOR.compass} className="flex items-center gap-2 animate-fade-in">
++      <span className="font-mono text-t12 font-semibold tnum text-textPrimary truncate" data-name-card-compass={call.contract}>
++        {fmtLevel(call.strike)}
++        <span style={{ color: call.right === 'C' ? CALL_WALL : PUT_WALL }}>{call.right}</span> <span className="text-textMuted font-normal">{call.expiry.slice(5)}</span>
++      </span>
++      <span className="ml-auto shrink-0 inline-flex items-center gap-1">
++        <Pill>{modelOfBook(call.book)}</Pill>
++        {call.runner && <Pill>{RIDING_WORD}</Pill>}
++      </span>
++    </Tile>
++  );
++};
++
++interface Props {
++  symbol: string;
++  name: string;
++  /** The longer rest has come: the card is asked and the quote store may read */
++  asked: boolean;
++  /** The phone's stacked card: fewer lines, the same order */
++  compact?: boolean;
++}
++
++const NameHoverCard = ({ symbol, name, asked, compact = false }: Props) => {
++  const card = useNameCard(asked ? symbol : null);
++  /* the quote this browser already holds paints at once; the store is asked only after the rest */
++  const held = peekQuote(symbol);
++  const spot = held?.regularPrice ?? null;
++  return (
++    <div className="flex flex-col gap-1.5" data-name-card={symbol} data-name-card-status={card?.status ?? 'waiting'}>
++      <div className="flex items-center gap-2.5">
++        <CompanyLogo ticker={symbol} size={compact ? 22 : 28} />
++        <div className="min-w-0 leading-tight flex-1">
++          <div className="font-mono text-t14 font-bold text-textPrimary">{symbol}</div>
++          <div className="text-t11 text-textSecondary truncate">{name && name.toUpperCase() !== symbol ? name : ' '}</div>
++        </div>
++        {compact && <div className="shrink-0 text-right">{asked ? <LivePrice symbol={symbol} /> : <PriceLine q={held} />}</div>}
++      </div>
++      {!compact && (asked ? <LivePrice symbol={symbol} /> : <PriceLine q={held} />)}
++
++      {!compact && (
++        <section>
++          <Head icon={Layers} ink={CALL_WALL}>The walls</Head>
++          <Walls symbol={symbol} spot={spot} />
++        </section>
++      )}
++
++      {!compact && (
++        <section>
++          <Head icon={Compass} ink="rgb(var(--silver))">Compass</Head>
++          <CompassCall symbol={symbol} />
++        </section>
++      )}
++
++      <section>
++        <Head icon={CalendarDays} ink="rgb(var(--moon))">Earnings · next report</Head>
++        <Slow card={card} table="earnings" floor={FLOOR.report} kind="report" lines={1} pairs={2}>
++          <ReportSlot symbol={symbol} />
++        </Slow>
++      </section>
++
++      <section>
++        <Head icon={Newspaper} ink="rgb(var(--glacier))">News · today</Head>
++        <Slow card={card} table="news" floor={FLOOR.wire} kind="wire" lines={compact ? 2 : 4}>
++          <WireSlot symbol={symbol} compact={compact} />
++        </Slow>
++      </section>
++
++      {!compact && (
++        <section>
++          <Head icon={Users} ink={CALL_WALL}>Insiders · 90 days</Head>
++          <Slow card={card} table="insiders" floor={FLOOR.hands} kind="insiders" lines={0} pairs={2}>
++            <InsidersSlot symbol={symbol} />
++          </Slow>
++          <div className="mt-1.5">
++            <Head icon={Landmark} ink={PUT_WALL}>Congress · 180 days</Head>
++          </div>
++          <Slow card={card} table="congress" floor={FLOOR.congress} kind="congress" lines={1}>
++            <CongressSlot symbol={symbol} />
++          </Slow>
++        </section>
++      )}
++    </div>
++  );
++};
++
++export default NameHoverCard;

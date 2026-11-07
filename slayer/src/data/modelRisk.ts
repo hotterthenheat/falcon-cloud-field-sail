@@ -12,8 +12,9 @@
 
 import { normCdf } from '../core/math';
 import { REGULAR_OPEN_MIN } from '../core/session';
-import { R, SESSION_MIN, YEAR_SESSIONS } from './compassParams';
+import { R, SESSION_MIN, YEAR_SESSIONS, quoteTradable } from './compassParams';
 import { ivStates } from './compassFeatures';
+import { atmIvOf, costPick, costRead, firstOrderCost, type CostRead } from './compassCost';
 
 export const TAIL_NAME = 'Model Risk';
 export const TAIL_BOOK = 'Tail risk';
@@ -25,12 +26,10 @@ export const TAIL_OPEN_MAX = 5;
 export const TAIL_OPEN_NOW = 1;
 /** Minutes the close is given to come back. After that the break held. */
 export const TAIL_FADE_MIN = 30;
-/** A strike farther than this from the stock is not this fade. */
+/** A strike farther than this from the stock is not this fade (a share of the stock's price: the same on any root). */
 export const TAIL_MONEY = 0.015;
-/** Wider than this is the spread, not the trade. Tighter than the chain's 8%. */
-export const TAIL_SPREAD = 0.04;
-/** A single name at this ask or higher is refused. An index is not. */
-export const TAIL_ASK_CAP = 5;
+/* No spread cap and no price cap (2026-11-07; they were 4% of the mid, and $5 on a single name): which contract the fade
+   takes is the cost rule's (tailPick), and what a contract costs a viewer is their budget's (compassBudget). */
 /** A score inside this band of the leader loses to the strike closer to the stock. */
 export const TAIL_SCORE_BAND = 0.05;
 export const TAIL_FIRST = 30;
@@ -208,21 +207,30 @@ export function tailDollars(entryAsk: number, exitBid: number, contracts = 1): n
   return (exitBid - entryAsk) * 100 * contracts;
 }
 
-const INDEX_ROOTS = new Set(['SPX', 'SPY', 'QQQ', 'IWM', 'RUT', 'NDX', 'VIX', 'XSP', 'DJX', 'SPXW', 'RUTW', 'NDXP']);
-
-/** A single name is capped. An index, and the root it lists on, is not. */
-export function askCapped(ticker: string, root: string): boolean {
-  return !INDEX_ROOTS.has(ticker.toUpperCase()) && !INDEX_ROOTS.has(root.toUpperCase());
+/** The fade's contract: a valid quote (two-sided, compassParams quoteTradable) on a strike within TAIL_MONEY of the
+    stock. No spread or price cap: the cost rule chooses among these (tailPick). */
+export function tailQuoteOk(bid: number, ask: number, strike: number, spot: number): boolean {
+  if (!(spot > 0) || !(strike > 0) || !quoteTradable(bid, ask)) return false;
+  return Math.abs(strike - spot) / spot <= TAIL_MONEY + 1e-12;
 }
 
-/** Refuse a wing, a wide quote, or a single name priced at the cap or above. The chain's 8% gate still runs first. */
-export function tailQuoteOk(bid: number, ask: number, strike: number, spot: number, ticker: string, root: string): boolean {
-  if (!(spot > 0) || !(strike > 0) || !(ask > 0) || !(bid >= 0) || ask < bid) return false;
-  if (Math.abs(strike - spot) / spot > TAIL_MONEY + 1e-12) return false;
-  const mid = (ask + bid) / 2;
-  if (!(mid > 0) || (ask - bid) / mid > TAIL_SPREAD + 1e-12) return false;
-  if (askCapped(ticker, root) && ask >= TAIL_ASK_CAP) return false;
-  return true;
+/** The contract the fade takes among the legs it allows (`legs`, one side, one expiry): the one that makes the most
+    sense to risk, by the cost rule (compassCost): the smallest mean move it needs to pay back its round trip, held the
+    fade's TAIL_FADE_MIN minutes. When the hold has no regular-session time to read (the overnight), the smallest
+    first-order cost (round trip ÷ |delta|). Ties keep the caller's order. Null when nothing reads. */
+export function tailPick<L extends { strike: number; bid: number; ask: number }>(legs: readonly L[], right: 'C' | 'P', expiry: string, spot: number, at: number): { leg: L; read: CostRead | null; first: number } | null {
+  const exp = expiry.slice(0, 10);
+  const q = (l: L) => ({ strike: l.strike, right, bid: l.bid, ask: l.ask, expiryDate: exp });
+  const atm = atmIvOf(legs.map(q), spot, at);
+  const flatAt = at + TAIL_FADE_MIN * 60_000;
+  const byMu = atm ? costPick(legs, l => costRead(q(l), { spot, atmIv: atm, at, flatAt })) : null;
+  if (byMu) return { leg: byMu.pick, read: byMu.read, first: firstOrderCost(q(byMu.pick), spot, at) };
+  let best: { leg: L; read: null; first: number } | null = null;
+  for (const l of legs) {
+    const c = firstOrderCost(q(l), spot, at);
+    if (Number.isFinite(c) && (!best || c < best.first - 1e-12)) best = { leg: l, read: null, first: c };
+  }
+  return best;
 }
 
 /** Higher score wins. Inside the band, the strike closer to the stock wins, so a tied rank is not a coin flip. */

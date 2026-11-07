@@ -15,7 +15,8 @@ import { readGreek, type ChainPair, type GreekWhy } from '../core/readGreek';
 import { nyIsoDate } from '../core/nyTime';
 import { tradingMinutes, tradingYears, TRADING_DAYS } from '../core/tradingYear';
 import { quotedVolPoint, sigmaMoveOfQuotedIv } from '../core/volClock';
-import { SPAN_INDEX, strikeSpan, bookBRange, P1_MIN, BID_MIN, SPREAD_MAX, DRIVE, onScanGrid, inLottery, releaseBlocks, QUOTE_MAX_AGE_MS, LOTTERY_ASK_MAX } from './compassParams';
+import { SPAN_INDEX, strikeSpan, bookBRange, P1_MIN, BID_MIN, SPREAD_MAX, DRIVE, onScanGrid, inLottery, releaseBlocks, QUOTE_MAX_AGE_MS, inModel1Domain, quoteTradable, quoteFreshAt, wingShape, WING_DELTA_MAX, lotteryShape, LOTTERY_DELTA_MAX, lotteryEntry, LOTTERY_ASK_MAX, m3ShapeOn } from './compassParams';
+import { deltaOf } from './compassCost';
 import { optionScanOpen, scanShutWhy } from './compassSession';
 import { econReleases } from './monthCalendar';
 import { COMPASS_SET } from './compassUniverse';
@@ -435,8 +436,10 @@ export function readGate(input: GateInput): GateRead {
   const minute = input.minute ?? nyMinute(now);
   const t = minute - (9 * 60 + 30);
   const quotedAt = c.quotedAt || chain.quotedAt || 0;
-  const quoteBad = !(c.bid >= 0) || !(c.ask > 0) || c.ask < c.bid || !quotedAt || quotedAt > now || now - quotedAt > QUOTE_MAX_AGE_MS;
-  if (quoteBad) return fail(1, 'Quote missing, crossed, or older than 90 seconds.');
+  /* validity, Compass's own (compassParams quoteTradable, quoteFreshAt): a two-sided quote stamped within 90 s — whether
+     the quote is real data, not a limit on price or spread */
+  const quoteBad = !quoteTradable(c.bid, c.ask) || !quoteFreshAt(quotedAt, now);
+  if (quoteBad) return fail(1, `Quote missing, one-sided, crossed, or older than ${Math.round(QUOTE_MAX_AGE_MS / 1000)} seconds.`);
   passed.push(`Quote ${c.bid.toFixed(2)} × ${c.ask.toFixed(2)}, on this contract.`);
 
   const bookC = inLottery(minute, 0);
@@ -456,13 +459,31 @@ export function readGate(input: GateInput): GateRead {
   if (!bookC && !optionScanOpen(chain.ticker, dte, now)) return fail(4, scanShutWhy(chain.ticker, dte, now));
   passed.push(dte === 0 ? 'Same-day contract.' : `${left.toFixed(1)} trading sessions to expiration.`);
 
-  if (!(c.bid > BID_MIN)) return fail(5, 'Bid is at or under $0.15.');
-  passed.push('Bid is above $0.15.');
-
+  /* Model 1's trained quotes (compassParams inModel1Domain): its trees were trained only on a bid over $0.15 and a spread
+     within 8% of the mid, so Books A and B (scored by Model 1) take nothing else. Not a limit on what can be traded;
+     Book C reads Model 3's own rule below (2026-11-07, the owner: "remove the hard coded limits"). */
   const mid = (c.ask + c.bid) / 2;
   const spread = mid > 0 ? (c.ask - c.bid) / mid : Infinity;
-  if (!(spread <= SPREAD_MAX + 1e-9)) return fail(6, 'Spread is over 8% of the mid.');
-  passed.push(`Spread ${(spread * 100).toFixed(1)}% of the mid.`);
+  const bidWord = `$${BID_MIN.toFixed(2)}`;
+  const spreadWord = `${Math.round(SPREAD_MAX * 100)}%`;
+  if (!bookC && !inModel1Domain(c.bid, c.ask)) {
+    if (!(c.bid > BID_MIN)) return fail(5, `Outside Model 1's trained quotes: the bid is at or under ${bidWord}. The model was never trained on one.`);
+    return fail(6, `Outside Model 1's trained quotes: the spread is over ${spreadWord} of the mid. The model was never trained on one.`);
+  }
+  if (!bookC) passed.push(`Inside Model 1's trained quotes: bid over ${bidWord}, spread ${(spread * 100).toFixed(1)}% of the mid.`);
+  /* Book C follows Model 3's live rule (compassParams m3ShapeOn, COMPASS_M3_SHAPE): off (the default) it is lotteryEntry —
+     a bid over $0.15 and a spread within 8% here, the ask cap below; on, the shape rule (lotteryShape) and none of them */
+  const m3Shape = m3ShapeOn();
+  if (bookC && !m3Shape && !lotteryEntry(c.bid, c.ask)) {
+    if (!(c.bid > BID_MIN)) return fail(5, `Bid is at or under ${bidWord}.`);
+    if (!inModel1Domain(c.bid, c.ask)) return fail(6, `Spread is over ${spreadWord} of the mid.`);
+  }
+  if (bookC && !m3Shape) {
+    passed.push(`Bid is above ${bidWord}.`);
+    passed.push(`Spread ${(spread * 100).toFixed(1)}% of the mid.`);
+  }
+  /* the contract's |delta| at its own IV on the trading clock (compassCost deltaOf): the wing's and Book C's shape */
+  const absDelta = exp ? Math.abs(deltaOf({ strike: c.strike, right: c.right, bid: c.bid, ask: c.ask, expiryDate: exp }, chain.spot, now)) : NaN;
 
   const strikes = chain.rows.map(r => r.strike);
   const index = (SPAN_INDEX as readonly string[]).includes(chain.ticker);
@@ -476,9 +497,9 @@ export function readGate(input: GateInput): GateRead {
 
   if (!bookC && inB) {
     const prior = c.priorAsk ?? 0;
-    if (!(c.ask <= 1)) return fail(8, 'Book B ask is over $1.00.');
+    if (!wingShape(absDelta)) return fail(8, Number.isFinite(absDelta) ? `Book B is a wing: ${WING_DELTA_MAX.toFixed(2)} delta or less. This one is ${absDelta.toFixed(2)}.` : 'Book B is a wing by its delta, and this one did not solve.');
     if (!(prior > 0) || !(c.ask <= 0.5 * prior)) return fail(8, 'Book B needs the ask at or under half the ask from 30 minutes ago. That quote is not here.');
-    passed.push('Book B ask is at or under $1 and has halved.');
+    passed.push(`Book B is a wing (${absDelta.toFixed(2)} delta) and its ask has halved.`);
   }
 
   const ret = input.retOpen;
@@ -492,9 +513,13 @@ export function readGate(input: GateInput): GateRead {
       /* Compass's rule: a flat root is sent only when the opposite side does not clear as well. */
       passed.push('Flat root. Sent only if the opposite side does not clear too.');
     }
-  } else if (!(c.ask <= LOTTERY_ASK_MAX)) {
-    return fail(8, 'Book C ask is over $1.65.');
-  }
+  } else if (!m3Shape) {
+    /* the switch off: Model 3's live rule, its ask cap (lotteryEntry, LOTTERY_ASK_MAX) */
+    if (!lotteryEntry(c.bid, c.ask)) return fail(8, `Book C ask is over $${LOTTERY_ASK_MAX.toFixed(2)}.`);
+  } else if (!lotteryShape(c.bid, c.ask, absDelta)) {
+    /* the switch on: Model 3's contract by its shape (compassParams lotteryShape): at the money or out of it, no price cap */
+    return fail(8, Number.isFinite(absDelta) ? `Book C takes a contract at the money or out of it: ${LOTTERY_DELTA_MAX.toFixed(2)} delta or less. This one is ${absDelta.toFixed(2)}.` : 'Book C takes a contract by its delta, and this one did not solve.');
+  } else passed.push(`Book C contract: ${absDelta.toFixed(2)} delta, at the money or out of it.`);
 
   if (!bookC) {
     if (input.p1 == null || !Number.isFinite(input.p1)) return fail(11, 'The line has not been read. No number was invented.');
