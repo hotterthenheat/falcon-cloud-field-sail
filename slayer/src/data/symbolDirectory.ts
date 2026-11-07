@@ -167,7 +167,7 @@ export const directoryReady = (): boolean => entries.length > 0;
 export const directoryBuiltOn = (): string => builtOn;
 export const directorySize = (): number => entries.length;
 const passes = (e: DirectoryEntry, only: DirectoryFilter | undefined): boolean =>
-  !only || (only === 'options' ? e.options : only === 'terrain' ? e.terrain : e.pinpoint);
+  !only || (only === 'options' ? e.options : only === 'terrain' ? e.terrain : e.pinpoint || e.options);
 const counts = new Map<string, number>();
 /** How many rows one filter keeps (every row without one) */
 export function directoryCount(only?: DirectoryFilter): number {
@@ -213,9 +213,18 @@ export function hasVendorOptions(symbol: string): boolean | null {
   return e ? e.vendorOptions : null;
 }
 
-/** Pinpoint can serve the symbol (the vendor lists live options on it): true or false once loaded, null before or for a
-    symbol the directory does not carry */
+/** Pinpoint can serve the symbol: the vendor lists live options on it (both books), or only the terminal does (the flow
+    book; the open-interest book says it is unavailable — docs/TWO_BOOK.md). True or false once loaded, null before or
+    for a symbol the directory does not carry */
 export function pinpointServes(symbol: string): boolean | null {
+  if (!entries.length) return null;
+  const s = normalSymbol(symbol);
+  const e = bySymbol.get(s) ?? byBare.get(s);
+  return e ? e.pinpoint || e.options : null;
+}
+
+/** The open-interest book can be built for the symbol (the vendor lists live options on it): null before the directory */
+export function openInterestBookServes(symbol: string): boolean | null {
   if (!entries.length) return null;
   const s = normalSymbol(symbol);
   const e = bySymbol.get(s) ?? byBare.get(s);
