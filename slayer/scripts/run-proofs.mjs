@@ -35,6 +35,7 @@ const PROOFS = [
   'compass-feed-proof',
   'compass-words-proof',
   'compass-cost-proof',
+  'compass-limits-proof',
   'compass-forward-proof',
   'fixture-proof',
   'higher-proof',

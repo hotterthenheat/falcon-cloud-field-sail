@@ -175,6 +175,9 @@ export interface Setup {
   spot?: number;
   /** Exchange time of the quote, epoch ms. */
   quotedAt?: number;
+  /** Size displayed at the bid and the ask, when the feed sent it (a validity check: compassParams sizeShown) */
+  bidSize?: number;
+  askSize?: number;
   /** When Compass first listed this contract, epoch ms. Not a model call. */
   seenAt?: number;
   /** Scored after its mark from the quotes ThetaData recorded at that mark (the live scan missed it) */

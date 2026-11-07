@@ -153,7 +153,8 @@ for (const [label, minute, t] of [['09:30', 570, 0], ['09:35', 575, 5]] as const
 /* The grid: every 5 minutes; 10:32 is not on it */
 expectEqual('grid 10:30', onScanGrid(60), true);
 expectEqual('grid 10:32', onScanGrid(62), false);
-/* Spread: bid over 0.15 and (ask - bid)/mid at most 8%. 1.20 × 1.24 is 3.3%; 1.00 × 1.09 is 8.6%; 0.15 bid fails. */
+/* Model 1's trained quotes (the trees' own feature ranges): bid over 0.15 and (ask - bid)/mid at most 8%. 1.20 × 1.24 is
+   3.3%; 1.00 × 1.09 is 8.6%; 0.15 bid fails. */
 expectEqual('spread 1.20 × 1.24 passes', spreadPass(1.2, 1.24), true);
 expectEqual('spread 1.00 × 1.09 fails (8.6%)', spreadPass(1.0, 1.09), false);
 expectEqual('bid 0.15 fails', spreadPass(0.15, 0.16), false);
@@ -167,10 +168,13 @@ expectEqual('Book A at 70.67%', bookAPass(60, 2, 4, 0, 1.2, 1.24, P1_MIN), true)
 expectEqual('Book A at 70.66%', bookAPass(60, 2, 4, 0, 1.2, 1.24, 0.7066), false);
 expectEqual('Book A off the grid', bookAPass(62, 2, 4, 0, 1.2, 1.24, 0.8), false);
 expectEqual('Book A 5 strikes out', bookAPass(60, 5, 4, 0, 1.2, 1.24, 0.8), false);
-/* Book B: 8–12 strikes out (span 4), ask at most $1 and at most half its ask 30 minutes earlier */
-expectEqual('Book B 0.40 × 0.42 from 0.90', bookBPass(60, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), true);
-expectEqual('Book B not half (0.42 vs 0.80)', bookBPass(60, 9, 4, 0, 0.4, 0.42, 0.78, 0.8, 0.8), false);
-expectEqual('Book B too near (7 out)', bookBPass(60, 7, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), false);
+/* Book B: 8–12 strikes out (span 4), a wing by its delta (0.15 or less; it was an ask of $1 or less) and at most half
+   its ask 30 minutes earlier */
+expectEqual('Book B 0.40 × 0.42 from 0.90, 0.08 delta', bookBPass(60, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.08, 0.8), true);
+expectEqual('Book B not half (0.42 vs 0.80)', bookBPass(60, 9, 4, 0, 0.4, 0.42, 0.78, 0.8, 0.08, 0.8), false);
+expectEqual('Book B too near (7 out)', bookBPass(60, 7, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.08, 0.8), false);
+expectEqual('Book B at 0.20 delta is not a wing', bookBPass(60, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.2, 0.8), false);
+expectEqual('Book B at $4.20 from $9.00 is a wing by its delta', bookBPass(60, 9, 4, 0, 4.1, 4.2, 8.9, 9, 0.08, 0.8), true);
 /* the gate is the root's own session (owner, 2026-11-02): from the open until the flat, 0DTE and 1–7 DTE. There is
    no 15-minute wait after the open any more (ENTRY_MIN_SINCE 0): 09:40 is on the 5-minute grid and inside the
    regular session, so it may call (it is marked outside trained hours, t 15 to 330). 15:55 and 16:55 are the flats,
@@ -187,7 +191,7 @@ expectEqual('equity pre-market gate: 21:00 no, 07:40 yes, 07:45 yes, 08:25 yes, 
   expectEqual('sessions and minutes to the flat: 21:00 overnight 740, 08:00 pre 80, 10:00 regular 355, 16:30 curb 25', [[sessionKindOf(tOf(21, 0)), minutesToFlat(tOf(21, 0))], [sessionKindOf(tOf(8, 0), 385, false), minutesToFlat(tOf(8, 0), 385, false)], [sessionKindOf(30), minutesToFlat(30)], [sessionKindOf(420), minutesToFlat(420)]], [['overnight', 740], ['pre', 80], ['regular', 355], ['curb', 25]]);
   expectEqual('outside trained hours: 21:00 and 08:00 are, 10:00 is not', [inModelWindow(690), inModelWindow(tOf(8, 0)), inModelWindow(30)], [false, false, true]);
 }
-expectEqual('Book B gated the same: 15:00 yes, 15:05 yes', [bookBPass(330, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8), bookBPass(335, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.8)], [true, true]);
+expectEqual('Book B gated the same: 15:00 yes, 15:05 yes', [bookBPass(330, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.08, 0.8), bookBPass(335, 9, 4, 0, 0.4, 0.42, 0.85, 0.9, 0.08, 0.8)], [true, true]);
 expectEqual('early close 13:00: flat t 205, still an entry at t 155', [flatTOf(780), flatTOf(null), bookAPass(150, 2, 4, 0, 1.2, 1.24, 0.8, flatTOf(780)), bookAPass(155, 2, 4, 0, 1.2, 1.24, 0.8, flatTOf(780))], [205, 385, true, true]);
 expectEqual('entry gate in words', [entryTimeOk(15), entryTimeOk(14), entryTimeOk(330, 385), entryTimeOk(331, 385)], [true, true, true, true]);
 /* Theta burn: |theta/day·365|·dt ≥ 0.5322·ask. -0.50/day over 40 minutes (40/(390·252) y): 182.5·0.000407 = 0.0743 < 0.5322·0.20 = 0.1064 holds; at ask 0.12 it burns (0.0639). */
