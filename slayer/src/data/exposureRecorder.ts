@@ -32,6 +32,7 @@ import { nyIsoDate, nyParts } from '../core/nyTime';
 import { isTradingDay } from '../core/calendar';
 import { phaseAt, sessionAt } from '../core/session';
 import { ALL, closeOf, placeSeg, readAnswer, spanOf, type KeptSeries } from './book/exposureSegs';
+import { loadDirectory, noContractDates } from './symbolDirectory';
 
 /* the rebuilt past day is served by the same mount (server/exposureApi.mjs): one module to load */
 export { createExposureHist, histRoute } from './exposureHistServer';
@@ -569,7 +570,10 @@ export function startExposureRecorder(o: RecorderOptions): Recorder {
       expiries.set(t, got);
     }
     const now = clock();
-    return got.dates.find(d => closeOf(d) > now) ?? null;
+    /* a listed date with no contract behind it (symbolDirectory noContractDates) is never the front */
+    void loadDirectory().catch(() => undefined);
+    const none = noContractDates(t);
+    return got.dates.find(d => closeOf(d) > now && !none.has(d)) ?? null;
   }
 
   /* ---- writing ---- */
