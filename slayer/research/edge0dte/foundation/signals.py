@@ -22,10 +22,10 @@ from lib.data import bars as load_bars
 def five_min(b):
     if not len(b):
         return pd.DataFrame(columns=['b', 'o', 'h', 'l', 'c', 'n'])
-    g = (b.m.values - 570) // 5
+    g = (b.m.values.astype(np.int64) - 570) // 5
     df = pd.DataFrame({'g': g, 'o': b.o.values, 'h': b.h.values, 'l': b.l.values, 'c': b.c.values})
     a = df.groupby('g').agg(o=('o', 'first'), h=('h', 'max'), l=('l', 'min'), c=('c', 'last'), n=('c', 'size'))
-    a['b'] = 570 + a.index.values * 5
+    a['b'] = 570 + a.index.values.astype(np.int64) * 5
     return a.reset_index(drop=True)
 
 
