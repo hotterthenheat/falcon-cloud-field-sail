@@ -206,11 +206,32 @@ def _change_only(q):
     return {x: v[keep] for x, v in q.items()}
 
 
+class _FileLock:
+    """Exclusive inter-process lock (fcntl) on q1s/.locks/{root}_{day}.lock, so several fetch processes may share a
+    (root, day) store without losing each other's windows (the store is re-read inside the lock)."""
+
+    def __init__(self, root, day):
+        d = os.path.join(DATA, 'q1s', '.locks')
+        os.makedirs(d, exist_ok=True)
+        self.f = os.path.join(d, f'{root}_{day}.lock')
+
+    def __enter__(self):
+        import fcntl
+        self.h = open(self.f, 'w')
+        fcntl.flock(self.h, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *a):
+        import fcntl
+        fcntl.flock(self.h, fcntl.LOCK_UN)
+        self.h.close()
+
+
 def fetch_q1s_windows(root, day, wants):
     """wants: list of (k, call(bool), start_s, end_s). Fetches the windows not yet covered (one request per window),
-    appends them to the day's store, and returns the number of requests made. Not thread-safe across processes:
-    run one process per (root, day) at a time (the drivers do)."""
-    with _lock((root, day)):
+    appends them to the day's store, and returns the number of requests made. Thread-safe within a process and
+    safe across processes (per-(root, day) file lock; the store is re-read under the lock)."""
+    with _lock((root, day)), _FileLock(root, day):
         st = _load_store(root, day)
         new_q, new_c, nreq = [], [], 0
         for k, call, a, b in wants:

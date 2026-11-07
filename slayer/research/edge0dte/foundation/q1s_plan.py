@@ -10,6 +10,10 @@ base (priority order):
     grid time inside the bucket
   3 SPY, QQQ, IWM hurdle: 30 DISCOVERY sessions per bucket per root (seed 11) at a random grid time in the bucket
   4 SPY, QQQ, IWM unconditional baselines (as 1), fetched last if time allows
+hurdle2 (FOUNDATION-2, 2026-11-07, written before any fill of these rows was seen): SPXW supplement so every 30-min
+  bucket of the grid holds >= 200 DISCOVERY decision times: per non-base bucket, 100 more DISCOVERY sessions not yet
+  sampled for that bucket (seed 17), at a random grid time inside the bucket -> plan_hurdle2.parquet (prio 2,
+  purpose hurdle).
 Each row: root, day, t, prio, purpose. The fetcher selects the 0.30-delta call, 0.30-delta put and the ATM strike from
 the board at t and fetches their 1-second windows.
 """
@@ -64,12 +68,35 @@ def base_plan():
     return df.reset_index(drop=True)
 
 
+def hurdle2_plan(n_more=100, seed=17):
+    base = base_plan()
+    used = {(b, d) for d, t, r in zip(base.day, base.t, base.root) if r == 'SPXW' for b in [bucket(int(t))]}
+    rng = np.random.default_rng(seed)
+    days = [d for d in disc_cal_sessions('SPXW') if split(d) == 'DISCOVERY']
+    rows = []
+    for b in sorted(set(bucket(t) for t in GRID)):
+        if b in ('10:00', '12:00', '14:00'):
+            continue
+        cand = [d for d in days if (b, d) not in used and any(bucket(t) == b for t in grid_for(d))]
+        pick = rng.choice(len(cand), size=min(n_more, len(cand)), replace=False)
+        for i in sorted(pick):
+            d = cand[i]
+            ts = [t for t in grid_for(d) if bucket(t) == b]
+            rows.append(('SPXW', d, int(rng.choice(ts)), 2, 'hurdle'))
+    df = pd.DataFrame(rows, columns=['root', 'day', 't', 'prio', 'purpose'])
+    return df.sort_values(['day', 't']).drop_duplicates(['root', 'day', 't']).reset_index(drop=True)
+
+
 def main():
     what = sys.argv[1]
     if what == 'base':
         df = base_plan()
         df.to_parquet(os.path.join(DATA, 'plan_base.parquet'))
         print(df.groupby(['prio', 'root', 'purpose']).size())
+    elif what == 'hurdle2':
+        df = hurdle2_plan()
+        df.to_parquet(os.path.join(DATA, 'plan_hurdle2.parquet'))
+        print(df.groupby(df.t.map(bucket)).size())
     elif what == 'signals':
         from foundation.signals import signal_plan
         df = signal_plan()

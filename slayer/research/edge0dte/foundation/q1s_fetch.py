@@ -1,6 +1,6 @@
 """Fetch the 1-second windows for a plan (resumable). One request in flight per process.
 
-  python3 -m foundation.q1s_fetch plan_base.parquet [--part i/n] [--maxprio p]
+  python3 -m foundation.q1s_fetch plan_base.parquet [--part i/n] [--maxprio p] [--minprio p] [--roots A,B]
 
 For each planned (root, day, t): select from the board at t (lib.board): the 0.30-delta call and put (|delta| in
 [0.15, 0.50], nearest 0.30) and the ATM strike (nearest the parity forward with both quotes valid); for signal rows
@@ -70,6 +70,10 @@ def main():
         plan['side'] = 'all'
     if '--maxprio' in sys.argv:
         plan = plan[plan.prio <= int(sys.argv[sys.argv.index('--maxprio') + 1])]
+    if '--minprio' in sys.argv:
+        plan = plan[plan.prio >= int(sys.argv[sys.argv.index('--minprio') + 1])]
+    if '--roots' in sys.argv:
+        plan = plan[plan.root.isin(sys.argv[sys.argv.index('--roots') + 1].split(','))]
     if '--part' in sys.argv:
         i, n = map(int, sys.argv[sys.argv.index('--part') + 1].split('/'))
         keys = plan[['root', 'day']].drop_duplicates().reset_index(drop=True)

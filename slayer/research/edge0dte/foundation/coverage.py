@@ -1,16 +1,24 @@
 """FOUNDATION task 1 report: results/COVERAGE.md (sessions expected vs present, every missing day with its reason).
 
   cd slayer/research/edge0dte && python3 -m foundation.coverage
+
+Expected root-session (REGISTRY_ADDENDUM_1 section 1): an NYSE session D (exchange calendar) on which a series of the
+root expiring D was LISTED (ThetaData expiration list) AND TRADED on D (>= 1 print in the EOD record of that series,
+foundation/expiry_check.py). Every NYSE session that is not expected is listed by reason (no series expiring D in the
+record / listed but no print). Present = 1-minute underlying bars (>= 90% of minutes) + ETF volume (ETF roots) + the
+0DTE 1-minute board + same-day OI.
 """
 import collections
+import json
 import os
 
 import pandas as pd
 
 from lib import cal
-from lib.config import DATA, OLD, ROOTS, UNDER
+from lib.config import DATA, OLD, ROOTS, START, UNDER
 
 OUT = os.path.join(os.path.dirname(__file__), '..', 'results', 'COVERAGE.md')
+WD = 'Mon Tue Wed Thu Fri'.split()
 
 
 def _file(kind, root, day):
@@ -23,9 +31,12 @@ def _file(kind, root, day):
 
 def _rows(f):
     try:
-        return len(pd.read_parquet(f, columns=[]))
+        return len(pd.read_parquet(f, columns=['m']))
     except Exception:
-        return len(pd.read_parquet(f))
+        try:
+            return len(pd.read_parquet(f))
+        except Exception:
+            return -1                                   # unreadable file
 
 
 _BARS = {}
@@ -51,8 +62,19 @@ def bar_days(sym):
     return _BARS[sym]
 
 
+def expiry_record(root):
+    f = os.path.join(DATA, 'expiry_check', f'{root}.jsonl')
+    out = {}
+    if os.path.exists(f):
+        for line in open(f):
+            r = json.loads(line)
+            if r['status'] != 'fail':
+                out[r['day']] = r
+    return out
+
+
 def status(root, day):
-    """(ok, reasons) for one root-session."""
+    """(ok, reasons) for one expected root-session."""
     reasons = []
     days, vol = bar_days(UNDER[root])
     nb = days.get(day, 0)
@@ -61,17 +83,20 @@ def status(root, day):
         reasons.append('no 1-min underlying bars (ThetaData returned none)')
     elif nb < 0.9 * full:
         reasons.append(f'underlying bars partial ({nb}/{full})')
-    if root != 'SPXW':
-        if day not in vol:
-            reasons.append('no ETF volume')
+    if root != 'SPXW' and day not in vol:
+        reasons.append('no ETF volume')
     f = _file('chain', root, day)
     if f is None:
-        reasons.append('0DTE board not fetched (request failed)')
-    elif _rows(f) == 0:
-        reasons.append('0DTE board empty (ThetaData returned no quotes for the same-day expiry)')
+        reasons.append('0DTE board not fetched yet (no request completed)')
+    else:
+        n = _rows(f)
+        if n == 0:
+            reasons.append('0DTE board empty (ThetaData returned no 1-min quotes for the same-day expiry)')
+        elif n < 0:
+            reasons.append('0DTE board file unreadable')
     f = _file('oi', root, day)
     if f is None:
-        reasons.append('OI not fetched (request failed)')
+        reasons.append('OI not fetched yet (no request completed)')
     else:
         o = pd.read_parquet(f)
         if not len(o) or not (o.e == 0).any():
@@ -80,26 +105,84 @@ def status(root, day):
 
 
 def main():
-    lines = ['# EDGE0DTE data coverage (FOUNDATION task 1)', '',
-             'Session calendar: NYSE exchange calendar (exchange_calendars XNYS), 2020-02-18 .. 2025-12-31 '
-             f'({len(cal.sessions())} sessions; early closes at 13:00 handled: grid ends 12:30, close = 13:00). '
-             'A root-session is EXPECTED when ThetaData\'s expiration list for the root has an expiry that day '
-             '(sessions without a same-day expiry are excluded for that root, never filled with 1DTE). '
-             'PRESENT = 1-minute underlying bars (>= 90% of minutes) + ETF volume (ETF roots) + the 0DTE 1-minute '
-             'board + same-day OI.', '',
+    sessions = cal.sessions()
+    lines = ['# EDGE0DTE data coverage (FOUNDATION task 1, U1: SPXW, SPY, QQQ, IWM)', '',
+             f'Session calendar: NYSE exchange calendar (exchange_calendars XNYS), {START} .. 2025-12-31 '
+             f'({len(sessions)} sessions; early closes at 13:00 handled: grid ends 12:30, close = 13:00).', '',
+             'EXPECTED root-session = a series of the root expiring that day was LISTED (ThetaData expiration list) AND '
+             'TRADED that day (>= 1 print in the EOD record of the series expiring D, one request per root and NYSE '
+             'session: foundation/expiry_check.py). No listing pattern (daily, Mon/Wed/Fri, ...) is assumed anywhere; '
+             'the weekday profile below only describes the record. Sessions without a same-day expiry are excluded for '
+             'that root, never filled with 1DTE. PRESENT = 1-minute underlying bars (>= 90% of minutes) + ETF volume '
+             '(ETF roots) + the 0DTE 1-minute board + same-day OI. 2025 (HOLDOUT) data are fetched and counted here '
+             'only; no outcome is computed on them.', '',
              'Labels: bars o/h/l/c/v/n OBS; board m/k/r/bid/ask/bs/as OBS; OI e/k/r/oi OBS (ts/td = publish stamp, '
-             'OBS); VIX/VIX1D bars OBS. Caches: v2data/edge0dte (new, zstd parquet) then v2data/edge (earlier, read-only).',
-             '', '## Root-sessions expected vs present', '',
-             '| root | year | expected | present | missing | bars | board | OI |', '|---|---|---:|---:|---:|---:|---:|---:|']
+             'OBS); EOD volume/count OBS; VIX/VIX1D bars OBS. Caches: v2data/edge0dte (new, zstd parquet) then '
+             'v2data/edge (earlier, read-only).', '']
+    # ---- same-day expiry record
+    lines += ['## Same-day expiry: listed vs traded (the record)', '',
+              '| root | year | NYSE sessions | listed | listed + traded (EXPECTED) | listed, no print | prints, not listed | '
+              'no series expiring D | not yet checked | weekday profile of EXPECTED (Mon..Fri) |',
+              '|---|---|---:|---:|---:|---:|---:|---:|---:|---|']
+    expected, anomalies, not_expected = {}, [], collections.defaultdict(list)
+    for root in ROOTS:
+        ex = cal.expiries(root)
+        rec = expiry_record(root)
+        exp_r = []
+        for y in ('2020', '2021', '2022', '2023', '2024', '2025'):
+            ss = [d for d in sessions if d[:4] == y]
+            c = collections.Counter()
+            wd = collections.Counter()
+            for d in ss:
+                listed = d in ex
+                r = rec.get(d)
+                if r is None:
+                    c['unchecked'] += 1
+                    if listed:
+                        exp_r.append(d)
+                        c['exp'] += 1
+                        wd[pd.Timestamp(d).dayofweek] += 1
+                    else:
+                        not_expected[root].append((d, 'no series expiring D listed (EOD not yet checked)'))
+                    c['listed'] += listed
+                    continue
+                traded = r.get('count', 0) > 0
+                c['listed'] += listed
+                if listed and traded:
+                    c['exp'] += 1
+                    exp_r.append(d)
+                    wd[pd.Timestamp(d).dayofweek] += 1
+                elif listed and not traded:
+                    c['listed_np'] += 1
+                    anomalies.append((root, d, f'listed, but no print in the EOD record (n={r.get("n")} series rows)'))
+                    not_expected[root].append((d, 'listed but not traded'))
+                elif traded and not listed:
+                    c['np_listed'] += 1
+                    anomalies.append((root, d, f'prints on D for an expiry D that is not in the expiration list '
+                                               f'(count={r["count"]}); excluded until the list is reconciled'))
+                    not_expected[root].append((d, 'traded but not listed'))
+                else:
+                    c['none'] += 1
+                    not_expected[root].append((d, 'no series expiring D in the record'))
+            prof = ' / '.join(str(wd.get(i, 0)) for i in range(5))
+            lines.append(f"| {root} | {y} | {len(ss)} | {c['listed']} | {c['exp']} | {c['listed_np']} | {c['np_listed']} | "
+                         f"{c['none']} | {c['unchecked']} | {prof} |")
+        expected[root] = exp_r
+    lines += ['', 'Anomalies (listed vs record): ' + (str(len(anomalies)) if anomalies else 'none'), '']
+    if anomalies:
+        lines += ['| root | day | anomaly |', '|---|---|---|'] + [f'| {r} | {d} | {a} |' for r, d, a in anomalies] + ['']
+    # ---- expected vs present
+    lines += ['## Root-sessions expected vs present', '',
+              '| root | year | expected | present | missing | bars | board | OI |', '|---|---|---:|---:|---:|---:|---:|---:|']
     missing = []
     for root in ROOTS:
         by = collections.defaultdict(lambda: [0, 0, 0, 0, 0])
-        for d in cal.expiry_sessions(root):
+        for d in expected[root]:
             ok, rs = status(root, d)
             y = d[:4]
             by[y][0] += 1
             by[y][1] += ok
-            by[y][2] += not any('bars' in r for r in rs)
+            by[y][2] += not any('bars' in r or 'volume' in r for r in rs)
             by[y][3] += not any('board' in r for r in rs)
             by[y][4] += not any('OI' in r for r in rs)
             if not ok:
@@ -111,13 +194,31 @@ def main():
     for sym in ('VIX', 'VIX1D', 'SPX', 'SPY', 'QQQ', 'IWM'):
         days, _ = bar_days(sym)
         for y in ('2020', '2021', '2022', '2023', '2024', '2025'):
-            ss = [d for d in cal.sessions() if d[:4] == y]
+            ss = [d for d in sessions if d[:4] == y]
             lines.append(f'| {sym} | {y} | {sum(1 for d in ss if days.get(d, 0) > 0)} | {len(ss)} |')
-    lines += ['', f'## Every missing root-session ({len(missing)})', '', '| root | day | reason |', '|---|---|---|']
+    lines += ['', '## Why sessions were missing in the previous report', '',
+              'The 2026-11-07 WIP report counted 2021 entirely missing, 2020 and 2022 partial, 22 sessions of 2024 and '
+              '60 of 2025. None of these was a data hole in ThetaData: the old EDGE caches (v2data/edge) only held the '
+              'periods earlier families had fetched, and the FOUNDATION gap fetcher (foundation/fetch_gaps.py) was '
+              'stopped by the container restart part-way through SPY 2021. FOUNDATION-2 resumed it; every request '
+              'returned data (see the table above: what is still missing is listed below with the reason).', '',
+              f'## Every missing expected root-session ({len(missing)})', '', '| root | day | reason |', '|---|---|---|']
     lines += [f'| {r} | {d} | {why} |' for r, d, why in missing]
+    lines += ['', '## NYSE sessions without a same-day expiry, by root (excluded, not missing)', '']
+    for root in ROOTS:
+        ne = not_expected[root]
+        by = collections.Counter((d[:4], why) for d, why in ne)
+        lines.append(f'- {root}: ' + '; '.join(f'{y} {why}: {n}' for (y, why), n in sorted(by.items())))
+    lines.append('')
+    lines += ['<details><summary>Full list of excluded sessions</summary>', '']
+    for root in ROOTS:
+        lines.append(f'{root}: ' + ', '.join(f'{d}' + ('' if why.startswith('no series') else f' ({why})')
+                                             for d, why in not_expected[root]))
+        lines.append('')
+    lines += ['</details>', '']
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     open(OUT, 'w').write('\n'.join(lines) + '\n')
-    print('\n'.join(lines[:60]))
+    print('\n'.join(lines[:70]))
     print(len(missing), 'missing')
 
 
