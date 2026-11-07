@@ -1,5 +1,15 @@
 # Keys audit: what the two data keys can give, what Slayer uses, and what to build with the rest
 
+> **Update 2026-11-07 (owner):** the personal-use keys are for local development only. Production runs on
+> commercial keys: Unusual Whales Startup/Enterprise and ThetaData's business plan (Pro: options, stocks, indices),
+> both licensed for public use. The licensing sections below describe the personal keys. What still needs checking
+> under the commercial keys: (1) OPRA vendor registration and fees for anything shown live or 15-minute delayed,
+> unless the commercial ThetaData agreement passes OPRA through; (2) index-value licences (Cboe SPX/VIX, S&P DJI,
+> Nasdaq) unless ThetaData's indices plan covers display; (3) that the Unusual Whales plan includes redistribution
+> to end users (Enterprise "upon approval"), not only commercial internal use; (4) that nothing derived from the
+> personal keys (local caches, research files) ships in the product: production values should be fetched under the
+> commercial keys.
+
 Written 2026-11-07 (a Saturday: every "live" answer below is the 2026-11-06 session). Internal memo: it names the
 vendors, and the product must not (the on-screen strings were checked and are clean, see §7).
 

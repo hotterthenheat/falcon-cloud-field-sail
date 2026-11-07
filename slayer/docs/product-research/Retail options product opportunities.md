@@ -1,5 +1,15 @@
 # Sell the Receipt, Not the Signal
 
+> **Update 2026-11-07 (owner):** the personal-use keys are for local development only. Production runs on
+> commercial keys: Unusual Whales Startup/Enterprise and ThetaData's business plan (Pro: options, stocks, indices),
+> both licensed for public use. The licensing sections below describe the personal keys. What still needs checking
+> under the commercial keys: (1) OPRA vendor registration and fees for anything shown live or 15-minute delayed,
+> unless the commercial ThetaData agreement passes OPRA through; (2) index-value licences (Cboe SPX/VIX, S&P DJI,
+> Nasdaq) unless ThetaData's indices plan covers display; (3) that the Unusual Whales plan includes redistribution
+> to end users (Enterprise "upon approval"), not only commercial internal use; (4) that nothing derived from the
+> personal keys (local caches, research files) ships in the product: production values should be fetched under the
+> commercial keys.
+
 The product with the best evidence behind it that ThetaData Pro and Unusual Whales could power is not another flow tape or gamma dashboard. It is a **verification layer** for the retail options trader. Its parts are an audit of each fill against the NBBO in force at that millisecond, a Greek-level "autopsy" that separates spread paid from being wrong, a replay simulator on recorded tick data, and a checker that asks whether an advertised track record could actually have been traded. The academic record explains why. Retail option buyers lose money mostly to execution cost, not bad direction calls: in the main study, **$6.4 billion of spread cost against a $2.1 billion net loss**. No US rule gives options traders the fill-quality statistics that equity traders get. The tool market splits into about fifteen paid products selling flow, GEX and volatility views. I found none that audits fills, splits spread from P&L, backtests against random baselines or puts error bars on dealer positioning. These ideas also cost the least to license. Neither of the owner's current keys can legally power any paid product, including scores derived from the data. But a product built only on prior-session ("historical") OPRA data owes **no OPRA redistribution fee**. On ThetaData's posted commercial prices that puts the data cost at roughly **$1,250–$3,200 a month**. A real-time product needs about **$5,000–$9,000 a month plus about $1.25 per user**. Three caveats apply. ThetaData has not published its terms for showing data to customers. Trader-level data suggest that the engaged traders who pay for tools may lose much less to spreads than the aggregate figures imply. And demand for retail options tools rises and falls with market activity.
 
 ## Retail traders lose to the spread, not the forecast
