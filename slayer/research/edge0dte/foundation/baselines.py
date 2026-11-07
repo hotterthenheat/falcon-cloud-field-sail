@@ -128,7 +128,15 @@ def by(tr, col):
 
 
 def pct(x, nd=1):
-    return '-' if x is None or not np.isfinite(x) else f'{100 * x:+.{nd}f}%'
+    if x is None or not np.isfinite(x):
+        return '-'
+    if abs(x) < 0.01 and x != 0:
+        nd = max(nd, 3)                      # underlying rows: returns of a few bp
+    return f'{100 * x:+.{nd}f}%'
+
+
+def usd(x):
+    return '-' if x is None or not np.isfinite(x) else f'{x:+.1f}'
 
 
 def definitions(b):
@@ -234,7 +242,9 @@ def write_md(res, sections, sh, sens, n_trials, sr_var):
     L += [f'- **{k}**: {v}' for k, v in MECH.items()]
     L += ['', '## Headline', '', 'Expectancy = mean net return per trade as % of premium (underlying rows: % of notional), '
           'day-clustered bootstrap 95% CI (2,000 resamples). PF = profit factor. Max DD on the $25,000 / '
-          '$1,000-per-trade equity path. q (FDR): n/a, baselines are outside the FDR family.', '']
+          '$1,000-per-trade equity path (drawdown % is of the running peak; above 100% means the $25,000 account would have '
+          'been ruined; the path is continued for comparison). q (FDR): n/a, baselines are outside the FDR family. '
+          '$/lot is "-" for underlying rows (no option lot).', '']
     for spl in ('DISCOVERY', 'CALIBRATION'):
         L += [f'### {spl}', '', '| root | baseline | exit | sessions | trades | skips | win | avg win | avg loss | expectancy [95%] | p | $/lot | PF | Sharpe/trade | Sharpe daily | DSR | max DD $ (%) | total return | costs $ | exp @ $1.30 fee | exp @ +1 tick |',
               '|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|']
@@ -249,7 +259,7 @@ def write_md(res, sections, sh, sens, n_trials, sr_var):
             L.append(f"| {r['root']} | {r['baseline']} | {r['h']} | {r['sessions']} | {r['trades']} | {r.get('skips', 0)} | "
                      f"{100 * r.get('win', np.nan):.1f}% | {pct(r.get('avg_win'))} | {pct(r.get('avg_loss'))} | "
                      f"{pct(r.get('exp'))} [{pct(r.get('exp_lo'))}, {pct(r.get('exp_hi'))}] | {r.get('p', np.nan):.3f} | "
-                     f"{r.get('exp_usd_lot', np.nan):+.1f} | {r.get('pf', np.nan):.2f} | {r.get('sharpe_trade', np.nan):+.3f} | "
+                     f"{usd(r.get('exp_usd_lot', np.nan))} | {r.get('pf', np.nan):.2f} | {r.get('sharpe_trade', np.nan):+.3f} | "
                      f"{r.get('sharpe_daily', np.nan):+.2f} | {r.get('dsr', np.nan):.3f} | {r.get('maxdd_usd', np.nan):,.0f} ({100 * r.get('maxdd_pct', np.nan):.0f}%) | "
                      f"{pct(r.get('total_return'), 0)} | {r.get('costs_usd', np.nan):,.0f} | {pct(r.get('exp_fee130'))} | {pct(r.get('exp_tick1'))} |")
         L.append('')
