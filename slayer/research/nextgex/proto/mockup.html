@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Odds Ledger</title>
+<!-- STATIC MOCK-UP (research/nextgex). Not wired into the app. Colours are the app's tokens (src/theme/tokens.css),
+     copied as values. Numbers: the track record is research/nextgex/proto/calibration.json (2020-02 .. 2024-12); the
+     two boards are real historical 14:00 ET boards (2023-03-15) run through proto/oddsLedger.ts. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --canvas: 5 5 5; --panel: 10 10 10; --card: 18 18 18; --inset: 7 7 7; --chip: 12 12 12;
+    --border-subtle: 28 28 28; --border-muted: 42 42 42;
+    --text-primary: 237 237 237; --text-secondary: 163 163 163; --text-muted: 125 125 125;
+    --ink: 255 255 255; --bull: 48 209 88; --bear: 255 59 48; --warn: 255 149 0; --silver: 199 211 232;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --canvas: 241 240 236; --panel: 255 255 255; --card: 246 245 241; --inset: 245 244 240; --chip: 245 244 240;
+      --border-subtle: 205 203 197; --border-muted: 176 174 168;
+      --text-primary: 14 15 17; --text-secondary: 70 72 76; --text-muted: 105 107 111;
+      --ink: 14 15 17; --silver: 92 104 128;
+    }
+  }
+  :root[data-theme="light"] {
+    --canvas: 241 240 236; --panel: 255 255 255; --card: 246 245 241; --inset: 245 244 240; --chip: 245 244 240;
+    --border-subtle: 205 203 197; --border-muted: 176 174 168;
+    --text-primary: 14 15 17; --text-secondary: 70 72 76; --text-muted: 105 107 111;
+    --ink: 14 15 17; --silver: 92 104 128;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: rgb(var(--canvas)); color: rgb(var(--text-primary)); font: 13px/1.45 Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .num { font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 20px 16px 40px; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: .01em; }
+  .sub { color: rgb(var(--text-muted)); font-size: 11px; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background: rgb(var(--panel)); border: 1px solid rgb(var(--border-subtle)); border-radius: 6px; padding: 14px; min-width: 0; }
+  .panel h2 { margin: 0; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .12em; color: rgb(var(--text-secondary)); }
+  .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .hero { margin: 12px 0 14px; padding: 12px; background: rgb(var(--card)); border-radius: 4px; }
+  .hero .big { font-size: 22px; font-weight: 600; }
+  .hero .vs { color: rgb(var(--text-muted)); margin: 0 6px; }
+  .hero p { margin: 6px 0 0; color: rgb(var(--text-secondary)); font-size: 12px; }
+  .tag { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 3px; border: 1px solid rgb(var(--border-muted)); font-size: 9.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--text-secondary)); white-space: nowrap; }
+  .tag.honest { color: rgb(var(--silver)); border-color: rgb(var(--silver) / .45); }
+  .tag.rich { color: rgb(var(--warn)); border-color: rgb(var(--warn) / .5); }
+  .tag.thin { color: rgb(var(--text-muted)); }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-weight: 500; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--text-muted)); padding: 0 6px 6px; }
+  td { padding: 5px 6px; border-top: 1px solid rgb(var(--border-subtle)); vertical-align: middle; }
+  td.r, th.r { text-align: right; }
+  .lvl { font-weight: 500; }
+  td:first-child { white-space: nowrap; }
+  .mv { color: rgb(var(--text-muted)); font-size: 11px; }
+  .spot td { border-top: 1px dashed rgb(var(--border-muted)); color: rgb(var(--text-muted)); font-size: 11px; padding: 3px 6px; }
+  .bar { position: relative; height: 16px; min-width: 120px; background: rgb(var(--inset)); border-radius: 2px; }
+  .bar .priced { position: absolute; top: 2px; bottom: 2px; left: 0; border: 1px solid rgb(var(--silver) / .7); border-left: 0; border-radius: 0 2px 2px 0; }
+  .bar .real { position: absolute; top: 6px; height: 4px; left: 0; background: rgb(var(--ink) / .85); border-radius: 0 2px 2px 0; }
+  .bar .ci { position: absolute; top: 4px; height: 8px; border-left: 1px solid rgb(var(--ink) / .7); border-right: 1px solid rgb(var(--ink) / .7); }
+  .bar .ci::after { content: ''; position: absolute; left: 0; right: 0; top: 3.5px; border-top: 1px solid rgb(var(--ink) / .45); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; color: rgb(var(--text-muted)); font-size: 11px; margin: 10px 0 0; }
+  .key { display: inline-block; width: 18px; height: 8px; vertical-align: middle; margin-right: 5px; }
+  .key.p { border: 1px solid rgb(var(--silver) / .7); }
+  .key.r { height: 4px; background: rgb(var(--ink) / .85); }
+  .ask { margin-top: 12px; padding: 12px; border: 1px solid rgb(var(--border-subtle)); border-radius: 4px; background: rgb(var(--chip)); }
+  .ask .q { color: rgb(var(--text-muted)); font-size: 11px; text-transform: uppercase; letter-spacing: .12em; }
+  .ask .a { margin-top: 4px; }
+  .ask .a b { font-weight: 600; }
+  .note { margin-top: 8px; color: rgb(var(--text-muted)); font-size: 11px; }
+  .warn { color: rgb(var(--warn)); }
+  footer { margin-top: 16px; color: rgb(var(--text-muted)); font-size: 11px; max-width: 860px; }
+  footer p { margin: 4px 0; }
+  .scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Odds Ledger</h1>
+    <span class="sub">Same-day expiry · where the close finishes · board as of 14:00 ET (example: Mar 15, 2023) · record 2020–2024</span>
+  </header>
+
+  <div class="grid">
+    <!-- SPX -->
+    <section class="panel">
+      <div class="row"><h2>SPX</h2><span class="tag honest" title="Bets priced like these came true about as often as priced">Board odds honest</span></div>
+      <div class="hero">
+        <div class="big num">15.8%<span class="vs">priced</span>14.3%<span class="vs">happened</span></div>
+        <p>The board charges 15.8% for SPX finishing below 3,831 (one priced move, −32 pts). Down-side bets it priced at 10–20% came true 14.3% of the time (12.6–15.9%, 3,977 bets since 2020).</p>
+      </div>
+      <div class="scroll">
+      <table>
+        <thead><tr><th>Close past</th><th class="r">Priced</th><th>Priced vs happened (bets priced alike)</th><th class="r">Bets</th><th></th></tr></thead>
+        <tbody>
+          <tr><td><span class="lvl num">3,929</span> <span class="mv">+2.0</span></td><td class="r num">1.9%</td><td><div class="bar"><div class="priced" style="width:4.2%"></div><div class="ci" style="left:2.7%;width:2.9%"></div><div class="real" style="width:4.1%"></div></div></td><td class="r num">3,052</td><td><span class="tag honest">Honest</span></td></tr>
+          <tr><td><span class="lvl num">3,912</span> <span class="mv">+1.5</span></td><td class="r num">6.1%</td><td><div class="bar"><div class="priced" style="width:16.9%"></div><div class="ci" style="left:10.9%;width:6.0%"></div><div class="real" style="width:13.6%"></div></div></td><td class="r num">2,903</td><td><span class="tag rich" title="Priced 5.9% on average, happened 4.8% (3.8–5.9%)">Rich</span></td></tr>
+          <tr><td><span class="lvl num">3,896</span> <span class="mv">+1.0</span></td><td class="r num">15.8%</td><td><div class="bar"><div class="priced" style="width:42.6%"></div><div class="ci" style="left:35.7%;width:9.8%"></div><div class="real" style="width:40.5%"></div></div></td><td class="r num">3,999</td><td><span class="tag honest">Honest</span></td></tr>
+          <tr><td><span class="lvl num">3,880</span> <span class="mv">+0.5</span></td><td class="r num">31.4%</td><td><div class="bar"><div class="priced" style="width:91.1%"></div><div class="ci" style="left:86.3%;width:13.0%"></div><div class="real" style="width:92.5%"></div></div></td><td class="r num">3,721</td><td><span class="tag honest">Honest</span></td></tr>
+          <tr class="spot"><td colspan="5">Forward 3,863.5 · one priced move ±32.3 pts</td></tr>
+          <tr><td><span class="lvl num">3,847</span> <span class="mv">−0.5</span></td><td class="r num">29.8%</td><td><div class="bar"><div class="priced" style="width:80.0%"></div><div class="ci" style="left:69.2%;width:12.6%"></div><div class="real" style="width:75.6%"></div></div></td><td class="r num">3,371</td><td><span class="tag honest">Honest</span></td></tr>
+          <tr><td><span class="lvl num">3,831</span> <span class="mv">−1.0</span></td><td class="r num">15.8%</td><td><div class="bar"><div class="priced" style="width:43.3%"></div><div class="ci" style="left:36.1%;width:9.2%"></div><div class="real" style="width:40.7%"></div></div></td><td class="r num">3,977</td><td><span class="tag honest">Honest</span></td></tr>
+          <tr><td><span class="lvl num">3,815</span> <span class="mv">−1.5</span></td><td class="r num">7.1%</td><td><div class="bar"><div class="priced" style="width:20.9%"></div><div class="ci" style="left:15.9%;width:6.8%"></div><div class="real" style="width:19.1%"></div></div></td><td class="r num">3,966</td><td><span class="tag honest">Honest</span></td></tr>
+          <tr><td><span class="lvl num">3,799</span> <span class="mv">−2.0</span></td><td class="r num">2.9%</td><td><div class="bar"><div class="priced" style="width:9.2%"></div><div class="ci" style="left:6.4%;width:4.8%"></div><div class="real" style="width:8.7%"></div></div></td><td class="r num">4,708</td><td><span class="tag honest">Honest</span></td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="ask">
+        <div class="q">Your level</div>
+        <div class="a">SPX above <b class="num">3,912</b> at the close: the board charges <b class="num">6.1%</b>. Up-side bets it priced at 5–10% came true <b class="num">4.8%</b> of the time (3.8–5.9%, 2,903 bets) — a little less often than priced.</div>
+      </div>
+    </section>
+
+    <!-- QQQ -->
+    <section class="panel">
+      <div class="row"><h2>QQQ</h2><span class="tag rich" title="Bets priced like these came true less often than priced">Board prices wider moves</span></div>
+      <div class="hero">
+        <div class="big num">15.7%<span class="vs">priced</span>11.8%<span class="vs">happened</span></div>
+        <p>The board charges 15.7% for QQQ finishing below 293.80 (one priced move, −$2.53). Down-side bets it priced at 10–20% came true 11.8% of the time (9.8–13.7%, 2,245 bets since 2020).</p>
+      </div>
+      <div class="scroll">
+      <table>
+        <thead><tr><th>Close past</th><th class="r">Priced</th><th>Priced vs happened (bets priced alike)</th><th class="r">Bets</th><th></th></tr></thead>
+        <tbody>
+          <tr><td><span class="lvl num">301.40</span> <span class="mv">+2.0</span></td><td class="r num">2.2%</td><td><div class="bar"><div class="priced" style="width:8.9%"></div><div class="ci" style="left:2.9%;width:4.2%"></div><div class="real" style="width:4.9%"></div></div></td><td class="r num">1,522</td><td><span class="tag rich">Rich</span></td></tr>
+          <tr><td><span class="lvl num">300.12</span> <span class="mv">+1.5</span></td><td class="r num">5.9%</td><td><div class="bar"><div class="priced" style="width:18.0%"></div><div class="ci" style="left:8.2%;width:6.9%"></div><div class="real" style="width:11.4%"></div></div></td><td class="r num">1,832</td><td><span class="tag rich">Rich</span></td></tr>
+          <tr><td><span class="lvl num">298.85</span> <span class="mv">+1.0</span></td><td class="r num">15.2%</td><td><div class="bar"><div class="priced" style="width:43.9%"></div><div class="ci" style="left:28.9%;width:10.5%"></div><div class="real" style="width:34.0%"></div></div></td><td class="r num">2,245</td><td><span class="tag rich">Rich</span></td></tr>
+          <tr><td><span class="lvl num">297.58</span> <span class="mv">+0.5</span></td><td class="r num">31.0%</td><td><div class="bar"><div class="priced" style="width:91.3%"></div><div class="ci" style="left:78.7%;width:16.7%"></div><div class="real" style="width:87.1%"></div></div></td><td class="r num">2,094</td><td><span class="tag honest">Honest</span></td></tr>
+          <tr class="spot"><td colspan="5">Forward 296.31 · one priced move ±$2.53</td></tr>
+          <tr><td><span class="lvl num">295.05</span> <span class="mv">−0.5</span></td><td class="r num">28.9%</td><td><div class="bar"><div class="priced" style="width:81.5%"></div><div class="ci" style="left:57.6%;width:16.8%"></div><div class="real" style="width:66.1%"></div></div></td><td class="r num">1,496</td><td><span class="tag rich">Rich</span></td></tr>
+          <tr><td><span class="lvl num">293.80</span> <span class="mv">−1.0</span></td><td class="r num">15.7%</td><td><div class="bar"><div class="priced" style="width:44.6%"></div><div class="ci" style="left:28.0%;width:11.2%"></div><div class="real" style="width:33.6%"></div></div></td><td class="r num">2,245</td><td><span class="tag rich">Rich</span></td></tr>
+          <tr><td><span class="lvl num">292.55</span> <span class="mv">−1.5</span></td><td class="r num">7.3%</td><td><div class="bar"><div class="priced" style="width:21.0%"></div><div class="ci" style="left:10.5%;width:7.1%"></div><div class="real" style="width:13.9%"></div></div></td><td class="r num">2,216</td><td><span class="tag rich">Rich</span></td></tr>
+          <tr><td><span class="lvl num">291.30</span> <span class="mv">−2.0</span></td><td class="r num">3.6%</td><td><div class="bar"><div class="priced" style="width:9.1%"></div><div class="ci" style="left:3.3%;width:4.6%"></div><div class="real" style="width:5.5%"></div></div></td><td class="r num">2,413</td><td><span class="tag rich">Rich</span></td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="ask">
+        <div class="q">Your level</div>
+        <div class="a">QQQ below <b class="num">293.80</b> at the close: the board charges <b class="num">15.7%</b>. Bets it priced like that came true <b class="num">11.8%</b> of the time — about three in four as often as priced.</div>
+        <div class="note"><span class="warn">Read with care:</span> these options can be exercised on after-hours news and carry risk past the 4 pm close that this record does not count. Part of the gap is that, not a mispricing.</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="legend">
+    <span><span class="key p"></span>What the board charges (average for bets priced alike)</span>
+    <span><span class="key r"></span>How often they came true, with its 95% range</span>
+    <span>Bar scale 0–35%</span>
+  </div>
+
+  <footer>
+    <p><b>Priced:</b> the price of a one-strike vertical spread divided by its width, straight from the bid and ask on the board. No volatility model and no guess about who holds what.</p>
+    <p><b>Happened:</b> every same-day expiry from 2020 to 2024 at 10:00, 12:00, 14:00 and 15:00 ET; outcome the 4 pm close; bets grouped by the odds the board charged and the side; ranges are 95%, resampling whole days.</p>
+    <p>A record is not a forecast and this is not a trade signal: the odds are shown as priced, and the record sits beside them. Fewer than 300 past bets in a group: no verdict is shown.</p>
+  </footer>
+</div>
+</body>
+</html>

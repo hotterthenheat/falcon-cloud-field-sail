@@ -8,13 +8,24 @@
     {
      "side": "down",
      "lo": 0,
+     "hi": 0.01,
+     "n": 389,
+     "days": 247,
+     "priced": 0.0088,
+     "real": 0.0154,
+     "real_lo": 0.0026,
+     "real_hi": 0.0311
+    },
+    {
+     "side": "down",
+     "lo": 0.01,
      "hi": 0.02,
-     "n": 2681,
-     "days": 899,
-     "priced": 0.0145,
-     "real": 0.0201,
-     "real_lo": 0.0133,
-     "real_hi": 0.0276
+     "n": 2292,
+     "days": 892,
+     "priced": 0.0155,
+     "real": 0.0209,
+     "real_lo": 0.0138,
+     "real_hi": 0.0287
     },
     {
      "side": "down",
@@ -24,8 +35,8 @@
      "days": 989,
      "priced": 0.0322,
      "real": 0.0304,
-     "real_lo": 0.0222,
-     "real_hi": 0.0394
+     "real_lo": 0.0223,
+     "real_hi": 0.0392
     },
     {
      "side": "down",
@@ -35,8 +46,8 @@
      "days": 999,
      "priced": 0.0732,
      "real": 0.0668,
-     "real_lo": 0.0555,
-     "real_hi": 0.0788
+     "real_lo": 0.0557,
+     "real_hi": 0.0796
     },
     {
      "side": "down",
@@ -46,8 +57,8 @@
      "days": 1005,
      "priced": 0.1515,
      "real": 0.1426,
-     "real_lo": 0.1272,
-     "real_hi": 0.1592
+     "real_lo": 0.1263,
+     "real_hi": 0.1586
     },
     {
      "side": "down",
@@ -57,8 +68,8 @@
      "days": 980,
      "priced": 0.2801,
      "real": 0.2646,
-     "real_lo": 0.2419,
-     "real_hi": 0.2884
+     "real_lo": 0.2423,
+     "real_hi": 0.2864
     },
     {
      "side": "down",
@@ -68,19 +79,30 @@
      "days": 357,
      "priced": 0.3074,
      "real": 0.3074,
-     "real_lo": 0.2608,
-     "real_hi": 0.3589
+     "real_lo": 0.2612,
+     "real_hi": 0.3566
     },
     {
      "side": "up",
      "lo": 0,
+     "hi": 0.01,
+     "n": 2889,
+     "days": 960,
+     "priced": 0.0069,
+     "real": 0.0066,
+     "real_lo": 0.0028,
+     "real_hi": 0.0111
+    },
+    {
+     "side": "up",
+     "lo": 0.01,
      "hi": 0.02,
-     "n": 5941,
-     "days": 994,
-     "priced": 0.0109,
-     "real": 0.0106,
-     "real_lo": 0.0067,
-     "real_hi": 0.0153
+     "n": 3052,
+     "days": 979,
+     "priced": 0.0147,
+     "real": 0.0144,
+     "real_lo": 0.0094,
+     "real_hi": 0.0197
     },
     {
      "side": "up",
@@ -90,8 +112,8 @@
      "days": 969,
      "priced": 0.0322,
      "real": 0.0356,
-     "real_lo": 0.0258,
-     "real_hi": 0.0461
+     "real_lo": 0.0259,
+     "real_hi": 0.0462
     },
     {
      "side": "up",
@@ -101,8 +123,8 @@
      "days": 953,
      "priced": 0.0593,
      "real": 0.0475,
-     "real_lo": 0.037,
-     "real_hi": 0.0582
+     "real_lo": 0.038,
+     "real_hi": 0.0586
     },
     {
      "side": "up",
@@ -112,8 +134,8 @@
      "days": 1004,
      "priced": 0.1492,
      "real": 0.1418,
-     "real_lo": 0.1258,
-     "real_hi": 0.158
+     "real_lo": 0.1251,
+     "real_hi": 0.1593
     },
     {
      "side": "up",
@@ -123,8 +145,8 @@
      "days": 225,
      "priced": 0.2935,
      "real": 0.1916,
-     "real_lo": 0.1454,
-     "real_hi": 0.241
+     "real_lo": 0.1459,
+     "real_hi": 0.2378
     },
     {
      "side": "up",
@@ -134,8 +156,8 @@
      "days": 1004,
      "priced": 0.3191,
      "real": 0.3236,
-     "real_lo": 0.3,
-     "real_hi": 0.3463
+     "real_lo": 0.3021,
+     "real_hi": 0.3476
     }
    ],
    "bySigma": [
@@ -146,8 +168,8 @@
      "days": 1005,
      "priced": 0.2844,
      "real": 0.2714,
-     "real_lo": 0.2487,
-     "real_hi": 0.2936
+     "real_lo": 0.2489,
+     "real_hi": 0.2923
     },
     {
      "side": "down",
@@ -156,8 +178,8 @@
      "days": 1005,
      "priced": 0.1515,
      "real": 0.1425,
-     "real_lo": 0.126,
-     "real_hi": 0.1589
+     "real_lo": 0.1265,
+     "real_hi": 0.159
     },
     {
      "side": "down",
@@ -166,8 +188,8 @@
      "days": 999,
      "priced": 0.0735,
      "real": 0.0678,
-     "real_lo": 0.0562,
-     "real_hi": 0.08
+     "real_lo": 0.0558,
+     "real_hi": 0.0797
     },
     {
      "side": "down",
@@ -176,8 +198,8 @@
      "days": 990,
      "priced": 0.0345,
      "real": 0.0326,
-     "real_lo": 0.0241,
-     "real_hi": 0.0406
+     "real_lo": 0.0242,
+     "real_hi": 0.0408
     },
     {
      "side": "down",
@@ -186,8 +208,8 @@
      "days": 970,
      "priced": 0.0171,
      "real": 0.02,
-     "real_lo": 0.0134,
-     "real_hi": 0.0273
+     "real_lo": 0.0136,
+     "real_hi": 0.0276
     },
     {
      "side": "up",
@@ -196,8 +218,8 @@
      "days": 1005,
      "priced": 0.3172,
      "real": 0.3142,
-     "real_lo": 0.2918,
-     "real_hi": 0.3381
+     "real_lo": 0.2924,
+     "real_hi": 0.3354
     },
     {
      "side": "up",
@@ -206,8 +228,8 @@
      "days": 1005,
      "priced": 0.1492,
      "real": 0.1417,
-     "real_lo": 0.126,
-     "real_hi": 0.1579
+     "real_lo": 0.1249,
+     "real_hi": 0.1583
     },
     {
      "side": "up",
@@ -216,8 +238,8 @@
      "days": 1003,
      "priced": 0.0552,
      "real": 0.0528,
-     "real_lo": 0.0431,
-     "real_hi": 0.0637
+     "real_lo": 0.0428,
+     "real_hi": 0.0632
     },
     {
      "side": "up",
@@ -227,7 +249,7 @@
      "priced": 0.0192,
      "real": 0.0179,
      "real_lo": 0.0122,
-     "real_hi": 0.0239
+     "real_hi": 0.024
     },
     {
      "side": "up",
@@ -236,7 +258,7 @@
      "days": 983,
      "priced": 0.0081,
      "real": 0.0048,
-     "real_lo": 0.0024,
+     "real_lo": 0.0022,
      "real_hi": 0.008
     }
    ]
@@ -246,13 +268,24 @@
     {
      "side": "down",
      "lo": 0,
+     "hi": 0.01,
+     "n": 142,
+     "days": 103,
+     "priced": 0.0084,
+     "real": 0.0,
+     "real_lo": 0.0,
+     "real_hi": 0.0
+    },
+    {
+     "side": "down",
+     "lo": 0.01,
      "hi": 0.02,
-     "n": 1643,
-     "days": 546,
-     "priced": 0.0144,
-     "real": 0.017,
-     "real_lo": 0.0081,
-     "real_hi": 0.0269
+     "n": 1501,
+     "days": 543,
+     "priced": 0.015,
+     "real": 0.0187,
+     "real_lo": 0.0092,
+     "real_hi": 0.0294
     },
     {
      "side": "down",
@@ -262,8 +295,8 @@
      "days": 574,
      "priced": 0.0323,
      "real": 0.0161,
-     "real_lo": 0.0095,
-     "real_hi": 0.0239
+     "real_lo": 0.0094,
+     "real_hi": 0.0235
     },
     {
      "side": "down",
@@ -273,8 +306,8 @@
      "days": 583,
      "priced": 0.0745,
      "real": 0.0445,
-     "real_lo": 0.0332,
-     "real_hi": 0.0568
+     "real_lo": 0.0326,
+     "real_hi": 0.0567
     },
     {
      "side": "down",
@@ -284,8 +317,8 @@
      "days": 586,
      "priced": 0.1547,
      "real": 0.1191,
-     "real_lo": 0.0992,
-     "real_hi": 0.1389
+     "real_lo": 0.1009,
+     "real_hi": 0.1399
     },
     {
      "side": "down",
@@ -295,8 +328,8 @@
      "days": 559,
      "priced": 0.2834,
      "real": 0.2399,
-     "real_lo": 0.2122,
-     "real_hi": 0.2699
+     "real_lo": 0.2114,
+     "real_hi": 0.2689
     },
     {
      "side": "down",
@@ -307,18 +340,29 @@
      "priced": 0.3073,
      "real": 0.2832,
      "real_lo": 0.2333,
-     "real_hi": 0.3328
+     "real_hi": 0.3339
     },
     {
      "side": "up",
      "lo": 0,
+     "hi": 0.01,
+     "n": 1490,
+     "days": 544,
+     "priced": 0.0078,
+     "real": 0.0034,
+     "real_lo": 0.0007,
+     "real_hi": 0.0074
+    },
+    {
+     "side": "up",
+     "lo": 0.01,
      "hi": 0.02,
-     "n": 3074,
-     "days": 578,
-     "priced": 0.0115,
-     "real": 0.0059,
-     "real_lo": 0.0026,
-     "real_hi": 0.0097
+     "n": 1584,
+     "days": 566,
+     "priced": 0.0149,
+     "real": 0.0082,
+     "real_lo": 0.0032,
+     "real_hi": 0.0148
     },
     {
      "side": "up",
@@ -328,8 +372,8 @@
      "days": 571,
      "priced": 0.0301,
      "real": 0.0239,
-     "real_lo": 0.0136,
-     "real_hi": 0.0348
+     "real_lo": 0.0143,
+     "real_hi": 0.0352
     },
     {
      "side": "up",
@@ -339,8 +383,8 @@
      "days": 578,
      "priced": 0.0632,
      "real": 0.0374,
-     "real_lo": 0.0266,
-     "real_hi": 0.0486
+     "real_lo": 0.0267,
+     "real_hi": 0.049
     },
     {
      "side": "up",
@@ -350,8 +394,8 @@
      "days": 585,
      "priced": 0.1543,
      "real": 0.1248,
-     "real_lo": 0.1052,
-     "real_hi": 0.145
+     "real_lo": 0.1036,
+     "real_hi": 0.1455
     },
     {
      "side": "up",
@@ -361,8 +405,8 @@
      "days": 103,
      "priced": 0.2911,
      "real": 0.1694,
-     "real_lo": 0.1032,
-     "real_hi": 0.2353
+     "real_lo": 0.1026,
+     "real_hi": 0.24
     },
     {
      "side": "up",
@@ -372,8 +416,8 @@
      "days": 584,
      "priced": 0.3184,
      "real": 0.3048,
-     "real_lo": 0.2774,
-     "real_hi": 0.3333
+     "real_lo": 0.2754,
+     "real_hi": 0.3345
     }
    ],
    "bySigma": [
@@ -385,7 +429,7 @@
      "priced": 0.2895,
      "real": 0.2506,
      "real_lo": 0.2244,
-     "real_hi": 0.2777
+     "real_hi": 0.2794
     },
     {
      "side": "down",
@@ -394,8 +438,8 @@
      "days": 586,
      "priced": 0.1551,
      "real": 0.1196,
-     "real_lo": 0.1009,
-     "real_hi": 0.1404
+     "real_lo": 0.0997,
+     "real_hi": 0.1394
     },
     {
      "side": "down",
@@ -404,8 +448,8 @@
      "days": 583,
      "priced": 0.075,
      "real": 0.0449,
-     "real_lo": 0.033,
-     "real_hi": 0.0573
+     "real_lo": 0.0326,
+     "real_hi": 0.0577
     },
     {
      "side": "down",
@@ -414,8 +458,8 @@
      "days": 576,
      "priced": 0.0344,
      "real": 0.0196,
-     "real_lo": 0.0124,
-     "real_hi": 0.0285
+     "real_lo": 0.0116,
+     "real_hi": 0.0277
     },
     {
      "side": "down",
@@ -425,7 +469,7 @@
      "priced": 0.0169,
      "real": 0.0133,
      "real_lo": 0.0065,
-     "real_hi": 0.0208
+     "real_hi": 0.0209
     },
     {
      "side": "up",
@@ -434,8 +478,8 @@
      "days": 586,
      "priced": 0.3172,
      "real": 0.2982,
-     "real_lo": 0.2709,
-     "real_hi": 0.3279
+     "real_lo": 0.2691,
+     "real_hi": 0.3265
     },
     {
      "side": "up",
@@ -444,8 +488,8 @@
      "days": 585,
      "priced": 0.1548,
      "real": 0.1255,
-     "real_lo": 0.1058,
-     "real_hi": 0.1463
+     "real_lo": 0.1055,
+     "real_hi": 0.1464
     },
     {
      "side": "up",
@@ -454,8 +498,8 @@
      "days": 584,
      "priced": 0.061,
      "real": 0.0398,
-     "real_lo": 0.029,
-     "real_hi": 0.0507
+     "real_lo": 0.0293,
+     "real_hi": 0.0506
     },
     {
      "side": "up",
@@ -464,8 +508,8 @@
      "days": 581,
      "priced": 0.0221,
      "real": 0.0142,
-     "real_lo": 0.008,
-     "real_hi": 0.0217
+     "real_lo": 0.0076,
+     "real_hi": 0.0214
     },
     {
      "side": "up",
@@ -475,7 +519,7 @@
      "priced": 0.0094,
      "real": 0.0032,
      "real_lo": 0.0005,
-     "real_hi": 0.0073
+     "real_hi": 0.0068
     }
    ]
   },
@@ -484,13 +528,24 @@
     {
      "side": "down",
      "lo": 0,
+     "hi": 0.01,
+     "n": 313,
+     "days": 190,
+     "priced": 0.008,
+     "real": 0.0,
+     "real_lo": 0.0,
+     "real_hi": 0.0
+    },
+    {
+     "side": "down",
+     "lo": 0.01,
      "hi": 0.02,
-     "n": 1747,
-     "days": 531,
-     "priced": 0.0136,
-     "real": 0.0172,
-     "real_lo": 0.0087,
-     "real_hi": 0.0262
+     "n": 1434,
+     "days": 520,
+     "priced": 0.0148,
+     "real": 0.0209,
+     "real_lo": 0.0112,
+     "real_hi": 0.0321
     },
     {
      "side": "down",
@@ -511,7 +566,7 @@
      "days": 561,
      "priced": 0.0734,
      "real": 0.0487,
-     "real_lo": 0.0371,
+     "real_lo": 0.0368,
      "real_hi": 0.0616
     },
     {
@@ -522,7 +577,7 @@
      "days": 563,
      "priced": 0.1562,
      "real": 0.1176,
-     "real_lo": 0.0984,
+     "real_lo": 0.098,
      "real_hi": 0.1371
     },
     {
@@ -533,8 +588,8 @@
      "days": 506,
      "priced": 0.2852,
      "real": 0.2313,
-     "real_lo": 0.2018,
-     "real_hi": 0.2617
+     "real_lo": 0.2016,
+     "real_hi": 0.2604
     },
     {
      "side": "down",
@@ -544,19 +599,30 @@
      "days": 354,
      "priced": 0.3089,
      "real": 0.2646,
-     "real_lo": 0.2219,
-     "real_hi": 0.311
+     "real_lo": 0.2222,
+     "real_hi": 0.3094
     },
     {
      "side": "up",
      "lo": 0,
+     "hi": 0.01,
+     "n": 1526,
+     "days": 537,
+     "priced": 0.0074,
+     "real": 0.0026,
+     "real_lo": 0.0,
+     "real_hi": 0.0065
+    },
+    {
+     "side": "up",
+     "lo": 0.01,
      "hi": 0.02,
-     "n": 3118,
-     "days": 556,
-     "priced": 0.0111,
-     "real": 0.0058,
-     "real_lo": 0.0022,
-     "real_hi": 0.0103
+     "n": 1592,
+     "days": 548,
+     "priced": 0.0147,
+     "real": 0.0088,
+     "real_lo": 0.0032,
+     "real_hi": 0.0155
     },
     {
      "side": "up",
@@ -566,8 +632,8 @@
      "days": 547,
      "priced": 0.031,
      "real": 0.0171,
-     "real_lo": 0.0098,
-     "real_hi": 0.0249
+     "real_lo": 0.0101,
+     "real_hi": 0.0248
     },
     {
      "side": "up",
@@ -577,8 +643,8 @@
      "days": 554,
      "priced": 0.0631,
      "real": 0.0398,
-     "real_lo": 0.0295,
-     "real_hi": 0.052
+     "real_lo": 0.0286,
+     "real_hi": 0.0526
     },
     {
      "side": "up",
@@ -588,8 +654,8 @@
      "days": 563,
      "priced": 0.1537,
      "real": 0.1189,
-     "real_lo": 0.1016,
-     "real_hi": 0.1369
+     "real_lo": 0.101,
+     "real_hi": 0.1378
     },
     {
      "side": "up",
@@ -599,8 +665,8 @@
      "days": 114,
      "priced": 0.292,
      "real": 0.1603,
-     "real_lo": 0.1,
-     "real_hi": 0.2313
+     "real_lo": 0.0943,
+     "real_hi": 0.2288
     },
     {
      "side": "up",
@@ -610,8 +676,8 @@
      "days": 563,
      "priced": 0.3195,
      "real": 0.3047,
-     "real_lo": 0.2742,
-     "real_hi": 0.3351
+     "real_lo": 0.2754,
+     "real_hi": 0.334
     }
    ],
    "bySigma": [
@@ -622,8 +688,8 @@
      "days": 563,
      "priced": 0.2932,
      "real": 0.2424,
-     "real_lo": 0.216,
-     "real_hi": 0.2696
+     "real_lo": 0.2158,
+     "real_hi": 0.2702
     },
     {
      "side": "down",
@@ -632,8 +698,8 @@
      "days": 563,
      "priced": 0.1564,
      "real": 0.1177,
-     "real_lo": 0.0997,
-     "real_hi": 0.137
+     "real_lo": 0.0986,
+     "real_hi": 0.138
     },
     {
      "side": "down",
@@ -643,7 +709,7 @@
      "priced": 0.0738,
      "real": 0.049,
      "real_lo": 0.0376,
-     "real_hi": 0.0614
+     "real_hi": 0.062
     },
     {
      "side": "down",
@@ -652,8 +718,8 @@
      "days": 557,
      "priced": 0.0326,
      "real": 0.0205,
-     "real_lo": 0.0126,
-     "real_hi": 0.0289
+     "real_lo": 0.0131,
+     "real_hi": 0.029
     },
     {
      "side": "down",
@@ -663,7 +729,7 @@
      "priced": 0.0154,
      "real": 0.0162,
      "real_lo": 0.0093,
-     "real_hi": 0.0246
+     "real_hi": 0.0244
     },
     {
      "side": "up",
@@ -672,8 +738,8 @@
      "days": 563,
      "priced": 0.3178,
      "real": 0.2954,
-     "real_lo": 0.2663,
-     "real_hi": 0.3225
+     "real_lo": 0.2689,
+     "real_hi": 0.3238
     },
     {
      "side": "up",
@@ -682,8 +748,8 @@
      "days": 563,
      "priced": 0.1538,
      "real": 0.1189,
-     "real_lo": 0.1005,
-     "real_hi": 0.137
+     "real_lo": 0.1016,
+     "real_hi": 0.1379
     },
     {
      "side": "up",
@@ -693,7 +759,7 @@
      "priced": 0.0597,
      "real": 0.0399,
      "real_lo": 0.0297,
-     "real_hi": 0.051
+     "real_hi": 0.0507
     },
     {
      "side": "up",
@@ -702,7 +768,7 @@
      "days": 560,
      "priced": 0.0209,
      "real": 0.0101,
-     "real_lo": 0.0054,
+     "real_lo": 0.005,
      "real_hi": 0.016
     },
     {
@@ -713,7 +779,7 @@
      "priced": 0.0089,
      "real": 0.0029,
      "real_lo": 0.0005,
-     "real_hi": 0.0066
+     "real_hi": 0.0063
     }
    ]
   },
@@ -722,13 +788,24 @@
     {
      "side": "down",
      "lo": 0,
+     "hi": 0.01,
+     "n": 308,
+     "days": 199,
+     "priced": 0.0086,
+     "real": 0.0097,
+     "real_lo": 0.0,
+     "real_hi": 0.0302
+    },
+    {
+     "side": "down",
+     "lo": 0.01,
      "hi": 0.02,
-     "n": 1326,
-     "days": 433,
-     "priced": 0.0141,
-     "real": 0.009,
-     "real_lo": 0.0022,
-     "real_hi": 0.0182
+     "n": 1018,
+     "days": 421,
+     "priced": 0.0157,
+     "real": 0.0088,
+     "real_lo": 0.002,
+     "real_hi": 0.0173
     },
     {
      "side": "down",
@@ -738,8 +815,8 @@
      "days": 440,
      "priced": 0.0327,
      "real": 0.0137,
-     "real_lo": 0.0066,
-     "real_hi": 0.0217
+     "real_lo": 0.007,
+     "real_hi": 0.022
     },
     {
      "side": "down",
@@ -749,8 +826,8 @@
      "days": 441,
      "priced": 0.0747,
      "real": 0.0393,
-     "real_lo": 0.0269,
-     "real_hi": 0.0529
+     "real_lo": 0.0262,
+     "real_hi": 0.053
     },
     {
      "side": "down",
@@ -760,8 +837,8 @@
      "days": 442,
      "priced": 0.1574,
      "real": 0.1254,
-     "real_lo": 0.1037,
-     "real_hi": 0.1495
+     "real_lo": 0.1028,
+     "real_hi": 0.1487
     },
     {
      "side": "down",
@@ -771,8 +848,8 @@
      "days": 347,
      "priced": 0.2786,
      "real": 0.242,
-     "real_lo": 0.204,
-     "real_hi": 0.2843
+     "real_lo": 0.2019,
+     "real_hi": 0.2826
     },
     {
      "side": "down",
@@ -782,19 +859,30 @@
      "days": 405,
      "priced": 0.3157,
      "real": 0.2809,
-     "real_lo": 0.2452,
-     "real_hi": 0.3189
+     "real_lo": 0.2448,
+     "real_hi": 0.3166
     },
     {
      "side": "up",
      "lo": 0,
+     "hi": 0.01,
+     "n": 902,
+     "days": 386,
+     "priced": 0.0072,
+     "real": 0.0022,
+     "real_lo": 0.0,
+     "real_hi": 0.0069
+    },
+    {
+     "side": "up",
+     "lo": 0.01,
      "hi": 0.02,
-     "n": 1985,
-     "days": 438,
-     "priced": 0.0117,
-     "real": 0.004,
-     "real_lo": 0.0005,
-     "real_hi": 0.0091
+     "n": 1083,
+     "days": 421,
+     "priced": 0.0154,
+     "real": 0.0055,
+     "real_lo": 0.001,
+     "real_hi": 0.0111
     },
     {
      "side": "up",
@@ -804,8 +892,8 @@
      "days": 437,
      "priced": 0.0318,
      "real": 0.0136,
-     "real_lo": 0.0054,
-     "real_hi": 0.0233
+     "real_lo": 0.0055,
+     "real_hi": 0.0234
     },
     {
      "side": "up",
@@ -815,7 +903,7 @@
      "days": 438,
      "priced": 0.0694,
      "real": 0.0331,
-     "real_lo": 0.0221,
+     "real_lo": 0.0222,
      "real_hi": 0.0445
     },
     {
@@ -826,8 +914,8 @@
      "days": 442,
      "priced": 0.1563,
      "real": 0.0819,
-     "real_lo": 0.0636,
-     "real_hi": 0.1008
+     "real_lo": 0.0649,
+     "real_hi": 0.1011
     },
     {
      "side": "up",
@@ -837,8 +925,8 @@
      "days": 200,
      "priced": 0.2523,
      "real": 0.1433,
-     "real_lo": 0.0984,
-     "real_hi": 0.193
+     "real_lo": 0.0971,
+     "real_hi": 0.1966
     },
     {
      "side": "up",
@@ -848,8 +936,8 @@
      "days": 441,
      "priced": 0.3217,
      "real": 0.2401,
-     "real_lo": 0.2096,
-     "real_hi": 0.2708
+     "real_lo": 0.2108,
+     "real_hi": 0.2718
     }
    ],
    "bySigma": [
@@ -860,8 +948,8 @@
      "days": 442,
      "priced": 0.3058,
      "real": 0.2753,
-     "real_lo": 0.2418,
-     "real_hi": 0.3086
+     "real_lo": 0.2425,
+     "real_hi": 0.3078
     },
     {
      "side": "down",
@@ -870,8 +958,8 @@
      "days": 442,
      "priced": 0.1644,
      "real": 0.1291,
-     "real_lo": 0.1064,
-     "real_hi": 0.1538
+     "real_lo": 0.106,
+     "real_hi": 0.1523
     },
     {
      "side": "down",
@@ -880,8 +968,8 @@
      "days": 441,
      "priced": 0.0805,
      "real": 0.0468,
-     "real_lo": 0.0333,
-     "real_hi": 0.0618
+     "real_lo": 0.0329,
+     "real_hi": 0.0619
     },
     {
      "side": "down",
@@ -890,8 +978,8 @@
      "days": 441,
      "priced": 0.0372,
      "real": 0.0162,
-     "real_lo": 0.0075,
-     "real_hi": 0.026
+     "real_lo": 0.0081,
+     "real_hi": 0.0262
     },
     {
      "side": "down",
@@ -901,7 +989,7 @@
      "priced": 0.0172,
      "real": 0.0064,
      "real_lo": 0.0012,
-     "real_hi": 0.0128
+     "real_hi": 0.0133
     },
     {
      "side": "up",
@@ -910,8 +998,8 @@
      "days": 442,
      "priced": 0.3192,
      "real": 0.2365,
-     "real_lo": 0.208,
-     "real_hi": 0.2672
+     "real_lo": 0.2069,
+     "real_hi": 0.2652
     },
     {
      "side": "up",
@@ -921,7 +1009,7 @@
      "priced": 0.1641,
      "real": 0.0886,
      "real_lo": 0.0704,
-     "real_hi": 0.1077
+     "real_hi": 0.1089
     },
     {
      "side": "up",
@@ -930,8 +1018,8 @@
      "days": 442,
      "priced": 0.0723,
      "real": 0.0323,
-     "real_lo": 0.0208,
-     "real_hi": 0.0442
+     "real_lo": 0.0214,
+     "real_hi": 0.0448
     },
     {
      "side": "up",
@@ -941,7 +1029,7 @@
      "priced": 0.0292,
      "real": 0.0121,
      "real_lo": 0.0058,
-     "real_hi": 0.0201
+     "real_hi": 0.0196
     },
     {
      "side": "up",
@@ -951,7 +1039,7 @@
      "priced": 0.0123,
      "real": 0.0029,
      "real_lo": 0.0,
-     "real_hi": 0.0075
+     "real_hi": 0.007
     }
    ]
   }

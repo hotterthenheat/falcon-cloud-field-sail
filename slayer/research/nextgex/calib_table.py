@@ -10,7 +10,7 @@ import pandas as pd
 
 V2 = '/home/user/falcon-cloud-field-sail/v2data/nextgex'
 HERE = os.path.dirname(os.path.abspath(__file__))
-BINS = [0, .02, .05, .1, .2, .3, .5]
+BINS = [0, .01, .02, .05, .1, .2, .3, .5]
 RNG = np.random.default_rng(7)
 
 

@@ -73,3 +73,17 @@ magnet.
 3 primary tests (all fail), 2 split looks each; secondaries: 10 z-cells x 4 times x 2 splits (H1.2), 10 x 2 (H1.5),
 6 fly variants x 2 splits (H2.1/H2.3), 3 replication roots. One post-hoc diagnostic (SPX vs SPY common days),
 labelled. CALIBRATION was opened once.
+
+## Prototype (Concept 1, as a receipt, not a correction)
+
+Neither concept passed, so nothing here is a forecast. Concept 1 is still the one worth showing, as a receipt: it
+needs no dealer-sign assumption, it is computed from what the board shows, and the record beside each price is
+measured, with its range. `proto/oddsLedger.ts` (self-contained; DeskChain field names) builds the board's priced
+odds from vertical spreads and looks up the record in `proto/calibration.json` (aggregates only, 2020-02..2024-12).
+It reproduces the Python builder exactly on a test board (forward, move and all ten priced odds to 5 decimals).
+`proto/mockup.html` is the static screen. Two follow-ups for the owner, both from the secondary results:
+
+* `data/weigherDensity.ts` draws a quadratic-smile density whose ±1-move tails ran 8-14% fatter than what the board's
+  own vertical spreads priced and than what happened. The vertical-spread odds are the better "where it may finish".
+* The app's "pin" (largest OI near spot, dealers long gamma) failed the pin test; it should not be described as a
+  magnet without evidence.
