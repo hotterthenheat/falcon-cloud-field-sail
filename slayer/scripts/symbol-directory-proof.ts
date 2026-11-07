@@ -81,7 +81,7 @@ for (const [from, to] of Object.entries(ALIASES).slice(0, 3)) ok(renamedTo(from)
 const nameOf = (s: string) => companyName(s);
 const probes = ['', 'a', 'b', 'c', 'co', 'cola', 'ko', 'brk', 'berkshire', 'pref', 'warrant', 'unit', 'acquisition', 'trust', 'etf', 'fund', 'bank', 'x', 'z', 'q', 'nvidia', 'spx', 'vix', 'ford', 'pfd', '.pr', 'ws'];
 let offered = 0;
-let bad: string[] = [];
+const bad: string[] = [];
 for (const q of probes) {
   for (const r of searchRoom('option', q, 400, [], nameOf)) {
     offered += 1;
