@@ -66,11 +66,12 @@ def _finite(x) -> bool:
 
 
 def contract_status(S, K, sigma, T) -> str:
-    if not all(_finite(v) for v in (S, K, sigma, T)):
+    """S, K, T first; then T ≤ 0 → EXPIRED; then σ (σ is only known once solved)."""
+    if not all(_finite(v) for v in (S, K, T)) or mpf(S) <= 0 or mpf(K) <= 0:
         return UNAVAILABLE
     if mpf(T) <= 0:
         return EXPIRED
-    if mpf(S) <= 0 or mpf(K) <= 0 or mpf(sigma) <= 0:
+    if not _finite(sigma) or mpf(sigma) <= 0:
         return UNAVAILABLE
     return OK
 
@@ -279,7 +280,8 @@ def flat_wing(contracts):
         if not peers:
             c["iv_prov"] = "UNAVAILABLE"
         else:
-            best = min(peers, key=lambda p: (abs(mpf(p["strike"]) - mpf(c["strike"])), mpf(p["strike"])))
+            sref = mpf(c.get("S_ref", c["strike"]))
+            best = min(peers, key=lambda p: (abs(mpf(p["strike"]) - mpf(c["strike"])), abs(mpf(p["strike"]) - sref), mpf(p["strike"])))
             c["iv"] = best["iv"]
             c["iv_prov"] = "MODELED_FLAT_WING_IV"
         out.append(c)
@@ -341,19 +343,17 @@ def spot_and_carry(forwards, r_of_T):
     for T, F in forwards:
         T = mpf(T)
         if F is not None:
-            lnF = mp.log(mpf(F))
-        elif len(valid) == 1:
-            lnF = mp.log(S) + mpf(r_of_T(T)) * T
+            lnF, src = mp.log(mpf(F)), "PARITY"
         else:
             lo = max((n for n in nodes if n[0] <= T), key=lambda n: n[0])
             his = [n for n in nodes if n[0] >= T and n[0] > lo[0]]
             if his:
                 hi = min(his, key=lambda n: n[0])
-                lnF = lo[1] + (hi[1] - lo[1]) * (T - lo[0]) / (hi[0] - lo[0])
+                lnF, src = lo[1] + (hi[1] - lo[1]) * (T - lo[0]) / (hi[0] - lo[0]), "INTERPOLATED"
             else:
                 a, c = nodes[-2], nodes[-1]
-                lnF = c[1] + (c[1] - a[1]) / (c[0] - a[0]) * (T - c[0])
-        out.append((T, mp.exp(lnF), (lnF - mp.log(S)) / T))
+                lnF, src = c[1] + (c[1] - a[1]) / (c[0] - a[0]) * (T - c[0]), "EXTRAPOLATED"
+        out.append((T, mp.exp(lnF), (lnF - mp.log(S)) / T, src))
     return {"S": S, "prov": prov, "expiries": out}
 
 
@@ -407,7 +407,7 @@ def accumulate(prints):
     print of the same contract, price and size. Returns (C by key, bucket sizes, unlinked cancels)."""
     kept = []
     buckets: dict[str, float] = {}
-    unlinked = 0
+    unlinked = []
     for p in prints:
         bucket, c = classify(p["conditions"], p["size"], p["price"], p.get("bid"), p.get("ask"), p.get("quote_age_ms"))
         if bucket == "CANCEL":
@@ -417,14 +417,14 @@ def accumulate(prints):
                 if k is None:
                     continue
                 if p.get("ref") is not None:
-                    if k["seq"] == p["ref"]:
+                    if k["seq"] == p["ref"] and k["key"] == p["key"]:
                         idx = i
                         break
                 elif k["key"] == p["key"] and k["price"] == p["price"] and k["size"] == p["size"]:
                     idx = i
                     break
             if idx is None:
-                unlinked += 1
+                unlinked.append(p.get("seq"))
             else:
                 k = kept[idx]
                 buckets[k["bucket"]] = buckets.get(k["bucket"], 0) - k["size"]

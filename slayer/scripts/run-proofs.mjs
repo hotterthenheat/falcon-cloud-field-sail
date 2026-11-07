@@ -106,6 +106,8 @@ const PROOFS = [
   'indicators-al-proof',
   'day-iv-proof',
   'greeks-fd-proof',
+  'twobook-proof',
+  'twobook-mutation-proof.mjs',
   'settle-roots-proof',
   'flip-complete-proof',
   'flip-coverage-proof',

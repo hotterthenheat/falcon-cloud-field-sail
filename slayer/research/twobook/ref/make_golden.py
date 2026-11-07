@@ -124,7 +124,7 @@ def build():
     inv, buckets, unlinked = R.accumulate(prints)
     out["accumulate"] = {
         "in": [{"key": p["key"], "conditions": p["conditions"], "size": fin(p["size"]), "price": fin(p["price"]), "bid": fin(p["bid"]), "ask": fin(p["ask"]), "age": fin(p["quote_age_ms"]), "seq": p["seq"]} for p in prints],
-        "inventory": inv, "buckets": buckets, "unlinked": unlinked,
+        "inventory": inv, "buckets": buckets, "unlinked": len(unlinked),
     }
 
     spot = []
@@ -141,7 +141,7 @@ def build():
             "name": name,
             "in": {"forwards": [[fin(T), None if F is None else fin(F)] for T, F in fwds], "r": fin(r)},
             "S": fout(res["S"]), "prov": res["prov"],
-            "expiries": [{"T": fout(T), "F": fout(F), "b": fout(b)} for T, F, b in res["expiries"]],
+            "expiries": [{"T": fout(T), "F": fout(F), "b": fout(b), "source": src} for T, F, b, src in res["expiries"]],
         })
     out["spot"] = spot
 

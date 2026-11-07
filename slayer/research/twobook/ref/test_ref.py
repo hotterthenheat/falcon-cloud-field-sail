@@ -209,7 +209,7 @@ def test5():
     inv, buckets, unlinked = R.accumulate(prints)
     expect = sum(c[7] for c in CLASSIFY_CASES if c[6] != "CANCEL")
     check(inv[key] == expect, f"inventory {inv[key]} != {expect}")
-    check(unlinked == 1, "one unlinked cancel")
+    check(len(unlinked) == 1, "one unlinked cancel")
     # linearity, zero at C = 0, sensitivity, +1% check
     S, K, T, sg, r, b = 7566.48, 7570.0, 30 / 525600, 0.15, 0.0395, 0.0427
     g = R.greeks(S, K, T, sg, r, b, "C")
