@@ -75,10 +75,13 @@ const TP4_BID = 4;
 export const TP4_TRAIL = 0.75;
 export const FLAT_T = 385;
 
-/** @deprecated Compass's Model 3 no longer reads a price cap (lotteryShape, LOTTERY_DELTA_MAX). Only the Weigher's
-    copy of the old gate (weigherGate.ts) still imports it, until that page follows. */
+/** Model 3's live price cap while COMPASS_M3_SHAPE is off (lotteryEntry); the Weigher's copy of the gate reads it too. */
 export const LOTTERY_ASK_MAX = 1.65;
-/* MODEL 3'S CONTRACT, by its shape instead of its price (2026-11-07). The late sweep used to take the nearest strike
+/* MODEL 3'S CONTRACT BY SHAPE, behind COMPASS_M3_SHAPE=1 (off by default: the lead, 2026-11-07). The in-sample replay
+   (scripts/compass-limits-insample.ts) moved Model 3 from −$394 to −$1,407 on 12 changed picks, mostly SPXW's
+   at-the-money $16 contracts, and neither rule has evidence behind it: the 2020–2024 backtest of the current Model 3
+   against the limits-removed one decides. Until it does the live sweep keeps lotteryEntry, unchanged.
+   With the switch on: the late sweep used to take the nearest strike
    asking $1.65 or less: at the money on IWM, QQQ, SPY, XSP and INTC (|delta| 0.41 to 0.69 in the record's 15 picks),
    and only on SPXW, where the money costs more, pushed out to 0.075–0.16 delta by the price alone. The sweep is the
    at-the-money-or-out late ticket: 0.55 delta or less (every recorded at-the-money pick, 0.41 to 0.53, is inside; an
@@ -86,6 +89,19 @@ export const LOTTERY_ASK_MAX = 1.65;
 export const LOTTERY_DELTA_MAX = 0.55;
 /** At most this many Model 3 calls a session (a count of seats, not a price or a size) */
 export const LOTTERY_CAP = 5;
+
+/** COMPASS_M3_SHAPE=1: Model 3 picks by shape (lotteryShape, compassCost lotterySide); off (the default): today's rule
+    (lotteryEntry, compassCost lotterySideNow). Read through globalThis like the other switches. */
+let m3ShapeOverride: boolean | null = null;
+export function m3ShapeOn(): boolean {
+  if (m3ShapeOverride != null) return m3ShapeOverride;
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+  return env.COMPASS_M3_SHAPE === '1';
+}
+/** Proofs only: force COMPASS_M3_SHAPE on or off (null: back to the environment). */
+export function setM3Shape(on: boolean | null): void {
+  m3ShapeOverride = on;
+}
 const LOTTERY_X3_SEC = 120;
 const LOTTERY_X2_SEC = 30;
 const LOTTERY_X3 = 3;
@@ -676,8 +692,14 @@ export function lotteryExit(entryAsk: number, bid: number, seconds: number): { w
   return null;
 }
 
-/** Model 3's contract: a tradable quote at the money or out of it, |delta| at or under LOTTERY_DELTA_MAX (it was a bid
-    over $0.15, a spread within 8% and an ask of $1.65 or less). `absDelta` as in bookBPass. */
+/** Model 3's live rule while COMPASS_M3_SHAPE is off (unchanged from before the limits work): a bid over $0.15, an ask
+    of $1.65 or less, a spread within 8%. */
+export function lotteryEntry(bid: number, ask: number): boolean {
+  return bid > BID_MIN && ask > 0 && ask <= LOTTERY_ASK_MAX && ask >= bid && inModel1Domain(bid, ask);
+}
+
+/** Model 3's contract with COMPASS_M3_SHAPE on: a tradable quote at the money or out of it, |delta| at or under
+    LOTTERY_DELTA_MAX (no bid floor, spread cap or price cap). `absDelta` as in bookBPass. */
 export function lotteryShape(bid: number, ask: number, absDelta: number): boolean {
   return quoteTradable(bid, ask) && Number.isFinite(absDelta) && absDelta <= LOTTERY_DELTA_MAX + 1e-12;
 }

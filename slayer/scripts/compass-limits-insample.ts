@@ -6,8 +6,9 @@
   Before = the rules as they stood on main (cb58b60): Model 3's bid over $0.15, spread within 8% and ask of $1.65 or
   less; the wing's ask of $1 or less; Model Risk's bid over $0.15, spread within 8% (then 4%) and $5 single-name cap,
   ranked by gamma over theta; the cost rule (smallest mu) among what each allowed.
-  After = this branch: validity checks only (two-sided, size shown), Model 1's trained quotes for Model 1 alone, the
-  wing and Model 3 by their delta, Model Risk by the cost rule.
+  After = this branch with COMPASS_M3_SHAPE on: validity checks only (two-sided, size shown), Model 1's trained quotes
+  for Model 1 alone, the wing and Model 3 by their delta, Model Risk by the cost rule. (Live, Model 3 keeps the before
+  rule until the switch is turned on: scripts/compass-m3-switch-proof.ts.)
 
     Model 1 (book A): the pool at the call's mark from the engine's scored-row log (<dir>/rows), as
       scripts/compass-cost-insample.ts reads it; before and after picked on the same rows.

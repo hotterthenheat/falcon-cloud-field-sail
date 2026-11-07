@@ -139,7 +139,23 @@ export function deltaOf(c: CostQuote, spot: number, at: number): number {
   return Math.abs(c.right === 'C' ? g.deltaCall : g.deltaPut);
 }
 
-/** Model 3's contracts on one root at a sweep minute: those in its shape (compassParams lotteryShape: a valid quote at
+/** Model 3's contracts on one root at a sweep minute while COMPASS_M3_SHAPE is off (today's rule, unchanged): of the
+    contracts that passed lotteryEntry (`list`, already filtered), the nearest strike's side, nearest the money first
+    (ties: the lower strike, then the call). */
+export function lotterySideNow<T extends { strike: number; right: OptionRight }>(list: readonly T[], spot: number): T[] {
+  const strikes = [...new Set(list.map(s => s.strike))];
+  const order = [...list].sort((a, b) => {
+    const da = strikeDistance(strikes, spot, a.strike);
+    const db = strikeDistance(strikes, spot, b.strike);
+    if (da !== db) return da - db;
+    if (a.strike !== b.strike) return a.strike - b.strike;
+    return a.right === b.right ? 0 : a.right === 'C' ? -1 : 1;
+  });
+  const first = order[0];
+  return first ? order.filter(s => s.right === first.right) : [];
+}
+
+/** Model 3's contracts with COMPASS_M3_SHAPE on: those in its shape (compassParams lotteryShape: a valid quote at
     the money or out of it, by delta) on the nearest strike's side, nearest the money first (ties: the lower strike,
     then the call). The cost rule picks among them (costPick). No price in it: the same shape on any root. */
 export function lotterySide<T extends CostQuote>(list: readonly T[], spot: number, at: number): T[] {

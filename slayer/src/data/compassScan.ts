@@ -11,7 +11,7 @@
 import { compassHost, type ThetaAnswer } from './compassHost';
 import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { setupIdOf } from './compass';
-import { BOOK_NAME, GEX_CORE, WEEKLY_STRIKES, inLottery, sessionScanOpen, weekdayDte } from './compassParams';
+import { BOOK_NAME, GEX_CORE, LOTTERY_ASK_MAX, WEEKLY_STRIKES, inLottery, m3ShapeOn, sessionScanOpen, weekdayDte } from './compassParams';
 import { deskPhase, odteAsleep, optionScanOpen, sessionDayOpen, sessionIso, sessionYmd } from './compassSession';
 import { MODEL4, model4OnOdte } from './model4Event';
 import { COMPASS_TICKERS } from './compassUniverse';
@@ -329,9 +329,10 @@ interface Draft {
 
 /** Book A reaches the span (4 strikes on an index root, up to 12 on a single name). Book B is the band past it,
     max(8, span + 1) to that + 4 strikes out (WEEKLY_STRIKES, 17, at the widest). A long chain keeps that many strikes
-    either side of the money, by distance only: a wing and Model 3's ticket are chosen by their shape and their cost,
-    not their price (it used to keep 12 strikes and every contract asking $1.65 or less). */
-function kept(list: Draft[]): Draft[] {
+    either side of the money, by distance: a wing is chosen by its shape and its cost, not its price (it used to keep
+    12 strikes and every contract asking $1.65 or less). While Model 3 runs today's rule (COMPASS_M3_SHAPE off) every
+    contract that rule could take (asking $1.65 or less) is kept too, so the sweep sees the board it always saw. */
+export function kept<D extends { strike: number; ask: number; under: number }>(list: D[]): D[] {
   if (list.length <= 80) return list;
   const strikes = [...new Set(list.map(d => d.strike))].sort((a, b) => a - b);
   const spot = list.find(d => d.under > 0)?.under ?? 0;
@@ -345,6 +346,7 @@ function kept(list: Draft[]): Draft[] {
     }
   });
   const near = new Set(strikes.filter((_, i) => Math.abs(i - atm) <= WEEKLY_STRIKES));
+  if (!m3ShapeOn()) for (const d of list) if (d.ask > 0 && d.ask <= LOTTERY_ASK_MAX) near.add(d.strike);
   return list.filter(d => near.has(d.strike));
 }
 

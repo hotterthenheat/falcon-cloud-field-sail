@@ -18,6 +18,8 @@ import {
   quoteValid,
   quoteTradable,
   quoteFreshAt,
+  lotteryEntry,
+  m3ShapeOn,
   sizeShown,
   inModel1Domain,
   f32,
@@ -66,7 +68,7 @@ import { shadowClears, shadowOn, shadowPick, shadowScore, shadowTrees, type Shad
 import { optionScanOpen, sessionDayOpen, sessionIso, sessionYmd, tapeClockOf } from './compassSession';
 import type { OptionRight, Setup } from '../types/compass';
 import { frozenTail, type FullQuote, type PathBar } from './compassOutcome';
-import { MINI_OF, altsOf, atmIvOf, costPick, costPickOn, costRead, deltaOf, lotterySide, type CostMark, type CostRead } from './compassCost';
+import { MINI_OF, altsOf, atmIvOf, costPick, costPickOn, costRead, deltaOf, lotterySide, lotterySideNow, type CostMark, type CostRead } from './compassCost';
 import { CORE, INDEX, INPUT_NAMES, NO_DAILY, SECTOR_OF, UNDER, atmPair, atmRows, barsBefore, curveFrom, decayOver, features, tapeOf, yearsLeft, type Bar, type Curve, type PinBook } from './compassFeatures';
 
 let ENTRY: Tree[] = [];
@@ -667,6 +669,23 @@ const seedWindows = new Map<string, SeedWindow>();
     for every strike of the name and expiry): the mids 5 and 15 minutes back and Book B's ask 30 minutes back come
     from the quotes that stood then, not only from the scans this tab happened to run. The window is fixed to the
     mark, so every viewer scanning the same slot asks the same path and the server shares one answer. */
+/** How a seed read asks for its strikes. The terminal centres strike_range on the underlying as it is when asked, not as
+    it was at the mark: QQQ's 15:21 chain on 2026-11-05 (QQQ at 652), read on a later day with QQQ near 683, came back
+    668 and up at strike_range 16, so a late mark scored after the price moved got none of its own strikes. A live mark
+    (scored within SEED_LIVE_MS of the wall clock) keeps the centred read, exactly as before; any later read asks for
+    every strike and keeps the mark's own (the answer is filtered to the setups' strikes either way). */
+export const SEED_LIVE_MS = 10 * 60_000;
+export function seedStrikeParam(markMs: number, wallMs: number, weekly: boolean): string {
+  return Math.abs(wallMs - markMs) <= SEED_LIVE_MS ? `strike_range=${weekly ? WEEKLY_STRIKES : 16}` : 'strike=*';
+}
+
+/** Proofs only: the seed read of a list at a mark (seedQuotes), with its memo cleared first. */
+export async function seedQuotesForProof(list: Setup[], now: number): Promise<Map<string, Map<number, { bid: number; ask: number }>> | null> {
+  seededAt.clear();
+  seedWindows.clear();
+  return seedQuotes(list, now);
+}
+
 async function seedQuotes(list: Setup[], now: number, strict = false): Promise<SeedWindow | null> {
   const first = list[0];
   if (!first?.expiryDate) return null;
@@ -683,7 +702,7 @@ async function seedQuotes(list: Setup[], now: number, strict = false): Promise<S
      A weekly expiry reads Book B's band (to 17 strikes out); the same-day read stays at 16. */
   const step = clock.minute % 5 === 0 && mark === clock.hour * 60 + clock.minute ? 5 : 1;
   const weekly = first.expiryDate.slice(0, 10) !== sessionIso(now);
-  const got = await compassHost().theta(`/option/history/quote?symbol=${encodeURIComponent(first.ticker)}&expiration=${first.expiryDate.replace(/-/g, '').slice(0, 8)}&start_date=${ymd(now)}&end_date=${ymd(now)}&strike_range=${weekly ? WEEKLY_STRIKES : 16}&interval=${step}m&start_time=${hm(Math.max(0, mark - 30))}&end_time=${hm(mark)}&format=json`);
+  const got = await compassHost().theta(`/option/history/quote?symbol=${encodeURIComponent(first.ticker)}&expiration=${first.expiryDate.replace(/-/g, '').slice(0, 8)}&start_date=${ymd(now)}&end_date=${ymd(now)}&${seedStrikeParam(now, Date.now(), weekly)}&interval=${step}m&start_time=${hm(Math.max(0, mark - 30))}&end_time=${hm(mark)}&format=json`);
   if (faulted(got)) {
     /* not marked as read: the next pass asks again, and a strict one does not score without it */
     if (strict) throw new InputFault('quotes 30 minutes back');
@@ -1931,13 +1950,14 @@ export async function scoreLottery(setups: Setup[], now = Date.now(), late = fal
   /* the session's own window (12:20 to 12:50 on a 13:00 close), the one the scan sweeps in */
   if (!inLottery(minute, clock.second, closeOn(day))) return;
   if (releaseShut(now)) return;
+  /* COMPASS_M3_SHAPE (off by default): on, validity only here and the shape is lotterySide's; off, today's rule
+     unchanged (lotteryEntry: a bid over $0.15, a spread within 8%, an ask of $1.65 or less) */
+  const shape = m3ShapeOn();
   const byRoot = new Map<string, Setup[]>();
   for (const s of setups) {
     if (NO_DAILY.has(s.ticker) || seenRootC.has(s.ticker) || seen.has(s.id)) continue;
     if (weekdayDte(day, s.expiryDate) !== 0) continue;
-    /* validity (a two-sided quote stamped this minute, size shown); the shape is lotterySide's (no price cap: it was a
-       bid over $0.15, a spread within 8% and an ask of $1.65 or less) */
-    if (!quoteTradable(s.bid, s.ask) || !sizeShown(s.bidSize, s.askSize)) continue;
+    if (shape ? !quoteTradable(s.bid, s.ask) || !sizeShown(s.bidSize, s.askSize) : !lotteryEntry(s.bid, s.ask)) continue;
     const qMin = s.quotedAt ? minuteOf(s.quotedAt) : NaN;
     if (qMin !== minute) continue;
     const list = byRoot.get(s.ticker) ?? [];
@@ -1948,10 +1968,10 @@ export async function scoreLottery(setups: Setup[], now = Date.now(), late = fal
   for (const [ticker, list] of byRoot) {
     const spot = list.find(s => (s.spot ?? 0) > 0)?.spot ?? 0;
     if (!(spot > 0)) continue;
-    /* Model 3's contracts in its shape on the nearest strike's side (compassCost lotterySide); the one that makes the
-       most sense to risk among them (the smallest mean move it needs to pay back its round trip, held to the sweep's
-       flat); the nearest when none can be read */
-    const sideList = lotterySide(list, spot, now);
+    /* the nearest strike's side (by shape with the switch on, of today's rule's contracts with it off); the one that
+       makes the most sense to risk among them (the smallest mean move it needs to pay back its round trip, held to the
+       sweep's flat); the nearest when none can be read */
+    const sideList = shape ? lotterySide(list, spot, now) : lotterySideNow(list, spot);
     const first = sideList[0];
     if (!first) continue;
     const atm = atmIvOf(setups.filter(s => s.ticker === ticker && weekdayDte(day, s.expiryDate) === 0), spot, now);

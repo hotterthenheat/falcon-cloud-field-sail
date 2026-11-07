@@ -7,7 +7,7 @@
   (<dir>/rows/YYYY-MM-DD.jsonl: every contract Model 1 scored at the mark, with the quote it read):
     Model 1 (books A, B): same root, expiry and side, cleared the line, in Model 1's trained quotes, within the
       near-the-money span (book B's far wing: beyond it, a wing by its delta, compassParams wingShape); Model 3 (book C):
-      same root, same-day, same side, at the money or out of it (lotteryShape), at the latest mark at or before the
+      same root, same-day, same side, Model 3's live rule (lotteryEntry, or lotteryShape with COMPASS_M3_SHAPE=1), at the latest mark at or before the
       sweep. The scored-row log holds only contracts Model 1 could score, so Model 3's pool here misses the contracts
       outside Model 1's trained quotes: scripts/compass-limits-insample.ts rebuilds the whole chain from the terminal.
   The smallest-mu contract is picked (ATM IV from the mark's ATM pair, held to the call's flat). Where it differs, it is
@@ -22,7 +22,7 @@ import { join } from 'node:path';
 import { installTerminalHost, terminalReads } from './compassTerminal';
 import { settledCopy, type Signal } from '../src/data/compassLedger';
 import { atmIvOf, costPick, costRead, deltaOf, type CostQuote } from '../src/data/compassCost';
-import { P1_MIN, SPAN_INDEX, inModel1Domain, lotteryShape, runnerFlag, strikeDistance, strikeSpan, wingShape } from '../src/data/compassParams';
+import { P1_MIN, SPAN_INDEX, inModel1Domain, lotteryEntry, lotteryShape, m3ShapeOn, runnerFlag, strikeDistance, strikeSpan, wingShape } from '../src/data/compassParams';
 import { nyParts, nyWallTime } from '../src/core/nyTime';
 import { sessionCloseMinOn } from '../src/core/calendar';
 import type { OptionRight } from '../src/types/compass';
@@ -92,7 +92,7 @@ for (const day of days) {
     const span = strikeSpan(spot, strikes, index);
     const allowed = quotes.filter(q => {
       if (q.right !== call.right) return false;
-      if (call.book === 'C') return lotteryShape(q.bid, q.ask, deltaOf(q, spot, markAt));
+      if (call.book === 'C') return m3ShapeOn() ? lotteryShape(q.bid, q.ask, deltaOf(q, spot, markAt)) : lotteryEntry(q.bid, q.ask);
       if (!(q.p1 != null && q.p1 + 1e-12 >= P1_MIN) || !inModel1Domain(q.bid, q.ask)) return false;
       const dist = strikeDistance(strikes, spot, q.strike);
       return call.book === 'A' ? dist <= span : dist > span && wingShape(deltaOf(q, spot, markAt));

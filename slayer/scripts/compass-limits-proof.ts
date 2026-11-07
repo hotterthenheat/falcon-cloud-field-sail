@@ -69,7 +69,19 @@ check('Model 1 refuses a crossed quote and a zero bid', !inModel1Domain(1.2, 1.1
   check('Model Risk\'s chain read refuses a stale or invalid quote and no size', /quoteFresh\(/.test(legs) && /quoteTradable\(/.test(legs) && /sizeShown\(/.test(legs));
 }
 
-/* ---- 2. no fixed price or spread limit in the choice path ---- */
+/* ---- 2. no fixed price or spread limit in the choice path ----
+   Model 3's rule of today (lotteryEntry: $0.15, 8%, $1.65) stays live behind COMPASS_M3_SHAPE, off by default, until
+   the backtest decides (scripts/compass-m3-switch-proof.ts proves it unchanged). It may appear only in the switch's
+   off branch: those branches are checked here to be gated, then left out of the scan for limits. */
+const offBranch = (text: string) => text
+  .replace(/: !lotteryEntry\(s\.bid, s\.ask\)/, '')
+  .replace(/: lotterySideNow\(list, spot\)/, '')
+  .replace(/\n\s*if \(!m3ShapeOn\(\)\) for \(const d of list\) if \(d\.ask > 0 && d\.ask <= LOTTERY_ASK_MAX\) near\.add\(d\.strike\);/, '');
+{
+  const lot = fnBody(code(src('src/data/compassModel.ts')), 'scoreLottery');
+  check("Model 3: today's rule is read only in the switch's off branch", /const shape = m3ShapeOn\(\);/.test(lot) && /shape \? !quoteTradable\(s\.bid, s\.ask\) \|\| !sizeShown\(s\.bidSize, s\.askSize\) : !lotteryEntry\(s\.bid, s\.ask\)/.test(lot) && /shape \? lotterySide\(list, spot, now\) : lotterySideNow\(list, spot\)/.test(lot) && (lot.match(/lotteryEntry/g) ?? []).length === 1);
+  check("the scan keeps today's rule's far contracts only while the switch is off", /if \(!m3ShapeOn\(\)\) for \(const d of list\) if \(d\.ask > 0 && d\.ask <= LOTTERY_ASK_MAX\) near\.add\(d\.strike\);/.test(fnBody(code(src('src/data/compassScan.ts')), 'kept')));
+}
 {
   const files: Record<string, string[]> = {
     'src/data/compassModel.ts': ['scoreLottery', 'pickOf', 'miniRows', 'poolCost'],
@@ -83,7 +95,7 @@ check('Model 1 refuses a crossed quote and a zero bid', !inModel1Domain(1.2, 1.1
   /* a price or a spread against a number: ask <= 1, bid > 0.15, 1.65, spread / mid > 0.04, ask >= 5 */
   const priced = /\b(ask|bid|mid|spread|bidPx|askPx)\s*(<=|>=|<|>)\s*\d*\.?\d+(?!e)|\d*\.?\d+\s*(<=|>=|<|>)\s*(ask|bid|mid|spread)\b|\b(1\.65|0\.15|0\.08|0\.04)\b/;
   for (const [file, names] of Object.entries(files)) {
-    const text = code(src(file));
+    const text = offBranch(code(src(file)));
     for (const name of names) {
       const body = fnBody(text, name);
       const hitGone = gone.exec(body);
@@ -94,9 +106,10 @@ check('Model 1 refuses a crossed quote and a zero bid', !inModel1Domain(1.2, 1.1
   const params = code(src('src/data/compassParams.ts'));
   const uses = (params.match(/\b(BID_MIN|SPREAD_MAX)\b/g) ?? []).length;
   const inDomain = (fnBody(params, 'inModel1Domain').match(/\b(BID_MIN|SPREAD_MAX)\b/g) ?? []).length;
-  check('Model 1\'s trained quotes are read in one place in compassParams (their definition and inModel1Domain)', uses === inDomain + 2, `${uses} uses, ${inDomain} in inModel1Domain`);
+  const inEntry = (fnBody(params, 'lotteryEntry').match(/\b(BID_MIN|SPREAD_MAX)\b/g) ?? []).length;
+  check('Model 1\'s trained quotes are read in compassParams only by inModel1Domain (and today\'s Model 3 rule, behind the switch)', uses === inDomain + inEntry + 2 && inEntry <= 1, `${uses} uses, ${inDomain} in inModel1Domain, ${inEntry} in lotteryEntry`);
   for (const f of ['src/data/compassModel.ts', 'src/data/compassCost.ts', 'src/data/compassScan.ts', 'src/data/modelRisk.ts', 'src/data/modelRiskScan.ts']) {
-    check(`${f} names no old cap and no Model 1 number`, !/\b(LOTTERY_ASK_MAX|BOOK_B_ASK|TAIL_SPREAD|TAIL_ASK_CAP|BID_MIN|SPREAD_MAX|lotteryEntry)\b/.test(code(src(f))));
+    check(`${f} names no old cap and no Model 1 number`, !/\b(LOTTERY_ASK_MAX|BOOK_B_ASK|TAIL_SPREAD|TAIL_ASK_CAP|BID_MIN|SPREAD_MAX|lotteryEntry)\b/.test(offBranch(code(src(f))).replace(/^import[\s\S]*?from '[^']+';$/gm, '')));
   }
   check('the scan keeps strikes by distance only (no 1.65)', !/1\.65/.test(code(src('src/data/compassScan.ts'))));
   /* the model's definition, from the trees' own files: what they were trained on */
@@ -151,7 +164,7 @@ const pickOld = (chain: Leg[], S: number) => {
   const b = pickNew(small, 40);
   const da = a ? deltaOf(a, 700, at) : NaN;
   const db = b ? deltaOf(b, 40, at) : NaN;
-  check('Model 3: the same contract shape on SPY at $700 and on a $40 stock', !!a && !!b && a.rel === b.rel && a.right === b.right && Math.abs(da - db) < 1e-6, `${a?.rel}${a?.right} |Δ| ${da.toFixed(3)} vs ${b?.rel}${b?.right} |Δ| ${db.toFixed(3)}`);
+  check('Model 3 with COMPASS_M3_SHAPE on: the same contract shape on SPY at $700 and on a $40 stock', !!a && !!b && a.rel === b.rel && a.right === b.right && Math.abs(da - db) < 1e-6, `${a?.rel}${a?.right} |Δ| ${da.toFixed(3)} vs ${b?.rel}${b?.right} |Δ| ${db.toFixed(3)}`);
   check(`Model 3's shape: at the money or out of it (|Δ| ≤ ${LOTTERY_DELTA_MAX})`, da <= LOTTERY_DELTA_MAX + 1e-12);
   const oa = pickOld(spy, 700);
   const ob = pickOld(small, 40);
