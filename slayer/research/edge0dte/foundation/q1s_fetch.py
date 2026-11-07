@@ -125,6 +125,8 @@ def main():
         progressed = 0
         deferred = 0
         groups = list(todo.groupby(['root', 'day'], sort=False))
+        if '--reverse' in sys.argv:              # a second process can work the same plan from the other end
+            groups = groups[::-1]
         for gi, ((root, day), g) in enumerate(groups):
             if shutil.disk_usage('/').free < 1.2e9:
                 print('STOP: free disk below 1.2 GB', flush=True)

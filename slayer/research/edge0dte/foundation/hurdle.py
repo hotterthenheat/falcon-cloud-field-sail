@@ -117,13 +117,14 @@ def ci(r, k, pct=False):
 def main():
     tr = pd.read_parquet(os.path.join(DATA, 'trades.parquet'))
     tr = tr[(tr.split == 'DISCOVERY') & tr.purpose.isin(['base', 'hurdle'])].copy()
+    tr['src'] = tr.root                         # original root (kept when the ETF roots are pooled)
     res = []
     etf = tr[tr.root.isin(['SPY', 'QQQ', 'IWM'])].assign(root='SPY+QQQ+IWM')
     for root, g in list(tr.groupby('root')) + ([('SPY+QQQ+IWM', etf)] if len(etf) else []):
         for h, gh in g.groupby('h'):
             for b, gb in list(gh.groupby('bucket')) + [('all', gh)]:
                 r = cell(gb)
-                r.update({'root': root, 'h': h, 'bucket': b, 'times': gb.drop_duplicates(['day', 't']).shape[0]})
+                r.update({'root': root, 'h': h, 'bucket': b, 'times': gb.drop_duplicates(['src', 'day', 't']).shape[0]})
                 res.append(r)
     res = pd.DataFrame(res)
     res.to_parquet(os.path.join(DATA, 'hurdle.parquet'))
@@ -133,7 +134,7 @@ def main():
          'Sample (fixed before any fill was seen, foundation/q1s_plan.py): SPXW every DISCOVERY expiry session at 10:00, '
          '12:00 and 14:00 plus 200 sessions per other 30-min bucket at a random grid time (100 from plan_base, seed 7, '
          '+ 100 from plan_hurdle2, seed 17); SPY/QQQ/IWM 30 sessions per bucket (plan_base, seeds 11-13) plus, where '
-         'fetched, every DISCOVERY session at 10:00/12:00/14:00 (the baseline rows). "SPY+QQQ+IWM" pools the three ETF '
+         'every DISCOVERY session at 10:00/12:00/14:00 (the baseline rows). "SPY+QQQ+IWM" pools the three ETF '
          'roots (inference still clustered by trading day). Bucket "09:30" holds the 09:45-09:55 decision times. Exit decision min(t + h, close - 2 min); '
          '"close" = 15:58:00 decision (the Stage-1 Z/V at h=close run to 16:00). Labels: fills OBS; returns, Z, V, '
          'hurdles CALC.', '',
@@ -151,7 +152,7 @@ def main():
     L += ['## Sample', '', '| root | decision times | sessions | single-option round trips | straddle round trips | skipped |',
           '|---|---:|---:|---:|---:|---:|']
     for root, g in list(tr.groupby('root')) + ([('SPY+QQQ+IWM', etf)] if len(etf) else []):
-        L.append(f"| {root} | {g.drop_duplicates(['day', 't']).shape[0]} | {g.day.nunique()} | "
+        L.append(f"| {root} | {g.drop_duplicates(['src', 'day', 't']).shape[0]} | {g.day.nunique()} | "
                  f"{(g.struct != 'straddle').sum()} | {(g.struct == 'straddle').sum()} | {g.skip.notna().sum()} "
                  f"({100 * g.skip.notna().mean():.1f}%) |")
     sk = tr[tr.skip.notna()].groupby(['root', 'skip']).size()

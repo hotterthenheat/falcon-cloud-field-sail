@@ -228,11 +228,16 @@ def main():
                   if r.trades > 2 and np.isfinite(r.get('sharpe_trade', np.nan)) else np.nan for _, r in res.iterrows()]
     res['n_trials'] = n_trials
     res.to_parquet(os.path.join(DATA, 'baselines.parquet'))
-    write_md(res, sections, pd.DataFrame(shuffles), pd.DataFrame(sens), n_trials, sr_var)
+    from foundation.trades import load_selections
+    sel = load_selections()
+    sel = sel[(sel.purpose == 'base') & sel.root.isin(roots)]
+    nosel = {r: (len(g), int(g.call_k.isna().sum()), int(g.put_k.isna().sum()), int(g.atm_k.isna().sum()))
+             for r, g in sel.groupby('root')}       # a 'nosel' row has no strike at all
+    write_md(res, sections, pd.DataFrame(shuffles), pd.DataFrame(sens), n_trials, sr_var, nosel)
     return res
 
 
-def write_md(res, sections, sh, sens, n_trials, sr_var):
+def write_md(res, sections, sh, sens, n_trials, sr_var, nosel=None):
     L = ['# EDGE0DTE baselines (PROTOCOL section 6, reporting set of section 8)', '', __doc__.split('\n', 2)[2].strip(), '']
     L += ['Data period: DISCOVERY = expiry sessions 2020-02-18 .. 2023-12-31, CALIBRATION = 2024 (each reported '
           'separately; CALIBRATION is the out-of-sample check of DISCOVERY; HOLDOUT 2025 and LOCKED 2026 are not '
@@ -303,7 +308,13 @@ def write_md(res, sections, sh, sens, n_trials, sr_var):
           '- Fees $0.65 per contract per side per leg; sensitivities $1.30 and +1 tick (SPXW 0.05 below $3, 0.10 above; '
           'ETF options 0.01). No mid fills. Size: 1 lot (displayed size > 0 required on the entry side).',
           '- Underlying rows: bar-close to bar-close returns (OBS bars), no cost; SPX index return is not tradeable '
-          'directly (labelled).', '']
+          'directly (labelled).']
+    if nosel:
+        L.append('- Decision times with no qualifying contract on the board at t (no |delta| in [0.15, 0.50] with a '
+                 'valid two-sided quote inside the cached strike band, or no ATM strike) are not traded and are not '
+                 'skips; unconditional decision times (DISCOVERY + CALIBRATION) without a call / put / straddle: '
+                 + '; '.join(f'{r} {c} / {p} / {a} of {n}' for r, (n, c, p, a) in nosel.items()) + '.')
+    L.append('')
     open(OUT, 'w').write('\n'.join(L) + '\n')
 
 

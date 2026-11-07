@@ -16,7 +16,9 @@ LEDGER = os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'resear
 
 
 def pct(x):
-    return '-' if x is None or not np.isfinite(x) else f'{100 * x:+.1f}%'
+    if x is None or not np.isfinite(x):
+        return '-'
+    return f'{100 * x:+.3f}%' if abs(x) < 0.01 and x != 0 else f'{100 * x:+.1f}%'
 
 
 def main():
