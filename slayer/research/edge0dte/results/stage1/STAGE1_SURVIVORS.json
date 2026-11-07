@@ -1,0 +1,34 @@
+[
+ {
+  "family": "D",
+  "row_id": "D2",
+  "arm": "compression",
+  "outcome": "V",
+  "horizon": "60",
+  "param": "0.5"
+ },
+ {
+  "family": "D",
+  "row_id": "D4",
+  "arm": "high",
+  "outcome": "V",
+  "horizon": "60",
+  "param": "tercile"
+ },
+ {
+  "family": "D",
+  "row_id": "D5",
+  "arm": "14:30",
+  "outcome": "V",
+  "horizon": "60",
+  "param": "30-min"
+ },
+ {
+  "family": "D",
+  "row_id": "D2",
+  "arm": "compression",
+  "outcome": "V",
+  "horizon": "close",
+  "param": "0.5"
+ }
+]
