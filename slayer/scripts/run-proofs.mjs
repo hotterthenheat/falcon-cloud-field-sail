@@ -52,6 +52,7 @@ const PROOFS = [
   'session-literal-proof',
   'symbol-directory-proof',
   'name-search-proof',
+  'expiry-days-proof',
   'name-card-proof.mjs',
   'opening-lean-proof',
   'tape-cache-proof',

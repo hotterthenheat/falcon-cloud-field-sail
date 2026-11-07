@@ -225,6 +225,15 @@ export function expiryAt(on: Date, from: Date = today()): Expiry {
   };
 }
 
+/** The day a listed expiry falls on, read off its own date ("2026-11-18") rather than off a day count: the vendor counts
+    its dte from the day its rows were written, so on a weekend or a holiday a count read from today lands a day or more
+    late (VIX's Wednesday expiries showed as Thursdays on the Saturday after a Friday). A date that is not a session
+    walks back, as expiryAt. Anything but an ISO date falls back to the count. */
+export function listedExpiry(iso: string, dte: number, from: Date = today()): Expiry {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? expiryAt(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])), from) : expiryFor(dte, from);
+}
+
 /* The regular session: 09:30–16:00 New York, 6.5 h, 390 min, defined once. */
 const RTH_HOURS = 6.5;
 export const RTH_MINUTES = RTH_HOURS * 60;

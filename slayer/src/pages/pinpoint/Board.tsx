@@ -24,7 +24,7 @@ import { bellDay, cadenceWords, dayWordOf, expirySpan, longDay, recordDay, recor
 import { buildBoardRow, netGexTitle, type BoardRow } from '../../data/board';
 import { strikeTag, todayWords } from '../../data/agenda';
 import { addBoardName, removeBoardName, useBoardNames } from '../../data/boardNames';
-import { isOptionRoot, useListedRev } from '../../data/listedNames';
+import { isPinpointName, useListedRev } from '../../data/listedNames';
 import { tickerName } from '../../data/tickers';
 import TickerLookup from '../../components/ui/TickerLookup';
 import useFocusTrap from '../../components/ui/useFocusTrap';
@@ -458,7 +458,7 @@ const Board = () => {
   /* the names on the board — the list the user keeps */
   const stored = useBoardNames();
   const listedRev = useListedRev();
-  const names = useMemo(() => stored.filter(isOptionRoot), [stored, listedRev]);
+  const names = useMemo(() => stored.filter(isPinpointName), [stored, listedRev]);
   usePinpointFeed(names[0]);
   const bookRev = useBookRev();
   const [rows, setRows] = useState<BoardRow[]>([]);

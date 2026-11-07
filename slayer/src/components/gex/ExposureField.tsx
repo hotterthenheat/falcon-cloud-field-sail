@@ -41,7 +41,7 @@ import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import Fold from '../ui/Fold';
 import ScopeChip from '../ui/ScopeChip';
 import ExpiryRangeCard, { type ExpiryDay, type ExpiryShortcut } from '../ui/ExpiryRangeCard';
-import { expiryFor } from '../../core/calendar';
+import { listedExpiry } from '../../core/calendar';
 import DropdownMulti from '../ui/DropdownMulti';
 import GuideFocus, { GuideDoor } from '../ui/GuideFocus';
 import { undoable } from '../ui/undo';
@@ -1212,7 +1212,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   const beside = extraBooks.length > 0 ? ` beside ${1 + extraBooks.length} names` : '';
   const expiryDays: ExpiryDay[] = ex.map((e, i) => ({
     value: i,
-    date: expiryFor(e.dte).date,
+    /* the listed date itself, never a day count from today (a weekend moved VIX's Wednesdays to Thursdays) */
+    date: listedExpiry(e.date, e.dte).date,
     /* after the close the front listing is the NEXT session's — its date, not "Today" (the second re-audit, 2026-10-22:
        "TODAY → NOV 3" on the Expiries chip beside "MATRIX OCT 23 → NOV 3" on the supreme's) */
     label: e.dte === 0 && todayScopeLabel() === 'Today' ? 'Today' : e.date,
@@ -1993,7 +1994,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                     )}
                     <ExpiryRangeCard
                       label="Expiries"
-                      days={book.surface.expiries.map((e, i) => ({ value: i, date: expiryFor(e.dte).date, label: e.dte === 0 && todayScopeLabel() === 'Today' ? 'Today' : e.date, hint: e.date }))}
+                      days={book.surface.expiries.map((e, i) => ({ value: i, date: listedExpiry(e.date, e.dte).date, label: e.dte === 0 && todayScopeLabel() === 'Today' ? 'Today' : e.date, hint: e.date }))}
                       from={lens.from}
                       through={lens.through}
                       onChange={(from, through) => {

@@ -137,7 +137,7 @@ const TickerLookup = ({ onPick, active, limit = 80 }: TickerLookupProps) => {
       </CommandList>
       {roomCount(room) > 0 && (
         <div className="px-2.5 py-1 border-t border-borderSubtle font-mono text-t9 text-textMuted" data-listed-count={roomCount(room)}>
-          {roomCount(room).toLocaleString()} {room === 'option' ? 'names with listed options' : room === 'compass' ? 'names' : 'listings'}
+          {roomCount(room).toLocaleString()} {room === 'option' || room === 'pinpoint' ? 'names with listed options' : room === 'compass' ? 'names' : 'listings'}
           {results.length < roomCount(room) ? ' · scroll for more' : ''}
         </div>
       )}

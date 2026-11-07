@@ -43,6 +43,17 @@ endpoint name suggests.
   untouched:** their dark-pool room and tape stay on Unusual Whales. Other pages that host the chart keep the vendor's
   tape for the flow pane.
 
+- **The ticker universe** (`src/data/generated/tickerUniverse.json`, written by `scripts/build-ticker-universe.mjs`,
+  refreshed daily): every symbol either key lists, with the desks that can serve it. **Terrain** offers what ThetaData
+  quotes with bars (a stock or fund quoted in the last 10 sessions with a bar in the last 30 days) and every index it
+  priced in the last 10 sessions. **Pinpoint** offers the names whose Unusual Whales expiry list
+  (`/stock/{t}/greek-exposure/expiry`, the list Pinpoint reads) has a live date; a name only ThetaData lists options on
+  is not offered there. The option desks (Weigher, Paper, Backtest) offer ThetaData roots with a live expiration. The
+  build reads ThetaData one request at a time and Unusual Whales one request at a time, 0.45 s apart (about 75 minutes
+  for the vendor's expiry walk); `--master <csv>` also writes the full table both vendors' expiry lists sit in.
+  `/option-trades/optionable-tickers` ("which symbols have listed options") is API Advanced only on this key (422), so
+  the screener (`/screener/stocks`, paged with `offset` as a page number, 500 a page) and the expiry walk stand in.
+
 Set by the owner on 2026-10-22 (Pinpoint and Dossier on Unusual Whales), 2026-10-29 (Trace on Unusual Whales
 only; ThetaData for Pinpoint's live price and candles) and 2026-11-01 (ThetaData's open interest for Building).
 

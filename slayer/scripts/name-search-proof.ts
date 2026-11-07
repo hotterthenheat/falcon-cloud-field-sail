@@ -6,7 +6,7 @@
    npx tsx scripts/name-search-proof.ts */
 
 import { searchNames, NAME_LIMIT } from '../src/data/nameSearch';
-import { directoryEntry, directoryReady, loadDirectory } from '../src/data/symbolDirectory';
+import { directoryEntry, directoryReady, directorySize, loadDirectory } from '../src/data/symbolDirectory';
 
 let failed = 0;
 const ok = (cond: unknown, what: string) => {
@@ -79,7 +79,7 @@ ok(searchNames('a'.repeat(4)).length <= NAME_LIMIT, 'a query lists forty at most
 const t0 = performance.now();
 for (const q of ['a', 'ap', 'app', 'appl', 'apple', 'n', 'nv', 'nvd', 'nvda', 's', 'sp', 'spx', 'energy', 'micro']) searchNames(q);
 const per = (performance.now() - t0) / 14;
-ok(per < 25, `a keystroke's search takes ${per.toFixed(2)} ms on ${'14k'} listings`);
+ok(per < 25, `a keystroke's search takes ${per.toFixed(2)} ms on ${directorySize().toLocaleString()} listings`);
 
 if (failed) {
   console.log(`${failed} name-search check(s) failed`);

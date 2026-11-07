@@ -16,7 +16,7 @@ import { carryFacts, chainFrom, flowMap, foldContracts, liveGammaRows, num, oiMa
 import { BOARD_MS, BOOK_LISTINGS, FULL_MS, LIVE_GAMMA_MS, cache, chartAll, chartSpan, closestDate, datesComplete, emit, emptyDates, factsFirst, gammaPriced, gen, horizonFactsMissing, hotGet, isHot, keptBooks, liveGammaCache, liveGammaWait, peekEntry, recordAsked, recordIso, settledLive, type BookMode, type Entry } from './store';
 import { readKept } from './kept';
 import { noteExposureRows } from './exposureLog';
-import { hasListedOptions } from '../symbolDirectory';
+import { hasListedOptions, hasVendorOptions } from '../symbolDirectory';
 import { CLOSE_MIN, candlesFrom, isCashIndex, cashToOf, closesFromTape, parseTape, pushPrint, quoteFromBars, regularCloseOf, thetaTape, twoCashSessions, uwBarsOf } from './tape';
 import { bookMinuteBars, peekPrint } from '../thetaTape';
 
@@ -952,8 +952,10 @@ export function ensureBook(ticker: string, mode: BookMode = 'board', force = fal
   if (typeof window === 'undefined') return;
   const t = sameName(ticker);
   if (!t) return;
-  /* a name with no listed options has no book: nothing is asked of the vendor for it */
-  if (hasListedOptions(t) === false) return;
+  /* a name with no listed options has no book, nor one the vendor lists no options on (the book is the vendor's: a
+     name only the terminal lists options on would read empty answers): nothing is asked of the vendor for it */
+  if (hasListedOptions(t) === false && hasVendorOptions(t) !== true) return;
+  if (hasVendorOptions(t) === false) return;
   const e = cache.get(t);
   if (e?.status === 'loading') {
     if (mode === 'full') e.wantFull = true;
