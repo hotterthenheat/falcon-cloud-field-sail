@@ -52,7 +52,7 @@ import RoomSpotRule from './RoomSpotRule';
 import { useRoomSpotRead } from '../../pages/pinpoint/useRoomSpot';
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { shownGreek } from './retailSign';
-import { todayColumn, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
+import { todayColumn, greekUnit, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { LONG_GAMMA, SHORT_GAMMA, SUPREME } from './paletteInk';
 import { strikeRole, underlineClass } from './strikeRole';
 import StrikeNum, { hasCents } from './StrikeNum';
@@ -737,7 +737,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
     const si = Math.max(0, strikes.indexOf(cur.strike));
     const ci = Math.max(0, columnsList.findIndex(c => c.g === cur.greek && c.e === cur.e));
     const col = (i: number) => columnsList[Math.max(0, Math.min(columnsList.length - 1, i))];
-    let next: Focus | null = null;
+    let next: Focus | null;
     /* j and k walk the strikes too, the way every list in a terminal walks (the paying-user audit's H6) */
     if (e.key === 'ArrowDown' || e.key === 'j') next = { ...cur, strike: strikes[Math.min(strikes.length - 1, si + 1)] };
     else if (e.key === 'ArrowUp' || e.key === 'k') next = { ...cur, strike: strikes[Math.max(0, si - 1)] };
@@ -1095,11 +1095,11 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
               /* min-w-0 and a cut: on a phone five groups of one 45px column overprinted each other's words (the audit's 2.13) */
               className={`sticky top-0 z-10 ${ground} px-2 tracking-widest flex items-center justify-center overflow-visible font-mono text-t11 font-bold uppercase text-textPrimary border-l border-borderSubtle whitespace-nowrap`}
               style={{ gridColumn: `span ${shownIdx.length}` }}
-              title={`${GREEK_LABEL[g]} · ${GREEK_UNIT[g]} — ${GREEK_EXPLAIN[g]}`}
+              title={`${GREEK_LABEL[g]} · ${greekUnit(g, surface.timeUnit)} — ${GREEK_EXPLAIN[g]}`}
             >
               <span>
                 {GREEK_LABEL[g]}
-                <span className="ml-1 font-normal normal-case tracking-normal text-textMuted">· {GREEK_UNIT[g]}</span>
+                <span className="ml-1 font-normal normal-case tracking-normal text-textMuted">· {greekUnit(g, surface.timeUnit)}</span>
               </span>
             </div>
           ))}

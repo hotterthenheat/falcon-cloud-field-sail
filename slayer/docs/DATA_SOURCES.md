@@ -25,6 +25,10 @@ endpoint name suggests.
     `src/data/twobook/flowBook.ts`); the browser asks the server only. Never Unusual Whales, never open interest.
   - Pinpoint also lists the names whose options only ThetaData lists: their flow book is served and their open-interest
     book says it is unavailable.
+  - Every Pinpoint view draws one of these two boards, cell by cell (`docs/TWO_BOOK.md` §4): the Map's switch picks the
+    book; the browser's own Unusual Whales reads for a name's book are the core read only (price, bars, vols, the term
+    structure — `src/data/book/load.ts engineChains`), plus the Weigher's one date of option-contracts for its
+    per-contract gamma. Trace and Dossier keep their own Unusual Whales reads.
   - On screen neither vendor is named ("open-interest book", "flow book", "listed open interest", "today's prints").
 - **Building's open-interest change** (Pinpoint's Building and Terrain's Building tab) is ThetaData's, allowed by the
   owner on 2026-11-01: the all-expiration open interest (`/option/history/open_interest?expiration=*`) for the two

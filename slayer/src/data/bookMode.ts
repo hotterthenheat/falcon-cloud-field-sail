@@ -1,51 +1,66 @@
-/* Which book the desk's levels read. Since the two-book spec (docs/TWO_BOOK_SPEC_V2.md, 2026-11-07) there is ONE answer:
-   the open-interest book. The old "Live" book — open interest PLUS today's signed volume — is retired: the spec forbids
-   adding open interest to flow inventory (§6). The flow book is now its own board (Model 2: today's prints only,
-   classified per §4.1 and revalued on the server, /api/tape/flowbook), shown beside the open-interest book on Pinpoint's
-   Books page and never added to it.
-
-   The field, the walls, the flip, the regime and the Terrain strike rail therefore all read the open-interest book. The
-   functions below keep their names so every caller still compiles, and hand back what they were given — the same
-   objects — so nothing downstream can change. A browser that kept the old "flow" choice is moved back to the
-   open-interest book. */
+/* Which book Pinpoint draws (docs/TWO_BOOK_SPEC_V2.md; what was built: docs/TWO_BOOK.md §The Map). Two books, one engine,
+   never mixed or added (§6):
+     'oi'    the open-interest book (Model 1): listed open interest, dealers long the listed calls and short the listed
+             puts by convention; four figures are the listing's own exposures converted to house units (§3.4), six are
+             the house model on the same contracts (§3.5) — /api/twobook/oi;
+     'flow'  the flow book (Model 2): today's prints, each signed by the side that crossed the quote, the modelled dealer
+             on the other side, revalued now (§4) — /api/tape/flowbook.
+   The Map's toggle sets it; the Map's matrix, chart, walls, flip, regime, and the pages that follow the Map's name read
+   the book it names (src/data/book/engineView.ts). Before 2026-11-07 'flow' meant open interest PLUS signed volume —
+   forbidden by §6 — so a browser that kept that choice under the old key starts on the open-interest book. */
 
 import { useSyncExternalStore } from 'react';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
 
 export type BookMode = 'oi' | 'flow';
 
-/** The books' names wherever a reader sees them. The flow book is its own board (Pinpoint → Books), never this toggle. */
-export const BOOK_MODE_WORDS: Record<BookMode, { label: string; line: string }> = {
-  oi: { label: 'Open-interest book', line: 'Listed open interest as of the last report, dealers long the calls and short the puts by convention' },
-  flow: { label: 'Flow book', line: 'Today’s prints, signed by the side that crossed, revalued now — its own board, never added to open interest' },
+/** The books' names wherever a reader sees them: what each book is, never where it comes from */
+export const BOOK_MODE_WORDS: Record<BookMode, { label: string; short: string; line: string }> = {
+  oi: { label: 'Open-interest book', short: 'Open interest', line: 'Listed open interest from the last report: dealers long the listed calls and short the listed puts by convention — not observed positions' },
+  flow: { label: 'Flow book', short: 'Flow', line: 'Today’s prints, each signed by the side that crossed the quote, the modelled dealer on the other side, revalued now — its own book, never added to open interest' },
 };
 
-const KEY = 'slayer_book_mode_v1';
+const OLD_KEY = 'slayer_book_mode_v1';
+const KEY = 'slayer_book_mode_v2';
+let mode: BookMode = 'oi';
 try {
-  if (typeof localStorage !== 'undefined' && localStorage.getItem(KEY) === 'flow') localStorage.removeItem(KEY);
+  if (typeof localStorage !== 'undefined') {
+    /* the old key's 'flow' was open interest + flow (retired); it is not carried over */
+    localStorage.removeItem(OLD_KEY);
+    if (localStorage.getItem(KEY) === 'flow') mode = 'flow';
+  }
 } catch {
   /* nothing kept */
 }
+const listeners = new Set<() => void>();
 
-export const bookMode = (): BookMode => 'oi';
+export const bookMode = (): BookMode => mode;
 
-/** Kept for callers: the open-interest book is the only one the desk's levels read */
-export function setBookMode(_next: BookMode): void {
-  /* the flow book is not a mode of this book (docs/TWO_BOOK_SPEC_V2.md §6) */
+export function setBookMode(next: BookMode): void {
+  if (next !== 'oi' && next !== 'flow') return;
+  if (next === mode) return;
+  mode = next;
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(KEY, next);
+  } catch {
+    /* the choice lives for this page */
+  }
+  for (const fn of [...listeners]) fn();
 }
 
-export function subscribeBookMode(_fn: () => void): () => void {
-  return () => undefined;
+export function subscribeBookMode(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
 }
 
 export function useBookMode(): BookMode {
   return useSyncExternalStore(subscribeBookMode, bookMode, bookMode);
 }
 
-/** The chain as the desk reads it: the open-interest chain itself */
+/* The chains a page reads are already the chosen book's (engineView.ts builds them from that book's cells), so these
+   hand back what they are given. They keep their names so every caller compiles; none of them mixes the books. */
 export const flowNode = (n: StrikeNode): StrikeNode => n;
 export const flowChainOf = (chain: StrikeNode[]): StrikeNode[] => chain;
 export const flowChainIn = (chain: StrikeNode[]): StrikeNode[] => chain;
 export const chainInMode = (chain: StrikeNode[], _by?: Record<string, StrikeNode[]>, _m?: BookMode, _all?: readonly StrikeNode[]): StrikeNode[] => chain;
-/** The snapshot as the desk reads it: itself */
 export const bookInMode = (snapshot: MarketSnapshot, _m?: BookMode): MarketSnapshot => snapshot;

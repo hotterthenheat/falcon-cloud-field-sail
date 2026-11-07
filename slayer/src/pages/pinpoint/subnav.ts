@@ -1,4 +1,4 @@
-import { BookOpen, ClipboardList, LayoutGrid, Map, Scale, type LucideIcon } from 'lucide-react';
+import { ClipboardList, LayoutGrid, Map, Scale, type LucideIcon } from 'lucide-react';
 
 /** Pinpoint subpage registry — drives the sub-tab bar and command palette. */
 interface GexSubpage {
@@ -8,7 +8,8 @@ interface GexSubpage {
   icon: LucideIcon;
 }
 
-/* Pinpoint's pages: Map (MapDesk.tsx), Agenda (Targets and Building), Board and Compare. Old paths redirect to the Map (App.tsx). */
+/* Pinpoint's pages: Map (MapDesk.tsx), Agenda (Targets and Building), Board and Compare. Old paths redirect to the Map (App.tsx);
+   the two books are the Map's own switch (its Sources & units card holds what the retired Books page showed). */
 export const GEX_SUBPAGES: GexSubpage[] = [
   {
     path: '/pinpoint/map',
@@ -22,13 +23,6 @@ export const GEX_SUBPAGES: GexSubpage[] = [
     label: 'Agenda',
     subtitle: 'Every strike in the order it matters, and what the overnight open interest built',
     icon: ClipboardList,
-  },
-  {
-    /* The two books (docs/TWO_BOOK_SPEC_V2.md): open interest and today's flow, side by side, never added */
-    path: '/pinpoint/books',
-    label: 'Books',
-    subtitle: 'The open-interest book and the flow book, side by side, each with its sources and units',
-    icon: BookOpen,
   },
   {
     path: '/pinpoint/board',

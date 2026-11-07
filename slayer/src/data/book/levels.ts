@@ -15,6 +15,7 @@ import { emptyNode, mergeChains } from './scale';
 import { BOOK_LISTINGS, LADDER_DTE, chartAll, chartSpan, closestDate, datesComplete, gammaPriced, peekEntry, peekGammaPriced, settledLive, settledRows, type Entry } from './store';
 import { blankTapeDay } from './tape';
 import { peekTape } from '../thetaTape';
+import { setHistoryMaker } from './engineView';
 
 
 /** The live gamma still carried by contracts that have settled (dates before the book's day), RETAIL sign, dollars per
@@ -65,7 +66,7 @@ function sessionChartBars(ticker: string, session: DeskSession = getDeskSession(
     A strike book priced on a different day, or more than 1.5% away from the last candle, is named too. The nodes and the candles are not two prices. */
 export function deskTape(ticker: string, session: DeskSession = getDeskSession()): { bars: Candle[]; drawn: DeskSession; note: string | null } {
   const own = sessionChartBars(ticker, session);
-  let drawn = session;
+  const drawn = session;
   let note: string | null = null;
   let bars: Candle[] = own ?? [];
   if (!own || own.length < 1) {
@@ -126,6 +127,7 @@ export function vexOntoAll(entry: Entry): void {
 const levelsOwner = new WeakMap<object, string>();
 /** The name whose book a snapshot's levels array is, or null for one not made here */
 export const bookOfLevels = (levels: object): string | null => levelsOwner.get(levels) ?? null;
+setHistoryMaker((chain, candles, ticker) => historyFrom(chain, candles, ticker));
 export function historyFrom(chain: StrikeNode[], candles: Candle[], ticker: string): GexSnapshot[] {
   if (!chain.length || !candles.length) return [];
   const levels = chain.map(n => ({
@@ -222,6 +224,8 @@ const LIVE_KEYS = ['callGex', 'putGex', 'netGex', 'callDex', 'putDex', 'netDex',
 /* The whole book without the day that settled: the vendor's totals still carry it until they roll, so once that date's
    own chain is in it comes off the total, strike by strike. */
 export function liveAll(entry: Entry): StrikeNode[] {
+  /* the engine's whole book is already its dates added up, the expired population off (book/engineView.ts) */
+  if (entry.engine) return entry.all;
   const memo = liveAllMemo.get(entry);
   const floor = isoDate(bookToday());
   if (memo && memo.all === entry.all && memo.byDate === entry.byDate && memo.floor === floor && memo.n === entry.expiries.length) return memo.out;
@@ -375,7 +379,7 @@ function liveListing(expiries: Entry['expiries']): Entry['expiries'] {
    session phase) and handed out again until one of them changes. */
 const snapMemo = new WeakMap<Entry, Map<LevelsScope, { sig: string; refs: unknown[]; snap: MarketSnapshot }>>();
 export function materialize(entry: Entry, scope: LevelsScope): MarketSnapshot {
-  const refs: unknown[] = [entry.byDate, entry.all, entry.expiries, entry.candles, entry.termIv, entry.totals, entry.factsDates, entry.state, entry.flow, entry.history];
+  const refs: unknown[] = [entry.engine, entry.byDate, entry.all, entry.expiries, entry.candles, entry.termIv, entry.totals, entry.factsDates, entry.state, entry.flow, entry.history];
   const sig = [entry.spot, entry.changePct, entry.extPct, entry.phase, entry.dayKnown, entry.iv, entry.gammaLive, entry.full, entry.frontFacts, entry.factsDates?.size ?? 0, entry.candles.length, entry.candles[entry.candles.length - 1]?.close, isoDate(bookToday()), nySessionPhase(Date.now()), settledLive.size, gammaPriced.size].join('|');
   let byScope = snapMemo.get(entry);
   const hit = byScope?.get(scope);
@@ -408,6 +412,7 @@ function materializeNow(entry: Entry, scope: LevelsScope): MarketSnapshot {
     uwByDate: entry.byDate,
     uwExpiries: liveListing(entry.expiries),
     uwFacts: entry.factsDates,
+    ...(entry.engine ? { book: { mode: entry.engine.mode, at: entry.engine.at, price: entry.engine.price, why: entry.engine.why }, timeUnit: entry.engine.unit } : {}),
   };
   /* the plan's flip zone is the one flip (data/flipLevel.ts), read off the snapshot's own levels chain */
   const read = levelFlip(snap, chain);

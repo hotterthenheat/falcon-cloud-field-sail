@@ -78,8 +78,8 @@ import { bookForDates, expirySpan, levelsBook, levelsDate, levelsWords, todaySco
 import { shownGreek } from './retailSign';
 import { useLedgerPalette } from '../../data/ledgerPalette';
 import MoreDoor from './MoreDoor';
-import { Link } from 'react-router-dom';
-import { BOOK_MODE_WORDS, useBookMode } from '../../data/bookMode';
+import { useBookMode } from '../../data/bookMode';
+import { BookSwitch } from './BookSources';
 import { todayColumn, buildExposureSurface, CALENDAR_DTES, GREEKS, contractsReady, isContractGreek, type BookMode, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { snapshotAtOpen } from '../../data/levelview';
 import { HEAT_MODE } from './heatmap';
@@ -782,7 +782,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
      since the last one, when six seconds have passed, or when the name
      changes. The head's price and change stay live off the snapshot, and
      the ledger's spot rule reads the live spot too. */
-  const builtRef = useRef<{ surface: ExposureSurface; spot: number; at: number; dates: number; mode: BookMode } | null>(null);
+  const builtRef = useRef<{ surface: ExposureSurface; spot: number; at: number; dates: number; mode: BookMode; by: unknown } | null>(null);
   /* how many expiries have their own chain — they land seconds after the whole book. Not in the reuse test, a surface
      built off the whole book alone was kept through a quiet tape (after the bell spot never moves): the card read
      "Today" over a single all-dates column and the matrix crowned the book's supreme, not the window's (2026-10-22) */
@@ -791,9 +791,10 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
     if (!snapshot) return null;
     const b = builtRef.current;
     const now = Date.now();
-    if (!fresh && b && b.mode === bookMode && b.surface.ticker === snapshot.ticker && b.dates === datesIn && Math.abs(snapshot.spot - b.spot) / b.spot < 0.001 && now - b.at < 6000) return b.surface;
+    /* the book's own chains (book/engineView.ts): a new board, or the switch to the other book, is a new uwByDate — rebuilt at once */
+    if (!fresh && b && b.mode === bookMode && b.by === snapshot.uwByDate && b.surface.ticker === snapshot.ticker && b.dates === datesIn && Math.abs(snapshot.spot - b.spot) / b.spot < 0.001 && now - b.at < 6000) return b.surface;
     const next = buildExposureSurface(snapshot, WHOLE_BOOK, CALENDAR_DTES, 'live', bookMode);
-    builtRef.current = { surface: next, spot: snapshot.spot, at: now, dates: datesIn, mode: bookMode };
+    builtRef.current = { surface: next, spot: snapshot.spot, at: now, dates: datesIn, mode: bookMode, by: snapshot.uwByDate };
     return next;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot, datesIn, bookMode]);
@@ -989,7 +990,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
         }
         const kept = extraCache.current.get(t);
         let built: ExposureSurface;
-        if (!fresh && kept && kept.mode === bookMode && (namesChanged || (Math.abs(snap.spot - kept.spot) / kept.spot < 0.001 && now - kept.at < 6000))) built = kept.surface;
+        if (!fresh && kept && kept.mode === bookMode && kept.surface.book?.uwByDate === snap.uwByDate && (namesChanged || (Math.abs(snap.spot - kept.spot) / kept.spot < 0.001 && now - kept.at < 6000))) built = kept.surface;
         else {
           built = buildExposureSurface(snap, WHOLE_BOOK, CALENDAR_DTES, 'live', bookMode);
           extraCache.current.set(t, { surface: built, spot: snap.spot, at: now, mode: bookMode });
@@ -1311,14 +1312,9 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       {/* bare in the panel (2026-10-15): "Calendar", "GEX" and "Today → Oct 19" say what they are without their label words,
           and the three cards then share the panel's one head line with the tabs at 580px */}
       {!viewLock && <DropdownSelect label="View" value={view} options={VIEWS_FOR[viewHost].map(v => VIEW_OPTION[v])} onChange={pickView} title="The matrix, the calendar or the profile" testId="ledger-view" bare={stripsBare || panel} flat={toolbar === 'band'} />}
-      {/* one book here: the open-interest book. The flow book (today's prints, Model 2) is its own board on the Books page,
-          never added to this one (docs/TWO_BOOK_SPEC_V2.md §6) */}
-      <span className="inline-flex items-center gap-1 rounded-md border border-borderMuted px-1.5 py-0.5 font-mono text-t10" data-ledger-book={bookMode} title={BOOK_MODE_WORDS.oi.line}>
-        <span className="text-textPrimary">{BOOK_MODE_WORDS.oi.label}</span>
-        <Link to="/pinpoint/books" className="text-textMuted hover:text-textPrimary underline-offset-2 hover:underline" title={BOOK_MODE_WORDS.flow.line}>
-          {BOOK_MODE_WORDS.flow.label} →
-        </Link>
-      </span>
+      {/* the two books, one at a time (docs/TWO_BOOK_SPEC_V2.md §6): the switch sets the whole Map's book, and the card beside
+          it says what that book is (data/bookMode.ts, BookSources.tsx) */}
+      {snapshot && <BookSwitch ticker={snapshot.ticker} names={names} />}
       {/* with names side by side the greek steps down to each column's head; the profile draws GEX alone (its foot says
           so), so the card steps aside there rather than read "All five" over a chart it does not govern (the re-audit's M2) */}
       {view !== 'profile' && (
@@ -1896,7 +1892,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
             colWindow = same(`e:${c.ticker}:${dates.join(',')}`, indicesFor(book.surface, book.snapshot, dates, colGreeks.length));
           }
           /* vega and the higher greeks are the contracts' own: the dates shown read theirs (once) */
-          if (colGreeks.some(isContractGreek)) wantDateFacts(book.snapshot.ticker, dates);
+          if (colGreeks.some(isContractGreek) && !book.snapshot.book) wantDateFacts(book.snapshot.ticker, dates);
           const ownFit = fitRef.current.get(c.ticker);
           const colShown = lens ? colWindow.slice(0, Math.max(1, ownFit ?? colWindow.length)) : same(`s:${c.ticker}:${dates.join(',')}:${fitDepth}`, colWindow.slice(0, Math.max(1, fitDepth)));
           const colLvDate = levelsDate(book.snapshot, colScope);

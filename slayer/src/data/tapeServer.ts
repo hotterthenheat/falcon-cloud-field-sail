@@ -63,7 +63,7 @@ import {
 } from './printTags';
 import { printSetsPrice } from './thetaEligible';
 import { FlowInventory, contractKey } from '../engine/twobook';
-import { flowBooks, type FlowBoardWire, type FlowTapeView } from './twobook/flowBook';
+import { flowBooks, type FlowBoardWire, type FlowInputs, type FlowTapeView } from './twobook/flowBook';
 
 /** 2: a stock mark carries the quote it printed against */
 export const TAPE_FORMAT = 2;
@@ -499,6 +499,8 @@ export interface Tapes {
   stats: () => { reads: number; readsLastMinute: number; byKind: Record<string, number>; tapes: string[]; inFlight: number };
   /** Model 2's board for the name (src/data/twobook/flowBook.ts), null with no session to read */
   flowBook: (ticker: string) => Promise<FlowBoardWire> | null;
+  /** What the flow book last valued for a name (recording a fixture; not served in production) */
+  flowInputs: (ticker: string) => FlowInputs | null;
   stop: () => void;
 }
 
@@ -944,6 +946,7 @@ export function startTapes(o: TapeOptions): Tapes {
       };
       return books.board(view);
     },
+    flowInputs: (ticker: string) => books.inputs(ticker),
     stock(ticker, since) {
       const name = ticker.toUpperCase();
       const day = tapeDay(now());
@@ -1007,6 +1010,11 @@ export function tapeRoute(tapes: Tapes, req: Req, res: Res): void {
   }
   const t = String(url.searchParams.get('ticker') ?? '').trim().toUpperCase();
   const since = Number(url.searchParams.get('since') ?? 0);
+  if (TICKER.test(t) && leaf === '__flowinputs') {
+    if (process.env.VERCEL_ENV === 'production') return send(404, { error: 'not found' });
+    const got = tapes.flowInputs(t);
+    return got ? send(200, got) : send(404, { error: 'no flow book valued for this name yet' });
+  }
   if (TICKER.test(t) && leaf === 'flowbook') {
     const job = tapes.flowBook(t);
     if (!job) return send(404, { error: 'no session to read', code: 'no_session' });

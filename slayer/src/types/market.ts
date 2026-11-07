@@ -136,6 +136,9 @@ export interface StrikeNode {
     c: number[];
     asks: boolean;
   };
+  /** The five higher greeks straight from the two-book engine (src/data/twobook/legs.ts), kept sign, call and put — set on
+      every chain the engine builds; the views draw these and price nothing of their own. */
+  higher?: Record<'color' | 'vomma' | 'speed' | 'veta' | 'zomma', { call: number; put: number }>;
   /** The flow book, in the same kept sign as the open-interest fields. A held strike draws the open-interest figure. */
   flow?: {
     gex: { call: number; put: number };
@@ -209,6 +212,10 @@ export interface MarketSnapshot {
   asOf?: number;
   /** A finished session's close (epoch ms), freezing the flip and the counts against it after the bell. */
   flipAt?: number;
+  /** Which of the two books the chains are (src/data/book/engineView.ts), the board's instant and price, and its one time
+      unit for CHARM, COLOR and VETA */
+  book?: { mode: 'oi' | 'flow'; at: number | null; price: number | null; why: string | null };
+  timeUnit?: 'day' | 'hour';
   /** The Levels scope has not loaded and the whole book stands in: every level is provisional and none is drawn
       (data/bookWindow.ts levelsBook). */
   levelsPending?: boolean;

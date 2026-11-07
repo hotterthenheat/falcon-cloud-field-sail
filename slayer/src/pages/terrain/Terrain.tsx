@@ -13,6 +13,7 @@ import { bookStatus, peekEntry, useBookRev } from '../../data/book/store';
 import type { StrikeNode } from '../../types/market';
 import { ReadMiss } from '../../components/ui/BookDown';
 import { BOOK_MODE_WORDS, bookInMode, chainInMode, useBookMode, type BookMode } from '../../data/bookMode';
+import { bookFor, flowFocus } from '../../data/twobook/engineBook';
 import { setHeatPalette } from '../../components/gex/nodeHeat';
 import { levelNetPath } from '../../data/flipLevel';
 import { rootTradesSession } from '../../data/compassSession';
@@ -933,8 +934,11 @@ const Pane = ({
   // Each pane reads its own book; revision keeps the levels tracking the tick
   /* The rail's book for the desk's cut: rows, core, walls and legs in one read, so the chart's level lines, the
      header's heaviest line and the rail can never name different strikes for different expiries */
-  /* Open interest (the default) or Flow: the field's toggle, which the rail, the walls, the flip and the regime follow */
+  /* Open interest (the default) or Flow: the Map's book switch, which this pane's rail, walls, flip and regime follow —
+     the pane's name follows it (twobook/engineBook.ts flowFocus); the chains are already that book's */
   const bookMode = useBookMode();
+  useEffect(() => flowFocus(ticker), [ticker]);
+  const paneBook = bookFor(ticker);
   const railData = useMemo(
     () => railForCut(ticker, railCut, bookMode),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1788,7 +1792,7 @@ const Pane = ({
                 ) : shownBook ? (
                   <span className="min-w-0 truncate font-mono text-t10 text-textMuted" title="The expiry and the book the nodes and Heaviest are drawn from">
                     {/* the book's name rides the rail's own Live / Settled switch beside it: a 3- or 4-pane head says the expiry alone */}
-                    {shownBook.label}{paneCount >= 3 && !expanded ? null : <> · {BOOK_MODE_WORDS[shownBook.kind === 'Flow' ? 'flow' : 'oi'].label}</>}
+                    {shownBook.label}{paneCount >= 3 && !expanded ? null : <> · {BOOK_MODE_WORDS[paneBook].label}</>}
                   </span>
                 ) : null}
                 {/* First thing the row gives up when the column is narrow (ID_ROW_FULL_PX) — the price it is a delta

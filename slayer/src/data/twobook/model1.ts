@@ -15,7 +15,8 @@
   - One time unit (§4.5): per hour when any contract in the population has under a day left, for the four and the six.
 */
 
-import { contractSpec, parseOccSymbol, rootsOf, sumBoard, uwRowAction, uwToSlayer, yearsTo, type BoardLine, type UwFour } from '../../engine/twobook';
+import { boardTimeUnit, contractSpec, EXPOSURE_NAMES, parseOccSymbol, rootsOf, sumBoard, uwRowAction, uwToSlayer, yearsTo, type BoardLine, type TimeUnit, type UwFour } from '../../engine/twobook';
+import { LEG_AT, LEG_WIDTH, type BookLegs } from './legs';
 
 export const UW_FIELDS = ['call_gamma_oi', 'put_gamma_oi', 'call_delta_oi', 'put_delta_oi', 'call_vanna_oi', 'put_vanna_oi', 'call_charm_oi', 'put_charm_oi'] as const;
 
@@ -52,6 +53,13 @@ export interface Model1Wire {
   oi: { contracts: number; share: { approx: number; modeled: number }; adjusted: number; unavailable: number; expired: number };
   byStrike: [number, number, number][];
   notes: string[];
+  /** 'rows': the four are in (the listed rows), the six still wait on the contracts; 'full': both */
+  phase: 'rows' | 'full';
+  /** Set by the keeper on every board it builds (model1Server.ts): a browser holding this version is answered "same" */
+  version?: string;
+  /** Every (expiry, strike) of the population, both legs, in Slayer units (src/data/twobook/legs.ts): what the Map,
+      its walls, flip and regime, and every page reading the open-interest book draw. Σ over the cells = the board's totals. */
+  legs: BookLegs | null;
 }
 
 const num = (v: unknown): number => {
@@ -77,11 +85,11 @@ export function model1Board(o: {
   /** volatility/stats `iv` and its date */
   iv30: number | null;
   iv30Date: string | null;
-  /** Every option-contracts row of the walk */
-  contracts: readonly Record<string, unknown>[];
+  /** Every option-contracts row of the walk; null while they are still being read (the board goes out with the four) */
+  contracts: readonly Record<string, unknown>[] | null;
 }): Model1Wire {
   const ticker = o.ticker.toUpperCase();
-  const empty = (why: string): Model1Wire => ({ model: 1, ticker, available: false, why, at: null, price: null, iv30: o.iv30, iv30Date: o.iv30Date, unit: 'day', rateNotForecast: false, four: null, six: null, dexVendorSign: null, flagged: [], dropped: { rows: 0, GEX: 0, DEX: 0, VANNA: 0, CHARM: 0 }, rows: { total: o.rows.length, used: 0, otherTimestamp: 0, pages: o.pages }, oi: { contracts: 0, share: { approx: 0, modeled: 0 }, adjusted: 0, unavailable: 0, expired: 0 }, byStrike: [], notes: [] });
+  const empty = (why: string): Model1Wire => ({ model: 1, ticker, available: false, why, at: null, price: null, iv30: o.iv30, iv30Date: o.iv30Date, unit: 'day', rateNotForecast: false, four: null, six: null, dexVendorSign: null, flagged: [], dropped: { rows: 0, GEX: 0, DEX: 0, VANNA: 0, CHARM: 0 }, rows: { total: o.rows.length, used: 0, otherTimestamp: 0, pages: o.pages }, oi: { contracts: 0, share: { approx: 0, modeled: 0 }, adjusted: 0, unavailable: 0, expired: 0 }, byStrike: [], notes: [], phase: o.contracts ? 'full' : 'rows', legs: null });
   if (!o.rows.length) return empty('no listed open-interest rows for this name');
   /* one timestamp: the modal row time */
   const byTime = new Map<string, number>();
@@ -95,7 +103,7 @@ export function model1Board(o: {
   /* AM-settlement days: an expiry an AM root of this ticker settles on */
   const amRoots = rootsOf(ticker).filter(r => contractSpec(r, ticker)?.settlement === 'AM');
   const amListed = new Set<string>();
-  for (const c of o.contracts) {
+  for (const c of o.contracts ?? []) {
     const p = parseOccSymbol(String(c.option_symbol ?? ''));
     if (p && amRoots.includes(p.root)) amListed.add(p.expiry);
   }
@@ -114,7 +122,9 @@ export function model1Board(o: {
   const lines: BoardLine[] = [];
   let adjusted = 0;
   let expired = 0;
-  for (const c of o.contracts) {
+  /* open interest per (expiry, strike, right), every root summed: the cell's own count */
+  const oiAt = new Map<string, number>();
+  for (const c of o.contracts ?? []) {
     const p = parseOccSymbol(String(c.option_symbol ?? ''));
     if (!p) continue;
     const spec = contractSpec(p.root, ticker);
@@ -129,11 +139,22 @@ export function model1Board(o: {
     }
     const oi = num(c.open_interest);
     if (!(oi > 0)) continue;
+    const ok = `${p.expiry}|${p.strike}|${p.right}`;
+    oiAt.set(ok, (oiAt.get(ok) ?? 0) + oi);
     const iv = num(c.implied_volatility);
     lines.push({ root: p.root, expiry: p.expiry, strike: p.strike, right: p.right, C: p.right === 'C' ? oi : -oi, M: spec.multiplier, T: yearsTo(spec, p.expiry, at), S: price, r: 0, b: 0, iv: iv > 0 ? iv : null, ivProv: iv > 0 ? 'UW_APPROX' : 'UNAVAILABLE' });
   }
-  const board = sumBoard(lines);
-  const unit = board.unit;
+  /* the rows' own T (the ticker's PM root, else its first): the unit before the contracts are read, and each column's T */
+  const pmSpec = (() => {
+    for (const r of rootsOf(ticker)) {
+      const sp = contractSpec(r, ticker);
+      if (sp && sp.settlement === 'PM') return sp;
+    }
+    return contractSpec(rootsOf(ticker)[0] ?? ticker, ticker);
+  })();
+  const rowT = (exp: string) => (pmSpec ? yearsTo(pmSpec, exp, at) : NaN);
+  const board = o.contracts ? sumBoard(lines, undefined, true) : null;
+  const unit: TimeUnit = board ? board.unit : boardTimeUnit(keep.map(r => rowT(String(r.expiry ?? '').slice(0, 10))).filter(T => Number.isFinite(T) && T > 0));
   const conv = uwToSlayer(sum4(keep), price, o.iv30, unit);
   const per = unit === 'hour' ? 'calendar hour' : 'calendar day';
   const m4 = (value: number, p: string): Model1Metric => ({ value, provenance: 'CALCULATED', unitTag: 'SLAYER', mode: 'UW_CONVERTED', per: p });
@@ -163,25 +184,108 @@ export function model1Board(o: {
     iv30: o.iv30,
     iv30Date: o.iv30Date,
     unit,
-    rateNotForecast: board.rate,
+    rateNotForecast: board ? board.rate : false,
     four: { GEX: m4(conv.GEX, '1% move'), DEX: m4(conv.DEX, '$ delta'), VANNA: m4(conv.VANNA, 'vol point'), CHARM: m4(conv.CHARM, per) },
-    six: {
-      VEGA: m6(board.totals.VEGA, 'vol point'),
-      VOMMA: m6(board.totals.VOMMA, 'vol point'),
-      COLOR: m6(board.totals.COLOR, per),
-      SPEED: m6(board.totals.SPEED, '1% move'),
-      VETA: m6(board.totals.VETA, per),
-      ZOMMA: m6(board.totals.ZOMMA, 'vol point'),
-    },
+    six: board
+      ? {
+          VEGA: m6(board.totals.VEGA, 'vol point'),
+          VOMMA: m6(board.totals.VOMMA, 'vol point'),
+          COLOR: m6(board.totals.COLOR, per),
+          SPEED: m6(board.totals.SPEED, '1% move'),
+          VETA: m6(board.totals.VETA, per),
+          ZOMMA: m6(board.totals.ZOMMA, 'vol point'),
+        }
+      : null,
     dexVendorSign: conv.DEX_UW_SIGN,
     flagged: [...flag.entries()].map(([expiry, rs]) => ({ expiry, ...(({ GEX, DEX, VANNA, CHARM }) => ({ GEX, DEX, VANNA, CHARM }))(uwToSlayer(sum4(rs), price, o.iv30 as number, unit)) })),
     dropped: { rows: drop.length, GEX: dropped.GEX, DEX: dropped.DEX, VANNA: dropped.VANNA, CHARM: dropped.CHARM },
     rows: { total: o.rows.length, used: keep.length, otherTimestamp: o.rows.length - same.length, pages: o.pages },
-    oi: { contracts: board.counts.priced, share: { approx: board.approxShare, modeled: board.modeledShare }, adjusted, unavailable: board.counts.unavailable, expired },
+    oi: { contracts: board?.counts.priced ?? 0, share: { approx: board?.approxShare ?? 0, modeled: board?.modeledShare ?? 0 }, adjusted, unavailable: board?.counts.unavailable ?? 0, expired },
     byStrike: [...strikes.entries()].map(([k, rs]) => {
       const c = uwToSlayer(sum4(rs), price, o.iv30 as number, unit);
       return [k, c.GEX, c.DEX] as [number, number, number];
     }).sort((a, b) => a[0] - b[0]),
     notes,
+    phase: board ? 'full' : 'rows',
+    legs: model1Legs(keep, board?.cells ?? null, oiAt, price, o.iv30, unit, rowT),
   };
+}
+
+/* The cells: each population row's four converted leg by leg (§3.4 — the same conversion as the board's, on one leg:
+   GEX call/put as listed; DEX call +delta·100/S, put −delta·100/S; VANNA ÷ IV30; CHARM ·100/(365·D) in the board's
+   unit), and the six of the same (expiry, strike) from the engine's cells. A cell the rows have and the contracts do not
+   carries zero six; a cell the contracts have and the rows do not (open interest the listing gave no exposure row)
+   carries zero four. While the contracts are being read the six (and the open interest) are null. */
+function model1Legs(keep: readonly Record<string, unknown>[], cells: NonNullable<ReturnType<typeof sumBoard>['cells']> | null, oiAt: Map<string, number>, S: number, iv30: number, unit: TimeUnit, rowT: (exp: string) => number): BookLegs {
+  const u = unit === 'hour' ? 24 : 1;
+  const byKey = new Map<string, number[]>();
+  const dates = new Map<string, number>();
+  const W = LEG_WIDTH;
+  const blank = (exp: string, k: number): number[] => {
+    const row = new Array<number>(W).fill(cells ? 0 : NaN);
+    row[0] = 0;
+    row[1] = k;
+    return row;
+  };
+  const cellOf = (exp: string, k: number) => {
+    const key = `${exp}|${k}`;
+    let row = byKey.get(key);
+    if (!row) {
+      byKey.set(key, (row = blank(exp, k)));
+      if (!dates.has(exp)) dates.set(exp, rowT(exp));
+    }
+    return row;
+  };
+  const N = EXPOSURE_NAMES.length;
+  const idx = (n: (typeof EXPOSURE_NAMES)[number]) => EXPOSURE_NAMES.indexOf(n);
+  for (const r of keep) {
+    const exp = String(r.expiry ?? '').slice(0, 10);
+    const k = num(r.strike);
+    const row = cellOf(exp, k);
+    /* the four: zero first (a NaN six stays NaN until the contracts land) */
+    for (const n of ['GEX', 'DEX', 'VANNA', 'CHARM'] as const) {
+      row[2 + idx(n)] = 0;
+      row[2 + N + idx(n)] = 0;
+    }
+    row[2 + idx('GEX')] += num(r.call_gamma_oi);
+    row[2 + N + idx('GEX')] += num(r.put_gamma_oi);
+    row[2 + idx('DEX')] += (num(r.call_delta_oi) * 100) / S;
+    row[2 + N + idx('DEX')] += (-num(r.put_delta_oi) * 100) / S;
+    row[2 + idx('VANNA')] += num(r.call_vanna_oi) / iv30;
+    row[2 + N + idx('VANNA')] += num(r.put_vanna_oi) / iv30;
+    row[2 + idx('CHARM')] += (num(r.call_charm_oi) * 100) / (365 * 365) / u;
+    row[2 + N + idx('CHARM')] += (num(r.put_charm_oi) * 100) / (365 * 365) / u;
+  }
+  if (cells)
+    for (const c of cells) {
+      const row = cellOf(c.expiry, c.strike);
+      for (const n of ['VEGA', 'VOMMA', 'COLOR', 'SPEED', 'VETA', 'ZOMMA'] as const) {
+        row[2 + idx(n)] = c.call[n];
+        row[2 + N + idx(n)] = c.put[n];
+      }
+      row[LEG_AT.callIv] = c.callIv;
+      row[LEG_AT.putIv] = c.putIv;
+      row[LEG_AT.callGamma] = c.callGamma;
+      row[LEG_AT.putGamma] = c.putGamma;
+      if (Number.isFinite(c.T) && (!dates.has(c.expiry) || !(c.T >= (dates.get(c.expiry) as number)))) dates.set(c.expiry, c.T);
+    }
+  /* open interest, every root at the (expiry, strike) */
+  for (const row of byKey.values()) {
+    row[LEG_AT.callOI] = cells ? 0 : NaN;
+    row[LEG_AT.putOI] = cells ? 0 : NaN;
+  }
+  if (cells)
+    for (const [key, oi] of oiAt) {
+      const [exp, k, right] = key.split('|');
+      const row = byKey.get(`${exp}|${Number(k)}`);
+      if (row) row[right === 'C' ? LEG_AT.callOI : LEG_AT.putOI] += oi;
+    }
+  const dateList = [...dates.keys()].sort();
+  const di = new Map(dateList.map((d, i) => [d, i]));
+  const rows = [...byKey.entries()].map(([key, row]) => {
+    row[0] = di.get(key.slice(0, key.indexOf('|'))) ?? 0;
+    return row;
+  });
+  rows.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  return { dates: dateList.map(d => ({ date: d, T: dates.get(d) as number })), cells: rows.map(r => r.map(v => (Number.isFinite(v) ? v : null))) };
 }
