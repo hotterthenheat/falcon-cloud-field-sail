@@ -82,15 +82,17 @@ export interface SideStat {
 
 const closedPnl = (s: Signal | null | undefined) => (s?.outcome?.status === 'closed' && s.outcome.pnl != null && s.outcome.fill ? s.outcome : null);
 
-function sideStat(rows: readonly { day: string; pnl: number; ret: number }[], seed: number): SideStat {
-  const won = rows.filter(r => r.pnl > 0).length;
+/** `w`, when given, is the row's share of a win (a coin flip between a winner and a loser wins half a time). */
+function sideStat(rows: readonly { day: string; pnl: number; ret: number; w?: number }[], seed: number): SideStat {
+  const winOf = (r: { pnl: number; w?: number }) => r.w ?? (r.pnl > 0 ? 1 : 0);
+  const won = rows.reduce((s, r) => s + winOf(r), 0);
   return {
     n: rows.length,
     days: new Set(rows.map(r => r.day)).size,
     won,
     lost: rows.length - won,
     net: Math.round(rows.reduce((s, r) => s + r.pnl, 0) * 100) / 100,
-    win: clusteredMean(rows.map(r => ({ day: r.day, v: r.pnl > 0 ? 1 : 0 })), RESAMPLES, seed),
+    win: clusteredMean(rows.map(r => ({ day: r.day, v: winOf(r) })), RESAMPLES, seed),
     perCall: clusteredMean(rows.map(r => ({ day: r.day, v: r.pnl })), RESAMPLES, seed + 1),
     perPremium: clusteredMean(rows.map(r => ({ day: r.day, v: r.ret })), RESAMPLES, seed + 2),
   };
@@ -104,7 +106,8 @@ export interface ForwardLine {
   /** The closed calls whose twin also closed, and those twins */
   paired: SideStat;
   twins: SideStat;
-  /** A coin flip between each paired call and its twin: the average of the two, a contract */
+  /** A coin flip between each paired call and its twin: the average of the two, a contract; its wins are the
+      expected count (half of each pair's wins) */
   coin: SideStat;
   /** Call minus twin, dollars a contract a pair, with its interval: the side choice's own worth */
   edge: { mean: number | null; lo: number | null; hi: number | null };
@@ -155,7 +158,7 @@ function line(label: string, calls: readonly Signal[], twinOf: ReadonlyMap<strin
     calls: sideStat(closed.map(c => ({ day: c.day, pnl: closedPnl(c)!.pnl!, ret: retOf(closedPnl(c)!) })), seed),
     paired: sideStat(pairs.map(p => ({ day: p.day, ...p.c })), seed + 10),
     twins: sideStat(pairs.map(p => ({ day: p.day, ...p.t })), seed + 20),
-    coin: sideStat(pairs.map(p => ({ day: p.day, pnl: (p.c.pnl + p.t.pnl) / 2, ret: (p.c.ret + p.t.ret) / 2 })), seed + 30),
+    coin: sideStat(pairs.map(p => ({ day: p.day, pnl: (p.c.pnl + p.t.pnl) / 2, ret: (p.c.ret + p.t.ret) / 2, w: ((p.c.pnl > 0 ? 1 : 0) + (p.t.pnl > 0 ? 1 : 0)) / 2 })), seed + 30),
     edge: clusteredMean(pairs.map(p => ({ day: p.day, v: p.c.pnl - p.t.pnl })), RESAMPLES, seed + 40),
     beatsCoin: sessions.size >= MIN_SESSIONS ? beats : null,
     unpaired: closed.length - pairs.length,
@@ -183,7 +186,7 @@ export function rateWords(s: SideStat): string {
   const { lo, hi } = s.win;
   if (s.n < SMALL_N || s.days < MIN_SESSIONS) {
     const band = lo != null && hi != null ? ` (interval ${Math.round(lo * s.n)}–${Math.round(hi * s.n)})` : '';
-    return `${s.won} of ${s.n}${band}`;
+    return `${Number.isInteger(s.won) ? s.won : s.won.toFixed(1)} of ${s.n}${band}`;
   }
   const pct = (v: number) => `${(v * 100).toFixed(0)}%`;
   return `${pct(s.won / s.n)}${lo != null && hi != null ? ` (95%: ${pct(lo)}–${pct(hi)})` : ''}`;

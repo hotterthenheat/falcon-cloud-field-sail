@@ -11,6 +11,7 @@ import { downloadText } from '../../data/exportBook';
 import { Tip } from '../ui/Tooltip';
 
 const dollars = (v: number | null) => (v == null ? '—' : `${v < 0 ? '−' : v > 0 ? '+' : ''}$${Math.abs(v).toFixed(0)}`);
+const plain = (v: number) => `$${Math.abs(v).toFixed(0)}`;
 const band = (m: { mean: number | null; lo: number | null; hi: number | null }) =>
   m.mean == null ? '—' : `${dollars(m.mean)}${m.lo != null && m.hi != null ? ` [${dollars(m.lo)}, ${dollars(m.hi)}]` : ''}`;
 const ink = (v: number | null) => (v == null || v === 0 ? 'text-textPrimary' : v > 0 ? 'text-bull' : 'text-bear');
@@ -21,9 +22,9 @@ export function edgeWords(l: ForwardLine): string {
   if (!n) return `${l.label}: no call and twin have both closed yet.`;
   const { mean, lo, hi } = l.edge;
   const days = `${n} pair${n === 1 ? '' : 's'} over ${l.paired.days} session${l.paired.days === 1 ? '' : 's'}`;
-  if (lo == null || hi == null || mean == null) return `${l.label}: ${mean == null ? '' : `the side it chose ${mean >= 0 ? 'beat' : 'trailed'} the other side by ${dollars(Math.abs(mean))} a pair, `}${days}. Too few sessions to tell that from chance.`;
-  if (lo > 0) return `${l.label}: the side it chose beat the other side by ${dollars(mean)} a pair [${dollars(lo)}, ${dollars(hi)}], ${days}.`;
-  if (hi < 0) return `${l.label}: the other side did better, by ${dollars(-mean)} a pair [${dollars(-hi)}, ${dollars(-lo)}], ${days}.`;
+  if (lo == null || hi == null || mean == null) return `${l.label}: ${mean == null ? '' : `the side it chose ${mean >= 0 ? 'beat' : 'trailed'} the other side by ${plain(mean)} a pair, `}${days}. Too few sessions to tell that from chance.`;
+  if (lo > 0) return `${l.label}: the side it chose beat the other side by ${plain(mean)} a pair [${dollars(lo)}, ${dollars(hi)}], ${days}.`;
+  if (hi < 0) return `${l.label}: the other side did better, by ${plain(mean)} a pair [${plain(hi)}, ${plain(lo)}], ${days}.`;
   return `${l.label}: the side it chose cannot be told from the other side yet (${dollars(mean)} a pair [${dollars(lo)}, ${dollars(hi)}], ${days}).`;
 }
 
@@ -72,7 +73,7 @@ const ForwardRecord = ({ calls }: { calls: readonly Signal[] }) => {
                   <th className="text-right font-normal pb-1 pr-3" title="Every closed call. Won, then net a contract a call, day-clustered 95% interval.">The calls</th>
                   <th className="text-right font-normal pb-1 pr-3" title="The calls whose twin also closed.">Paired calls</th>
                   <th className="text-right font-normal pb-1 pr-3" title="The same instants, the other side.">Their twins</th>
-                  <th className="text-right font-normal pb-1 pr-3" title="A coin picks the call or its twin: the average of the two.">Coin flip</th>
+                  <th className="text-right font-normal pb-1 pr-3" title="A coin picks the call or its twin: the average of the two (its wins are the expected count).">Coin flip</th>
                   <th className="text-right font-normal pb-1 pr-3" title="Call minus twin, a contract a pair: what the side choice was worth.">Call − twin</th>
                   <th className="text-right font-normal pb-1" title={`Of ${RESAMPLES.toLocaleString('en-US')} coin-flip records over the same pairs (one flip a session), how many the calls' total beat.`}>Beat coin flips</th>
                 </tr>

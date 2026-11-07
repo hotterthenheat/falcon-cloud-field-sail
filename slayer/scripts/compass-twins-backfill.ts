@@ -8,7 +8,7 @@
 */
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { useTerminalHost, terminalReads } from './compassTerminal';
+import { installTerminalHost, terminalReads } from './compassTerminal';
 import { importTwins, settleTwins, twinRows, type Twin } from '../src/data/compassTwins';
 import { forwardCsv, forwardTest, rateWords } from '../src/data/compassForward';
 import { TWINS_FORMAT } from '../src/data/compassServer';
@@ -17,7 +17,7 @@ import { sessionIso } from '../src/data/compassSession';
 
 const dir = process.env.COMPASS_DIR;
 if (!dir) throw new Error('COMPASS_DIR: a copy of the record');
-useTerminalHost();
+installTerminalHost();
 
 const days = readdirSync(dir).filter(f => /^\d{4}-\d{2}-\d{2}\.json$/.test(f)).map(f => f.slice(0, 10)).sort();
 const calls: Signal[] = days.flatMap(d => (JSON.parse(readFileSync(join(dir, `${d}.json`), 'utf8')) as { calls?: Signal[] }).calls ?? []);

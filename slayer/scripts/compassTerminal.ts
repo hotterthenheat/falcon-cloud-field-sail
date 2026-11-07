@@ -23,7 +23,7 @@ async function ask(path: string) {
   }
 }
 
-export function useTerminalHost(): void {
+export function installTerminalHost(): void {
   setCompassHost({
     server: true,
     theta: path => {
