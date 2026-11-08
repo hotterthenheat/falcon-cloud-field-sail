@@ -36,6 +36,12 @@ export const SPREAD_MAX = 0.08;
 const SPREAD_EPS = 1e-9;
 
 export const P1_MIN = 0.7067;
+
+/* The exported decision math (the trees, this line, the runner, the stop, the exit ladder, Model 3 and Model Risk)
+   is withdrawn from the live desk. The functions stay so the proofs can still read them. The scan does not call
+   them, and the pages do not publish a call. */
+export const MATH_WITHDRAWN = true;
+export const WITHDRAWN_LINE = 'The decision math is withdrawn. No calls, no line, no stop, and no exit. The book on the other desks is unchanged.';
 const PRUN_MIN = 0.5;
 
 const BOOK_A_STEP = 5;

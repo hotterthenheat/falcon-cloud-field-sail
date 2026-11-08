@@ -16,7 +16,7 @@ import TailRiskStrip from '../../components/compass/TailRiskCard';
 import { daySummary } from '../../data/compassOutcome';
 import { optionsStaleNow, staleWords } from '../../data/statusModel';
 import { asOfText } from '../../components/ui/states';
-import { MODELS_VALIDATED, P1_MIN, RIDING_WORD, inModelWindow } from '../../data/compassParams';
+import { MATH_WITHDRAWN, MODELS_VALIDATED, P1_MIN, RIDING_WORD, WITHDRAWN_LINE, inModelWindow } from '../../data/compassParams';
 import { nyClock, nyDay, nyIsoDate, nyMinutes, nyWallTime } from '../../core/nyTime';
 import { setCompassView, useCompassView, type BoardLayout } from '../../data/compassView';
 import { useScanClock } from '../../data/compassDoor';
@@ -53,6 +53,7 @@ const LAYOUT_OPTIONS: DropdownOption<BoardLayout>[] = [
 
 /** A card is a call, or one of the closest that did not clear (a closest card did not clear Model 1's line). */
 function shownCard(s: Setup): boolean {
+  if (MATH_WITHDRAWN) return false;
   const dte = s.expiry === '0DTE' ? 0 : Number(/^(\d+)DTE$/.exec(s.expiry)?.[1]);
   if (!(dte >= 0 && dte <= 7)) return false;
   if (s.expiryDate && s.expiryDate.slice(0, 10) < nyIsoDate()) return false;
@@ -273,9 +274,11 @@ const Board = () => {
   const windowLine = inWindow ? '' : ' Outside 09:45–15:00 ET the model’s minute input is outside the minutes it was trained on.';
   const sentence = (
     <RichRead text={
-      serverLine
-        ? serverLine
-        : offline
+      MATH_WITHDRAWN
+        ? WITHDRAWN_LINE
+        : serverLine
+          ? serverLine
+          : offline
         ? `${LIVE_RECONNECTING}. ${asOf}`
         : dayOver
           ? 'Same-day calls are done for the session. A signal stays on the record until its stop, its target, the reversal, or the 15:55 flat.'
@@ -291,7 +294,9 @@ const Board = () => {
     } />
   );
   const seats = seatsNow().seats;
-  const emptyLabel = live.feed === 'offline'
+  const emptyLabel = MATH_WITHDRAWN
+    ? WITHDRAWN_LINE
+    : live.feed === 'offline'
     ? serverLine
     : offline
     ? `${LIVE_RECONNECTING}. ${asOf}`
@@ -309,15 +314,15 @@ const Board = () => {
             guide={{ title: 'How to read the scan', door: 'What this page is', body: <CompassGuide />, testId: 'compass-guide', open: guideOpen, onOpen: setGuideOpen }}
             facts={
               <>
-                <Fact label="Calls today" testId="found" title="Every call the scan fired today, Models 1, 3 and Risk. The blotter has each one.">{day.calls.toLocaleString('en-US')}</Fact>
+                <Fact label="Calls today" testId="found" title={MATH_WITHDRAWN ? 'No calls are published.' : 'Every call the scan fired today, Models 1, 3 and Risk. The blotter has each one.'}>{MATH_WITHDRAWN ? '—' : day.calls.toLocaleString('en-US')}</Fact>
                 <Fact label="Won · lost · open" testId="day" title="Today's calls: closed with a gain, closed at or under the fill, and still held.">
-                  <span className="text-bull">{day.won}</span> · <span className="text-bear">{day.lost}</span> · {day.open}
+                  {MATH_WITHDRAWN ? '—' : <><span className="text-bull">{day.won}</span> · <span className="text-bear">{day.lost}</span> · {day.open}</>}
                 </Fact>
                 <Fact label="Net today" testId="net" title="Per contract: today's closed calls, (exit − fill) × 100. No fees.">
-                  {day.won + day.lost ? <span className={day.net >= 0 ? 'text-bull' : 'text-bear'}>{`${day.net < 0 ? '−' : '+'}$${Math.abs(day.net).toFixed(2)}`}</span> : '—'}
+                  {MATH_WITHDRAWN || !(day.won + day.lost) ? '—' : <span className={day.net >= 0 ? 'text-bull' : 'text-bear'}>{`${day.net < 0 ? '−' : '+'}$${Math.abs(day.net).toFixed(2)}`}</span>}
                 </Fact>
-                <Fact label="Roots called" testId="fading" title="Roots called today on this scan. A root is called once per sleeve, whenever its best contract clears, from the open until the flat. 0DTE and 1–7 DTE each keep their own.">
-                  <span className="text-textPrimary">{seats}</span>
+                <Fact label="Roots called" testId="fading" title={MATH_WITHDRAWN ? 'No root is called.' : 'Roots called today on this scan. A root is called once per sleeve, whenever its best contract clears, from the open until the flat. 0DTE and 1–7 DTE each keep their own.'}>
+                  <span className="text-textPrimary">{MATH_WITHDRAWN ? '—' : seats}</span>
                 </Fact>
               </>
             }
@@ -328,7 +333,7 @@ const Board = () => {
                   value={offered}
                   options={expiryOptions}
                   onChange={next => setCompassView({ sleeve: next === 'weekly' ? 'weekly' : 'odte' })}
-                  title="0DTE includes Model 3. 1–7 DTE uses Model 1 only."
+                  title={MATH_WITHDRAWN ? 'Which expiry the board is showing. No model runs on either.' : '0DTE includes Model 3. 1–7 DTE uses Model 1 only.'}
                   ink={CARD_INK.expiry}
                   testId="compass-expiry"
                 />
@@ -411,7 +416,7 @@ const TailStrip = ({ book, right, ticker }: { book: '0' | '1-7'; right: 'C' | 'P
   const navigate = useNavigate();
   const { activeTicker, changeTicker } = useTicker();
   const tail = useSyncExternalStore(onScanMeta, () => scanMeta().tail, () => scanMeta().tail);
-  if (!tail) return null;
+  if (MATH_WITHDRAWN || !tail) return null;
   return (
     <TailRiskStrip
       tail={tail}

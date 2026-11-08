@@ -17,14 +17,15 @@ import { useThetaBook } from '../../data/thetaBook';
 import { useCompassPings } from '../../data/compassAlerts';
 import { nyClock } from '../../core/nyTime';
 import { compassFeed, holdCompassFeed } from '../../data/compassFeed';
+import { WITHDRAWN_LINE } from '../../data/compassParams';
 import Freshness, { useBeat } from '../../components/ui/Freshness';
 
-export const COMPASS_LINE = 'Model 1 calls, 0 to 7 days. Model 3 is same-day only.';
+export const COMPASS_LINE = WITHDRAWN_LINE;
 /** The Tracker's line under the same head. Last page of Compass. */
-export const TRACKER_LINE = 'The signals in play, each on its own quotes since the call.';
-export const BLOTTER_LINE = 'The official record: every call the scan fired, the quote it fired on, the fill, the exit.';
-export const REVIEW_LINE = 'Live. Every contract up 100% or more, on every open book.';
-export const STUDY_LINE = 'Every call we took, and the closest we did not.';
+export const TRACKER_LINE = WITHDRAWN_LINE;
+export const BLOTTER_LINE = WITHDRAWN_LINE;
+export const REVIEW_LINE = 'Live prints. Not a model call.';
+export const STUDY_LINE = WITHDRAWN_LINE;
 
 const CompassLayout = () => {
   const location = useLocation();

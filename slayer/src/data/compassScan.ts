@@ -11,7 +11,7 @@
 import { compassHost, type ThetaAnswer } from './compassHost';
 import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { setupIdOf } from './compass';
-import { BOOK_NAME, GEX_CORE, LOTTERY_ASK_MAX, WEEKLY_STRIKES, inLottery, m3ShapeOn, sessionScanOpen, weekdayDte } from './compassParams';
+import { BOOK_NAME, GEX_CORE, LOTTERY_ASK_MAX, MATH_WITHDRAWN, WEEKLY_STRIKES, inLottery, m3ShapeOn, sessionScanOpen, weekdayDte } from './compassParams';
 import { deskPhase, odteAsleep, optionScanOpen, sessionDayOpen, sessionIso, sessionYmd } from './compassSession';
 import { MODEL4, model4OnOdte } from './model4Event';
 import { COMPASS_TICKERS } from './compassUniverse';
@@ -763,6 +763,7 @@ let running = 0;
 /** The live pass of one sleeve at the mark now standing. A name the terminal did not answer stays pending: it is
     scored late once the minute has passed. */
 async function liveMark(markAt: number, sleeve: 'odte' | 'weekly'): Promise<void> {
+  if (MATH_WITHDRAWN) return;
   const at = Date.now();
   if (minuteStart(at) !== markAt) return;
   const names = sleeve === 'odte' ? odteNames(at) : weeklyNames(at);
@@ -873,6 +874,7 @@ const wallIso = (ms: number): string => {
 };
 
 export async function lotterySweep(now: number, late: boolean): Promise<boolean> {
+  if (MATH_WITHDRAWN) return false;
   const at = late ? now : Date.now();
   const names = odteNames(at);
   /* no same-day root is on (a weekend, a holiday): no sweep, and no empty mark row */
@@ -1153,6 +1155,8 @@ async function tick(): Promise<void> {
   try {
     const now = Date.now();
     rollDay(now);
+    /* No new calls, no late scoring, no exit ladder, no Model Risk. The book on the other desks is not this scan. */
+    if (MATH_WITHDRAWN) return;
     const p = nyParts(now);
     const mins = p.hour * 60 + p.minute;
     if (sessionScanOpen(mins, p.weekday) && sessionDayOpen(now) && !pastEarlyClose(mins)) {
