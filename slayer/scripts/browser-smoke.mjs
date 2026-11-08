@@ -107,8 +107,10 @@ let offlineAnswers = 0;
 /* With no keys and no terminal the app's own data routes answer 503 ("live data offline"), and Chromium logs each as
    "Failed to load resource: … 503" — the browser's network line, not the page's. That one line, from those routes,
    is the expected offline state and is counted, not failed. Anything else is an error: a 503 from anywhere else, any
-   other status (a missing script or asset), and everything the page itself logs or throws. */
-const OFFLINE_ROUTE = /^\/api\/(uw|theta|compass|exposure|vol-outlook|logo)(\/|$)/;
+   other status (a missing script or asset), and everything the page itself logs or throws.
+   /api/twobook/oi is the open-interest book (server/twoBookApi.mjs). With no Unusual Whales key it answers 503 the
+   same way /api/uw does, and Pinpoint, Terrain, and the shell ask for it on load. */
+const OFFLINE_ROUTE = /^\/api\/(uw|theta|compass|exposure|vol-outlook|logo|twobook)(\/|$)/;
 const offlineLine = m => {
   if (!/^Failed to load resource: the server responded with a status of 503\b/.test(m.text())) return false;
   try {
