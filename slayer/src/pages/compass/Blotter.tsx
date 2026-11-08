@@ -21,7 +21,7 @@ import { EmptyBox, ErrorBox, LoadingBox, asOfText } from '../../components/ui/st
 import { LIVE_RECONNECTING } from '../../copy/feeds';
 import { useThetaStatus } from '../../data/thetaQuote';
 import { Tip } from '../../components/ui/Tooltip';
-import { modelWordOf } from '../../data/compassParams';
+import { MATH_WITHDRAWN, WITHDRAWN_LINE, modelWordOf } from '../../data/compassParams';
 import ForwardRecord from '../../components/compass/ForwardRecord';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -224,6 +224,14 @@ const Blotter = () => {
       : theta === 'down' && open.length
         ? `${LIVE_RECONNECTING}. Open signals as of ${readAt ? nyClock(readAt, { zone: true }) : 'their call'}.`
         : '';
+
+  if (MATH_WITHDRAWN) {
+    return (
+      <TraceBox title="Blotter" sub="Withdrawn" testId="blotter" sentence={<span>{WITHDRAWN_LINE}</span>}>
+        <p className="px-5 py-6 text-t12 text-textSecondary">No calls are published, and the old record is not on this page.</p>
+      </TraceBox>
+    );
+  }
 
   return (
     <TraceBox

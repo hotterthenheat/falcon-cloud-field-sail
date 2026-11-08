@@ -9,6 +9,7 @@ import { ListGrid, usdSigned, type ListRow } from '../../../components/weigher/P
 import { expiryFor, isoDate, MONTHS, today } from '../../../core/calendar';
 import { buildBook } from '../../../data/bookAtStrike';
 import { setupIdOf } from '../../../data/compass';
+import { MATH_WITHDRAWN, WITHDRAWN_LINE } from '../../../data/compassParams';
 import { useThetaBook } from '../../../data/thetaBook';
 import { costOf } from '../../../data/positionCurve';
 import { readPosition, useAllPositions, type Position, type Verdict } from '../../../data/positions';
@@ -59,6 +60,7 @@ export const SetupsTile = ({ state }: TileProps) => {
   const ranked = earlier ? earlier.setups.filter(s => (sleeve === 'odte' ? s.expiry === '0DTE' : s.expiry !== '0DTE')) : today;
   const expiryChip = useMemo(() => expiryFor(SLEEVES.find(s => s.key === sleeve)?.dte ?? 5).label, [sleeve]);
   const open = useCallback((s: Setup) => door(`/compass/${setupIdOf({ ticker: s.ticker, strike: s.strike, right: s.right, scanner: 'top-setups', sleeve })}`), [door, sleeve]);
+  if (MATH_WITHDRAWN) return <TileEmpty words={WITHDRAWN_LINE} />;
   if (ranked.length === 0) {
     if (view.status === 'down') return <EmptyBox title="Live data offline" reason="Compass scans on live option quotes. The cards come back when it answers." />;
     if (view.status === 'loading') return <LoadingBox shape="block" className="h-full p-2" label="Compass is scanning" />;

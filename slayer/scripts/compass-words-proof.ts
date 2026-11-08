@@ -181,8 +181,8 @@ for (const [where, path, load, props] of pages) {
   seen[where] = render(where, () => at(path, createElement(Page, props ?? {})));
 }
 /* the scan is on the kept state: the pages above read real rows, not an empty frame */
-check('Blotter: the forward test heads the record, the call against its twin', seen.Blotter.includes('The forward test') && /Model 1: .*pair/.test(seen.Blotter) && seen.Blotter.includes('Coin flip'));
-check('Compass board: shows the kept cards', seen['Compass board'].includes('SPY 757P') && seen['Compass board'].includes('Model 3'));
+check('Blotter: the decision math is withdrawn', seen.Blotter.includes('The decision math is withdrawn') && !seen.Blotter.includes('SPY 757P'));
+check('Compass board: publishes no call', seen['Compass board'].includes('The decision math is withdrawn') && !seen['Compass board'].includes('SPY 757P'));
 const { BLOTTER_GRID } = await import('../src/pages/compass/Blotter');
 const blotterGrid = gridText('Blotter rows', BLOTTER_GRID.columns, (signals as unknown as Parameters<typeof BLOTTER_GRID.lineOf>[0][]).map(BLOTTER_GRID.lineOf), BLOTTER_GRID.tooltips);
 check('Blotter rows: each call by its model', blotterGrid.includes('SPY 757P') && blotterGrid.includes('Model 1 · Model 2 riding') && blotterGrid.includes('Model 3'));

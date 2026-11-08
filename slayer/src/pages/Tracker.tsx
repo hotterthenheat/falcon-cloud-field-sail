@@ -17,7 +17,7 @@ import TraceBox, { Fact } from '../components/trace/traceFrame';
 import ContractLabel from '../components/ui/ContractLabel';
 import SessionSpark from '../components/compass/SessionSpark';
 import { usd2 as money } from '../core/format';
-import { RIDING_WORD, modelOfBook, takeProfitPx, targetPx } from '../data/compassParams';
+import { MATH_WITHDRAWN, RIDING_WORD, WITHDRAWN_LINE, modelOfBook, takeProfitPx, targetPx } from '../data/compassParams';
 import { useContractLive } from '../data/thetaBook';
 import { chainRoot } from '../../shared/optionChain.mjs';
 
@@ -157,6 +157,13 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
       : false;
   const open = (s: Signal) => navigate(`/compass/${s.id}?day=${s.day}`, { state: { from: 'Tracker' } });
   const openTracked = (t: TrackedSetup) => navigate(`/compass/${t.id}`, { state: { from: 'Tracker' } });
+  if (MATH_WITHDRAWN) {
+    return (
+      <TraceBox title="Tracker" sub="Withdrawn" testId="tracker" sentence={<span>{WITHDRAWN_LINE}</span>}>
+        <p className="px-5 py-6 text-t12 text-textSecondary">No call is in play.</p>
+      </TraceBox>
+    );
+  }
 
   return (
     <TraceBox

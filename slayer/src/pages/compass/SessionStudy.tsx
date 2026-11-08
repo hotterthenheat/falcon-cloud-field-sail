@@ -17,7 +17,7 @@ import { EmptyBox, ErrorBox, LoadingBox } from '../../components/ui/states';
 import { useCompassDoc, useAllCalls } from '../../data/compassReviewFeed';
 import { useCompassFeed } from '../../data/compassFeed';
 import type { Signal } from '../../data/compassLedger';
-import { P1_MIN, modelWordOf } from '../../data/compassParams';
+import { MATH_WITHDRAWN, P1_MIN, WITHDRAWN_LINE, modelWordOf } from '../../data/compassParams';
 import { POOL_BAR, type Mover, type PooledStudy, type Rate } from '../../data/compassStudy';
 import { isoDate } from '../../core/calendar';
 import { expiryOfDay, useReviewDay } from './SessionReview';
@@ -398,6 +398,13 @@ const SessionStudy = () => {
   const missedFill = useMemo(() => (board?.rows ?? []).filter(r => (sleeve === 'all' || r.sleeve === sleeve) && !called.has(r.contract)), [board, sleeve, called]);
   const won = taken.filter(s => (s.outcome?.pnl ?? 0) > 0).length;
   const lost = taken.filter(s => s.outcome?.pnl != null && s.outcome.pnl <= 0).length;
+  if (MATH_WITHDRAWN) {
+    return (
+      <TraceBox title="Study" sub="Withdrawn" testId="compass-study" sentence={<span>{WITHDRAWN_LINE}</span>}>
+        <p className="px-5 py-6 text-t12 text-textSecondary">The study of these models is not on the desk.</p>
+      </TraceBox>
+    );
+  }
   return (
     <TraceBox
       title="Study"
