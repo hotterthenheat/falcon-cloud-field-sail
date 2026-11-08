@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { feedHeaders } from './feedGate';
-import type { LiveReview } from './reviewLive';
+import type { LiveReview } from './reviewShape';
 import type { PooledStudy, StudyResult } from './compassStudy';
 import type { Signal } from './compassLedger';
 import { noFees } from './compassOutcome';

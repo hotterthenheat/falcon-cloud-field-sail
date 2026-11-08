@@ -1,22 +1,25 @@
 /* Canonical GEX chart colours for JS consumers (lightweight-charts options, canvas primitives).
-   The same values are tailwind.config.ts's `flip` / `supreme` / `darkpool`; change both together. */
+   The same values are the theme tokens; change both together. These hexes are his dark set. */
 
-/** Apple system green — the market's bullish voice (matches the `bull`
-    tailwind token). JS-side chart code imports THIS; class-side uses `bull`. */
+/** Apple system green — the market's bullish voice (matches the `bull` token). */
 export const BULL = '#30D158';
-/** Neon lime — the interface's voice (matches `select`). Selection, brand,
-    extreme importance. Never market direction. */
-/* The accent: holo silver (tokens.css --select). */
-const LIME = '#C7D3E8';
+/** Soft mint — the candle theme's up-color, and nothing else. */
+export const CHART_MINT = '#CFFFB1';
+/* The accent: holo silver (tokens.css --select). The lime is gone. */
+export const LIME = '#C7D3E8';
 
-export const CALL_WALL = '#9ED4EA'; // glacier, heavier so a 1px rung holds contrast. Green is the long-gamma sign, not the wall.
-export const PUT_WALL = '#F5C542'; // ember. Red is the short-gamma sign, not the wall.
-/* The flip is a dashed rule. A light grey holds on #050505; it is not a side. */
-export const FLIP = '#E4E7EE';
-export const SUPREME = '#FF5AF1';
-export const DARK_POOL = '#2dd4bf'; // teal — institutional reference prints
-export const FOCUS = LIME; // the silver accent — what the user clicked (selection language)
+export const CALL_WALL = BULL;
+export const PUT_WALL = '#F5C542';
+/* The flip is indecision grey. Neither side's colour belongs to it. */
+export const FLIP = '#9CA3AF';
+export const SUPREME = '#EA00FF';
+export const DARK_POOL = '#2dd4bf';
+export const SPOT = '#ededed';
+export const FOCUS = LIME;
 
-// The alert ink, the one orange on the desk, reserved for "something you asked to be told about".
+export const SHORT_GAMMA = '#FF3B30';
+export const LONG_GAMMA = 'rgb(var(--glacier))';
 export const ALERT = '#FF9500';
 
+export const CALL_SIDE = 'rgb(var(--glacier))';
+export const PUT_SIDE = 'rgb(var(--ember))';

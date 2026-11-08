@@ -51,18 +51,18 @@ const RAMPS: Record<
       [0.8, [215, 48, 39]], //   #D73027
       [1, [165, 0, 38]], //      #A50026
     ],
-    /* Absorb is green, as everywhere else: the cool half is ColorBrewer RdYlGn's green side, with the same yellow middle. */
-    // negative = call-dominant = dealers long gamma = ABSORB (green)
+    /* His cool half is ColorBrewer RdYlBu blue. The green absorb ramp does not take here. */
+    // negative = call-dominant = dealers long gamma = ABSORB (cool)
     neg: [
       [0, [255, 255, 191]], //   #FFFFBF
-      [0.2, [217, 239, 139]], // #D9EF8B
-      [0.4, [166, 217, 106]], // #A6D96A
-      [0.6, [102, 189, 99]], //  #66BD63
-      [0.8, [26, 152, 80]], //   #1A9850
-      [1, [0, 104, 55]], //      #006837
+      [0.2, [224, 243, 248]], // #E0F3F8
+      [0.4, [171, 217, 233]], // #ABD9E9
+      [0.6, [116, 173, 209]], // #74ADD1
+      [0.8, [69, 117, 180]], //  #4575B4
+      [1, [49, 54, 149]], //     #313695
     ],
     gradient:
-      'linear-gradient(to bottom, #A50026 0%, #D73027 10%, #F46D43 20%, #FDAE61 30%, #FEE090 40%, #FFFFBF 50%, #D9EF8B 60%, #A6D96A 70%, #66BD63 80%, #1A9850 90%, #006837 100%)',
+      'linear-gradient(to bottom, #A50026 0%, #D73027 10%, #F46D43 20%, #FDAE61 30%, #FEE090 40%, #FFFFBF 50%, #E0F3F8 60%, #ABD9E9 70%, #74ADD1 80%, #4575B4 90%, #313695 100%)',
     gamma: 0.5,
   },
   /* The house heat: a dark zero, each side travelling hues — amplify through ember (oxblood → gold), absorb through glacier (navy → ice).

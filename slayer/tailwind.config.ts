@@ -28,6 +28,10 @@ export default {
         // shades the pages used to write by hand
         chip: token('chip'),
         card: { DEFAULT: token('card'), foreground: token('text-primary') },
+        tray: token('tray'),
+        trayCard: token('tray-card'),
+        deep: token('deep'),
+        deepCard: token('deep-card'),
 
         /* SHADCN'S NAMES, ON THE HOUSE TOKENS (2026-11-01). The shadcn components (src/components/shadcn) and anything
            pasted from shadcn later read these; each is an existing token, never a new value and never a var() alias of
@@ -66,6 +70,7 @@ export default {
         // THE INK a wash is made of — white on dark, near-black on light. Every
         // `bg-white/[0.06]` hover wash became `bg-ink/[0.06]` (2026-09-12).
         ink: token('ink'),
+        inkReverse: token('ink-reverse'),
         night: token('night'),
 
         // Directional / status accents (always paired with a label or icon).
@@ -83,6 +88,7 @@ export default {
         bear: token('bear'),
         // True orange — caution reads clearly apart from green and hot red
         warn: token('warn'),
+        caution: token('caution'),
         // Interface accent — the silver (the same channels as `silver`), ~13:1
         // on canvas, the deep steel on paper. Interface only, never data.
         select: token('select'),

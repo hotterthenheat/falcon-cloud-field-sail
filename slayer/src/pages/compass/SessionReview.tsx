@@ -10,7 +10,7 @@ import DropdownSelect from '../../components/ui/DropdownSelect';
 import ContractLabel from '../../components/ui/ContractLabel';
 import { EmptyBox, ErrorBox, LoadingBox } from '../../components/ui/states';
 import { useCompassDays, useCompassDoc } from '../../data/compassReviewFeed';
-import { REVIEW_LIVE, type ReviewBand, type ReviewHit, type ReviewSleeve } from '../../data/reviewLive';
+import { REVIEW_LIVE, type ReviewBand, type ReviewHit, type ReviewSleeve } from '../../data/reviewShape';
 import { isoDate, type Expiry } from '../../core/calendar';
 import { nyClock } from '../../core/nyTime';
 

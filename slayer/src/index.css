@@ -1358,9 +1358,15 @@ body.room-walled { animation: room-flicker 11s linear infinite; }
   --tab-rule: 1px;
   --logo-flip: 1;
   --ink: 255 255 255;
+  --ink-reverse: 10 10 10;
   --canvas: 5 5 5;
   --panel: 10 10 10;
   --panel-hover: 16 16 16;
+  --foil-1: 238 241 248;
+  --foil-2: 194 214 240;
+  --foil-3: 228 216 244;
+  --foil-4: 255 255 255;
+  --foil-5: 200 216 236;
   --inset: 7 7 7;
   --chip: 12 12 12;
   --card: 18 18 18;
@@ -1370,6 +1376,7 @@ body.room-walled { animation: room-flicker 11s linear infinite; }
   --bull: 48 209 88;
   --bear: 255 59 48;
   --warn: 255 149 0;
+  --caution: 255 110 20;
   --select: 199 211 232;
   --moon: 185 169 244;
   --supreme: 234 0 255;
@@ -1400,10 +1407,12 @@ body.room-walled { animation: room-flicker 11s linear infinite; }
   --tab-rule: 2px;
   --logo-flip: 0;
   --ink: 0 0 0;
+  --ink-reverse: 255 255 255;
   --canvas: 200 199 194;
   --panel: 211 210 205;
   --panel-hover: 200 199 194;
   --inset: 216 215 210;
+  --input-bg: 222 221 216;
   --chip: 203 202 197;
   --card: 211 210 205;
   --border-subtle: 170 169 165;
@@ -1412,11 +1421,17 @@ body.room-walled { animation: room-flicker 11s linear infinite; }
   --bull: 15 107 44;
   --bear: 168 36 27;
   --warn: 180 95 0;
+  --caution: 220 70 0;
   --select: 47 61 92;
   --moon: 91 74 168;
   --supreme: 163 0 179;
   --flip: 107 114 128;
   --silver: 47 61 92;
+  --foil-1: 43 45 56;
+  --foil-2: 102 113 143;
+  --foil-3: 35 35 44;
+  --foil-4: 103 93 126;
+  --foil-5: 43 45 56;
 }
 /* THE SAME SET, LIFTED, ON THE LIGHT PAGE (2026-09-19 — Noah: "the charts need to be a lighter gray"): there the light
    tape's ground is a paler grey (candleTheme.ts bgOnLightPage, #DDDCD7), and its chrome steps up with it so a strip never
@@ -1428,6 +1443,7 @@ html[data-theme='light'] [data-chart-ground='light']:is([data-chart-chrome], [da
   --panel: 232 231 226;
   --panel-hover: 224 223 218;
   --inset: 236 235 230;
+  --input-bg: 240 239 234;
   --chip: 228 227 222;
   --card: 232 231 226;
   --border-subtle: 196 195 190;

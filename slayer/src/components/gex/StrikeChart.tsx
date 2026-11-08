@@ -348,9 +348,8 @@ export const INDICATOR_INKS: Record<keyof ChartIndicators, string> = {
   ...TV_SPECIAL_INKS,
 };
 
-/* The regime's two washes: the house's gamma signs (green long, red short — palette.ts), faint enough to sit under
-   the candles */
-const LONG_GAMMA_WASH = 'rgba(48,209,88,0.075)';
+/* The regime wash: his long gamma is glacier blue, short gamma is red. */
+const LONG_GAMMA_WASH = 'rgba(122,189,215,0.075)';
 /** The wash at the Style tab's opacity: 0.3 (the default) is a 7.5% tint, 1 is a 25% one */
 /* the desk's inks, not market green/red: long gamma glacier (the call wall's), short gamma ember (the put wall's) */
 const washRgb = (h: string): string => `${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)}`;

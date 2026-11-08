@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { bsStates, ivStates } from './compassFeatures';
 import { SESSION_MIN, YEAR_SESSIONS, weekdayDte } from './compassParams';
-import { fillableQuote } from './reviewLive';
+import { fillableQuote } from './reviewShape';
 import { nyParts } from '../core/nyTime';
 import { REGULAR_OPEN_MIN } from '../core/session';
 

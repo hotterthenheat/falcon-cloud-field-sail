@@ -14,6 +14,13 @@
   --dawn-3: 94 106 129;
   --dawn-4: 168 178 197;
   --dawn-5: 217 222 231;
+  /* his landing plates and the horizon cream. Absolute, not cut per theme. */
+  --plate-purple: 228 180 252;
+  --plate-neon: 230 255 151;
+  --plate-blue: 218 237 254;
+  --plate-cloud: 255 255 255;
+  --plate-shade: 24 16 48;
+  --horizon-sky: 248 238 220;
 }
 
 :root,
@@ -29,6 +36,11 @@
   /* a chip's ground and a card's */
   --chip: 12 12 12;
   --card: 18 18 18;
+  /* his landing boxes: a tray one step off black, the card in it two steps, the deep tile lifted */
+  --tray: 13 13 13;
+  --tray-card: 24 24 24;
+  --deep: 16 16 16;
+  --deep-card: 34 34 34;
 
   /* Hairlines */
   --border-subtle: 28 28 28;
@@ -50,11 +62,15 @@
 
   /* the wash ink: white on dark, near-black on light (`bg-ink/[0.06]` is the hover wash) */
   --ink: 255 255 255;
+  /* the glyph on an ink face: black on the dark terminal, white on paper */
+  --ink-reverse: 10 10 10;
 
   /* Direction, status, the house accents */
   --bull: 48 209 88;
   --bear: 255 59 48;
   --warn: 255 149 0;
+  /* caution orange, redder than the warning amber */
+  --caution: 255 110 20;
   /* the medium-impact ink of the news calendar: the thermal ramp's #FDAE61 (impactMark.tsx) */
   --impact-medium: 253 174 97;
   /* The accent is the holo silver; --select is the silver as an ink, cut per theme like --silver. */
@@ -69,7 +85,7 @@
   --silver-fill: 199 211 232;
   /* the thermal ramp's poles as text inks, matching heatLaneInks('thermal-yellow', 0.72) on dark */
   --thermal-warm: 227 72 50;
-  --thermal-cool: 76 175 96; /* green: absorbs (the one sign rule) */
+  --thermal-cool: 88 139 192; /* his cool pole is blue, not the green absorb */
   /* the clock's pressure pair: pushes (ember) or absorbs (glacier) */
   --ember: 245 197 66;
   --glacier: 122 189 215;
@@ -131,6 +147,10 @@
   --input-bg: 255 255 255;
   --chip: 245 244 240;
   --card: 246 245 241;
+  --tray: 247 247 247;
+  --tray-card: 255 255 255;
+  --deep: 20 20 20;
+  --deep-card: 38 38 38;
 
   /* 1.6:1 and 2.2:1 on white */
   --border-subtle: 205 203 197;
@@ -152,6 +172,7 @@
   --text-muted: 64 67 74;
 
   --ink: 14 15 17;
+  --ink-reverse: 255 255 255;
 
   /* the direction pair on paper: the dark set's hues, cut to hold on white */
   /* Saturated hues rather than dark ones (dark green reads grey): green 0 140 56 (4.4:1), red 220 32 32 (4.9:1);
@@ -160,11 +181,12 @@
   --bear: 220 32 32;
   /* a saturated orange, 4.3:1 on white */
   --warn: 220 70 0;
+  --caution: 220 70 0;
   /* the medium-impact amber cut for paper: #FDAE61 read 1.7:1 on its own pill there (SITECHECK-2); this is 5.7:1 on white */
   --impact-medium: 160 82 0;
   /* the thermal's warm pole one step redder than the alert amber; the cool pole a deep steel-blue */
   --thermal-warm: 196 62 10; /* 5.2:1 on white */
-  --thermal-cool: 0 118 52; /* green on paper */
+  --thermal-cool: 29 97 168; /* the blue on paper */
   --ember: 146 86 4; /* 5.9:1: the put figures on the ladder tile */
   --glacier: 3 105 161;
   /* the news beats cut for paper, 5.6:1 to 7.3:1 on white */
